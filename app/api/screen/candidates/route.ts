@@ -38,19 +38,6 @@ type CandidateHistoryRow = CandidateUniverseRow & {
   created_at: string
 }
 
-type CandidateResult = {
-  ticker: string | null
-  ok: boolean
-  included?: boolean
-  score?: number
-  reason?: string
-  price?: number | null
-  return5d?: number | null
-  return20d?: number | null
-  volumeRatio?: number | null
-  error?: string
-}
-
 const yahooFinance = new YahooFinance({
   queue: { concurrency: 1 },
   suppressNotices: ["ripHistorical", "yahooSurvey"],
@@ -60,11 +47,6 @@ const MAX_BATCH = 250
 const DEFAULT_BATCH = 100
 const RETENTION_DAYS = 30
 const REQUEST_DELAY_MS = 120
-
-const MIN_PRICE = 10
-const MIN_AVG_VOLUME_20D = 750_000
-const MIN_AVG_DOLLAR_VOLUME_20D = 20_000_000
-const MIN_MARKET_CAP = 1_000_000_000
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -84,11 +66,6 @@ function round2(value: number | null | undefined) {
   return Math.round(value * 100) / 100
 }
 
-function roundWhole(value: number | null | undefined) {
-  if (value === null || value === undefined || Number.isNaN(value)) return null
-  return Math.round(value)
-}
-
 function parseInteger(value: string | null, fallback: number) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
@@ -96,12 +73,6 @@ function parseInteger(value: string | null, fallback: number) {
 
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
-}
-
-function safeNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
 }
 
 function isProbablyCommonStockTicker(ticker: string) {
@@ -132,75 +103,14 @@ function snapshotDateString(date: Date) {
   return date.toISOString().slice(0, 10)
 }
 
-function buildSnapshotKey(screenedOn: string, ticker: string) {
-  return `${screenedOn}_${ticker}`
-}
-
-function buildExcludedRow(params: {
-  ticker: string
-  cik: string
-  name: string | null
-  nowIso: string
-  reason: string
-}): CandidateUniverseRow {
-  return {
-    ticker: params.ticker,
-    cik: params.cik,
-    name: params.name,
-    price: null,
-    market_cap: null,
-    avg_volume_20d: null,
-    avg_dollar_volume_20d: null,
-    return_5d: null,
-    return_20d: null,
-    volume_ratio: null,
-    breakout_20d: false,
-    above_sma_20: false,
-    passes_price: false,
-    passes_volume: false,
-    passes_dollar_volume: false,
-    passes_market_cap: false,
-    candidate_score: 0,
-    included: false,
-    screen_reason: params.reason,
-    last_screened_at: params.nowIso,
-    updated_at: params.nowIso,
-  }
-}
-
-async function persistCandidateRows(
-  supabase: ReturnType<typeof createClient>,
-  row: CandidateUniverseRow,
-  screenedOn: string,
-  nowIso: string
-) {
-  const universeResult = await supabase
-    .from("candidate_universe")
-    .upsert(row, { onConflict: "ticker" })
-
-  if (universeResult.error) {
-    return { ok: false as const, error: universeResult.error.message }
-  }
-
-  const historyRow: CandidateHistoryRow = {
-    ...row,
-    screened_on: screenedOn,
-    snapshot_key: buildSnapshotKey(screenedOn, row.ticker),
-    created_at: nowIso,
-  }
-
-  const historyResult = await supabase
-    .from("candidate_screen_history")
-    .upsert(historyRow, { onConflict: "snapshot_key" })
-
-  if (historyResult.error) {
-    return { ok: false as const, error: historyResult.error.message }
-  }
-
-  return { ok: true as const }
-}
-
 export async function GET(request: Request) {
+  const pipelineToken = process.env.PIPELINE_TOKEN
+  const suppliedToken = request.headers.get("x-pipeline-token")
+
+  if (!pipelineToken || suppliedToken !== pipelineToken) {
+    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -220,10 +130,6 @@ export async function GET(request: Request) {
     const onlyActiveParam = (searchParams.get("onlyActive") || "true").toLowerCase()
     const onlyActive = onlyActiveParam !== "false"
 
-    // Optional: when true, remove candidate_universe rows that have not been screened today.
-    // Best used only after the final batch has run.
-    const cleanupStaleCurrent = (searchParams.get("cleanupStaleCurrent") || "false").toLowerCase() === "true"
-
     const safeStart = Math.max(0, start)
     const safeBatch = Math.min(Math.max(1, batch), MAX_BATCH)
     const from = safeStart
@@ -233,15 +139,17 @@ export async function GET(request: Request) {
     const nowIso = now.toISOString()
     const screenedOn = snapshotDateString(now)
 
-    let companyQuery = supabase
-      .from("companies")
+    const companiesTable = supabase.from("companies") as any
+    const candidateUniverseTable = supabase.from("candidate_universe") as any
+    const candidateHistoryTable = supabase.from("candidate_screen_history") as any
+
+    let companyQuery = companiesTable
       .select("ticker, cik, name, is_active")
       .not("cik", "is", null)
       .order("ticker", { ascending: true })
       .range(from, to)
 
-    let countQuery = supabase
-      .from("companies")
+    let countQuery = companiesTable
       .select("*", { count: "exact", head: true })
       .not("cik", "is", null)
 
@@ -256,13 +164,10 @@ export async function GET(request: Request) {
     ] = await Promise.all([companyQuery, countQuery])
 
     if (companiesError) {
-      return Response.json(
-        { ok: false, error: companiesError.message },
-        { status: 500 }
-      )
+      return Response.json({ ok: false, error: companiesError.message }, { status: 500 })
     }
 
-    const results: CandidateResult[] = []
+    const results: Array<Record<string, any>> = []
     let includedInBatch = 0
     let failedInBatch = 0
     let historyInserted = 0
@@ -283,33 +188,75 @@ export async function GET(request: Request) {
         }
 
         if (!isProbablyCommonStockTicker(ticker)) {
-          const row = buildExcludedRow({
+          const excludedRow: CandidateUniverseRow = {
             ticker,
             cik: company.cik,
             name: company.name,
-            nowIso,
-            reason: "Excluded likely non-common-share ticker",
+            price: null,
+            market_cap: null,
+            avg_volume_20d: null,
+            avg_dollar_volume_20d: null,
+            return_5d: null,
+            return_20d: null,
+            volume_ratio: null,
+            breakout_20d: false,
+            above_sma_20: false,
+            passes_price: false,
+            passes_volume: false,
+            passes_dollar_volume: false,
+            passes_market_cap: false,
+            candidate_score: 0,
+            included: false,
+            screen_reason: "Excluded likely non-common-share ticker",
+            last_screened_at: nowIso,
+            updated_at: nowIso,
+          }
+
+          const universeResult = await candidateUniverseTable.upsert(excludedRow, {
+            onConflict: "ticker",
           })
 
-          const persistResult = await persistCandidateRows(supabase, row, screenedOn, nowIso)
-          if (!persistResult.ok) {
+          if (universeResult.error) {
             failedInBatch += 1
             results.push({
               ticker,
               ok: false,
-              error: persistResult.error,
+              error: universeResult.error.message,
+            })
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          const historyRow: CandidateHistoryRow = {
+            ...excludedRow,
+            screened_on: screenedOn,
+            snapshot_key: `${screenedOn}_${ticker}`,
+            created_at: nowIso,
+          }
+
+          const historyResult = await candidateHistoryTable.upsert(historyRow, {
+            onConflict: "snapshot_key",
+          })
+
+          if (historyResult.error) {
+            failedInBatch += 1
+            results.push({
+              ticker,
+              ok: false,
+              error: historyResult.error.message,
             })
             await sleep(REQUEST_DELAY_MS)
             continue
           }
 
           historyInserted += 1
+
           results.push({
             ticker,
             ok: true,
             included: false,
             score: 0,
-            reason: row.screen_reason,
+            reason: "Excluded likely non-common-share ticker",
           })
 
           await sleep(REQUEST_DELAY_MS)
@@ -340,33 +287,75 @@ export async function GET(request: Request) {
           .sort((a, b) => +new Date(a.date) - +new Date(b.date))
 
         if (clean.length < 22) {
-          const row = buildExcludedRow({
+          const row: CandidateUniverseRow = {
             ticker,
             cik: company.cik,
             name: company.name,
-            nowIso,
-            reason: "Not enough price history",
+            price: null,
+            market_cap: null,
+            avg_volume_20d: null,
+            avg_dollar_volume_20d: null,
+            return_5d: null,
+            return_20d: null,
+            volume_ratio: null,
+            breakout_20d: false,
+            above_sma_20: false,
+            passes_price: false,
+            passes_volume: false,
+            passes_dollar_volume: false,
+            passes_market_cap: false,
+            candidate_score: 0,
+            included: false,
+            screen_reason: "Not enough price history",
+            last_screened_at: nowIso,
+            updated_at: nowIso,
+          }
+
+          const universeResult = await candidateUniverseTable.upsert(row, {
+            onConflict: "ticker",
           })
 
-          const persistResult = await persistCandidateRows(supabase, row, screenedOn, nowIso)
-          if (!persistResult.ok) {
+          if (universeResult.error) {
             failedInBatch += 1
             results.push({
               ticker,
               ok: false,
-              error: persistResult.error,
+              error: universeResult.error.message,
+            })
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          const historyRow: CandidateHistoryRow = {
+            ...row,
+            screened_on: screenedOn,
+            snapshot_key: `${screenedOn}_${ticker}`,
+            created_at: nowIso,
+          }
+
+          const historyResult = await candidateHistoryTable.upsert(historyRow, {
+            onConflict: "snapshot_key",
+          })
+
+          if (historyResult.error) {
+            failedInBatch += 1
+            results.push({
+              ticker,
+              ok: false,
+              error: historyResult.error.message,
             })
             await sleep(REQUEST_DELAY_MS)
             continue
           }
 
           historyInserted += 1
+
           results.push({
             ticker,
             ok: true,
             included: false,
             score: 0,
-            reason: row.screen_reason,
+            reason: "Not enough price history",
           })
 
           await sleep(REQUEST_DELAY_MS)
@@ -378,40 +367,6 @@ export async function GET(request: Request) {
         const twentyAgo = clean[clean.length - 21]
         const prior20 = clean.slice(-21, -1)
 
-        if (!latest || !fiveAgo || !twentyAgo || prior20.length === 0) {
-          const row = buildExcludedRow({
-            ticker,
-            cik: company.cik,
-            name: company.name,
-            nowIso,
-            reason: "Not enough valid lookback data",
-          })
-
-          const persistResult = await persistCandidateRows(supabase, row, screenedOn, nowIso)
-          if (!persistResult.ok) {
-            failedInBatch += 1
-            results.push({
-              ticker,
-              ok: false,
-              error: persistResult.error,
-            })
-            await sleep(REQUEST_DELAY_MS)
-            continue
-          }
-
-          historyInserted += 1
-          results.push({
-            ticker,
-            ok: true,
-            included: false,
-            score: 0,
-            reason: row.screen_reason,
-          })
-
-          await sleep(REQUEST_DELAY_MS)
-          continue
-        }
-
         const latestClose = Number(latest.close || 0)
         const latestVolume = Number(latest.volume || 0)
 
@@ -421,17 +376,17 @@ export async function GET(request: Request) {
         )
         const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
         const sma20 = avg(prior20.map((c) => Number(c.close || 0)))
-        const return5d = calcPercentChange(latestClose, Number(fiveAgo.close || 0))
-        const return20d = calcPercentChange(latestClose, Number(twentyAgo.close || 0))
+        const return5d = calcPercentChange(latestClose, Number(fiveAgo?.close || 0))
+        const return20d = calcPercentChange(latestClose, Number(twentyAgo?.close || 0))
         const volumeRatio = avgVolume20d > 0 ? latestVolume / avgVolume20d : 0
         const breakout20d = latestClose > high20
         const aboveSma20 = latestClose > sma20
-        const marketCap = safeNumber((quote as any)?.marketCap)
+        const marketCap = Number((quote as any)?.marketCap || 0)
 
-        const passesPrice = latestClose >= MIN_PRICE
-        const passesVolume = avgVolume20d >= MIN_AVG_VOLUME_20D
-        const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
-        const passesMarketCap = (marketCap ?? 0) >= MIN_MARKET_CAP
+        const passesPrice = latestClose >= 10
+        const passesVolume = avgVolume20d >= 750_000
+        const passesDollarVolume = avgDollarVolume20d >= 20_000_000
+        const passesMarketCap = marketCap >= 1_000_000_000
 
         const hasMomentum5d = return5d >= 4
         const hasMomentum20d = return20d >= 10
@@ -473,9 +428,9 @@ export async function GET(request: Request) {
           cik: company.cik,
           name: company.name,
           price: round2(latestClose),
-          market_cap: roundWhole(marketCap),
-          avg_volume_20d: roundWhole(avgVolume20d),
-          avg_dollar_volume_20d: roundWhole(avgDollarVolume20d),
+          market_cap: marketCap || null,
+          avg_volume_20d: round2(avgVolume20d),
+          avg_dollar_volume_20d: round2(avgDollarVolume20d),
           return_5d: round2(return5d),
           return_20d: round2(return20d),
           volume_ratio: round2(volumeRatio),
@@ -492,13 +447,38 @@ export async function GET(request: Request) {
           updated_at: nowIso,
         }
 
-        const persistResult = await persistCandidateRows(supabase, row, screenedOn, nowIso)
-        if (!persistResult.ok) {
+        const universeResult = await candidateUniverseTable.upsert(row, {
+          onConflict: "ticker",
+        })
+
+        if (universeResult.error) {
           failedInBatch += 1
           results.push({
             ticker,
             ok: false,
-            error: persistResult.error,
+            error: universeResult.error.message,
+          })
+          await sleep(REQUEST_DELAY_MS)
+          continue
+        }
+
+        const historyRow: CandidateHistoryRow = {
+          ...row,
+          screened_on: screenedOn,
+          snapshot_key: `${screenedOn}_${ticker}`,
+          created_at: nowIso,
+        }
+
+        const historyResult = await candidateHistoryTable.upsert(historyRow, {
+          onConflict: "snapshot_key",
+        })
+
+        if (historyResult.error) {
+          failedInBatch += 1
+          results.push({
+            ticker,
+            ok: false,
+            error: historyResult.error.message,
           })
           await sleep(REQUEST_DELAY_MS)
           continue
@@ -512,11 +492,11 @@ export async function GET(request: Request) {
           ok: true,
           included,
           score,
-          reason: row.screen_reason,
-          price: row.price,
-          return5d: row.return_5d,
-          return20d: row.return_20d,
-          volumeRatio: row.volume_ratio,
+          reason: reasons.join(", ") || "No screen factors passed",
+          price: round2(latestClose),
+          return5d: round2(return5d),
+          return20d: round2(return20d),
+          volumeRatio: round2(volumeRatio),
         })
       } catch (err: any) {
         failedInBatch += 1
@@ -534,33 +514,16 @@ export async function GET(request: Request) {
       .toISOString()
       .slice(0, 10)
 
-    const { error: retentionError } = await supabase
-      .from("candidate_screen_history")
+    const { error: retentionError } = await candidateHistoryTable
       .delete()
       .lt("screened_on", cutoffDate)
-
-    let staleCurrentCleanup: string = "skipped"
-
-    if (cleanupStaleCurrent) {
-      const { error: staleCurrentError } = await supabase
-        .from("candidate_universe")
-        .delete()
-        .lt("last_screened_at", `${screenedOn}T00:00:00.000Z`)
-
-      staleCurrentCleanup = staleCurrentError ? staleCurrentError.message : "ok"
-    }
 
     const [
       { count: candidateCount, error: includedCountError },
       { count: historyCount, error: historyCountError },
     ] = await Promise.all([
-      supabase
-        .from("candidate_universe")
-        .select("*", { count: "exact", head: true })
-        .eq("included", true),
-      supabase
-        .from("candidate_screen_history")
-        .select("*", { count: "exact", head: true }),
+      candidateUniverseTable.select("*", { count: "exact", head: true }).eq("included", true),
+      candidateHistoryTable.select("*", { count: "exact", head: true }),
     ])
 
     const nextStart =
@@ -584,14 +547,13 @@ export async function GET(request: Request) {
       historyInserted,
       historyCount: historyCountError ? null : historyCount,
       retentionCleanup: retentionError ? retentionError.message : "ok",
-      staleCurrentCleanup,
       retainedDays: RETENTION_DAYS,
       screenedOn,
       results,
     })
   } catch (error: any) {
     return Response.json(
-      { ok: false, error: error?.message || "Unknown error" },
+      { ok: false, error: error.message || "Unknown error" },
       { status: 500 }
     )
   }
