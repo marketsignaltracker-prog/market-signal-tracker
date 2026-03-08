@@ -164,7 +164,10 @@ export async function GET(request: Request) {
     ] = await Promise.all([companyQuery, countQuery])
 
     if (companiesError) {
-      return Response.json({ ok: false, error: companiesError.message }, { status: 500 })
+      return Response.json(
+        { ok: false, error: companiesError.message },
+        { status: 500 }
+      )
     }
 
     const results: Array<Record<string, any>> = []
@@ -522,7 +525,9 @@ export async function GET(request: Request) {
       { count: candidateCount, error: includedCountError },
       { count: historyCount, error: historyCountError },
     ] = await Promise.all([
-      candidateUniverseTable.select("*", { count: "exact", head: true }).eq("included", true),
+      candidateUniverseTable
+        .select("*", { count: "exact", head: true })
+        .eq("included", true),
       candidateHistoryTable.select("*", { count: "exact", head: true }),
     ])
 
