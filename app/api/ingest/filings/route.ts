@@ -169,7 +169,7 @@ type Database = {
           company_id: number | null
           ticker: string
           accession_no: string
-          filing_type?: string | null
+          filing_type: string | null
           filed_at: string | null
           filing_url: string | null
           filing_json: Record<string, any> | null
@@ -312,7 +312,8 @@ async function upsertWithRetry(
       })
     )
 
-    const { error } = await supabase.from("raw_filings").upsert(typedRows, {
+    const rawFilingsTable = supabase.from("raw_filings") as any
+    const { error } = await rawFilingsTable.upsert(typedRows, {
       onConflict: "accession_no",
     })
 
@@ -420,8 +421,9 @@ async function loadCompaniesForBatch(
   to: number
 ) {
   if (scope === "candidates") {
-    const { data, error } = await supabase
-      .from("candidate_universe")
+    const candidateUniverseTable = supabase.from("candidate_universe") as any
+
+    const { data, error } = await candidateUniverseTable
       .select("ticker, cik, name, candidate_score")
       .eq("included", true)
       .order("candidate_score", { ascending: false })
@@ -430,8 +432,7 @@ async function loadCompaniesForBatch(
 
     if (error) throw new Error(`Candidate load failed: ${error.message}`)
 
-    const { count, error: countError } = await supabase
-      .from("candidate_universe")
+    const { count, error: countError } = await candidateUniverseTable
       .select("*", { count: "exact", head: true })
       .eq("included", true)
 
@@ -444,17 +445,18 @@ async function loadCompaniesForBatch(
     }
   }
 
-  const query = supabase
-    .from("companies")
+  const companiesTable = supabase.from("companies") as any
+
+  let query = companiesTable
     .select("ticker, cik, name, is_active")
     .order("ticker", { ascending: true })
     .range(from, to)
 
-  const countQuery = supabase.from("companies").select("*", { count: "exact", head: true })
+  let countQuery = companiesTable.select("*", { count: "exact", head: true })
 
   if (scope === "active") {
-    query.eq("is_active", true)
-    countQuery.eq("is_active", true)
+    query = query.eq("is_active", true)
+    countQuery = countQuery.eq("is_active", true)
   }
 
   const [{ data, error }, { count, error: countError }] = await Promise.all([
@@ -642,20 +644,21 @@ export async function GET(request: Request) {
       Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
     ).toISOString()
 
-    const { error: retentionErrorByFiledAt } = await supabase
-      .from("raw_filings")
+    const rawFilingsTable = supabase.from("raw_filings") as any
+
+    const { error: retentionErrorByFiledAt } = await rawFilingsTable
       .delete()
       .lt("filed_at", retentionCutoffDate)
 
-    const { error: retentionErrorNullFiledAt } = await supabase
-      .from("raw_filings")
+    const { error: retentionErrorNullFiledAt } = await rawFilingsTable
       .delete()
       .is("filed_at", null)
       .lt("fetched_at", retentionCutoffTimestamp)
 
-    const { count: rawFilingsCount, error: rawCountError } = await supabase
-      .from("raw_filings")
-      .select("*", { count: "exact", head: true })
+    const { count: rawFilingsCount, error: rawCountError } = await rawFilingsTable.select("*", {
+      count: "exact",
+      head: true,
+    })
 
     const nextStart = to + 1 < totalCompanies ? to + 1 : null
 
