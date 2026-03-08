@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js"
+import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
 type CompanyRow = {
   ticker: string
@@ -46,7 +46,175 @@ type Diagnostics = {
   totalInsertedRows: number
   totalErrors: number
   formsSeen: Record<string, number>
-  rowsFilteredOutByForm: number
+}
+
+type Database = {
+  public: {
+    Tables: {
+      companies: {
+        Row: {
+          id: number
+          ticker: string
+          company_name: string | null
+          cik: string | null
+          created_at: string | null
+          name: string | null
+          is_active: boolean
+          source: string | null
+          last_seen_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          ticker: string
+          company_name?: string | null
+          cik?: string | null
+          created_at?: string | null
+          name?: string | null
+          is_active?: boolean
+          source?: string | null
+          last_seen_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: number
+          ticker?: string
+          company_name?: string | null
+          cik?: string | null
+          created_at?: string | null
+          name?: string | null
+          is_active?: boolean
+          source?: string | null
+          last_seen_at?: string | null
+          updated_at?: string | null
+        }
+      }
+      candidate_universe: {
+        Row: {
+          ticker: string
+          cik: string | null
+          name: string | null
+          price: number | null
+          market_cap: number | null
+          avg_volume_20d: number | null
+          avg_dollar_volume_20d: number | null
+          return_5d: number | null
+          volume_ratio: number | null
+          breakout_20d: boolean | null
+          passes_price: boolean | null
+          passes_volume: boolean | null
+          passes_dollar_volume: boolean | null
+          passes_market_cap: boolean | null
+          candidate_score: number | null
+          included: boolean | null
+          screen_reason: string | null
+          last_screened_at: string | null
+          return_20d: number | null
+          above_sma_20: boolean | null
+          updated_at: string | null
+          created_at: string | null
+        }
+        Insert: {
+          ticker: string
+          cik?: string | null
+          name?: string | null
+          price?: number | null
+          market_cap?: number | null
+          avg_volume_20d?: number | null
+          avg_dollar_volume_20d?: number | null
+          return_5d?: number | null
+          volume_ratio?: number | null
+          breakout_20d?: boolean | null
+          passes_price?: boolean | null
+          passes_volume?: boolean | null
+          passes_dollar_volume?: boolean | null
+          passes_market_cap?: boolean | null
+          candidate_score?: number | null
+          included?: boolean | null
+          screen_reason?: string | null
+          last_screened_at?: string | null
+          return_20d?: number | null
+          above_sma_20?: boolean | null
+          updated_at?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          ticker?: string
+          cik?: string | null
+          name?: string | null
+          price?: number | null
+          market_cap?: number | null
+          avg_volume_20d?: number | null
+          avg_dollar_volume_20d?: number | null
+          return_5d?: number | null
+          volume_ratio?: number | null
+          breakout_20d?: boolean | null
+          passes_price?: boolean | null
+          passes_volume?: boolean | null
+          passes_dollar_volume?: boolean | null
+          passes_market_cap?: boolean | null
+          candidate_score?: number | null
+          included?: boolean | null
+          screen_reason?: string | null
+          last_screened_at?: string | null
+          return_20d?: number | null
+          above_sma_20?: boolean | null
+          updated_at?: string | null
+          created_at?: string | null
+        }
+      }
+      raw_filings: {
+        Row: {
+          id: number
+          company_id: number | null
+          ticker: string
+          accession_no: string
+          filed_at: string | null
+          filing_url: string | null
+          filing_json: Record<string, any> | null
+          created_at: string | null
+          cik: string | null
+          company_name: string | null
+          form_type: string | null
+          primary_doc: string | null
+          fetched_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: number
+          company_id?: number | null
+          ticker: string
+          accession_no: string
+          filed_at?: string | null
+          filing_url?: string | null
+          filing_json?: Record<string, any> | null
+          created_at?: string | null
+          cik?: string | null
+          company_name?: string | null
+          form_type?: string | null
+          primary_doc?: string | null
+          fetched_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: number
+          company_id?: number | null
+          ticker?: string
+          accession_no?: string
+          filed_at?: string | null
+          filing_url?: string | null
+          filing_json?: Record<string, any> | null
+          created_at?: string | null
+          cik?: string | null
+          company_name?: string | null
+          form_type?: string | null
+          primary_doc?: string | null
+          fetched_at?: string | null
+          updated_at?: string | null
+        }
+      }
+    }
+  }
 }
 
 const SEC_USER_AGENT =
@@ -60,24 +228,7 @@ const REQUEST_DELAY_MS = 175
 const MAX_FILINGS_PER_COMPANY = 25
 const RETENTION_DAYS = 30
 const SEC_FETCH_TIMEOUT_MS = 12000
-const MAX_UPSERT_RETRIES = 5
-
-const DEFAULT_ALLOWED_FORMS = new Set([
-  "4",
-  "4/A",
-  "8-K",
-  "6-K",
-  "10-Q",
-  "10-K",
-  "13D",
-  "13D/A",
-  "13G",
-  "13G/A",
-  "SC 13D",
-  "SC 13D/A",
-  "SC 13G",
-  "SC 13G/A",
-])
+const MAX_UPSERT_RETRIES = 4
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -93,33 +244,15 @@ function normalizeTicker(ticker: string | null | undefined) {
 }
 
 function normalizeFormType(formType: string | null | undefined) {
-  const normalized = (formType || "")
+  return (formType || "")
     .trim()
     .toUpperCase()
     .replace(/\s+/g, " ")
     .replace(/^FORM\s+/i, "")
-
-  if (normalized === "8K") return "8-K"
-  if (normalized === "6K") return "6-K"
-  if (normalized === "4A" || normalized === "4 /A") return "4/A"
-  if (normalized === "13DA") return "13D/A"
-  if (normalized === "13GA") return "13G/A"
-  if (normalized === "SC13D") return "SC 13D"
-  if (normalized === "SC13D/A") return "SC 13D/A"
-  if (normalized === "SC13G") return "SC 13G"
-  if (normalized === "SC13G/A") return "SC 13G/A"
-
-  return normalized
 }
 
 function padCik(cik: string | number | null | undefined) {
-  const digits = String(cik || "").replace(/\D/g, "")
-  return digits ? digits.padStart(10, "0") : ""
-}
-
-function stripLeadingZeros(value: string) {
-  const stripped = value.replace(/^0+/, "")
-  return stripped || "0"
+  return String(cik || "").replace(/\D/g, "").padStart(10, "0")
 }
 
 function buildSecSubmissionUrl(cikPadded: string) {
@@ -128,24 +261,15 @@ function buildSecSubmissionUrl(cikPadded: string) {
 
 function buildFilingUrl(cikPadded: string, accessionNo: string, primaryDoc: string | null) {
   if (!primaryDoc) return null
-  if (!cikPadded || cikPadded.length !== 10) return null
-  if (!accessionNo) return null
 
   const accessionNoNoDashes = accessionNo.replace(/-/g, "")
-  const cikNoLeadingZeros = stripLeadingZeros(cikPadded)
+  const cikNoLeadingZeros = String(parseInt(cikPadded, 10))
 
   return `https://www.sec.gov/Archives/edgar/data/${cikNoLeadingZeros}/${accessionNoNoDashes}/${primaryDoc}`
 }
 
-function isRetryableUpsertError(message: string | undefined | null) {
-  const lower = (message || "").toLowerCase()
-  return (
-    lower.includes("deadlock detected") ||
-    lower.includes("could not serialize access") ||
-    lower.includes("connection") ||
-    lower.includes("timeout") ||
-    lower.includes("temporar")
-  )
+function isDeadlockError(message: string | undefined | null) {
+  return (message || "").toLowerCase().includes("deadlock detected")
 }
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number) {
@@ -163,7 +287,7 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
 }
 
 async function upsertWithRetry(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<Database>,
   rows: FilingInsertRow[]
 ) {
   let attempt = 0
@@ -175,7 +299,7 @@ async function upsertWithRetry(
 
     if (!error) return
 
-    if (!isRetryableUpsertError(error.message)) {
+    if (!isDeadlockError(error.message)) {
       throw new Error(`Supabase upsert failed: ${error.message}`)
     }
 
@@ -218,25 +342,13 @@ async function fetchRecentFilingsForCompany(company: CompanyRow) {
   }
 }
 
-function parseAllowedForms(searchValue: string | null) {
-  if (!searchValue) return DEFAULT_ALLOWED_FORMS
-
-  const values = searchValue
-    .split(",")
-    .map((v) => normalizeFormType(v))
-    .filter(Boolean)
-
-  return new Set(values)
-}
-
 function mapRecentFilingsToRows(
   company: CompanyRow,
   cikPadded: string,
   secUrl: string,
   json: SecSubmissions,
   fetchedAt: string,
-  diagnostics: Diagnostics,
-  allowedForms: Set<string>
+  diagnostics: Diagnostics
 ): FilingInsertRow[] {
   const recent = json.filings?.recent
   if (!recent) return []
@@ -257,11 +369,6 @@ function mapRecentFilingsToRows(
     if (!accessionNo || !formType) continue
 
     diagnostics.formsSeen[formType] = (diagnostics.formsSeen[formType] || 0) + 1
-
-    if (!allowedForms.has(formType)) {
-      diagnostics.rowsFilteredOutByForm += 1
-      continue
-    }
 
     rows.push({
       cik: cikPadded,
@@ -288,7 +395,7 @@ function mapRecentFilingsToRows(
 }
 
 async function loadCompaniesForBatch(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<Database>,
   scope: "all" | "active" | "candidates",
   from: number,
   to: number
@@ -347,6 +454,13 @@ async function loadCompaniesForBatch(
 }
 
 export async function GET(request: Request) {
+  const pipelineToken = process.env.PIPELINE_TOKEN
+  const suppliedToken = request.headers.get("x-pipeline-token")
+
+  if (!pipelineToken || suppliedToken !== pipelineToken) {
+    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -358,7 +472,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const supabase = createClient<Database>(supabaseUrl, serviceRoleKey)
     const { searchParams } = new URL(request.url)
 
     const scopeParam = (searchParams.get("scope") || "active").toLowerCase()
@@ -367,8 +481,6 @@ export async function GET(request: Request) {
 
     const start = parseInteger(searchParams.get("start"), 0)
     const batch = parseInteger(searchParams.get("batch"), DEFAULT_BATCH)
-    const includeResults = (searchParams.get("includeResults") || "true").toLowerCase() !== "false"
-    const allowedForms = parseAllowedForms(searchParams.get("forms"))
 
     const safeStart = Math.max(0, start)
     const safeBatch = Math.min(Math.max(1, batch), MAX_BATCH)
@@ -389,7 +501,6 @@ export async function GET(request: Request) {
       totalInsertedRows: 0,
       totalErrors: 0,
       formsSeen: {},
-      rowsFilteredOutByForm: 0,
     }
 
     const { companies, totalCompanies, sourceTable } = await loadCompaniesForBatch(
@@ -414,15 +525,13 @@ export async function GET(request: Request) {
         diagnostics.invalidCompanies += 1
         diagnostics.totalErrors += 1
 
-        if (includeResults) {
-          results.push({
-            ticker: normalizedTicker || null,
-            cik: cikPadded || null,
-            ok: false,
-            stage: "validate",
-            error: "Missing or invalid ticker/cik",
-          })
-        }
+        results.push({
+          ticker: normalizedTicker || null,
+          cik: cikPadded || null,
+          ok: false,
+          stage: "validate",
+          error: "Missing or invalid ticker/cik",
+        })
 
         await sleep(REQUEST_DELAY_MS)
         continue
@@ -436,8 +545,7 @@ export async function GET(request: Request) {
           secUrl,
           json,
           fetchedAt,
-          diagnostics,
-          allowedForms
+          diagnostics
         )
 
         diagnostics.totalFetchedRows += rows.length
@@ -445,15 +553,13 @@ export async function GET(request: Request) {
         if (rows.length === 0) {
           diagnostics.companiesWithNoRecentFilings += 1
 
-          if (includeResults) {
-            results.push({
-              ticker: normalizedTicker,
-              ok: true,
-              stage: "no_recent_filings",
-              inserted: 0,
-              secUrl,
-            })
-          }
+          results.push({
+            ticker: normalizedTicker,
+            ok: true,
+            stage: "no_recent_filings",
+            inserted: 0,
+            secUrl,
+          })
 
           await sleep(REQUEST_DELAY_MS)
           continue
@@ -472,62 +578,61 @@ export async function GET(request: Request) {
           }
         }
 
-        if (includeResults) {
-          results.push({
-            ticker: normalizedTicker,
-            ok: true,
-            stage: "upsert",
-            inserted: rows.length,
-            firstForm: rows[0]?.form_type ?? null,
-            firstFiledAt: rows[0]?.filed_at ?? null,
-            secUrl,
-          })
-        }
+        results.push({
+          ticker: normalizedTicker,
+          ok: true,
+          stage: "upsert",
+          inserted: rows.length,
+          firstForm: rows[0]?.form_type ?? null,
+          firstFiledAt: rows[0]?.filed_at ?? null,
+          secUrl,
+        })
       } catch (error: any) {
         const message = error?.message || "Unknown error"
         diagnostics.totalErrors += 1
 
         if (message.toLowerCase().includes("upsert failed")) {
           diagnostics.companiesWithUpsertErrors += 1
-          if (includeResults) {
-            results.push({
-              ticker: normalizedTicker,
-              ok: false,
-              stage: "upsert",
-              error: message,
-            })
-          }
+          results.push({
+            ticker: normalizedTicker,
+            ok: false,
+            stage: "upsert",
+            error: message,
+          })
         } else {
           diagnostics.companiesWithFetchErrors += 1
-          if (includeResults) {
-            results.push({
-              ticker: normalizedTicker,
-              ok: false,
-              stage: "fetch_or_parse",
-              error: message,
-            })
-          }
+          results.push({
+            ticker: normalizedTicker,
+            ok: false,
+            stage: "fetch_or_parse",
+            error: message,
+          })
         }
       }
 
       await sleep(REQUEST_DELAY_MS)
     }
 
-    const retentionCutoffDate = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000)
+    const retentionCutoffDate = new Date(
+      Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
+    )
       .toISOString()
       .slice(0, 10)
+
+    const retentionCutoffTimestamp = new Date(
+      Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
+    ).toISOString()
 
     const { error: retentionErrorByFiledAt } = await supabase
       .from("raw_filings")
       .delete()
       .lt("filed_at", retentionCutoffDate)
 
-    // Optional fallback cleanup for malformed/null filed_at rows that are old fetches
     const { error: retentionErrorNullFiledAt } = await supabase
       .from("raw_filings")
       .delete()
       .is("filed_at", null)
-      .lt("fetched_at", new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString())
+      .lt("fetched_at", retentionCutoffTimestamp)
 
     const { count: rawFilingsCount, error: rawCountError } = await supabase
       .from("raw_filings")
@@ -545,16 +650,17 @@ export async function GET(request: Request) {
       batch: safeBatch,
       nextStart,
       retainedDays: RETENTION_DAYS,
-      retentionCleanup:
-        retentionErrorByFiledAt?.message ||
-        retentionErrorNullFiledAt?.message ||
-        "ok",
+      retentionCleanupByFiledAt: retentionErrorByFiledAt
+        ? retentionErrorByFiledAt.message
+        : "ok",
+      retentionCleanupNullFiledAt: retentionErrorNullFiledAt
+        ? retentionErrorNullFiledAt.message
+        : "ok",
       rawFilingsCount: rawCountError ? null : rawFilingsCount,
       fetchedAt,
-      allowedForms: Array.from(allowedForms),
       diagnostics,
       sampleInsertedRows,
-      results: includeResults ? results : undefined,
+      results,
       message:
         diagnostics.totalInsertedRows > 0
           ? "Filings ingest completed and rows were written to raw_filings."
