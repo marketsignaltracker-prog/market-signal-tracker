@@ -166,38 +166,6 @@ const SEC_FETCH_TIMEOUT_MS = 8000
 const TEXT_FETCH_TIMEOUT_MS = 8000
 const YAHOO_TIMEOUT_MS = 9000
 
-const EMPTY_PRICE_CONFIRMATION: PriceConfirmation = {
-  return5d: null,
-  return20d: null,
-  volumeRatio: null,
-  breakout20d: false,
-  breakout52w: false,
-  relativeStrength20d: null,
-  above50dma: false,
-  trendAligned: false,
-  confirmed: false,
-}
-
-const EMPTY_TICKER_SNAPSHOT: TickerSnapshot = {
-  peRatio: null,
-  forwardPe: null,
-  peType: null,
-  psRatio: null,
-  marketCap: null,
-  sector: null,
-  industry: null,
-  businessDescription: null,
-  companyName: null,
-}
-
-const EMPTY_EARNINGS_SIGNAL: EarningsSignal = {
-  hasSignal: false,
-  surprisePct: null,
-  revenueGrowthPct: null,
-  guidanceFlag: false,
-  summary: null,
-}
-
 function normalizeFormType(formType: string | null) {
   const normalized = (formType || "")
     .trim()
@@ -407,9 +375,7 @@ function chooseMostRecentRelevantAction(
     workingSet = rowsWithDate.filter((row) => row.transactionDate === latestDate)
   }
 
-  const sortedWorkingSet = [...workingSet].sort((a, b) => a.order - b.order)
-  const lastRelevantRow = sortedWorkingSet[sortedWorkingSet.length - 1]
-
+  const lastRelevantRow = [...workingSet].sort((a, b) => a.order - b.order)[workingSet.length - 1]
   if (!lastRelevantRow) {
     return {
       action: "Other",
@@ -667,7 +633,7 @@ async function fetchAndParseOwnershipXml(url: string): Promise<InsiderParseResul
       const parsed = xmlParser.parse(body)
       const doc = parsed?.ownershipDocument
       const xmlResult = parseOwnershipDocument(doc)
-      if (xmlResult) return xmlResult
+      if (xmlResult && xmlResult.action !== "Other") return xmlResult
     } catch {
       // fall through
     }
@@ -716,23 +682,17 @@ function buildPossibleForm4Urls(filing: RawFiling) {
 async function parseForm4(filing: RawFiling): Promise<InsiderParseResult> {
   const urls = buildPossibleForm4Urls(filing)
 
-  let firstParsed: InsiderParseResult | null = null
+  for (const url of urls) {
+    const parsed = await fetchAndParseOwnershipXml(url)
+    if (parsed && parsed.action && parsed.action !== "Other") return parsed
+  }
 
   for (const url of urls) {
     const parsed = await fetchAndParseOwnershipXml(url)
-    if (!parsed) continue
-
-    if (!firstParsed) firstParsed = parsed
-    if (parsed.action && parsed.action !== "Other") return parsed
+    if (parsed) return parsed
   }
 
-  return firstParsed ?? {
-    action: "Other",
-    shares: null,
-    avgPrice: null,
-    role: null,
-    insiderName: null,
-  }
+  return { action: "Other", shares: null, avgPrice: null, role: null, insiderName: null }
 }
 
 async function fetchFilingText(url: string | null) {
@@ -892,7 +852,17 @@ async function getPriceConfirmation(ticker: string): Promise<PriceConfirmation> 
           .catch(() => null)
 
         if (!candles || candles.length < 60) {
-          return EMPTY_PRICE_CONFIRMATION
+          return {
+            return5d: null,
+            return20d: null,
+            volumeRatio: null,
+            breakout20d: false,
+            breakout52w: false,
+            relativeStrength20d: null,
+            above50dma: false,
+            trendAligned: false,
+            confirmed: false,
+          }
         }
 
         const clean = candles
@@ -900,7 +870,17 @@ async function getPriceConfirmation(ticker: string): Promise<PriceConfirmation> 
           .sort((a, b) => +new Date(a.date) - +new Date(b.date))
 
         if (clean.length < 60) {
-          return EMPTY_PRICE_CONFIRMATION
+          return {
+            return5d: null,
+            return20d: null,
+            volumeRatio: null,
+            breakout20d: false,
+            breakout52w: false,
+            relativeStrength20d: null,
+            above50dma: false,
+            trendAligned: false,
+            confirmed: false,
+          }
         }
 
         const latest = clean[clean.length - 1]
@@ -908,11 +888,7 @@ async function getPriceConfirmation(ticker: string): Promise<PriceConfirmation> 
         const prev20 = clean[clean.length - 21]
         const prior20 = clean.slice(-21, -1)
         const prior252 = clean.slice(-253, -1)
-        const prior50 = clean.slice(-51, -1)
-
-        if (!latest || !prev5 || !prev20 || prior20.length === 0 || prior50.length === 0) {
-          return EMPTY_PRICE_CONFIRMATION
-        }
+        const prior50 = clean.slice(-50)
 
         const latestClose = Number(latest.close)
         const latestVolume = Number(latest.volume)
@@ -970,11 +946,31 @@ async function getPriceConfirmation(ticker: string): Promise<PriceConfirmation> 
           confirmed,
         }
       } catch {
-        return EMPTY_PRICE_CONFIRMATION
+        return {
+          return5d: null,
+          return20d: null,
+          volumeRatio: null,
+          breakout20d: false,
+          breakout52w: false,
+          relativeStrength20d: null,
+          above50dma: false,
+          trendAligned: false,
+          confirmed: false,
+        }
       }
     },
     YAHOO_TIMEOUT_MS,
-    EMPTY_PRICE_CONFIRMATION
+    {
+      return5d: null,
+      return20d: null,
+      volumeRatio: null,
+      breakout20d: false,
+      breakout52w: false,
+      relativeStrength20d: null,
+      above50dma: false,
+      trendAligned: false,
+      confirmed: false,
+    }
   )
 }
 
@@ -1057,11 +1053,31 @@ async function getTickerSnapshot(ticker: string): Promise<TickerSnapshot> {
           companyName,
         }
       } catch {
-        return EMPTY_TICKER_SNAPSHOT
+        return {
+          peRatio: null,
+          forwardPe: null,
+          peType: null,
+          psRatio: null,
+          marketCap: null,
+          sector: null,
+          industry: null,
+          businessDescription: null,
+          companyName: null,
+        }
       }
     },
     YAHOO_TIMEOUT_MS,
-    EMPTY_TICKER_SNAPSHOT
+    {
+      peRatio: null,
+      forwardPe: null,
+      peType: null,
+      psRatio: null,
+      marketCap: null,
+      sector: null,
+      industry: null,
+      businessDescription: null,
+      companyName: null,
+    }
   )
 }
 
@@ -1122,11 +1138,23 @@ async function getEarningsSignal(ticker: string): Promise<EarningsSignal> {
           summary: summaryText,
         }
       } catch {
-        return EMPTY_EARNINGS_SIGNAL
+        return {
+          hasSignal: false,
+          surprisePct: null,
+          revenueGrowthPct: null,
+          guidanceFlag: false,
+          summary: null,
+        }
       }
     },
     YAHOO_TIMEOUT_MS,
-    EMPTY_EARNINGS_SIGNAL
+    {
+      hasSignal: false,
+      surprisePct: null,
+      revenueGrowthPct: null,
+      guidanceFlag: false,
+      summary: null,
+    }
   )
 }
 
@@ -1623,7 +1651,7 @@ function applyEnhancements(
 ): EnhancedSignal | null {
   if (!base) return null
 
-  let bias = base.bias
+  let bias: "Bullish" | "Neutral" | "Bearish" = base.bias
   let title = base.title
   let summary = base.summary
   let insiderSignalFlavor = "Standard"
@@ -1667,7 +1695,7 @@ function applyEnhancements(
         insiderSignalFlavor = "Cluster Buy"
         title = "Cluster Insider Buying"
         summary =
-          `${clusterInfo?.clusterSize} unique recent insider buyers were detected within 7 days` +
+          `${clusterInfo?.clusterSize} recent insider buy filings were detected within 7 days` +
           `${clusterInfo?.totalShares ? `, total shares ≈ ${Math.round(clusterInfo.totalShares).toLocaleString()}` : ""}.`
       }
 
@@ -1953,30 +1981,28 @@ function buildClusterMap(items: PreparedSignal[]) {
       const current = rows[i]
       const windowStart = current.filedAt - 7 * 24 * 60 * 60 * 1000
 
+      let clusterSize = 0
       let totalShares = 0
       const insiderNames = new Set<string>()
-      const filingsInWindow: typeof rows = []
-      const filingsPerInsider = new Map<string, number>()
+      let repeatBuyer = false
 
       for (let j = 0; j < rows.length; j++) {
         const candidate = rows[j]
         if (candidate.filedAt >= windowStart && candidate.filedAt <= current.filedAt) {
-          filingsInWindow.push(candidate)
+          clusterSize += 1
           totalShares += candidate.shares
 
-          const name = candidate.insiderName?.trim() || `__unknown__${candidate.accessionNo}`
-          insiderNames.add(name)
-          filingsPerInsider.set(name, (filingsPerInsider.get(name) || 0) + 1)
+          if (candidate.insiderName) {
+            if (insiderNames.has(candidate.insiderName)) repeatBuyer = true
+            insiderNames.add(candidate.insiderName)
+          }
         }
       }
 
-      const uniqueInsiders = insiderNames.size
-      const repeatBuyer = Array.from(filingsPerInsider.values()).some((count) => count > 1)
-
       result.set(current.accessionNo, {
-        clusterSize: uniqueInsiders,
+        clusterSize,
         totalShares,
-        uniqueInsiders,
+        uniqueInsiders: insiderNames.size,
         repeatBuyer,
       })
     }
@@ -2006,18 +2032,6 @@ function getMinimumScore(
 
 function buildHistoryKey(runDate: string, accessionNo: string) {
   return `${runDate}_${accessionNo}`
-}
-
-function hasSevereRiskSignal(row: any) {
-  return (
-    row?.bias === "Bearish" ||
-    row?.catalyst_type === "bankruptcy" ||
-    row?.catalyst_type === "legal" ||
-    row?.catalyst_type === "financing" ||
-    row?.catalyst_type === "debt-restructuring" ||
-    (Number(row?.score_breakdown?.catalyst || 0) <= -24) ||
-    (Number(row?.score_breakdown?.insider_selling || 0) <= -20)
-  )
 }
 
 function buildTickerScoresCurrentRows(signalRows: any[]) {
@@ -2068,29 +2082,24 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
     if (sorted.length >= 3) stackedScore += 4
     if (sorted.length >= 4) stackedScore += 3
 
-    if (
-      (scoreBreakdown.relative_strength || 0) <= -20 &&
-      !((scoreBreakdown.insider_buying || 0) > 15)
-    ) {
+    if ((scoreBreakdown.relative_strength || 0) <= -20 && !((scoreBreakdown.insider_buying || 0) > 15)) {
       stackedScore = Math.min(stackedScore, 65)
       scoreCapsApplied.add("relative-strength-cap")
     }
 
-    const severeRiskPresent = sorted.some(hasSevereRiskSignal)
-
-    if (severeRiskPresent) {
+    if (
+      (scoreBreakdown.catalyst || 0) <= -24 ||
+      (scoreBreakdown.insider_selling || 0) <= -20 ||
+      primary.catalyst_type === "bankruptcy" ||
+      primary.catalyst_type === "legal"
+    ) {
       stackedScore = Math.min(stackedScore, 60)
       scoreCapsApplied.add("hard-risk-cap")
     }
 
     const finalScore = clamp(Math.round(stackedScore), 0, 100)
     const boardBucket = getBoardBucket(finalScore)
-
-    let bias: "Bullish" | "Neutral" | "Bearish" = "Neutral"
-    if (severeRiskPresent && finalScore <= 60) bias = "Bearish"
-    else if (finalScore >= 70) bias = "Bullish"
-    else if (finalScore <= 30) bias = "Bearish"
-
+    const bias = finalScore >= 70 ? "Bullish" : finalScore <= 30 ? "Bearish" : "Neutral"
     const strengthBucket = getStrengthBucket(bias, finalScore)
 
     rows.push({
@@ -2154,8 +2163,7 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
 
 async function attachTickerScoreChangesToCurrentRows(
   supabase: ReturnType<typeof createClient>,
-  currentRows: any[],
-  runDate: string
+  currentRows: any[]
 ) {
   const tickers = uniqueStrings(currentRows.map((row) => row.ticker))
   if (!tickers.length) return currentRows
@@ -2179,10 +2187,7 @@ async function attachTickerScoreChangesToCurrentRows(
 
   return currentRows.map((row) => {
     const ticker = normalizeTicker(row.ticker)
-    const series = (byTicker.get(ticker) || [])
-      .filter((entry) => entry.score_date < runDate)
-      .sort((a, b) => b.score_date.localeCompare(a.score_date))
-
+    const series = byTicker.get(ticker) || []
     const currentScore = Number(row.app_score || 0)
 
     const prev1d = series[0]?.app_score ?? null
@@ -2220,6 +2225,13 @@ function buildTickerScoreHistoryRows(currentRows: any[]) {
 }
 
 export async function GET(request: Request) {
+  const pipelineToken = process.env.PIPELINE_TOKEN
+  const suppliedToken = request.headers.get("x-pipeline-token")
+
+  if (!pipelineToken || suppliedToken !== pipelineToken) {
+    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -2526,11 +2538,7 @@ export async function GET(request: Request) {
     let tickerCurrentRows = buildTickerScoresCurrentRows((allSignalRows || []) as any[])
     diagnostics.tickerCurrentBuilt = tickerCurrentRows.length
 
-    tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(
-      supabase,
-      tickerCurrentRows,
-      runDate
-    )
+    tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(supabase, tickerCurrentRows)
 
     if (tickerCurrentRows.length > 0) {
       const { error: tickerCurrentError } = await supabase
