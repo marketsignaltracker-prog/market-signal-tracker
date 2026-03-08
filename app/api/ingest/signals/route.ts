@@ -2173,7 +2173,7 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
 }
 
 async function attachTickerScoreChangesToCurrentRows(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   currentRows: any[]
 ) {
   const tickers = uniqueStrings(currentRows.map((row) => row.ticker))
