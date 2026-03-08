@@ -169,6 +169,7 @@ type Database = {
           company_id: number | null
           ticker: string
           accession_no: string
+          filing_type?: string | null
           filed_at: string | null
           filing_url: string | null
           filing_json: Record<string, any> | null
@@ -185,6 +186,7 @@ type Database = {
           company_id?: number | null
           ticker: string
           accession_no: string
+          filing_type?: string | null
           filed_at?: string | null
           filing_url?: string | null
           filing_json?: Record<string, any> | null
@@ -201,6 +203,7 @@ type Database = {
           company_id?: number | null
           ticker?: string
           accession_no?: string
+          filing_type?: string | null
           filed_at?: string | null
           filing_url?: string | null
           filing_json?: Record<string, any> | null
@@ -293,7 +296,23 @@ async function upsertWithRetry(
   let attempt = 0
 
   while (attempt < MAX_UPSERT_RETRIES) {
-    const { error } = await supabase.from("raw_filings").upsert(rows, {
+    const typedRows: Database["public"]["Tables"]["raw_filings"]["Insert"][] = rows.map(
+      (row) => ({
+        cik: row.cik,
+        ticker: row.ticker,
+        company_name: row.company_name,
+        form_type: row.form_type,
+        accession_no: row.accession_no,
+        filed_at: row.filed_at,
+        primary_doc: row.primary_doc,
+        filing_url: row.filing_url,
+        filing_json: row.filing_json,
+        fetched_at: row.fetched_at,
+        updated_at: row.updated_at,
+      })
+    )
+
+    const { error } = await supabase.from("raw_filings").upsert(typedRows, {
       onConflict: "accession_no",
     })
 
