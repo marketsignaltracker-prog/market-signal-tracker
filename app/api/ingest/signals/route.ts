@@ -1696,7 +1696,9 @@ function applyEnhancements(
         title = "Cluster Insider Buying"
         summary =
           `${clusterInfo?.clusterSize} recent insider buy filings were detected within 7 days` +
-          `${clusterInfo?.totalShares ? `, total shares ≈ ${Math.round(clusterInfo.totalShares).toLocaleString()}` : ""}.`
+          `${clusterInfo?.totalShares ? `, total shares ≈ ${Math.round(
+            clusterInfo.totalShares
+          ).toLocaleString()}` : ""}.`
       }
 
       if (clusterInfo?.repeatBuyer) {
@@ -1711,16 +1713,25 @@ function applyEnhancements(
     } else if (insider.action === "Sell") {
       const insiderSellValue = getInsiderTradeValue(insider)
       const sellPenalty = scoreInsiderSell(insiderSellValue, insider.shares, price)
-      applyBreakdown(breakdown, reasons, "insider_selling", sellPenalty, "Insider selling pressure")
+      applyBreakdown(
+        breakdown,
+        reasons,
+        "insider_selling",
+        sellPenalty,
+        "Insider selling pressure"
+      )
 
       title = "Insider sell detected"
       summary = `Form 4 shows the most recent relevant insider action is a sell${
         insider.shares ? ` of about ${Math.round(insider.shares).toLocaleString()} shares` : ""
       }${
-        insiderSellValue ? `, estimated value ≈ $${Math.round(insiderSellValue).toLocaleString()}` : ""
+        insiderSellValue
+          ? `, estimated value ≈ $${Math.round(insiderSellValue).toLocaleString()}`
+          : ""
       }.`
 
       insiderSignalFlavor = "Sell"
+      bias = "Bearish"
     } else if (insider.action === "Other") {
       title = "Other insider filing detected"
       summary =
