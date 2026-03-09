@@ -31,8 +31,8 @@ type PipelineStateRow = {
 }
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
-const DEFAULT_SCREEN_BATCH = 100
-const MAX_SCREEN_BATCH = 250
+const DEFAULT_SCREEN_BATCH = 300
+const MAX_SCREEN_BATCH = 350
 
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
@@ -270,6 +270,7 @@ export async function GET(request: NextRequest) {
         status: "running",
         screen_start: 0,
         screen_next_start: 0,
+        screen_batch: DEFAULT_SCREEN_BATCH,
         screen_total: null,
         filings_completed_at: null,
         signals_completed_at: null,
@@ -296,6 +297,7 @@ export async function GET(request: NextRequest) {
             status: "running",
             screen_start: nextStart,
             screen_next_start: nextStart,
+            screen_batch: batchSize,
             last_run_finished_at: nowIso(),
           })
 
@@ -306,6 +308,7 @@ export async function GET(request: NextRequest) {
             status: updated.status,
             nextStart: updated.screen_next_start,
             batchesThisRun,
+            batchSize,
             results,
           })
         }
@@ -316,6 +319,7 @@ export async function GET(request: NextRequest) {
             status: "running",
             screen_start: nextStart,
             screen_next_start: nextStart,
+            screen_batch: batchSize,
             last_run_finished_at: nowIso(),
           })
 
@@ -326,6 +330,7 @@ export async function GET(request: NextRequest) {
             status: updated.status,
             nextStart: updated.screen_next_start,
             batchesThisRun,
+            batchSize,
             results,
           })
         }
@@ -346,6 +351,7 @@ export async function GET(request: NextRequest) {
             status: "error",
             screen_start: nextStart,
             screen_next_start: nextStart,
+            screen_batch: batchSize,
             last_error: `Screening step failed at start=${nextStart}: ${String(
               (screenResult.data as any)?.error || screenResult.status
             )}`,
@@ -374,6 +380,7 @@ export async function GET(request: NextRequest) {
           stage: returnedNextStart === null ? "filings" : "screening",
           status: "running",
           screen_start: nextStart,
+          screen_batch: batchSize,
           screen_total: returnedTotalCompanies,
           screen_next_start: returnedNextStart,
         })
@@ -495,6 +502,7 @@ export async function GET(request: NextRequest) {
         status: "success",
         screen_start: 0,
         screen_next_start: 0,
+        screen_batch: DEFAULT_SCREEN_BATCH,
         signals_completed_at: nowIso(),
         cycle_completed_at: nowIso(),
         last_success_at: nowIso(),
@@ -508,6 +516,7 @@ export async function GET(request: NextRequest) {
         status: "idle",
         screen_start: 0,
         screen_next_start: 0,
+        screen_batch: DEFAULT_SCREEN_BATCH,
         cycle_started_at: null,
       })
     }
@@ -520,6 +529,7 @@ export async function GET(request: NextRequest) {
         status: state.status,
         screenStart: state.screen_start,
         screenNextStart: state.screen_next_start,
+        screenBatch: state.screen_batch,
         screenTotal: state.screen_total,
         lastSuccessAt: state.last_success_at,
       },
