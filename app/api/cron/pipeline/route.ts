@@ -13,27 +13,6 @@ type StepResult = {
   data: any
 }
 
-if (
-  state.status === "running" &&
-  state.last_run_started_at &&
-  Date.now() - new Date(state.last_run_started_at).getTime() < 4 * 60 * 1000
-) {
-  return NextResponse.json({
-    ok: true,
-    message: "Skipped because another pipeline run is already in progress.",
-    state: {
-      stage: state.stage,
-      status: state.status,
-      screenStart: state.screen_start,
-      screenNextStart: state.screen_next_start,
-      screenBatch: state.screen_batch,
-      screenTotal: state.screen_total,
-      lastRunStartedAt: state.last_run_started_at,
-      lastRunFinishedAt: state.last_run_finished_at,
-    },
-  })
-}
-
 type PipelineStage =
   | "idle"
   | "companies"
@@ -72,7 +51,6 @@ const MAX_SCREEN_BATCH = 350
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
 const MAX_BATCHES_PER_RUN = 4
-
 const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
 
 function nowIso() {
@@ -245,11 +223,9 @@ async function patchPipelineState(
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization")
-  const expectedAuth = process.env.CRON_SECRET
-    ? `Bearer ${process.env.CRON_SECRET}`
-    : null
+  const cronSecret = process.env.CRON_SECRET
 
-  if (!expectedAuth) {
+  if (!cronSecret) {
     return NextResponse.json(
       {
         ok: false,
@@ -266,7 +242,7 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  if (authHeader !== expectedAuth) {
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json(
       {
         ok: false,
@@ -292,7 +268,7 @@ export async function GET(request: NextRequest) {
     ) {
       return NextResponse.json({
         ok: true,
-        message: "Skipped because another pipeline run is still recent.",
+        message: "Skipped because another pipeline run is already in progress.",
         state: {
           stage: state.stage,
           status: state.status,
