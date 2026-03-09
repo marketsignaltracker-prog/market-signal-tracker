@@ -36,8 +36,11 @@ const MAX_SCREEN_BATCH = 350
 
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
-
 const MAX_BATCHES_PER_RUN = 5
+
+function nowIso() {
+  return new Date().toISOString()
+}
 
 function getBaseUrl() {
   const appUrl = process.env.APP_URL?.trim()
@@ -191,10 +194,6 @@ async function patchPipelineState(
   return data as PipelineStateRow
 }
 
-function nowIso() {
-  return new Date().toISOString()
-}
-
 function shouldStopForRuntime(runStartedAtMs: number) {
   const elapsed = Date.now() - runStartedAtMs
   return elapsed >= MAX_PIPELINE_RUNTIME_MS - RUNTIME_SAFETY_BUFFER_MS
@@ -202,10 +201,34 @@ function shouldStopForRuntime(runStartedAtMs: number) {
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization")
+  const expectedAuth = process.env.CRON_SECRET
+    ? `Bearer ${process.env.CRON_SECRET}`
+    : null
 
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!expectedAuth) {
     return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
+      {
+        ok: false,
+        error: "Missing CRON_SECRET environment variable",
+        debug: {
+          hasAppUrl: Boolean(process.env.APP_URL),
+          hasCronSecret: Boolean(process.env.CRON_SECRET),
+          hasPipelineToken: Boolean(process.env.PIPELINE_TOKEN),
+          hasSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+          hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+        },
+      },
+      { status: 500 }
+    )
+  }
+
+  if (authHeader !== expectedAuth) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Unauthorized",
+        hasAuthorizationHeader: Boolean(authHeader),
+      },
       { status: 401 }
     )
   }
@@ -557,6 +580,13 @@ export async function GET(request: NextRequest) {
       {
         ok: false,
         error: message,
+        debug: {
+          hasAppUrl: Boolean(process.env.APP_URL),
+          hasCronSecret: Boolean(process.env.CRON_SECRET),
+          hasPipelineToken: Boolean(process.env.PIPELINE_TOKEN),
+          hasSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+          hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+        },
       },
       { status: 500 }
     )
