@@ -13,6 +13,27 @@ type StepResult = {
   data: any
 }
 
+if (
+  state.status === "running" &&
+  state.last_run_started_at &&
+  Date.now() - new Date(state.last_run_started_at).getTime() < 4 * 60 * 1000
+) {
+  return NextResponse.json({
+    ok: true,
+    message: "Skipped because another pipeline run is already in progress.",
+    state: {
+      stage: state.stage,
+      status: state.status,
+      screenStart: state.screen_start,
+      screenNextStart: state.screen_next_start,
+      screenBatch: state.screen_batch,
+      screenTotal: state.screen_total,
+      lastRunStartedAt: state.last_run_started_at,
+      lastRunFinishedAt: state.last_run_finished_at,
+    },
+  })
+}
+
 type PipelineStage =
   | "idle"
   | "companies"
