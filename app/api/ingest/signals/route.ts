@@ -936,7 +936,8 @@ async function getPriceConfirmation(ticker: string): Promise<PriceConfirmation> 
         const avg20Volume = prior20.reduce((s, c) => s + Number(c.volume || 0), 0) / prior20.length
 
         const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
-        const high52w = prior252.length > 0 ? Math.max(...prior252.map((c) => Number(c.high || 0))) : high20
+        const high52w =
+          prior252.length > 0 ? Math.max(...prior252.map((c) => Number(c.high || 0))) : high20
 
         const avg50Close = prior50.reduce((s, c) => s + Number(c.close || 0), 0) / prior50.length
 
@@ -1018,7 +1019,13 @@ async function getTickerSnapshot(ticker: string): Promise<TickerSnapshot> {
       try {
         const [summary, quote] = await Promise.all([
           yahooFinance.quoteSummary(ticker, {
-            modules: ["summaryDetail", "defaultKeyStatistics", "financialData", "assetProfile", "price"],
+            modules: [
+              "summaryDetail",
+              "defaultKeyStatistics",
+              "financialData",
+              "assetProfile",
+              "price",
+            ],
           }),
           yahooFinance.quote(ticker).catch(() => null),
         ])
@@ -1066,8 +1073,10 @@ async function getTickerSnapshot(ticker: string): Promise<TickerSnapshot> {
           safeNumber((summary.price as any)?.marketCap) ??
           safeNumber((quote as any)?.marketCap)
 
-        const sector = ((summary.assetProfile as any)?.sector as string | undefined)?.trim() ?? null
-        const industry = ((summary.assetProfile as any)?.industry as string | undefined)?.trim() ?? null
+        const sector =
+          ((summary.assetProfile as any)?.sector as string | undefined)?.trim() ?? null
+        const industry =
+          ((summary.assetProfile as any)?.industry as string | undefined)?.trim() ?? null
 
         const businessDescription =
           ((summary.assetProfile as any)?.longBusinessSummary as string | undefined)?.trim() ?? null
@@ -1160,7 +1169,9 @@ async function getEarningsSignal(ticker: string): Promise<EarningsSignal> {
         if (hasSignal) {
           const pieces = uniqueStrings([
             surprisePct !== null ? `EPS surprise ≈ ${surprisePct.toFixed(1)}%` : null,
-            revenueGrowthPct !== null ? `revenue growth ≈ ${revenueGrowthPct.toFixed(1)}%` : null,
+            revenueGrowthPct !== null
+              ? `revenue growth ≈ ${revenueGrowthPct.toFixed(1)}%`
+              : null,
             guidanceFlag ? "forward outlook appears constructive" : null,
           ])
           summaryText = pieces.length
@@ -1444,7 +1455,9 @@ function deriveSignalCategory(params: {
     normalizedType.includes("breakout") ||
     params.candidate?.included === true ||
     (params.price.confirmed &&
-      ((params.price.return5d ?? 0) >= 5 || params.price.breakout20d || params.price.breakout52w))
+      ((params.price.return5d ?? 0) >= 5 ||
+        params.price.breakout20d ||
+        params.price.breakout52w))
   ) {
     return "Momentum"
   }
@@ -2046,7 +2059,9 @@ function applyEnhancements(
   const positivePillars = [
     (breakdown.insider_buying || 0) > 0 || (breakdown.repeat_buying || 0) > 0,
     (breakdown.momentum || 0) > 0 || (breakdown.relative_strength || 0) > 0,
-    (breakdown.earnings || 0) > 0 || (breakdown.catalyst || 0) > 0 || (breakdown.candidate_screen || 0) > 0,
+    (breakdown.earnings || 0) > 0 ||
+      (breakdown.catalyst || 0) > 0 ||
+      (breakdown.candidate_screen || 0) > 0,
     (breakdown.valuation || 0) > 0,
   ].filter(Boolean).length
 
@@ -2253,6 +2268,71 @@ function buildHistoryKey(runDate: string, accessionNo: string) {
   return `${runDate}_${accessionNo}`
 }
 
+function buildSignalHistoryRow(
+  signalRow: any,
+  runDate: string,
+  runTimestamp: string
+) {
+  return {
+    ticker: signalRow.ticker,
+    company_name: signalRow.company_name,
+    business_description: signalRow.business_description,
+    pe_ratio: signalRow.pe_ratio,
+    pe_forward: signalRow.pe_forward,
+    pe_type: signalRow.pe_type,
+    signal_type: signalRow.signal_type,
+    signal_source: signalRow.signal_source,
+    signal_category: signalRow.signal_category,
+    signal_strength_bucket: signalRow.signal_strength_bucket,
+    signal_tags: signalRow.signal_tags,
+    catalyst_type: signalRow.catalyst_type,
+    bias: signalRow.bias,
+    score: signalRow.score,
+    app_score: signalRow.app_score,
+    board_bucket: signalRow.board_bucket,
+    title: signalRow.title,
+    summary: signalRow.summary,
+    source_form: signalRow.source_form,
+    filed_at: signalRow.filed_at,
+    filing_url: signalRow.filing_url,
+    accession_no: signalRow.accession_no,
+    insider_action: signalRow.insider_action,
+    insider_shares: signalRow.insider_shares,
+    insider_avg_price: signalRow.insider_avg_price,
+    insider_buy_value: signalRow.insider_buy_value,
+    insider_signal_flavor: signalRow.insider_signal_flavor,
+    cluster_buyers: signalRow.cluster_buyers,
+    cluster_shares: signalRow.cluster_shares,
+    price_return_5d: signalRow.price_return_5d,
+    price_return_20d: signalRow.price_return_20d,
+    volume_ratio: signalRow.volume_ratio,
+    breakout_20d: signalRow.breakout_20d,
+    breakout_52w: signalRow.breakout_52w,
+    above_50dma: signalRow.above_50dma,
+    trend_aligned: signalRow.trend_aligned,
+    price_confirmed: signalRow.price_confirmed,
+    earnings_surprise_pct: signalRow.earnings_surprise_pct,
+    revenue_growth_pct: signalRow.revenue_growth_pct,
+    guidance_flag: signalRow.guidance_flag,
+    market_cap: signalRow.market_cap,
+    sector: signalRow.sector,
+    industry: signalRow.industry,
+    relative_strength_20d: signalRow.relative_strength_20d,
+    age_days: signalRow.age_days,
+    freshness_bucket: signalRow.freshness_bucket,
+    score_breakdown: signalRow.score_breakdown,
+    score_version: signalRow.score_version,
+    stacked_signal_count: signalRow.stacked_signal_count,
+    signal_reasons: signalRow.signal_reasons,
+    score_caps_applied: signalRow.score_caps_applied,
+    ticker_score_change_1d: signalRow.ticker_score_change_1d,
+    ticker_score_change_7d: signalRow.ticker_score_change_7d,
+    signal_history_key: buildHistoryKey(runDate, signalRow.accession_no),
+    scored_on: runDate,
+    created_at: runTimestamp,
+  }
+}
+
 function buildTickerScoresCurrentRows(signalRows: any[]) {
   const byTicker = new Map<string, any[]>()
 
@@ -2301,7 +2381,10 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
     if (sorted.length >= 3) stackedScore += 4
     if (sorted.length >= 4) stackedScore += 3
 
-    if ((scoreBreakdown.relative_strength || 0) <= -20 && !((scoreBreakdown.insider_buying || 0) > 15)) {
+    if (
+      (scoreBreakdown.relative_strength || 0) <= -20 &&
+      !((scoreBreakdown.insider_buying || 0) > 15)
+    ) {
       stackedScore = Math.min(stackedScore, 65)
       scoreCapsApplied.add("relative-strength-cap")
     }
@@ -2780,12 +2863,7 @@ export async function GET(request: Request) {
         diagnostics.candidateTechnicalSignalsBuilt += 1
       }
 
-      historyRows.push({
-        ...signalRow,
-        signal_history_key: buildHistoryKey(runDate, item.filing.accession_no),
-        scored_on: runDate,
-        created_at: runTimestamp,
-      })
+      historyRows.push(buildSignalHistoryRow(signalRow, runDate, runTimestamp))
     }
 
     diagnostics.filingSignalsBuilt = signalRows.length
