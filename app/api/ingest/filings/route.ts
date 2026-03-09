@@ -237,8 +237,12 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function parseInteger(value: string | null, fallback: number) {
-  const parsed = Number(value)
+function parseInteger(value: string | null | undefined, fallback: number) {
+  if (value === null || value === undefined || value.trim() === "") {
+    return fallback
+  }
+
+  const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
@@ -449,10 +453,13 @@ async function loadCompaniesForBatch(
 
   let query = companiesTable
     .select("ticker, cik, name, is_active")
+    .not("cik", "is", null)
     .order("ticker", { ascending: true })
     .range(from, to)
 
-  let countQuery = companiesTable.select("*", { count: "exact", head: true })
+  let countQuery = companiesTable
+    .select("*", { count: "exact", head: true })
+    .not("cik", "is", null)
 
   if (scope === "active") {
     query = query.eq("is_active", true)

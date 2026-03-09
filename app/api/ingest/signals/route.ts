@@ -224,8 +224,12 @@ function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
 }
 
-function parseInteger(value: string | null, fallback: number) {
-  const parsed = Number(value)
+function parseInteger(value: string | null | undefined, fallback: number) {
+  if (value === null || value === undefined || value.trim() === "") {
+    return fallback
+  }
+
+  const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
@@ -1439,8 +1443,8 @@ function deriveSignalCategory(params: {
     normalizedType.includes("technical") ||
     normalizedType.includes("breakout") ||
     params.candidate?.included === true ||
-    params.price.confirmed &&
-      ((params.price.return5d ?? 0) >= 5 || params.price.breakout20d || params.price.breakout52w)
+    (params.price.confirmed &&
+      ((params.price.return5d ?? 0) >= 5 || params.price.breakout20d || params.price.breakout52w))
   ) {
     return "Momentum"
   }
@@ -2712,7 +2716,8 @@ export async function GET(request: Request) {
 
       const signalRow = {
         ticker: item.filing.ticker,
-        company_name: item.filing.company_name || item.snapshot.companyName || item.candidate?.name || null,
+        company_name:
+          item.filing.company_name || item.snapshot.companyName || item.candidate?.name || null,
         business_description: item.snapshot.businessDescription,
         pe_ratio: round2(item.snapshot.peRatio),
         pe_forward: round2(item.snapshot.forwardPe),

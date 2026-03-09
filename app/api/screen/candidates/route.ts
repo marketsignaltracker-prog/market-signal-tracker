@@ -71,8 +71,12 @@ function round2(value: number | null | undefined) {
   return Math.round(value * 100) / 100
 }
 
-function parseInteger(value: string | null, fallback: number) {
-  const parsed = Number(value)
+function parseInteger(value: string | null | undefined, fallback: number) {
+  if (value === null || value === undefined || value.trim() === "") {
+    return fallback
+  }
+
+  const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
