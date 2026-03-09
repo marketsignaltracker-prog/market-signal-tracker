@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/cron/pipeline",
-      "schedule": "0 11 * * 1-5"
+      "schedule": "15 13 * * 1-5"
     }
   ]
 }
