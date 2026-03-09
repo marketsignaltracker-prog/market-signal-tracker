@@ -10,9 +10,11 @@ type StepResult = {
 
 function getBaseUrl() {
   const appUrl = process.env.APP_URL?.trim()
+
   if (!appUrl) {
     throw new Error("Missing APP_URL environment variable")
   }
+
   return appUrl.replace(/\/$/, "")
 }
 
@@ -65,9 +67,9 @@ export async function GET(request: NextRequest) {
 
     const steps = [
       "/api/ingest/companies",
+      "/api/screen/candidates",
       "/api/ingest/filings",
       "/api/ingest/signals",
-      "/api/screen/candidates",
     ]
 
     const results: StepResult[] = []
