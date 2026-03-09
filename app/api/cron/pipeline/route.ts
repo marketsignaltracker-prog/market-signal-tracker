@@ -37,6 +37,8 @@ const MAX_SCREEN_BATCH = 250
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
 
+const MAX_BATCHES_PER_RUN = 5
+
 function getBaseUrl() {
   const appUrl = process.env.APP_URL?.trim()
 
@@ -285,8 +287,29 @@ export async function GET(request: NextRequest) {
       )
 
       let screeningComplete = false
+      let batchesThisRun = 0
 
       while (!screeningComplete) {
+        if (batchesThisRun >= MAX_BATCHES_PER_RUN) {
+          const updated = await patchPipelineState(supabase, {
+            stage: "screening",
+            status: "running",
+            screen_start: nextStart,
+            screen_next_start: nextStart,
+            last_run_finished_at: nowIso(),
+          })
+
+          return NextResponse.json({
+            ok: true,
+            message: "Batch limit reached for this cron run.",
+            stage: updated.stage,
+            status: updated.status,
+            nextStart: updated.screen_next_start,
+            batchesThisRun,
+            results,
+          })
+        }
+
         if (shouldStopForRuntime(startedAtMs)) {
           const updated = await patchPipelineState(supabase, {
             stage: "screening",
@@ -302,6 +325,7 @@ export async function GET(request: NextRequest) {
             stage: updated.stage,
             status: updated.status,
             nextStart: updated.screen_next_start,
+            batchesThisRun,
             results,
           })
         }
@@ -314,6 +338,7 @@ export async function GET(request: NextRequest) {
 
         const screenResult = await runStep(baseUrl, screenPath)
         results.push(screenResult)
+        batchesThisRun += 1
 
         if (!screenResult.ok) {
           await patchPipelineState(supabase, {
