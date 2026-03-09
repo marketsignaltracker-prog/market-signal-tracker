@@ -196,7 +196,7 @@ type SignalCategoryFilter =
   | "Fundamental"
   | "Risk"
   | "Market Signal"
-type ScoreBandFilter = "default" | "70" | "75" | "80" | "85" | "30" | "25" | "20" | "15"
+type ScoreBandFilter = "default" | "75" | "80" | "85" | "25" | "20" | "15"
 
 type ReasonLine = {
   label: string
@@ -395,7 +395,6 @@ export default function Home() {
 
   const sortBy = useMemo<SortBy>(() => {
     if (sortPreset === "newest") return "date-desc"
-    if (sortPreset === "confirmed") return "confirmed-desc"
     return "score-desc"
   }, [sortPreset])
 
@@ -658,29 +657,28 @@ export default function Home() {
           />
         </section>
 
-       <section className="mb-8">
-  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-    <div className="sm:col-span-2 xl:col-span-2">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <SortButton
-          active={sortPreset === "best"}
-          onClick={() => {
-            setSortPreset("best")
-            setHasInteracted(true)
-          }}
-          label={boardMode === "risk" ? "Worst First" : "Best Score"}
-        />
-
-        <SortButton
-          active={sortPreset === "newest"}
-          onClick={() => {
-            setSortPreset("newest")
-            setHasInteracted(true)
-          }}
-          label="Newest"
-        />
-      </div>
-    </div>
+        <section className="mb-8">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="sm:col-span-2 xl:col-span-2">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <SortButton
+                  active={sortPreset === "best"}
+                  onClick={() => {
+                    setSortPreset("best")
+                    setHasInteracted(true)
+                  }}
+                  label={boardMode === "risk" ? "Worst First" : "Best Score"}
+                />
+                <SortButton
+                  active={sortPreset === "newest"}
+                  onClick={() => {
+                    setSortPreset("newest")
+                    setHasInteracted(true)
+                  }}
+                  label="Newest"
+                />
+              </div>
+            </div>
 
             <select
               value={categoryFilter}
@@ -2295,42 +2293,6 @@ function hasTagOrCap(row: TickerScore, tag: string, cap: string) {
   return tags.includes(tag) || caps.includes(cap)
 }
 
-function getBuyConfirmationRank(row: TickerScore) {
-  let rank = 0
-
-  if (row.price_confirmed) rank += 20
-  if ((row.price_return_5d ?? 0) >= 5) rank += 10
-  if ((row.price_return_20d ?? 0) >= 8) rank += 8
-  if ((row.relative_strength_20d ?? 0) >= 5) rank += 8
-  if ((row.volume_ratio ?? 0) >= 1.5) rank += 6
-  if (row.breakout_20d) rank += 6
-  if (row.breakout_52w) rank += 8
-  if (row.above_50dma) rank += 4
-  if (row.trend_aligned) rank += 5
-  if ((row.stacked_signal_count ?? 0) >= 2) rank += 3
-  if (row.primary_signal_source === "breakout") rank += 5
-
-  return rank
-}
-
-function getRiskConfirmationRank(row: TickerScore) {
-  let rank = 0
-  const tags = normalizeTags(row.signal_tags)
-
-  if (getBias(row) === "Bearish") rank += 20
-  if (has8kRisk(row)) rank += 18
-  if (tags.includes("insider-sell")) rank += 12
-  if ((row.price_return_5d ?? 0) <= -5) rank += 10
-  else if ((row.price_return_5d ?? 0) < 0) rank += 5
-  if ((row.price_return_20d ?? 0) <= -8) rank += 8
-  if ((row.relative_strength_20d ?? 0) < 0) rank += 8
-  if ((row.volume_ratio ?? 0) >= 1.5 && (row.price_return_5d ?? 0) < 0) rank += 6
-  if ((row.earnings_surprise_pct ?? 0) <= -10) rank += 5
-  if ((row.revenue_growth_pct ?? 0) <= -10) rank += 4
-
-  return rank
-}
-
 function compareRows(
   a: TickerScore,
   b: TickerScore,
@@ -2343,10 +2305,6 @@ function compareRows(
   const bDate = getDateValue(b.filed_at ?? b.updated_at)
   const aRisk = getRiskRank(a)
   const bRisk = getRiskRank(b)
-  const aBuyConfirm = getBuyConfirmationRank(a)
-  const bBuyConfirm = getBuyConfirmationRank(b)
-  const aRiskConfirm = getRiskConfirmationRank(a)
-  const bRiskConfirm = getRiskConfirmationRank(b)
 
   switch (sortBy) {
     case "score-desc":
@@ -2366,10 +2324,6 @@ function compareRows(
       }
       if (aScore !== bScore) return bScore - aScore
       return 0
-
-      if (aBuyConfirm !== bBuyConfirm) return bBuyConfirm - aBuyConfirm
-      if (aScore !== bScore) return bScore - aScore
-      return bDate - aDate
 
     default:
       return 0
@@ -2403,15 +2357,12 @@ function getRiskRank(row: TickerScore) {
 }
 
 function getDashboardStats(
-  allRows: TickerScore[],
+  _allRows: TickerScore[],
   visibleRows: TickerScore[],
   boardMode: BoardMode
 ) {
   const totalSignals = visibleRows.length
-  const strongBuySignals =
-    boardMode === "risk"
-      ? visibleRows.length
-      : visibleRows.length
+  const strongBuySignals = visibleRows.length
   const clusterBuySignals = visibleRows.filter((row) => {
     const tags = normalizeTags(row.signal_tags)
     return (
