@@ -30,6 +30,8 @@ type PipelineStateRow = {
   updated_at: string
 }
 
+export const maxDuration = 300
+
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 const DEFAULT_SCREEN_BATCH = 300
 const MAX_SCREEN_BATCH = 350
