@@ -34,7 +34,6 @@ const PIPELINE_JOB_NAME = "market_signal_pipeline"
 const DEFAULT_SCREEN_BATCH = 100
 const MAX_SCREEN_BATCH = 250
 
-// Keep each cron invocation bounded so Vercel cron stays reliable.
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
 
@@ -72,7 +71,10 @@ function makeUrl(baseUrl: string, path: string) {
   return `${baseUrl}${path}`
 }
 
-function withSearchParams(path: string, params: Record<string, string | number | boolean | null | undefined>) {
+function withSearchParams(
+  path: string,
+  params: Record<string, string | number | boolean | null | undefined>
+) {
   const url = new URL(path, "https://internal.local")
 
   for (const [key, value] of Object.entries(params)) {
@@ -122,8 +124,9 @@ async function runStep(baseUrl: string, path: string): Promise<StepResult> {
 }
 
 async function getPipelineState(supabase: ReturnType<typeof createClient>) {
-  const { data, error } = await supabase
-    .from("pipeline_state")
+  const pipelineStateTable = supabase.from("pipeline_state") as any
+
+  const { data, error } = await pipelineStateTable
     .select("*")
     .eq("job_name", PIPELINE_JOB_NAME)
     .maybeSingle()
@@ -155,8 +158,7 @@ async function getPipelineState(supabase: ReturnType<typeof createClient>) {
     last_error_at: null,
   }
 
-  const { data: inserted, error: insertError } = await supabase
-    .from("pipeline_state")
+  const { data: inserted, error: insertError } = await pipelineStateTable
     .upsert(seed, { onConflict: "job_name" })
     .select("*")
     .single()
@@ -172,8 +174,9 @@ async function patchPipelineState(
   supabase: ReturnType<typeof createClient>,
   patch: Partial<PipelineStateRow>
 ) {
-  const { data, error } = await supabase
-    .from("pipeline_state")
+  const pipelineStateTable = supabase.from("pipeline_state") as any
+
+  const { data, error } = await pipelineStateTable
     .update(patch)
     .eq("job_name", PIPELINE_JOB_NAME)
     .select("*")
@@ -224,14 +227,11 @@ export async function GET(request: NextRequest) {
         state.stage === "idle" || state.stage === "complete" || state.stage === "error"
           ? "companies"
           : state.stage,
-      cycle_started_at:
-        state.cycle_started_at ??
-        runStartedIso,
+      cycle_started_at: state.cycle_started_at ?? runStartedIso,
     })
 
     const results: StepResult[] = []
 
-    // Stage 1: companies refresh once per cycle
     if (
       state.stage === "companies" ||
       state.stage === "idle" ||
@@ -245,7 +245,9 @@ export async function GET(request: NextRequest) {
         await patchPipelineState(supabase, {
           stage: "error",
           status: "error",
-          last_error: `Companies step failed: ${String((companiesResult.data as any)?.error || companiesResult.status)}`,
+          last_error: `Companies step failed: ${String(
+            (companiesResult.data as any)?.error || companiesResult.status
+          )}`,
           last_error_at: nowIso(),
           last_run_finished_at: nowIso(),
         })
@@ -274,15 +276,11 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Stage 2: screen all companies in resumable batches
     if (state.stage === "screening") {
-      let nextStart =
-        state.screen_next_start ??
-        state.screen_start ??
-        0
+      let nextStart = state.screen_next_start ?? state.screen_start ?? 0
 
       const batchSize = Math.min(
-        Math.max(1, state.screen_batch || DEFAULT_SCREEN_BATCH),
+        Math.max(1, parseInteger(String(state.screen_batch), DEFAULT_SCREEN_BATCH)),
         MAX_SCREEN_BATCH
       )
 
@@ -323,7 +321,9 @@ export async function GET(request: NextRequest) {
             status: "error",
             screen_start: nextStart,
             screen_next_start: nextStart,
-            last_error: `Screening step failed at start=${nextStart}: ${String((screenResult.data as any)?.error || screenResult.status)}`,
+            last_error: `Screening step failed at start=${nextStart}: ${String(
+              (screenResult.data as any)?.error || screenResult.status
+            )}`,
             last_error_at: nowIso(),
             last_run_finished_at: nowIso(),
           })
@@ -361,7 +361,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Stage 3: filings once screening is complete
     if (state.stage === "filings") {
       if (shouldStopForRuntime(startedAtMs)) {
         await patchPipelineState(supabase, {
@@ -393,7 +392,9 @@ export async function GET(request: NextRequest) {
         await patchPipelineState(supabase, {
           stage: "error",
           status: "error",
-          last_error: `Filings step failed: ${String((filingsResult.data as any)?.error || filingsResult.status)}`,
+          last_error: `Filings step failed: ${String(
+            (filingsResult.data as any)?.error || filingsResult.status
+          )}`,
           last_error_at: nowIso(),
           last_run_finished_at: nowIso(),
         })
@@ -416,7 +417,6 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Stage 4: signals once filings are complete
     if (state.stage === "signals") {
       if (shouldStopForRuntime(startedAtMs)) {
         await patchPipelineState(supabase, {
@@ -447,7 +447,9 @@ export async function GET(request: NextRequest) {
         await patchPipelineState(supabase, {
           stage: "error",
           status: "error",
-          last_error: `Signals step failed: ${String((signalsResult.data as any)?.error || signalsResult.status)}`,
+          last_error: `Signals step failed: ${String(
+            (signalsResult.data as any)?.error || signalsResult.status
+          )}`,
           last_error_at: nowIso(),
           last_run_finished_at: nowIso(),
         })
@@ -475,7 +477,6 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Reset to idle so the next cron invocation starts a fresh full cycle
     if (state.stage === "complete") {
       state = await patchPipelineState(supabase, {
         stage: "idle",
@@ -514,7 +515,7 @@ export async function GET(request: NextRequest) {
         last_run_finished_at: nowIso(),
       })
     } catch {
-      // swallow secondary state-write failure
+      // ignore secondary failure
     }
 
     return NextResponse.json(
