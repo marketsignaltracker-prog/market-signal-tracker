@@ -174,8 +174,8 @@ type CoolingLeader = {
 }
 
 type ViewMode = "buy" | "sell"
-type SortPreset = "best" | "newest" | "confirmed"
-type SortBy = "score-desc" | "date-desc" | "confirmed-desc"
+type SortPreset = "best" | "newest"
+type SortBy = "score-desc" | "date-desc"
 type PeFilterType = "all" | "15" | "25" | "40"
 type PriceFilterType =
   | "all"
@@ -658,36 +658,29 @@ export default function Home() {
           />
         </section>
 
-        <section className="mb-8">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="sm:col-span-2 xl:col-span-2">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <SortButton
-                  active={sortPreset === "best"}
-                  onClick={() => {
-                    setSortPreset("best")
-                    setHasInteracted(true)
-                  }}
-                  label={boardMode === "risk" ? "Worst First" : "Best Score"}
-                />
-                <SortButton
-                  active={sortPreset === "newest"}
-                  onClick={() => {
-                    setSortPreset("newest")
-                    setHasInteracted(true)
-                  }}
-                  label="Newest"
-                />
-                <SortButton
-                  active={sortPreset === "confirmed"}
-                  onClick={() => {
-                    setSortPreset("confirmed")
-                    setHasInteracted(true)
-                  }}
-                  label={boardMode === "risk" ? "Most Confirmed Risk" : "Most Confirmed"}
-                />
-              </div>
-            </div>
+       <section className="mb-8">
+  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <div className="sm:col-span-2 xl:col-span-2">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <SortButton
+          active={sortPreset === "best"}
+          onClick={() => {
+            setSortPreset("best")
+            setHasInteracted(true)
+          }}
+          label={boardMode === "risk" ? "Worst First" : "Best Score"}
+        />
+
+        <SortButton
+          active={sortPreset === "newest"}
+          onClick={() => {
+            setSortPreset("newest")
+            setHasInteracted(true)
+          }}
+          label="Newest"
+        />
+      </div>
+    </div>
 
             <select
               value={categoryFilter}
@@ -2373,13 +2366,6 @@ function compareRows(
       }
       if (aScore !== bScore) return bScore - aScore
       return 0
-
-    case "confirmed-desc":
-      if (boardMode === "risk") {
-        if (aRiskConfirm !== bRiskConfirm) return bRiskConfirm - aRiskConfirm
-        if (aScore !== bScore) return aScore - bScore
-        return bDate - aDate
-      }
 
       if (aBuyConfirm !== bBuyConfirm) return bBuyConfirm - aBuyConfirm
       if (aScore !== bScore) return bScore - aScore
