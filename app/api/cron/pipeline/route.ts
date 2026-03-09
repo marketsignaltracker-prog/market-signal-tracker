@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
+export const maxDuration = 300
+export const dynamic = "force-dynamic"
+
 type StepResult = {
   step: string
   path: string
@@ -10,10 +13,21 @@ type StepResult = {
   data: any
 }
 
+type PipelineStage =
+  | "idle"
+  | "companies"
+  | "screening"
+  | "filings"
+  | "signals"
+  | "complete"
+  | "error"
+
+type PipelineStatus = "idle" | "running" | "success" | "error"
+
 type PipelineStateRow = {
   job_name: string
-  stage: "idle" | "companies" | "screening" | "filings" | "signals" | "complete" | "error"
-  status: "idle" | "running" | "success" | "error"
+  stage: PipelineStage
+  status: PipelineStatus
   screen_start: number
   screen_batch: number
   screen_total: number | null
@@ -30,15 +44,15 @@ type PipelineStateRow = {
   updated_at: string
 }
 
-export const maxDuration = 300
-
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 const DEFAULT_SCREEN_BATCH = 300
 const MAX_SCREEN_BATCH = 350
 
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
-const MAX_BATCHES_PER_RUN = 5
+const MAX_BATCHES_PER_RUN = 4
+
+const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
 
 function nowIso() {
   return new Date().toISOString()
@@ -90,6 +104,18 @@ function withSearchParams(
   }
 
   return `${url.pathname}${url.search}`
+}
+
+function shouldStopForRuntime(runStartedAtMs: number) {
+  const elapsed = Date.now() - runStartedAtMs
+  return elapsed >= MAX_PIPELINE_RUNTIME_MS - RUNTIME_SAFETY_BUFFER_MS
+}
+
+function isRecentRun(dateString: string | null | undefined, windowMs: number) {
+  if (!dateString) return false
+  const ts = new Date(dateString).getTime()
+  if (Number.isNaN(ts)) return false
+  return Date.now() - ts < windowMs
 }
 
 async function runStep(baseUrl: string, path: string): Promise<StepResult> {
@@ -196,11 +222,6 @@ async function patchPipelineState(
   return data as PipelineStateRow
 }
 
-function shouldStopForRuntime(runStartedAtMs: number) {
-  const elapsed = Date.now() - runStartedAtMs
-  return elapsed >= MAX_PIPELINE_RUNTIME_MS - RUNTIME_SAFETY_BUFFER_MS
-}
-
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization")
   const expectedAuth = process.env.CRON_SECRET
@@ -244,6 +265,26 @@ export async function GET(request: NextRequest) {
 
     let state = await getPipelineState(supabase)
 
+    if (
+      state.status === "running" &&
+      isRecentRun(state.last_run_started_at, RUN_LOCK_WINDOW_MS)
+    ) {
+      return NextResponse.json({
+        ok: true,
+        message: "Skipped because another pipeline run is still recent.",
+        state: {
+          stage: state.stage,
+          status: state.status,
+          screenStart: state.screen_start,
+          screenNextStart: state.screen_next_start,
+          screenBatch: state.screen_batch,
+          screenTotal: state.screen_total,
+          lastRunStartedAt: state.last_run_started_at,
+          lastRunFinishedAt: state.last_run_finished_at,
+        },
+      })
+    }
+
     state = await patchPipelineState(supabase, {
       status: "running",
       last_run_started_at: runStartedIso,
@@ -255,6 +296,10 @@ export async function GET(request: NextRequest) {
           ? "companies"
           : state.stage,
       cycle_started_at: state.cycle_started_at ?? runStartedIso,
+      screen_batch: Math.min(
+        Math.max(1, state.screen_batch || DEFAULT_SCREEN_BATCH),
+        MAX_SCREEN_BATCH
+      ),
     })
 
     const results: StepResult[] = []
