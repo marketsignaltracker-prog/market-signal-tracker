@@ -173,7 +173,7 @@ type CoolingLeader = {
   currentRow: TickerScore | null
 }
 
-type ViewMode = "buy" | "sell"
+type ViewMode = "buy" | "sell" | "cooling"
 type SortPreset = "best" | "newest"
 type SortBy = "score-desc" | "date-desc"
 type PeFilterType = "all" | "15" | "25" | "40"
@@ -185,7 +185,7 @@ type PriceFilterType =
   | "25to100"
   | "100plus"
   | "unknown"
-type BoardMode = "buy" | "risk"
+type BoardMode = "buy" | "risk" | "cooling"
 type SignalCategoryFilter =
   | "all"
   | "Insider Buys"
@@ -293,9 +293,9 @@ export default function Home() {
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
   const [hasInteracted, setHasInteracted] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [showCoolingOff, setShowCoolingOff] = useState(false)
 
-  const boardMode: BoardMode = viewMode === "sell" ? "risk" : "buy"
+  const boardMode: BoardMode =
+    viewMode === "sell" ? "risk" : viewMode === "cooling" ? "cooling" : "buy"
 
   useEffect(() => {
     let isMounted = true
@@ -390,67 +390,21 @@ export default function Home() {
     setCurrentPage(1)
   }, [viewMode, sortPreset, peFilter, priceFilter, categoryFilter, scoreBandFilter])
 
-  useEffect(() => {
-    if (boardMode === "risk") {
-      setShowCoolingOff(false)
-    }
-  }, [boardMode])
-
   const sortBy = useMemo<SortBy>(() => {
     if (sortPreset === "newest") return "date-desc"
     return "score-desc"
   }, [sortPreset])
 
-  const categoryFilteredRows = useMemo(() => {
-    if (categoryFilter === "all") return rows
-    return rows.filter((row) => getSignalCategory(row) === categoryFilter)
-  }, [rows, categoryFilter])
-
-  const processedRows = useMemo(() => {
-    let filtered = categoryFilteredRows
-      .filter((row) => matchesPeFilter(row, peFilter))
-      .filter((row) => matchesPriceFilter(row, priceFilter))
-
-    if (boardMode === "buy") {
-      const minScore = getBuyMinScore(scoreBandFilter)
-      filtered = filtered
-        .filter((row) => getBoardBucket(row) === "Buy")
-        .filter((row) => getEffectiveScore(row) >= minScore)
-    } else {
-      const maxScore = getRiskMaxScore(scoreBandFilter)
-      filtered = filtered
-        .filter((row) => getBoardBucket(row) === "Risk")
-        .filter((row) => getEffectiveScore(row) <= maxScore)
-    }
-
-    return [...filtered].sort((a, b) => compareRows(a, b, sortBy, boardMode))
-  }, [categoryFilteredRows, peFilter, priceFilter, sortBy, boardMode, scoreBandFilter])
-
-  const uniqueProcessedRows = useMemo(
-    () => bestRowPerTicker(processedRows, boardMode, sortBy),
-    [processedRows, boardMode, sortBy]
-  )
-
-  const totalPages = Math.max(1, Math.ceil(uniqueProcessedRows.length / CARDS_PER_PAGE))
-  const safeCurrentPage = Math.min(currentPage, totalPages)
-
-  const paginatedRows = useMemo(() => {
-    const startIndex = (safeCurrentPage - 1) * CARDS_PER_PAGE
-    return uniqueProcessedRows.slice(startIndex, startIndex + CARDS_PER_PAGE)
-  }, [uniqueProcessedRows, safeCurrentPage])
-
-  const pageStart = uniqueProcessedRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
-  const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, uniqueProcessedRows.length)
-
-  const selectedRow = useMemo(() => {
-    if (!selectedTicker) return null
-    return rows.find((row) => row.ticker === selectedTicker) ?? null
-  }, [rows, selectedTicker])
-
   const coolingLeaders = useMemo(() => {
-    if (boardMode !== "buy") return []
+    const currentBuyRows = bestRowPerTicker(
+      rows
+        .filter((row) => getBoardBucket(row) === "Buy")
+        .filter((row) => getEffectiveScore(row) >= 70),
+      "buy",
+      "score-desc"
+    )
 
-    const currentTickers = new Set(uniqueProcessedRows.map((row) => row.ticker))
+    const currentTickers = new Set(currentBuyRows.map((row) => row.ticker))
     const currentByTicker = new Map(rows.map((row) => [row.ticker, row]))
     const grouped = new Map<string, TickerScoreHistoryRow[]>()
 
@@ -499,8 +453,65 @@ export default function Home() {
         if (b.lastScore !== a.lastScore) return b.lastScore - a.lastScore
         return getDateValue(b.lastScoreDate) - getDateValue(a.lastScoreDate)
       })
-      .slice(0, 12)
-  }, [boardMode, historyRows, rows, uniqueProcessedRows])
+      .slice(0, 100)
+  }, [historyRows, rows])
+
+  const categoryFilteredRows = useMemo(() => {
+    if (viewMode === "cooling") {
+      const mappedCoolingRows = coolingLeaders
+        .map((leader) => leader.currentRow)
+        .filter((row): row is TickerScore => Boolean(row))
+
+      if (categoryFilter === "all") return mappedCoolingRows
+      return mappedCoolingRows.filter((row) => getSignalCategory(row) === categoryFilter)
+    }
+
+    if (categoryFilter === "all") return rows
+    return rows.filter((row) => getSignalCategory(row) === categoryFilter)
+  }, [rows, categoryFilter, viewMode, coolingLeaders])
+
+  const processedRows = useMemo(() => {
+    let filtered = categoryFilteredRows
+      .filter((row) => matchesPeFilter(row, peFilter))
+      .filter((row) => matchesPriceFilter(row, priceFilter))
+
+    if (boardMode === "buy") {
+      const minScore = getBuyMinScore(scoreBandFilter)
+      filtered = filtered
+        .filter((row) => getBoardBucket(row) === "Buy")
+        .filter((row) => getEffectiveScore(row) >= minScore)
+    } else if (boardMode === "risk") {
+      const maxScore = getRiskMaxScore(scoreBandFilter)
+      filtered = filtered
+        .filter((row) => getBoardBucket(row) === "Risk")
+        .filter((row) => getEffectiveScore(row) <= maxScore)
+    } else {
+      filtered = filtered.filter((row) => getEffectiveScore(row) < 70)
+    }
+
+    return [...filtered].sort((a, b) => compareRows(a, b, sortBy, boardMode === "risk" ? "risk" : "buy"))
+  }, [categoryFilteredRows, peFilter, priceFilter, sortBy, boardMode, scoreBandFilter])
+
+  const uniqueProcessedRows = useMemo(
+    () => bestRowPerTicker(processedRows, boardMode === "risk" ? "risk" : "buy", sortBy),
+    [processedRows, boardMode, sortBy]
+  )
+
+  const totalPages = Math.max(1, Math.ceil(uniqueProcessedRows.length / CARDS_PER_PAGE))
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+
+  const paginatedRows = useMemo(() => {
+    const startIndex = (safeCurrentPage - 1) * CARDS_PER_PAGE
+    return uniqueProcessedRows.slice(startIndex, startIndex + CARDS_PER_PAGE)
+  }, [uniqueProcessedRows, safeCurrentPage])
+
+  const pageStart = uniqueProcessedRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
+  const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, uniqueProcessedRows.length)
+
+  const selectedRow = useMemo(() => {
+    if (!selectedTicker) return null
+    return rows.find((row) => row.ticker === selectedTicker) ?? null
+  }, [rows, selectedTicker])
 
   const lastUpdated = getLastUpdated(rows)
 
@@ -534,17 +545,54 @@ export default function Home() {
     setCurrentPage(1)
   }
 
-  const pageTitle = boardMode === "risk" ? "Biggest Sell Risks" : "Top Buy Opportunities"
+  const pageTitle =
+    boardMode === "risk"
+      ? "Highest Risk Setups Right Now"
+      : boardMode === "cooling"
+        ? "Recently Hot Names Losing Steam"
+        : "Best Setups Before Everyone Else Sees Them"
+
+  const subhead =
+    boardMode === "risk"
+      ? "Find the risks. Avoid the damage."
+      : boardMode === "cooling"
+        ? "Former leaders slipping off the radar before they potentially reload."
+        : "Catch the strongest setups while they still feel early."
+
+  const description =
+    boardMode === "risk"
+      ? "These are the weakest stacked ticker setups on the board based on insider selling, weak price behavior, negative corporate events, and other downside signals."
+      : boardMode === "cooling"
+        ? "These names were recently among the strongest setups on the board, but momentum has faded enough to knock them off the strict leader list. Sometimes this is where the next great re-entry starts."
+        : "These are the strongest stacked ticker setups on the board based on insider activity, momentum, earnings support, ownership signals, technical breakouts, and other bullish evidence. The goal is to spot them before the crowd piles in."
 
   const searchFocusClass =
     boardMode === "risk"
       ? "focus:border-rose-400/50"
-      : "focus:border-emerald-400/50"
+      : boardMode === "cooling"
+        ? "focus:border-amber-400/50"
+        : "focus:border-emerald-400/50"
 
   const resetHoverClass =
     boardMode === "risk"
       ? "hover:border-rose-400/40 hover:bg-rose-400/10 hover:text-rose-300"
-      : "hover:border-emerald-400/40 hover:bg-emerald-400/10 hover:text-emerald-300"
+      : boardMode === "cooling"
+        ? "hover:border-amber-400/40 hover:bg-amber-400/10 hover:text-amber-300"
+        : "hover:border-emerald-400/40 hover:bg-emerald-400/10 hover:text-emerald-300"
+
+  const boardHeading =
+    boardMode === "risk"
+      ? "Names Flashing the Most Danger"
+      : boardMode === "cooling"
+        ? "Cooling-Off Listings"
+        : "High-Upside Setups Getting Attention"
+
+  const boardSubheading =
+    boardMode === "risk"
+      ? "The worst names appear first. Click any card to open a larger detail view."
+      : boardMode === "cooling"
+        ? "These were recent leaders that cooled off enough to fall below the strict buy threshold. Click any card to inspect whether the story is breaking or just pausing."
+        : "These are the names most likely to get chased once more eyes notice them. Click any card to open a larger detail view."
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
@@ -555,10 +603,16 @@ export default function Home() {
               "mb-3 inline-flex rounded-full border px-4 py-1 text-sm font-medium",
               boardMode === "risk"
                 ? "border-rose-400/30 bg-rose-400/10 text-rose-300"
-                : "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+                : boardMode === "cooling"
+                  ? "border-amber-400/30 bg-amber-400/10 text-amber-300"
+                  : "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
             ].join(" ")}
           >
-            {boardMode === "risk" ? "Sell / Risk Board" : "Buy Opportunity Board"}
+            {boardMode === "risk"
+              ? "Sell / Risk Board"
+              : boardMode === "cooling"
+                ? "Cooling Off Board"
+                : "Opportunity Board"}
           </p>
 
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
@@ -568,18 +622,18 @@ export default function Home() {
           <p
             className={[
               "mt-2 text-base font-semibold sm:text-lg",
-              boardMode === "risk" ? "text-rose-300" : "text-emerald-300",
+              boardMode === "risk"
+                ? "text-rose-300"
+                : boardMode === "cooling"
+                  ? "text-amber-300"
+                  : "text-emerald-300",
             ].join(" ")}
           >
-            {boardMode === "risk"
-              ? "Find the risks. Avoid the damage."
-              : "Find the signals. Capture the profit."}
+            {subhead}
           </p>
 
           <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300 sm:text-base lg:text-lg">
-            {boardMode === "risk"
-              ? "These are the weakest stacked ticker setups on the board based on insider selling, weak price behavior, negative corporate events, and other downside signals."
-              : "These are the strongest stacked ticker setups on the board based on insider activity, momentum, earnings support, ownership signals, technical breakouts, and other bullish evidence."}
+            {description}
           </p>
 
           <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-400">
@@ -606,7 +660,7 @@ export default function Home() {
                   : "text-slate-300 hover:bg-white/5 hover:text-white",
               ].join(" ")}
             >
-              Buy
+              Best Opportunities
             </button>
             <button
               onClick={() => switchMode("sell")}
@@ -619,30 +673,26 @@ export default function Home() {
             >
               Sell / Risk
             </button>
+            <button
+              onClick={() => switchMode("cooling")}
+              className={[
+                "rounded-xl px-5 py-3 text-sm font-semibold transition sm:px-6",
+                viewMode === "cooling"
+                  ? "bg-amber-400 text-slate-950 shadow-lg shadow-amber-900/30"
+                  : "text-slate-300 hover:bg-white/5 hover:text-white",
+              ].join(" ")}
+            >
+              Cooling Off
+            </button>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <p className="text-sm text-slate-400">
-              {viewMode === "buy"
-                ? 'Buy = "highest scoring bullish setups"'
-                : 'Sell / Risk = "lowest scoring bearish setups"'}
-            </p>
-
-            {boardMode === "buy" && coolingLeaders.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => setShowCoolingOff((prev) => !prev)}
-                className={[
-                  "rounded-full border px-4 py-2 text-sm font-semibold transition",
-                  showCoolingOff
-                    ? "border-amber-400/40 bg-amber-400/15 text-amber-200"
-                    : "border-white/10 bg-white/5 text-slate-300 hover:border-amber-400/30 hover:bg-amber-400/10 hover:text-amber-200",
-                ].join(" ")}
-              >
-                {showCoolingOff ? "Hide Cooling Off Listings" : "Cooling Off Listings"}
-              </button>
-            ) : null}
-          </div>
+          <p className="mt-3 text-sm text-slate-400">
+            {viewMode === "buy"
+              ? 'Best Opportunities = "highest-conviction setups that could get chased next"'
+              : viewMode === "sell"
+                ? 'Sell / Risk = "lowest scoring bearish setups"'
+                : 'Cooling Off = "recent leaders that slipped, but may still be stalking candidates"'}
+          </p>
         </section>
 
         <section className="mb-10">
@@ -652,7 +702,11 @@ export default function Home() {
                 <p
                   className={[
                     "text-xs font-semibold uppercase tracking-[0.18em]",
-                    boardMode === "risk" ? "text-rose-300/80" : "text-emerald-300/80",
+                    boardMode === "risk"
+                      ? "text-rose-300/80"
+                      : boardMode === "cooling"
+                        ? "text-amber-300/80"
+                        : "text-emerald-300/80",
                   ].join(" ")}
                 >
                   Filter the board
@@ -665,7 +719,9 @@ export default function Home() {
               <div className="max-w-2xl text-sm leading-6 text-slate-400 xl:justify-self-end xl:text-right">
                 {boardMode === "risk"
                   ? "Narrow the weakest names by risk type, price, and score."
-                  : "Narrow the strongest names by setup type, price, valuation, and score."}
+                  : boardMode === "cooling"
+                    ? "Focus on recently hot names that have cooled enough to fall off the main leader board."
+                    : "Narrow the strongest names by setup type, price, valuation, and score so you can spot the ones most likely to run next."}
               </div>
             </div>
 
@@ -681,7 +737,13 @@ export default function Home() {
                       setSortPreset("best")
                       setHasInteracted(true)
                     }}
-                    label={boardMode === "risk" ? "Worst First" : "Best Score"}
+                    label={
+                      boardMode === "risk"
+                        ? "Worst First"
+                        : boardMode === "cooling"
+                          ? "Best Former Leaders"
+                          : "Highest Conviction"
+                    }
                   />
                   <SortButton
                     active={sortPreset === "newest"}
@@ -810,7 +872,11 @@ export default function Home() {
 
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  {boardMode === "risk" ? "Risk Score" : "Buy Score"}
+                  {boardMode === "risk"
+                    ? "Risk Score"
+                    : boardMode === "cooling"
+                      ? "Current Score"
+                      : "Opportunity Score"}
                 </label>
                 <select
                   value={scoreBandFilter}
@@ -823,22 +889,7 @@ export default function Home() {
                     searchFocusClass,
                   ].join(" ")}
                 >
-                  {boardMode === "buy" ? (
-                    <>
-                      <option value="default" className="bg-slate-900">
-                        Buy Score ≥ 70
-                      </option>
-                      <option value="75" className="bg-slate-900">
-                        Buy Score ≥ 75
-                      </option>
-                      <option value="80" className="bg-slate-900">
-                        Buy Score ≥ 80
-                      </option>
-                      <option value="85" className="bg-slate-900">
-                        Buy Score ≥ 85
-                      </option>
-                    </>
-                  ) : (
+                  {boardMode === "risk" ? (
                     <>
                       <option value="default" className="bg-slate-900">
                         Risk Score ≤ 30
@@ -851,6 +902,21 @@ export default function Home() {
                       </option>
                       <option value="15" className="bg-slate-900">
                         Risk Score ≤ 15
+                      </option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="default" className="bg-slate-900">
+                        Score ≥ 70
+                      </option>
+                      <option value="75" className="bg-slate-900">
+                        Score ≥ 75
+                      </option>
+                      <option value="80" className="bg-slate-900">
+                        Score ≥ 80
+                      </option>
+                      <option value="85" className="bg-slate-900">
+                        Score ≥ 85
                       </option>
                     </>
                   )}
@@ -875,7 +941,12 @@ export default function Home() {
                 <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
                   <span className="text-slate-400">Showing</span>
                   <span className="rounded-full bg-white/10 px-3 py-1 font-semibold text-white">
-                    {uniqueProcessedRows.length} {boardMode === "risk" ? "risk names" : "buy setups"}
+                    {uniqueProcessedRows.length}{" "}
+                    {boardMode === "risk"
+                      ? "risk names"
+                      : boardMode === "cooling"
+                        ? "cooling names"
+                        : "high-upside setups"}
                   </span>
 
                   <span className="hidden sm:inline text-slate-500">•</span>
@@ -896,7 +967,13 @@ export default function Home() {
                     tone={boardMode}
                   />
                   <FilterChip
-                    label={boardMode === "risk" ? "Risk Score" : "Buy Score"}
+                    label={
+                      boardMode === "risk"
+                        ? "Risk Score"
+                        : boardMode === "cooling"
+                          ? "Score"
+                          : "Opportunity Score"
+                    }
                     value={
                       boardMode === "risk"
                         ? `≤ ${getRiskMaxScore(scoreBandFilter)}`
@@ -909,7 +986,9 @@ export default function Home() {
                 <p className="text-sm leading-6 text-slate-400">
                   {boardMode === "risk"
                     ? "This view is tuned for the weakest current setups. Tighten the filters to isolate the most dangerous names, or widen them to scan the broader risk board."
-                    : "This view is tuned for the strongest current setups. Use category, price, valuation, and score filters to zero in on the kind of buy candidates you actually want."}
+                    : boardMode === "cooling"
+                      ? "This view is tuned for names that recently looked strong enough to matter, then lost enough momentum to fall out of the spotlight. Sometimes those are dead money. Sometimes they are early second-chance entries."
+                      : "This view is tuned for the strongest current setups. Use category, price, valuation, and score filters to zero in on the names most likely to attract attention next."}
                 </p>
               </div>
             </div>
@@ -919,7 +998,7 @@ export default function Home() {
         {loading && (
           <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
             <h2 className="text-2xl font-semibold">
-              Loading {boardMode === "risk" ? "risks" : "signals"}...
+              Loading {boardMode === "risk" ? "risks" : boardMode === "cooling" ? "cooling setups" : "opportunities"}...
             </h2>
             <p className="mt-2 text-slate-400">Pulling the board together now.</p>
           </div>
@@ -934,101 +1013,68 @@ export default function Home() {
         {!loading && !uniqueProcessedRows.length ? (
           <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
             <h2 className="text-2xl font-semibold">
-              No {boardMode === "risk" ? "risk names" : "buy signals"} found
+              No {boardMode === "risk" ? "risk names" : boardMode === "cooling" ? "cooling names" : "opportunities"} found
             </h2>
             <p className="mt-2 text-slate-400">
               {boardMode === "risk"
                 ? "Try widening the score ceiling, changing the signal category, or broadening the price filter."
-                : "Try lowering the buy score floor, changing the signal category, or broadening the price filter."}
+                : "Try lowering the score floor, changing the signal category, or broadening the price filter."}
             </p>
           </div>
         ) : null}
 
         {!loading && !!uniqueProcessedRows.length && (
-          <>
-            <section className="mb-10">
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2
-                    className={[
-                      "text-2xl font-semibold",
-                      boardMode === "risk" ? "text-rose-300" : "text-emerald-300",
-                    ].join(" ")}
-                  >
-                    {boardMode === "risk" ? "Sell / Risk Signals" : "Buy Signals"}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-400">
-                    {boardMode === "risk"
-                      ? "The worst names appear first. Click any card to open a larger detail view."
-                      : "The best names appear first. Click any card to open a larger detail view."}
-                  </p>
-                </div>
-
-                <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-                  {uniqueProcessedRows.length === 0
-                    ? "No names"
-                    : `${pageStart}-${pageEnd} of ${uniqueProcessedRows.length}`}
-                </div>
+          <section className="mb-10">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2
+                  className={[
+                    "text-2xl font-semibold",
+                    boardMode === "risk"
+                      ? "text-rose-300"
+                      : boardMode === "cooling"
+                        ? "text-amber-300"
+                        : "text-emerald-300",
+                  ].join(" ")}
+                >
+                  {boardHeading}
+                </h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  {boardSubheading}
+                </p>
               </div>
 
-              <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {paginatedRows.map((row, i) => (
-                  <TopSignalCard
-                    key={getRowKey(row, i)}
-                    row={row}
-                    boardMode={boardMode}
-                    isSelected={row.ticker === selectedTicker}
-                    onClick={() => openDetails(row.ticker)}
-                    rank={(safeCurrentPage - 1) * CARDS_PER_PAGE + i + 1}
-                  />
-                ))}
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+                {uniqueProcessedRows.length === 0
+                  ? "No names"
+                  : `${pageStart}-${pageEnd} of ${uniqueProcessedRows.length}`}
               </div>
+            </div>
 
-              {uniqueProcessedRows.length > CARDS_PER_PAGE ? (
-                <PaginationControls
-                  currentPage={safeCurrentPage}
-                  totalPages={totalPages}
-                  onPageChange={(page) => {
-                    setCurrentPage(page)
-                    window.scrollTo({ top: 0, behavior: "smooth" })
-                  }}
+            <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {paginatedRows.map((row, i) => (
+                <TopSignalCard
+                  key={getRowKey(row, i)}
+                  row={row}
+                  boardMode={boardMode}
+                  isSelected={row.ticker === selectedTicker}
+                  onClick={() => openDetails(row.ticker)}
+                  rank={(safeCurrentPage - 1) * CARDS_PER_PAGE + i + 1}
                 />
-              ) : null}
-            </section>
+              ))}
+            </div>
 
-            {boardMode === "buy" && coolingLeaders.length > 0 && showCoolingOff ? (
-              <section className="mb-10">
-                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-2xl font-semibold text-amber-300">
-                      Recent Leaders Cooling Off
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-400">
-                      These names scored highly in the last 30 days but are no longer on the strict
-                      buy board. They may still be worth watching.
-                    </p>
-                  </div>
-                  <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-                    {coolingLeaders.length} names
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {coolingLeaders.map((leader) => (
-                    <CoolingLeaderCard
-                      key={leader.ticker}
-                      leader={leader}
-                      onClick={() => {
-                        if (leader.currentRow?.ticker) {
-                          openDetails(leader.currentRow.ticker)
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              </section>
+            {uniqueProcessedRows.length > CARDS_PER_PAGE ? (
+              <PaginationControls
+                currentPage={safeCurrentPage}
+                totalPages={totalPages}
+                onPageChange={(page) => {
+                  setCurrentPage(page)
+                  window.scrollTo({ top: 0, behavior: "smooth" })
+                }}
+              />
             ) : null}
-          </>
+          </section>
         )}
 
         <footer className="border-t border-white/10 pt-8 text-sm text-slate-500">
@@ -1056,7 +1102,7 @@ function SignalDetailsModal({
   boardMode: BoardMode
   onClose: () => void
 }) {
-  const tone = boardMode === "risk" ? "risk" : "buy"
+  const tone = boardMode === "risk" ? "risk" : boardMode === "cooling" ? "cooling" : "buy"
 
   return (
     <div
@@ -1072,10 +1118,18 @@ function SignalDetailsModal({
             <p
               className={[
                 "text-xs font-semibold uppercase tracking-[0.18em]",
-                tone === "risk" ? "text-rose-300/80" : "text-emerald-300/80",
+                tone === "risk"
+                  ? "text-rose-300/80"
+                  : tone === "cooling"
+                    ? "text-amber-300/80"
+                    : "text-emerald-300/80",
               ].join(" ")}
             >
-              {tone === "risk" ? "Risk Detail" : "Signal Detail"}
+              {tone === "risk"
+                ? "Risk Detail"
+                : tone === "cooling"
+                  ? "Cooling-Off Detail"
+                  : "Opportunity Detail"}
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <h2 className="text-2xl font-bold sm:text-3xl">{row.ticker}</h2>
@@ -1118,13 +1172,21 @@ function SignalDetailsModal({
               <p
                 className={[
                   "text-xs font-semibold uppercase tracking-[0.18em]",
-                  boardMode === "risk" ? "text-rose-300/80" : "text-emerald-300/80",
+                  boardMode === "risk"
+                    ? "text-rose-300/80"
+                    : boardMode === "cooling"
+                      ? "text-amber-300/80"
+                      : "text-emerald-300/80",
                 ].join(" ")}
               >
-                {boardMode === "risk" ? "Why Sell" : "Why Buy"}
+                {boardMode === "risk"
+                  ? "Why Avoid It"
+                  : boardMode === "cooling"
+                    ? "Why It Still Matters"
+                    : "Why It Could Move"}
               </p>
               <p className="mt-2 text-sm leading-6 text-slate-200">
-                {getConfidenceStatement(row, boardMode)}
+                {getConfidenceStatement(row, boardMode === "risk" ? "risk" : "buy")}
               </p>
             </div>
 
@@ -1133,7 +1195,7 @@ function SignalDetailsModal({
                 Score Drivers
               </p>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {getTopReasonLines(row, boardMode).map((reason) => (
+                {getTopReasonLines(row, boardMode === "risk" ? "risk" : "buy").map((reason) => (
                   <ReasonCard key={`${reason.label}-${reason.value}`} reason={reason} />
                 ))}
               </div>
@@ -1173,10 +1235,18 @@ function SignalDetailsModal({
             <p
               className={[
                 "text-xs font-semibold uppercase tracking-[0.18em]",
-                boardMode === "risk" ? "text-rose-300/80" : "text-emerald-300/80",
+                boardMode === "risk"
+                  ? "text-rose-300/80"
+                  : boardMode === "cooling"
+                    ? "text-amber-300/80"
+                    : "text-emerald-300/80",
               ].join(" ")}
             >
-              {boardMode === "risk" ? "Risk Snapshot" : "Conviction Snapshot"}
+              {boardMode === "risk"
+                ? "Risk Snapshot"
+                : boardMode === "cooling"
+                  ? "Re-Entry Snapshot"
+                  : "Conviction Snapshot"}
             </p>
 
             <div className="mt-4 space-y-3">
@@ -1350,8 +1420,8 @@ function TopSignalCard({
   boardMode: BoardMode
   rank: number
 }) {
-  const tone = boardMode === "risk" ? "risk" : "buy"
-  const reasons = getTopReasonChips(row, boardMode)
+  const tone = boardMode === "risk" ? "risk" : boardMode === "cooling" ? "cooling" : "buy"
+  const reasons = getTopReasonChips(row, boardMode === "risk" ? "risk" : "buy")
   const score = getEffectiveScore(row)
   const palette = getScorePalette(score)
   const extremeGlow = getExtremeCardGlow(score)
@@ -1384,7 +1454,11 @@ function TopSignalCard({
             <p
               className={[
                 "text-xs uppercase tracking-[0.2em]",
-                tone === "risk" ? "text-rose-300/80" : "text-emerald-300/80",
+                tone === "risk"
+                  ? "text-rose-300/80"
+                  : tone === "cooling"
+                    ? "text-amber-300/80"
+                    : "text-emerald-300/80",
               ].join(" ")}
             >
               {formatSource(row.primary_signal_source)}
@@ -1442,66 +1516,21 @@ function TopSignalCard({
             "mb-2 text-xs font-semibold uppercase tracking-[0.18em]",
             tone === "risk"
               ? "text-rose-300/80"
-              : isSelected
-                ? "text-cyan-300/80"
-                : "text-emerald-300/80",
+              : tone === "cooling"
+                ? "text-amber-300/80"
+                : isSelected
+                  ? "text-cyan-300/80"
+                  : "text-emerald-300/80",
           ].join(" ")}
         >
-          Why this matters
+          {tone === "risk"
+            ? "Why this is dangerous"
+            : tone === "cooling"
+              ? "Why this could matter again"
+              : "Why traders could pile in"}
         </p>
         <p className="text-sm leading-6 text-slate-100">
-          {truncateText(getPlainEnglishSummary(row, boardMode), 180)}
-        </p>
-      </div>
-    </button>
-  )
-}
-
-function CoolingLeaderCard({
-  leader,
-  onClick,
-}: {
-  leader: CoolingLeader
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-3xl border border-amber-400/20 bg-gradient-to-br from-amber-500/10 to-slate-900 p-5 text-left shadow-xl transition hover:-translate-y-0.5 hover:border-amber-400/35"
-    >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs uppercase tracking-[0.2em] text-amber-300/80">
-            Recent leader
-          </p>
-          <h3 className="mt-2 truncate text-3xl font-bold">{leader.ticker}</h3>
-          {leader.company_name ? (
-            <p className="mt-1 truncate text-sm text-slate-400">{leader.company_name}</p>
-          ) : null}
-        </div>
-
-        <div className="flex flex-col items-end gap-2">
-          <span className="rounded-full bg-amber-400/15 px-3 py-1 text-sm font-semibold text-amber-200">
-            Peak {leader.peakScore}
-          </span>
-          <span className="rounded-full bg-white/5 px-3 py-1 text-sm font-semibold text-slate-200">
-            Now {leader.lastScore}
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <MiniMetric label="Score Drop" value={`-${leader.scoreDrop}`} />
-        <MiniMetric label="Last Seen" value={formatShortDate(leader.lastScoreDate)} />
-      </div>
-
-      <div className="mt-4 rounded-2xl bg-black/20 p-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-amber-300/80">
-          Why watch it
-        </p>
-        <p className="text-sm leading-6 text-slate-100">
-          This ticker was recently a strong leader but has slipped below the strict buy threshold. It may still be worth stalking for re-entry.
+          {truncateText(getPlainEnglishSummary(row, boardMode === "risk" ? "risk" : "buy"), 180)}
         </p>
       </div>
     </button>
@@ -1547,7 +1576,9 @@ function FilterChip({
         "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm",
         tone === "risk"
           ? "border-rose-400/20 bg-rose-500/10 text-rose-200"
-          : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
+          : tone === "cooling"
+            ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
+            : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
       ].join(" ")}
     >
       <span className="text-slate-300">{label}:</span>
@@ -1676,7 +1707,9 @@ function RankBadge({
         "inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em]",
         boardMode === "risk"
           ? "bg-rose-400/15 text-rose-200"
-          : "bg-emerald-400/15 text-emerald-200",
+          : boardMode === "cooling"
+            ? "bg-amber-400/15 text-amber-200"
+            : "bg-emerald-400/15 text-emerald-200",
       ].join(" ")}
     >
       #{rank}
@@ -1865,7 +1898,9 @@ function ReasonChip({
         "rounded-full border px-3 py-1.5 text-xs font-semibold",
         boardMode === "risk"
           ? "border-rose-400/20 bg-rose-500/10 text-rose-200"
-          : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
+          : boardMode === "cooling"
+            ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
+            : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
       ].join(" ")}
     >
       {label}
@@ -1875,7 +1910,7 @@ function ReasonChip({
 
 function bestRowPerTicker(
   items: TickerScore[],
-  boardMode: BoardMode,
+  boardMode: "buy" | "risk",
   sortBy: SortBy
 ) {
   const map = new Map<string, TickerScore>()
@@ -2209,7 +2244,7 @@ function getSignalSummary(row: TickerScore) {
   return `${row.ticker} is showing a ${getSignalCategory(row).toLowerCase()} setup based on stacked signals, price action, and fundamentals.`
 }
 
-function getPlainEnglishSummary(row: TickerScore, boardMode: BoardMode) {
+function getPlainEnglishSummary(row: TickerScore, boardMode: "buy" | "risk") {
   const reasons = getTopReasonChips(row, boardMode)
   if (!reasons.length) {
     return boardMode === "risk"
@@ -2221,10 +2256,10 @@ function getPlainEnglishSummary(row: TickerScore, boardMode: BoardMode) {
     return `This name is showing ${reasons.join(", ").toLowerCase()}, which keeps it near the top of the sell board.`
   }
 
-  return `This name is showing ${reasons.join(", ").toLowerCase()}, which keeps it near the top of the buy board.`
+  return `This name is showing ${reasons.join(", ").toLowerCase()}, which keeps it near the top of the opportunity board.`
 }
 
-function getConfidenceStatement(row: TickerScore, boardMode: BoardMode) {
+function getConfidenceStatement(row: TickerScore, boardMode: "buy" | "risk") {
   const score = getEffectiveScore(row)
   const tags = normalizeTags(row.signal_tags)
   const hasCluster = (row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")
@@ -2329,7 +2364,7 @@ function getConfidenceStatement(row: TickerScore, boardMode: BoardMode) {
   return `This remains a constructive setup overall, with ${source} providing the original signal and the broader evaluation still holding up.`
 }
 
-function getTopReasonChips(row: TickerScore, boardMode: BoardMode) {
+function getTopReasonChips(row: TickerScore, boardMode: "buy" | "risk") {
   const tags = normalizeTags(row.signal_tags)
   const chips: string[] = []
 
@@ -2370,7 +2405,7 @@ function getTopReasonChips(row: TickerScore, boardMode: BoardMode) {
   return Array.from(new Set(chips)).slice(0, 4)
 }
 
-function getTopReasonLines(row: TickerScore, boardMode: BoardMode): ReasonLine[] {
+function getTopReasonLines(row: TickerScore, boardMode: "buy" | "risk"): ReasonLine[] {
   const items: ReasonLine[] = []
   const breakdown = row.score_breakdown || {}
 
@@ -2444,7 +2479,7 @@ function compareRows(
   a: TickerScore,
   b: TickerScore,
   sortBy: SortBy,
-  boardMode: BoardMode
+  boardMode: "buy" | "risk"
 ) {
   const aScore = getEffectiveScore(a)
   const bScore = getEffectiveScore(b)
@@ -2546,16 +2581,6 @@ function getDateValue(dateString: string | null | undefined) {
   if (!dateString) return 0
   const timestamp = new Date(dateString).getTime()
   return Number.isNaN(timestamp) ? 0 : timestamp
-}
-
-function formatShortDate(dateString: string | null | undefined) {
-  if (!dateString) return "—"
-  const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) return "—"
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-  }).format(date)
 }
 
 function getScorePalette(score: number) {
