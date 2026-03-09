@@ -215,6 +215,8 @@ type FeaturedTheme = {
   sideLabelStyle?: CSSProperties
 }
 
+const CARDS_PER_PAGE = 24
+
 function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
   return {
     id: row.id,
@@ -300,6 +302,7 @@ export default function Home() {
   const [scoreBandFilter, setScoreBandFilter] = useState<ScoreBandFilter>("default")
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
   const [hasInteracted, setHasInteracted] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const heroRef = useRef<HTMLElement | null>(null)
   const boardMode: BoardMode = viewMode === "sell" ? "risk" : "buy"
@@ -393,6 +396,10 @@ export default function Home() {
     }
   }, [])
 
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [viewMode, sortPreset, peFilter, priceFilter, categoryFilter, scoreBandFilter])
+
   const sortBy = useMemo<SortBy>(() => {
     if (sortPreset === "newest") return "date-desc"
     return "score-desc"
@@ -434,10 +441,21 @@ export default function Home() {
   const featuredTone = getFeaturedTone(featuredRow, boardMode)
   const featuredTheme = getFeaturedThemeClasses(featuredTone, featuredRow)
 
-  const topRows = uniqueProcessedRows
-    .filter((row) => row.ticker !== featuredRow?.ticker)
-    .sort((a, b) => compareRows(a, b, "score-desc", boardMode))
-    .slice(0, 30)
+  const remainingRows = useMemo(() => {
+    return uniqueProcessedRows.filter((row) => row.ticker !== featuredRow?.ticker)
+  }, [uniqueProcessedRows, featuredRow])
+
+  const totalPages = Math.max(1, Math.ceil(remainingRows.length / CARDS_PER_PAGE))
+
+  const safeCurrentPage = Math.min(currentPage, totalPages)
+
+  const paginatedRows = useMemo(() => {
+    const startIndex = (safeCurrentPage - 1) * CARDS_PER_PAGE
+    return remainingRows.slice(startIndex, startIndex + CARDS_PER_PAGE)
+  }, [remainingRows, safeCurrentPage])
+
+  const pageStart = remainingRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
+  const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, remainingRows.length)
 
   const coolingLeaders = useMemo(() => {
     if (boardMode !== "buy") return []
@@ -500,6 +518,7 @@ export default function Home() {
   function promoteToHero(ticker: string) {
     setSelectedTicker(ticker)
     setHasInteracted(true)
+    setCurrentPage(1)
 
     requestAnimationFrame(() => {
       heroRef.current?.scrollIntoView({
@@ -516,6 +535,7 @@ export default function Home() {
     setSortPreset("best")
     setCategoryFilter("all")
     setScoreBandFilter("default")
+    setCurrentPage(1)
   }
 
   function resetFilters() {
@@ -526,6 +546,7 @@ export default function Home() {
     setScoreBandFilter("default")
     setSelectedTicker(null)
     setHasInteracted(false)
+    setCurrentPage(1)
   }
 
   const pageTitle =
@@ -668,7 +689,7 @@ export default function Home() {
         </section>
 
         <section className="mb-10">
-          <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 shadow-2xl backdrop-blur-sm sm:p-5 lg:p-6">
+          <div className="rounded-[2rem] border border-white/[0.1] bg-white/[0.04] p-4 shadow-2xl backdrop-blur-sm sm:p-5 lg:p-6">
             <div className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)] xl:items-end">
               <div className="min-w-0">
                 <p
@@ -934,6 +955,7 @@ export default function Home() {
                         onClick={() => {
                           setSelectedTicker(null)
                           setHasInteracted(true)
+                          setCurrentPage(1)
                         }}
                         className={[
                           "font-semibold transition",
@@ -1157,23 +1179,42 @@ export default function Home() {
                       : "The best names appear first. Tap or click any card to feature it at the top."}
                   </p>
                 </div>
+
                 <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-                  {topRows.length} names
+                  {remainingRows.length === 0
+                    ? "No additional names"
+                    : `${pageStart}-${pageEnd} of ${remainingRows.length}`}
                 </div>
               </div>
 
               <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {topRows.map((row, i) => (
+                {paginatedRows.map((row, i) => (
                   <TopSignalCard
                     key={getRowKey(row, i)}
                     row={row}
                     boardMode={boardMode}
                     isSelected={row.ticker === selectedTicker}
                     onClick={() => promoteToHero(row.ticker)}
-                    rank={i + 2}
+                    rank={(safeCurrentPage - 1) * CARDS_PER_PAGE + i + 2}
                   />
                 ))}
               </div>
+
+              {remainingRows.length > CARDS_PER_PAGE ? (
+                <PaginationControls
+                  currentPage={safeCurrentPage}
+                  totalPages={totalPages}
+                  onPageChange={(page) => {
+                    setCurrentPage(page)
+                    requestAnimationFrame(() => {
+                      heroRef.current?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      })
+                    })
+                  }}
+                />
+              ) : null}
             </section>
 
             {boardMode === "buy" && coolingLeaders.length > 0 ? (
@@ -1213,6 +1254,119 @@ export default function Home() {
       </div>
     </main>
   )
+}
+
+function PaginationControls({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: {
+  currentPage: number
+  totalPages: number
+  onPageChange: (page: number) => void
+}) {
+  const pages = buildPaginationPages(currentPage, totalPages)
+
+  return (
+    <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
+      <div className="text-sm text-slate-400">
+        Page <span className="font-semibold text-slate-200">{currentPage}</span> of{" "}
+        <span className="font-semibold text-slate-200">{totalPages}</span>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(1)}
+          disabled={currentPage === 1}
+          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          First
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Prev
+        </button>
+
+        {pages.map((page, index) =>
+          page === "ellipsis" ? (
+            <span key={`ellipsis-${index}`} className="px-2 text-slate-500">
+              …
+            </span>
+          ) : (
+            <button
+              key={page}
+              type="button"
+              onClick={() => onPageChange(page)}
+              className={[
+                "min-w-[42px] rounded-xl border px-3 py-2 text-sm font-semibold transition",
+                page === currentPage
+                  ? "border-white/20 bg-white/15 text-white"
+                  : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white",
+              ].join(" ")}
+            >
+              {page}
+            </button>
+          )
+        )}
+
+        <button
+          type="button"
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Next
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onPageChange(totalPages)}
+          disabled={currentPage === totalPages}
+          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Last
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function buildPaginationPages(currentPage: number, totalPages: number): Array<number | "ellipsis"> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1)
+  }
+
+  if (currentPage <= 4) {
+    return [1, 2, 3, 4, 5, "ellipsis", totalPages]
+  }
+
+  if (currentPage >= totalPages - 3) {
+    return [
+      1,
+      "ellipsis",
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ]
+  }
+
+  return [
+    1,
+    "ellipsis",
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    "ellipsis",
+    totalPages,
+  ]
 }
 
 function TopSignalCard({
