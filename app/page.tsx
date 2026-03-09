@@ -657,236 +657,299 @@ export default function Home() {
           />
         </section>
 
-        <section className="mb-8">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <div className="sm:col-span-2 xl:col-span-2">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <SortButton
-                  active={sortPreset === "best"}
-                  onClick={() => {
-                    setSortPreset("best")
-                    setHasInteracted(true)
-                  }}
-                  label={boardMode === "risk" ? "Worst First" : "Best Score"}
-                />
-                <SortButton
-                  active={sortPreset === "newest"}
-                  onClick={() => {
-                    setSortPreset("newest")
-                    setHasInteracted(true)
-                  }}
-                  label="Newest"
-                />
-              </div>
-            </div>
+        <section className="mb-10">
+  <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-4 shadow-2xl backdrop-blur-sm sm:p-5 lg:p-6">
+    <div className="mb-4 flex flex-col gap-2 sm:mb-5 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <p
+          className={[
+            "text-xs font-semibold uppercase tracking-[0.18em]",
+            boardMode === "risk" ? "text-rose-300/80" : "text-emerald-300/80",
+          ].join(" ")}
+        >
+          Filter the board
+        </p>
+        <h2 className="mt-1 text-xl font-semibold text-white sm:text-2xl">
+          Tune the signal view
+        </h2>
+      </div>
 
-            <select
-              value={categoryFilter}
-              onChange={(e) => {
-                setCategoryFilter(e.target.value as SignalCategoryFilter)
-                setHasInteracted(true)
-              }}
-              className={[
-                "rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-white outline-none transition focus:bg-white/10",
-                searchFocusClass,
-              ].join(" ")}
-            >
-              <option value="all" className="bg-slate-900">
-                All Signal Types
-              </option>
-              <option value="Insider Buys" className="bg-slate-900">
-                Insider Buys
-              </option>
-              <option value="Cluster Buys" className="bg-slate-900">
-                Cluster Buys
-              </option>
-              <option value="Momentum" className="bg-slate-900">
-                Momentum
-              </option>
-              <option value="Institutional" className="bg-slate-900">
-                Institutional
-              </option>
-              <option value="Flow" className="bg-slate-900">
-                Flow
-              </option>
-              <option value="Fundamental" className="bg-slate-900">
-                Fundamental
-              </option>
-              <option value="Risk" className="bg-slate-900">
-                Risk
-              </option>
-              <option value="Market Signal" className="bg-slate-900">
-                Market Signal
-              </option>
-            </select>
+      <div className="text-sm text-slate-400">
+        {boardMode === "risk"
+          ? "Narrow the weakest names by risk type, price, and score."
+          : "Narrow the strongest names by setup type, price, valuation, and score."}
+      </div>
+    </div>
 
-            <select
-              value={priceFilter}
-              onChange={(e) => {
-                setPriceFilter(e.target.value as PriceFilterType)
-                setHasInteracted(true)
-              }}
-              className={[
-                "rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-white outline-none transition focus:bg-white/10",
-                searchFocusClass,
-              ].join(" ")}
-            >
-              <option value="all" className="bg-slate-900">
-                All Prices
-              </option>
-              <option value="under5" className="bg-slate-900">
-                Under $5
-              </option>
-              <option value="5to10" className="bg-slate-900">
-                $5 to $10
-              </option>
-              <option value="10to25" className="bg-slate-900">
-                $10 to $25
-              </option>
-              <option value="25to100" className="bg-slate-900">
-                $25 to $100
-              </option>
-              <option value="100plus" className="bg-slate-900">
-                $100+
-              </option>
-              <option value="unknown" className="bg-slate-900">
-                Unknown Price
-              </option>
-            </select>
+    <div className="grid gap-3 lg:gap-4 xl:grid-cols-12">
+      <div className="xl:col-span-3">
+        <div className="grid grid-cols-2 gap-3">
+          <SortButton
+            active={sortPreset === "best"}
+            onClick={() => {
+              setSortPreset("best")
+              setHasInteracted(true)
+            }}
+            label={boardMode === "risk" ? "Worst First" : "Best Score"}
+          />
+          <SortButton
+            active={sortPreset === "newest"}
+            onClick={() => {
+              setSortPreset("newest")
+              setHasInteracted(true)
+            }}
+            label="Newest"
+          />
+        </div>
+      </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
-              <select
-                value={scoreBandFilter}
-                onChange={(e) => {
-                  setScoreBandFilter(e.target.value as ScoreBandFilter)
-                  setHasInteracted(true)
-                }}
-                className={[
-                  "rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-white outline-none transition focus:bg-white/10",
-                  searchFocusClass,
-                ].join(" ")}
-              >
-                {boardMode === "buy" ? (
-                  <>
-                    <option value="default" className="bg-slate-900">
-                      Buy Score ≥ 70
-                    </option>
-                    <option value="75" className="bg-slate-900">
-                      Buy Score ≥ 75
-                    </option>
-                    <option value="80" className="bg-slate-900">
-                      Buy Score ≥ 80
-                    </option>
-                    <option value="85" className="bg-slate-900">
-                      Buy Score ≥ 85
-                    </option>
-                  </>
-                ) : (
-                  <>
-                    <option value="default" className="bg-slate-900">
-                      Risk Score ≤ 30
-                    </option>
-                    <option value="25" className="bg-slate-900">
-                      Risk Score ≤ 25
-                    </option>
-                    <option value="20" className="bg-slate-900">
-                      Risk Score ≤ 20
-                    </option>
-                    <option value="15" className="bg-slate-900">
-                      Risk Score ≤ 15
-                    </option>
-                  </>
-                )}
-              </select>
+      <div className="xl:col-span-3">
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+          Signal Type
+        </label>
+        <select
+          value={categoryFilter}
+          onChange={(e) => {
+            setCategoryFilter(e.target.value as SignalCategoryFilter)
+            setHasInteracted(true)
+          }}
+          className={[
+            "w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-white outline-none transition focus:bg-slate-950",
+            searchFocusClass,
+          ].join(" ")}
+        >
+          <option value="all" className="bg-slate-900">
+            All Signal Types
+          </option>
+          <option value="Insider Buys" className="bg-slate-900">
+            Insider Buys
+          </option>
+          <option value="Cluster Buys" className="bg-slate-900">
+            Cluster Buys
+          </option>
+          <option value="Momentum" className="bg-slate-900">
+            Momentum
+          </option>
+          <option value="Institutional" className="bg-slate-900">
+            Institutional
+          </option>
+          <option value="Flow" className="bg-slate-900">
+            Flow
+          </option>
+          <option value="Fundamental" className="bg-slate-900">
+            Fundamental
+          </option>
+          <option value="Risk" className="bg-slate-900">
+            Risk
+          </option>
+          <option value="Market Signal" className="bg-slate-900">
+            Market Signal
+          </option>
+        </select>
+      </div>
 
-              <button
-                onClick={() => {
-                  setSortPreset("best")
-                  setPeFilter("all")
-                  setPriceFilter("all")
-                  setCategoryFilter("all")
-                  setScoreBandFilter("default")
-                  setSelectedTicker(null)
-                  setHasInteracted(false)
-                }}
-                className={[
-                  "rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm font-semibold text-slate-300 transition",
-                  resetHoverClass,
-                ].join(" ")}
-              >
-                Reset
-              </button>
-            </div>
-          </div>
+      <div className="xl:col-span-2">
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+          Price
+        </label>
+        <select
+          value={priceFilter}
+          onChange={(e) => {
+            setPriceFilter(e.target.value as PriceFilterType)
+            setHasInteracted(true)
+          }}
+          className={[
+            "w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-white outline-none transition focus:bg-slate-950",
+            searchFocusClass,
+          ].join(" ")}
+        >
+          <option value="all" className="bg-slate-900">
+            All Prices
+          </option>
+          <option value="under5" className="bg-slate-900">
+            Under $5
+          </option>
+          <option value="5to10" className="bg-slate-900">
+            $5 to $10
+          </option>
+          <option value="10to25" className="bg-slate-900">
+            $10 to $25
+          </option>
+          <option value="25to100" className="bg-slate-900">
+            $25 to $100
+          </option>
+          <option value="100plus" className="bg-slate-900">
+            $100+
+          </option>
+          <option value="unknown" className="bg-slate-900">
+            Unknown Price
+          </option>
+        </select>
+      </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-slate-400">
-            <span>
-              Showing <span className="font-semibold text-white">{uniqueProcessedRows.length}</span>{" "}
-              {boardMode === "risk" ? "sell / risk names" : "buy setups"}
-            </span>
-            <span className="hidden sm:inline">•</span>
-            <span>
-              Category:{" "}
-              <span
-                className={[
-                  "font-semibold",
-                  boardMode === "risk" ? "text-rose-300" : "text-emerald-300",
-                ].join(" ")}
-              >
-                {categoryFilter === "all" ? "All" : categoryFilter}
-              </span>
-            </span>
-            <span className="hidden sm:inline">•</span>
-            <span>
-              Price:{" "}
-              <span
-                className={[
-                  "font-semibold",
-                  boardMode === "risk" ? "text-rose-300" : "text-emerald-300",
-                ].join(" ")}
-              >
-                {getPriceFilterLabel(priceFilter)}
-              </span>
-            </span>
-            <span className="hidden sm:inline">•</span>
-            <span>
-              Valuation:{" "}
-              <span
-                className={[
-                  "font-semibold",
-                  boardMode === "risk" ? "text-rose-300" : "text-emerald-300",
-                ].join(" ")}
-              >
-                {getPeFilterLabel(peFilter)}
-              </span>
-            </span>
-            {selectedTicker ? (
+      <div className="xl:col-span-2">
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+          Valuation
+        </label>
+        <select
+          value={peFilter}
+          onChange={(e) => {
+            setPeFilter(e.target.value as PeFilterType)
+            setHasInteracted(true)
+          }}
+          className={[
+            "w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-white outline-none transition focus:bg-slate-950",
+            searchFocusClass,
+          ].join(" ")}
+        >
+          <option value="all" className="bg-slate-900">
+            All Valuations
+          </option>
+          <option value="15" className="bg-slate-900">
+            P/E ≤ 15
+          </option>
+          <option value="25" className="bg-slate-900">
+            P/E ≤ 25
+          </option>
+          <option value="40" className="bg-slate-900">
+            P/E ≤ 40
+          </option>
+        </select>
+      </div>
+
+      <div className="xl:col-span-2">
+        <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+          {boardMode === "risk" ? "Risk Score" : "Buy Score"}
+        </label>
+        <div className="grid grid-cols-[minmax(0,1fr)_120px] gap-3 sm:grid-cols-[minmax(0,1fr)_132px]">
+          <select
+            value={scoreBandFilter}
+            onChange={(e) => {
+              setScoreBandFilter(e.target.value as ScoreBandFilter)
+              setHasInteracted(true)
+            }}
+            className={[
+              "min-w-0 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-white outline-none transition focus:bg-slate-950",
+              searchFocusClass,
+            ].join(" ")}
+          >
+            {boardMode === "buy" ? (
               <>
-                <span className="hidden sm:inline">•</span>
-                <button
-                  onClick={() => {
-                    setSelectedTicker(null)
-                    setHasInteracted(true)
-                  }}
-                  className={[
-                    "font-semibold transition",
-                    boardMode === "risk"
-                      ? "text-rose-300 hover:text-rose-200"
-                      : "text-cyan-300 hover:text-cyan-200",
-                  ].join(" ")}
-                >
-                  Back to ranked {boardMode === "risk" ? "top risk" : "top pick"}
-                </button>
+                <option value="default" className="bg-slate-900">
+                  Buy Score ≥ 70
+                </option>
+                <option value="75" className="bg-slate-900">
+                  Buy Score ≥ 75
+                </option>
+                <option value="80" className="bg-slate-900">
+                  Buy Score ≥ 80
+                </option>
+                <option value="85" className="bg-slate-900">
+                  Buy Score ≥ 85
+                </option>
               </>
-            ) : null}
-          </div>
+            ) : (
+              <>
+                <option value="default" className="bg-slate-900">
+                  Risk Score ≤ 30
+                </option>
+                <option value="25" className="bg-slate-900">
+                  Risk Score ≤ 25
+                </option>
+                <option value="20" className="bg-slate-900">
+                  Risk Score ≤ 20
+                </option>
+                <option value="15" className="bg-slate-900">
+                  Risk Score ≤ 15
+                </option>
+              </>
+            )}
+          </select>
 
-          <p className="mt-3 text-sm text-slate-500">
-            {boardMode === "risk"
-              ? "This board focuses on the weakest current names. Use category, price, and score filters to tighten or widen the risk view."
-              : "This board focuses on the strongest current names, including technical setups that are not just filing-driven. Use category, price, and score filters to narrow into the setups you actually want."}
-          </p>
-        </section>
+          <button
+            onClick={() => {
+              setSortPreset("best")
+              setPeFilter("all")
+              setPriceFilter("all")
+              setCategoryFilter("all")
+              setScoreBandFilter("default")
+              setSelectedTicker(null)
+              setHasInteracted(false)
+            }}
+            className={[
+              "rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm font-semibold text-slate-300 transition",
+              resetHoverClass,
+            ].join(" ")}
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
+        <span className="text-slate-400">Showing</span>
+        <span className="rounded-full bg-white/10 px-3 py-1 font-semibold text-white">
+          {uniqueProcessedRows.length} {boardMode === "risk" ? "risk names" : "buy setups"}
+        </span>
+
+        <span className="text-slate-500">•</span>
+
+        <FilterChip
+          label="Category"
+          value={categoryFilter === "all" ? "All" : categoryFilter}
+          tone={boardMode}
+        />
+        <FilterChip
+          label="Price"
+          value={getPriceFilterLabel(priceFilter)}
+          tone={boardMode}
+        />
+        <FilterChip
+          label="Valuation"
+          value={getPeFilterLabel(peFilter)}
+          tone={boardMode}
+        />
+        <FilterChip
+          label={boardMode === "risk" ? "Risk Score" : "Buy Score"}
+          value={
+            boardMode === "risk"
+              ? `≤ ${getRiskMaxScore(scoreBandFilter)}`
+              : `≥ ${getBuyMinScore(scoreBandFilter)}`
+          }
+          tone={boardMode}
+        />
+
+        {selectedTicker ? (
+          <>
+            <span className="text-slate-500">•</span>
+            <button
+              onClick={() => {
+                setSelectedTicker(null)
+                setHasInteracted(true)
+              }}
+              className={[
+                "font-semibold transition",
+                boardMode === "risk"
+                  ? "text-rose-300 hover:text-rose-200"
+                  : "text-cyan-300 hover:text-cyan-200",
+              ].join(" ")}
+            >
+              Back to ranked {boardMode === "risk" ? "top risk" : "top pick"}
+            </button>
+          </>
+        ) : null}
+      </div>
+
+      <p className="mt-3 text-sm leading-6 text-slate-400">
+        {boardMode === "risk"
+          ? "This view is tuned for the weakest current setups. Tighten the filters to isolate the most dangerous names, or widen them to scan the broader risk board."
+          : "This view is tuned for the strongest current setups. Use category, price, valuation, and score filters to zero in on the kind of buy candidates you actually want."}
+      </p>
+    </div>
+  </div>
+</section>
 
         {loading && (
           <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
