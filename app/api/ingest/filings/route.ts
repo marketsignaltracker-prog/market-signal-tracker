@@ -496,9 +496,11 @@ export async function GET(request: Request) {
     const supabase = createClient<Database>(supabaseUrl, serviceRoleKey)
     const { searchParams } = new URL(request.url)
 
-    const scopeParam = (searchParams.get("scope") || "active").toLowerCase()
+    const scopeParam = (searchParams.get("scope") || "candidates").toLowerCase()
     const scope: "all" | "active" | "candidates" =
-      scopeParam === "all" || scopeParam === "candidates" ? scopeParam : "active"
+      scopeParam === "all" || scopeParam === "active" || scopeParam === "candidates"
+        ? scopeParam
+        : "candidates"
 
     const start = parseInteger(searchParams.get("start"), 0)
     const batch = parseInteger(searchParams.get("batch"), DEFAULT_BATCH)

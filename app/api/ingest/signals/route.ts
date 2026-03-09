@@ -14,6 +14,25 @@ type RawFiling = {
   fetched_at?: string | null
 }
 
+type CandidateUniverseSignalInput = {
+  ticker: string
+  cik: string | null
+  name: string | null
+  price: number | null
+  market_cap: number | null
+  avg_volume_20d: number | null
+  avg_dollar_volume_20d: number | null
+  return_5d: number | null
+  return_20d: number | null
+  volume_ratio: number | null
+  breakout_20d: boolean | null
+  above_sma_20: boolean | null
+  candidate_score: number | null
+  included: boolean | null
+  screen_reason: string | null
+  last_screened_at: string | null
+}
+
 type InsiderParseResult = {
   action: "Buy" | "Sell" | "Mixed" | "Other" | null
   shares: number | null
@@ -82,14 +101,24 @@ type SignalSource =
 type StrengthBucket = "Strong Buy" | "Buy" | "Neutral" | "Risk"
 type ScoreBreakdown = Record<string, number>
 
+type BaseSignalData = {
+  signal_type: string
+  signal_source: SignalSource
+  bias: "Bullish" | "Neutral" | "Bearish"
+  score: number
+  title: string
+  summary: string
+}
+
 type PreparedSignal = {
   filing: RawFiling
-  base: ReturnType<typeof baseSignal> | ReturnType<typeof maybeCreateEarningsBreakoutBase>
+  base: BaseSignalData
   insider: InsiderParseResult
   price: PriceConfirmation
   snapshot: TickerSnapshot
   earnings: EarningsSignal
   catalystType: string | null
+  candidate: CandidateUniverseSignalInput | null
 }
 
 type EnhancedSignal = {
@@ -137,6 +166,9 @@ type Diagnostics = {
   tickerHistoryInserted: number
   tickerCurrentBuiltFromSignalsTable: number
   unsupportedForms: Record<string, number>
+  candidateRowsLoaded: number
+  candidateTechnicalSignalsBuilt: number
+  candidateTechnicalSignalsInserted: number
 }
 
 const yahooFinance = new YahooFinance({
@@ -160,11 +192,13 @@ const MAX_LIMIT = 150
 const DEFAULT_LOOKBACK_DAYS = 14
 const MAX_LOOKBACK_DAYS = 30
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v2"
+const SCORE_VERSION = "v3"
 
 const SEC_FETCH_TIMEOUT_MS = 8000
 const TEXT_FETCH_TIMEOUT_MS = 8000
 const YAHOO_TIMEOUT_MS = 9000
+const CANDIDATE_SIGNAL_LOOKBACK_DAYS = 3
+const MIN_CANDIDATE_SCORE_FOR_TECHNICAL_SIGNAL = 8
 
 function normalizeFormType(formType: string | null) {
   const normalized = (formType || "")
@@ -1181,14 +1215,14 @@ function isSeniorRole(role: string | null) {
   )
 }
 
-function baseSignal(formType: string | null) {
+function baseSignal(formType: string | null): BaseSignalData | null {
   const normalized = normalizeFormType(formType)
 
   if (normalized === "4" || normalized === "4/A") {
     return {
       signal_type: "Insider Activity",
-      signal_source: "form4" as SignalSource,
-      bias: "Neutral" as const,
+      signal_source: "form4",
+      bias: "Neutral",
       score: 50,
       title: "Insider filing detected",
       summary: "A Form 4 filing was detected and parsed for insider activity.",
@@ -1203,8 +1237,8 @@ function baseSignal(formType: string | null) {
   ) {
     return {
       signal_type: "Activist / Ownership",
-      signal_source: "13d" as SignalSource,
-      bias: "Bullish" as const,
+      signal_source: "13d",
+      bias: "Bullish",
       score: 68,
       title: "Major ownership stake disclosed",
       summary: "A 13D-style filing may indicate a meaningful investor building influence.",
@@ -1219,8 +1253,8 @@ function baseSignal(formType: string | null) {
   ) {
     return {
       signal_type: "Institutional Ownership",
-      signal_source: "13g" as SignalSource,
-      bias: "Bullish" as const,
+      signal_source: "13g",
+      bias: "Bullish",
       score: 60,
       title: "Institutional ownership signal detected",
       summary: "A 13G-style filing can indicate large-holder accumulation.",
@@ -1230,8 +1264,8 @@ function baseSignal(formType: string | null) {
   if (normalized === "8-K" || normalized === "6-K") {
     return {
       signal_type: "Corporate Catalyst",
-      signal_source: "8k" as SignalSource,
-      bias: "Neutral" as const,
+      signal_source: "8k",
+      bias: "Neutral",
       score: 50,
       title: "Material corporate event filed",
       summary: "A current report filing can contain a meaningful event, agreement, or catalyst.",
@@ -1241,8 +1275,8 @@ function baseSignal(formType: string | null) {
   if (normalized === "10-Q" || normalized === "10-K") {
     return {
       signal_type: "Fundamental Update",
-      signal_source: "earnings" as SignalSource,
-      bias: "Neutral" as const,
+      signal_source: "earnings",
+      bias: "Neutral",
       score: 48,
       title: "Periodic financial filing detected",
       summary: "A periodic report was filed and may contain meaningful fundamental updates.",
@@ -1256,7 +1290,7 @@ function maybeCreateEarningsBreakoutBase(
   filing: RawFiling,
   price: PriceConfirmation,
   earnings: EarningsSignal
-) {
+): BaseSignalData | null {
   const form = normalizeFormType(filing.form_type)
   if (form) return null
 
@@ -1266,8 +1300,8 @@ function maybeCreateEarningsBreakoutBase(
   ) {
     return {
       signal_type: "Earnings Breakout",
-      signal_source: "earnings" as SignalSource,
-      bias: "Bullish" as const,
+      signal_source: "earnings",
+      bias: "Bullish",
       score: 64,
       title: "Earnings-backed breakout setup",
       summary:
@@ -1277,6 +1311,89 @@ function maybeCreateEarningsBreakoutBase(
   }
 
   return null
+}
+
+function buildSyntheticCandidateFiling(
+  candidate: CandidateUniverseSignalInput,
+  runTimestamp: string
+): RawFiling {
+  const ticker = normalizeTicker(candidate.ticker)
+  const screenedDate =
+    candidate.last_screened_at && !Number.isNaN(new Date(candidate.last_screened_at).getTime())
+      ? new Date(candidate.last_screened_at).toISOString()
+      : runTimestamp
+
+  const screenedDay = screenedDate.slice(0, 10)
+
+  return {
+    ticker,
+    company_name: candidate.name,
+    form_type: null,
+    filed_at: screenedDay,
+    filing_url: null,
+    accession_no: `TECH_${screenedDay}_${ticker}`,
+    cik: candidate.cik,
+    primary_doc: null,
+    fetched_at: screenedDate,
+  }
+}
+
+function maybeCreateCandidateTechnicalBase(
+  candidate: CandidateUniverseSignalInput,
+  price: PriceConfirmation,
+  earnings: EarningsSignal
+): BaseSignalData | null {
+  const candidateScore = Number(candidate.candidate_score || 0)
+  const included = candidate.included === true
+  const hasBreakout = candidate.breakout_20d === true || price.breakout20d || price.breakout52w
+  const hasTrend = candidate.above_sma_20 === true || price.trendAligned || price.above50dma
+  const strongVolume = (candidate.volume_ratio ?? 0) >= 2 || (price.volumeRatio ?? 0) >= 2
+  const strongMomentum =
+    (candidate.return_20d ?? 0) >= 18 ||
+    (candidate.return_5d ?? 0) >= 6 ||
+    (price.return20d ?? 0) >= 18 ||
+    (price.return5d ?? 0) >= 6
+
+  const technicalSetup =
+    included ||
+    candidateScore >= MIN_CANDIDATE_SCORE_FOR_TECHNICAL_SIGNAL ||
+    (hasBreakout && hasTrend) ||
+    (strongVolume && strongMomentum)
+
+  if (!technicalSetup) return null
+
+  let baseScore = 58
+  if (candidateScore >= 11) baseScore = 74
+  else if (candidateScore >= 9) baseScore = 68
+  else if (candidateScore >= 8) baseScore = 64
+
+  if (hasBreakout) baseScore += 4
+  if (strongVolume) baseScore += 3
+  if (earnings.hasSignal) baseScore += 3
+
+  const title =
+    candidateScore >= 11 || (included && strongMomentum)
+      ? "Strong technical buy setup detected"
+      : "Technical buy setup detected"
+
+  const summaryParts = uniqueStrings([
+    candidate.screen_reason,
+    hasBreakout ? "Breakout behavior is present" : null,
+    hasTrend ? "Trend support is intact" : null,
+    strongVolume ? "Volume is elevated" : null,
+    earnings.hasSignal ? "earnings data also looks supportive" : null,
+  ])
+
+  return {
+    signal_type: "Technical Candidate",
+    signal_source: "breakout",
+    bias: "Bullish",
+    score: clamp(baseScore, 45, 85),
+    title,
+    summary: summaryParts.length
+      ? `Candidate screen is constructive: ${summaryParts.join(", ")}.`
+      : "Candidate screen and market action point to a constructive technical setup.",
+  }
 }
 
 function getStrengthBucket(
@@ -1300,6 +1417,7 @@ function deriveSignalCategory(params: {
   forwardPe: number | null
   catalystType: string | null
   earnings: EarningsSignal
+  candidate: CandidateUniverseSignalInput | null
 }): SignalCategory {
   const form = normalizeFormType(params.formType)
   const normalizedType = params.signalType.toLowerCase()
@@ -1318,8 +1436,11 @@ function deriveSignalCategory(params: {
   }
 
   if (
+    normalizedType.includes("technical") ||
+    normalizedType.includes("breakout") ||
+    params.candidate?.included === true ||
     params.price.confirmed &&
-    ((params.price.return5d ?? 0) >= 5 || params.price.breakout20d || params.price.breakout52w)
+      ((params.price.return5d ?? 0) >= 5 || params.price.breakout20d || params.price.breakout52w)
   ) {
     return "Momentum"
   }
@@ -1354,6 +1475,7 @@ function buildSignalTags(params: {
   snapshot: TickerSnapshot
   earnings: EarningsSignal
   catalystType: string | null
+  candidate: CandidateUniverseSignalInput | null
 }) {
   const tags: string[] = []
 
@@ -1397,6 +1519,15 @@ function buildSignalTags(params: {
   if ((params.earnings.surprisePct ?? 0) >= 10) tags.push("eps-beat")
   if ((params.earnings.revenueGrowthPct ?? 0) >= 15) tags.push("revenue-growth")
   if (params.earnings.guidanceFlag) tags.push("guidance-support")
+
+  if (params.candidate) {
+    tags.push("candidate-screen")
+    if (params.candidate.included) tags.push("candidate-included")
+    if ((params.candidate.candidate_score ?? 0) >= 11) tags.push("candidate-strong-buy")
+    else if ((params.candidate.candidate_score ?? 0) >= 8) tags.push("candidate-buy")
+    if ((params.candidate.volume_ratio ?? 0) >= 2) tags.push("screen-heavy-volume")
+    if ((params.candidate.return_20d ?? 0) >= 15) tags.push("screen-momentum")
+  }
 
   if (params.catalystType) tags.push(`8k:${params.catalystType}`)
   if (isBearish8kCatalyst(params.catalystType)) {
@@ -1597,6 +1728,33 @@ function scoreValuation(snapshot: TickerSnapshot) {
   return score
 }
 
+function scoreCandidateTechnical(candidate: CandidateUniverseSignalInput | null) {
+  if (!candidate) return 0
+
+  let score = 0
+  const candidateScore = Number(candidate.candidate_score || 0)
+
+  if (candidate.included) score += 10
+  if (candidateScore >= 12) score += 14
+  else if (candidateScore >= 10) score += 10
+  else if (candidateScore >= 8) score += 6
+  else if (candidateScore >= 6) score += 2
+
+  if ((candidate.return_5d ?? 0) >= 6) score += 4
+  else if ((candidate.return_5d ?? 0) >= 3) score += 2
+
+  if ((candidate.return_20d ?? 0) >= 18) score += 7
+  else if ((candidate.return_20d ?? 0) >= 10) score += 4
+
+  if ((candidate.volume_ratio ?? 0) >= 2) score += 5
+  else if ((candidate.volume_ratio ?? 0) >= 1.5) score += 3
+
+  if (candidate.breakout_20d) score += 6
+  if (candidate.above_sma_20) score += 3
+
+  return score
+}
+
 function ageAdjustment(ageDays: number | null) {
   if (ageDays === null) return 0
   if (ageDays <= 1) return 6
@@ -1641,16 +1799,15 @@ function getValuationFlavor(
 
 function applyEnhancements(
   filing: RawFiling,
-  base: ReturnType<typeof baseSignal> | ReturnType<typeof maybeCreateEarningsBreakoutBase>,
+  base: BaseSignalData,
   insider: InsiderParseResult,
   price: PriceConfirmation,
   snapshot: TickerSnapshot,
   clusterInfo: ClusterInfo | null,
   earnings: EarningsSignal,
-  catalystType: string | null
+  catalystType: string | null,
+  candidate: CandidateUniverseSignalInput | null
 ): EnhancedSignal | null {
-  if (!base) return null
-
   let bias: "Bullish" | "Neutral" | "Bearish" = base.bias
   let title = base.title
   let summary = base.summary
@@ -1665,7 +1822,7 @@ function applyEnhancements(
   const reasons: string[] = []
   const scoreCapsApplied: string[] = []
 
-  applyBreakdown(breakdown, reasons, "base", base.score, "Base filing signal")
+  applyBreakdown(breakdown, reasons, "base", base.score, "Base signal")
 
   const form = normalizeFormType(filing.form_type)
 
@@ -1737,6 +1894,50 @@ function applyEnhancements(
       summary =
         "Form 4 activity was detected, but no clear recent buy or sell code could be extracted from the filing."
       insiderSignalFlavor = "Other"
+    }
+  }
+
+  if (source === "breakout" && candidate) {
+    const candidateScore = scoreCandidateTechnical(candidate)
+    applyBreakdown(
+      breakdown,
+      reasons,
+      "candidate_screen",
+      candidateScore,
+      candidate.included
+        ? "Candidate screen approved the setup"
+        : "Technical candidate screen support"
+    )
+
+    if (candidate.included) {
+      title =
+        (candidate.candidate_score ?? 0) >= 11
+          ? "Strong buy candidate setup"
+          : "Buy candidate setup"
+      summary =
+        candidate.screen_reason
+          ? `The technical candidate screen is constructive: ${candidate.screen_reason}.`
+          : "The technical candidate screen is constructive."
+
+      if ((candidate.candidate_score ?? 0) >= 11) {
+        applyBreakdown(breakdown, reasons, "candidate_tier_bonus", 6, "Strong buy tier")
+      } else {
+        applyBreakdown(breakdown, reasons, "candidate_tier_bonus", 3, "Buy tier")
+      }
+
+      bias = "Bullish"
+    }
+
+    if ((candidate.volume_ratio ?? 0) >= 2) {
+      applyBreakdown(breakdown, reasons, "candidate_volume", 4, "Elevated screen volume")
+    }
+
+    if ((candidate.return_20d ?? 0) >= 15) {
+      applyBreakdown(breakdown, reasons, "candidate_momentum", 5, "Strong screened momentum")
+    }
+
+    if (candidate.breakout_20d) {
+      applyBreakdown(breakdown, reasons, "candidate_breakout", 5, "Candidate breakout")
     }
   }
 
@@ -1841,7 +2042,7 @@ function applyEnhancements(
   const positivePillars = [
     (breakdown.insider_buying || 0) > 0 || (breakdown.repeat_buying || 0) > 0,
     (breakdown.momentum || 0) > 0 || (breakdown.relative_strength || 0) > 0,
-    (breakdown.earnings || 0) > 0 || (breakdown.catalyst || 0) > 0,
+    (breakdown.earnings || 0) > 0 || (breakdown.catalyst || 0) > 0 || (breakdown.candidate_screen || 0) > 0,
     (breakdown.valuation || 0) > 0,
   ].filter(Boolean).length
 
@@ -1861,7 +2062,8 @@ function applyEnhancements(
   if (
     (price.relativeStrength20d ?? 0) <= -20 &&
     !((clusterInfo?.clusterSize ?? 0) >= 2) &&
-    !catalystType
+    !catalystType &&
+    source !== "breakout"
   ) {
     const target = Math.min(preCapScore, 65)
     const capAdjustment = target - preCapScore
@@ -1915,6 +2117,7 @@ function applyEnhancements(
     forwardPe: snapshot.forwardPe,
     catalystType,
     earnings,
+    candidate,
   })
 
   const tags = buildSignalTags({
@@ -1927,6 +2130,7 @@ function applyEnhancements(
     snapshot,
     earnings,
     catalystType,
+    candidate,
   })
 
   const strengthBucket = getStrengthBucket(bias, score)
@@ -1949,7 +2153,7 @@ function applyEnhancements(
     insiderSignalFlavor,
     ageDays,
     score_breakdown: breakdown,
-    signal_reasons: uniqueStrings(reasons).slice(0, 10),
+    signal_reasons: uniqueStrings(reasons).slice(0, 12),
     score_caps_applied: uniqueStrings(scoreCapsApplied),
     stacked_signal_count: 1,
     freshness_bucket: freshnessBucket,
@@ -2031,7 +2235,7 @@ function getMinimumScore(
 
   if (bias === "Bearish") return 0
   if (source === "earnings") return 45
-  if (source === "breakout") return 58
+  if (source === "breakout") return 55
   if (form === "8-K" || form === "6-K") return 42
   if (form === "10-Q" || form === "10-K") return 42
   if (form.includes("13D")) return 50
@@ -2270,6 +2474,10 @@ export async function GET(request: Request) {
     cutoffDate.setDate(cutoffDate.getDate() - lookbackDays)
     const cutoffDateString = toIsoDateString(cutoffDate)
 
+    const candidateCutoffDate = new Date()
+    candidateCutoffDate.setDate(candidateCutoffDate.getDate() - CANDIDATE_SIGNAL_LOOKBACK_DAYS)
+    const candidateCutoffDateString = candidateCutoffDate.toISOString()
+
     const runDate = toIsoDateString(new Date())
     const runTimestamp = new Date().toISOString()
 
@@ -2287,28 +2495,58 @@ export async function GET(request: Request) {
       tickerHistoryInserted: 0,
       tickerCurrentBuiltFromSignalsTable: 0,
       unsupportedForms: {},
+      candidateRowsLoaded: 0,
+      candidateTechnicalSignalsBuilt: 0,
+      candidateTechnicalSignalsInserted: 0,
     }
 
-    const { data: filings, error } = await supabase
-      .from("raw_filings")
-      .select(
-        "ticker, company_name, form_type, filed_at, filing_url, accession_no, cik, primary_doc, fetched_at"
-      )
-      .gte("filed_at", cutoffDateString)
-      .order("filed_at", { ascending: false })
-      .limit(limit)
+    const [{ data: filings, error }, { data: candidateRows, error: candidateError }] =
+      await Promise.all([
+        supabase
+          .from("raw_filings")
+          .select(
+            "ticker, company_name, form_type, filed_at, filing_url, accession_no, cik, primary_doc, fetched_at"
+          )
+          .gte("filed_at", cutoffDateString)
+          .order("filed_at", { ascending: false })
+          .limit(limit),
+        supabase
+          .from("candidate_universe")
+          .select(
+            "ticker, cik, name, price, market_cap, avg_volume_20d, avg_dollar_volume_20d, return_5d, return_20d, volume_ratio, breakout_20d, above_sma_20, candidate_score, included, screen_reason, last_screened_at"
+          )
+          .or(
+            `included.eq.true,candidate_score.gte.${MIN_CANDIDATE_SCORE_FOR_TECHNICAL_SIGNAL}`
+          )
+          .gte("last_screened_at", candidateCutoffDateString)
+          .order("candidate_score", { ascending: false })
+          .limit(limit),
+      ])
 
     if (error) {
       return Response.json({ ok: false, error: error.message }, { status: 500 })
     }
 
+    if (candidateError) {
+      return Response.json({ ok: false, error: candidateError.message }, { status: 500 })
+    }
+
     diagnostics.scanned = filings?.length || 0
+    diagnostics.candidateRowsLoaded = candidateRows?.length || 0
 
     const snapshotCache = new Map<string, TickerSnapshot>()
     const priceCache = new Map<string, PriceConfirmation>()
     const earningsCache = new Map<string, EarningsSignal>()
     const catalystCache = new Map<string, string | null>()
+    const candidateByTicker = new Map<string, CandidateUniverseSignalInput>()
     const prepared: PreparedSignal[] = []
+    const preparedKeys = new Set<string>()
+
+    for (const candidate of (candidateRows || []) as CandidateUniverseSignalInput[]) {
+      const ticker = normalizeTicker(candidate.ticker)
+      if (!ticker) continue
+      candidateByTicker.set(ticker, { ...candidate, ticker })
+    }
 
     for (const filing of (filings || []) as RawFiling[]) {
       const ticker = normalizeTicker(filing.ticker)
@@ -2380,7 +2618,59 @@ export async function GET(request: Request) {
         snapshot,
         earnings,
         catalystType,
+        candidate: candidateByTicker.get(ticker) ?? null,
       })
+
+      preparedKeys.add(`filing:${filing.accession_no}`)
+    }
+
+    for (const candidate of (candidateRows || []) as CandidateUniverseSignalInput[]) {
+      const ticker = normalizeTicker(candidate.ticker)
+      if (!ticker) continue
+
+      let price = priceCache.get(ticker)
+      if (!price) {
+        price = await getPriceConfirmation(ticker)
+        priceCache.set(ticker, price)
+      }
+
+      let snapshot = snapshotCache.get(ticker)
+      if (!snapshot) {
+        snapshot = await getTickerSnapshot(ticker)
+        snapshotCache.set(ticker, snapshot)
+      }
+
+      let earnings = earningsCache.get(ticker)
+      if (!earnings) {
+        earnings = await getEarningsSignal(ticker)
+        earningsCache.set(ticker, earnings)
+      }
+
+      const syntheticFiling = buildSyntheticCandidateFiling(candidate, runTimestamp)
+      const base = maybeCreateCandidateTechnicalBase(candidate, price, earnings)
+      if (!base) continue
+
+      const preparedKey = `candidate:${syntheticFiling.accession_no}`
+      if (preparedKeys.has(preparedKey)) continue
+
+      prepared.push({
+        filing: syntheticFiling,
+        base,
+        insider: {
+          action: null,
+          shares: null,
+          avgPrice: null,
+          role: null,
+          insiderName: null,
+        },
+        price,
+        snapshot,
+        earnings,
+        catalystType: null,
+        candidate,
+      })
+
+      preparedKeys.add(preparedKey)
     }
 
     diagnostics.preparedCount = prepared.length
@@ -2400,7 +2690,8 @@ export async function GET(request: Request) {
         item.snapshot,
         clusterInfo,
         item.earnings,
-        item.catalystType
+        item.catalystType,
+        item.candidate
       )
 
       if (!enhanced) {
@@ -2421,7 +2712,7 @@ export async function GET(request: Request) {
 
       const signalRow = {
         ticker: item.filing.ticker,
-        company_name: item.filing.company_name || item.snapshot.companyName || null,
+        company_name: item.filing.company_name || item.snapshot.companyName || item.candidate?.name || null,
         business_description: item.snapshot.businessDescription,
         pe_ratio: round2(item.snapshot.peRatio),
         pe_forward: round2(item.snapshot.forwardPe),
@@ -2452,15 +2743,15 @@ export async function GET(request: Request) {
         price_return_5d: round2(item.price.return5d),
         price_return_20d: round2(item.price.return20d),
         volume_ratio: round2(item.price.volumeRatio),
-        breakout_20d: item.price.breakout20d,
+        breakout_20d: item.price.breakout20d || item.candidate?.breakout_20d === true,
         breakout_52w: item.price.breakout52w,
         above_50dma: item.price.above50dma,
-        trend_aligned: item.price.trendAligned,
-        price_confirmed: item.price.confirmed,
+        trend_aligned: item.price.trendAligned || item.candidate?.above_sma_20 === true,
+        price_confirmed: item.price.confirmed || item.candidate?.included === true,
         earnings_surprise_pct: round2(item.earnings.surprisePct),
         revenue_growth_pct: round2(item.earnings.revenueGrowthPct),
         guidance_flag: item.earnings.guidanceFlag,
-        market_cap: roundWhole(item.snapshot.marketCap),
+        market_cap: roundWhole(item.snapshot.marketCap ?? item.candidate?.market_cap),
         sector: item.snapshot.sector,
         industry: item.snapshot.industry,
         relative_strength_20d: round2(item.price.relativeStrength20d),
@@ -2479,6 +2770,10 @@ export async function GET(request: Request) {
       }
 
       signalRows.push(signalRow)
+
+      if (enhanced.signal_source === "breakout") {
+        diagnostics.candidateTechnicalSignalsBuilt += 1
+      }
 
       historyRows.push({
         ...signalRow,
@@ -2508,6 +2803,7 @@ export async function GET(request: Request) {
     }
 
     diagnostics.filingSignalsInserted = signalRows.length
+    diagnostics.candidateTechnicalSignalsInserted = diagnostics.candidateTechnicalSignalsBuilt
 
     if (historyRows.length > 0) {
       const { error: historyError } = await supabase
@@ -2605,27 +2901,37 @@ export async function GET(request: Request) {
       .delete()
       .lt("score_date", retentionCutoffString)
 
-    const [{ count: buyCount }, { count: riskCount }, { count: watchCount }] =
-      await Promise.all([
-        supabase
-          .from("ticker_scores_current")
-          .select("*", { count: "exact", head: true })
-          .gte("app_score", 70),
-        supabase
-          .from("ticker_scores_current")
-          .select("*", { count: "exact", head: true })
-          .lte("app_score", 30),
-        supabase
-          .from("ticker_scores_current")
-          .select("*", { count: "exact", head: true })
-          .gt("app_score", 30)
-          .lt("app_score", 70),
-      ])
+    const [
+      { count: strongBuyCount },
+      { count: buyCount },
+      { count: riskCount },
+      { count: watchCount },
+    ] = await Promise.all([
+      supabase
+        .from("ticker_scores_current")
+        .select("*", { count: "exact", head: true })
+        .gte("app_score", 85),
+      supabase
+        .from("ticker_scores_current")
+        .select("*", { count: "exact", head: true })
+        .gte("app_score", 70),
+      supabase
+        .from("ticker_scores_current")
+        .select("*", { count: "exact", head: true })
+        .lte("app_score", 30),
+      supabase
+        .from("ticker_scores_current")
+        .select("*", { count: "exact", head: true })
+        .gt("app_score", 30)
+        .lt("app_score", 70),
+    ])
 
     return Response.json({
       ok: true,
       scanned: filings?.length || 0,
+      candidateRowsLoaded: candidateRows?.length || 0,
       filingSignalsInserted: signalRows.length,
+      candidateTechnicalSignalsInserted: diagnostics.candidateTechnicalSignalsInserted,
       historyInserted: historyRows.length,
       tickerCurrentInserted: tickerCurrentRows.length,
       tickerHistoryInserted: tickerHistoryRows.length,
@@ -2635,12 +2941,13 @@ export async function GET(request: Request) {
       scoreVersion: SCORE_VERSION,
       retentionCleanup: retentionError ? retentionError.message : "ok",
       tickerRetentionCleanup: tickerRetentionError ? tickerRetentionError.message : "ok",
+      strongBuyCount: strongBuyCount ?? 0,
       buyCount: buyCount ?? 0,
       riskCount: riskCount ?? 0,
       watchCount: watchCount ?? 0,
       diagnostics,
       message:
-        "Signals generated with filing rows, broader form support, ticker current scores built from persisted signals, ticker score history, score breakdowns, time decay, and ingest diagnostics.",
+        "Signals generated from both filings and technical candidate setups, with ticker-level scoring, history, score breakdowns, and retention cleanup.",
     })
   } catch (error: any) {
     return Response.json(

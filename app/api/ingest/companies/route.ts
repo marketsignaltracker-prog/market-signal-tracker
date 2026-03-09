@@ -25,9 +25,11 @@ const UPSERT_CHUNK_SIZE = 500
 
 function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = []
+
   for (let i = 0; i < items.length; i += size) {
     chunks.push(items.slice(i, i + size))
   }
+
   return chunks
 }
 
@@ -39,7 +41,7 @@ function normalizeName(name: string | null | undefined) {
   return (name || '').trim()
 }
 
-async function fetchSecCompanies(): Promise<CompanyRow[]> {
+async function fetchSecCompanies(refreshTimestamp: string): Promise<CompanyRow[]> {
   const response = await fetch(SEC_COMPANIES_URL, {
     headers: {
       'User-Agent': SEC_USER_AGENT,
@@ -54,8 +56,6 @@ async function fetchSecCompanies(): Promise<CompanyRow[]> {
 
   const json = await response.json()
 
-  const now = new Date().toISOString()
-
   const companies = Object.values(json as Record<string, SecCompany>)
     .map((item) => {
       const ticker = normalizeTicker(item.ticker)
@@ -68,8 +68,8 @@ async function fetchSecCompanies(): Promise<CompanyRow[]> {
         name,
         is_active: true,
         source: 'sec_company_tickers',
-        last_seen_at: now,
-        updated_at: now,
+        last_seen_at: refreshTimestamp,
+        updated_at: refreshTimestamp,
       } satisfies CompanyRow
     })
     .filter((item) => item.ticker && item.name && item.cik)
@@ -101,7 +101,8 @@ export async function GET() {
   try {
     const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-    const companies = await fetchSecCompanies()
+    const refreshStartedAt = new Date().toISOString()
+    const companies = await fetchSecCompanies(refreshStartedAt)
 
     if (!companies.length) {
       return Response.json(
@@ -126,8 +127,6 @@ export async function GET() {
       totalUpserted += chunk.length
     }
 
-    const refreshStartedAt = new Date().toISOString()
-
     const { error: staleError } = await supabase
       .from('companies')
       .update({
@@ -137,7 +136,9 @@ export async function GET() {
       .lt('last_seen_at', refreshStartedAt)
 
     if (staleError) {
-      throw new Error(`Failed marking stale companies inactive: ${staleError.message}`)
+      throw new Error(
+        `Failed marking stale companies inactive: ${staleError.message}`
+      )
     }
 
     return Response.json({
@@ -145,6 +146,7 @@ export async function GET() {
       totalFetched: companies.length,
       totalUpserted,
       chunks: chunks.length,
+      refreshStartedAt,
       message: 'All SEC companies imported and synced into Supabase.',
     })
   } catch (error: any) {

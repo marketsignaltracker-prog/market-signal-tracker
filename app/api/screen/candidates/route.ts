@@ -48,6 +48,11 @@ const DEFAULT_BATCH = 100
 const RETENTION_DAYS = 30
 const REQUEST_DELAY_MS = 120
 
+const MIN_PRICE = 5
+const MIN_AVG_VOLUME_20D = 500_000
+const MIN_AVG_DOLLAR_VOLUME_20D = 10_000_000
+const MIN_MARKET_CAP = 300_000_000
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -101,6 +106,31 @@ function calcPercentChange(current: number, prior: number) {
 
 function snapshotDateString(date: Date) {
   return date.toISOString().slice(0, 10)
+}
+
+function buildCandidateReason(params: {
+  included: boolean
+  strongBuy: boolean
+  buy: boolean
+  reasons: string[]
+  exclusionReason?: string
+}) {
+  if (!params.included) {
+    if (params.exclusionReason) return params.exclusionReason
+    return params.reasons.length
+      ? `Watchlist only: ${params.reasons.join(", ")}`
+      : "No screen factors passed"
+  }
+
+  if (params.strongBuy) {
+    return `Strong buy candidate: ${params.reasons.join(", ")}`
+  }
+
+  if (params.buy) {
+    return `Buy candidate: ${params.reasons.join(", ")}`
+  }
+
+  return params.reasons.join(", ") || "No screen factors passed"
 }
 
 export async function GET(request: Request) {
@@ -367,8 +397,10 @@ export async function GET(request: Request) {
 
         const latest = clean[clean.length - 1]
         const fiveAgo = clean[clean.length - 6]
+        const tenAgo = clean[clean.length - 11]
         const twentyAgo = clean[clean.length - 21]
         const prior20 = clean.slice(-21, -1)
+        const prior10 = clean.slice(-11, -1)
 
         const latestClose = Number(latest.close || 0)
         const latestVolume = Number(latest.volume || 0)
@@ -378,24 +410,37 @@ export async function GET(request: Request) {
           prior20.map((c) => Number(c.close || 0) * Number(c.volume || 0))
         )
         const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
+        const high10 = Math.max(...prior10.map((c) => Number(c.high || 0)))
         const sma20 = avg(prior20.map((c) => Number(c.close || 0)))
+        const sma10 = avg(prior10.map((c) => Number(c.close || 0)))
         const return5d = calcPercentChange(latestClose, Number(fiveAgo?.close || 0))
+        const return10d = calcPercentChange(latestClose, Number(tenAgo?.close || 0))
         const return20d = calcPercentChange(latestClose, Number(twentyAgo?.close || 0))
         const volumeRatio = avgVolume20d > 0 ? latestVolume / avgVolume20d : 0
         const breakout20d = latestClose > high20
+        const nearHigh20 = high20 > 0 ? latestClose >= high20 * 0.97 : false
+        const breakout10d = latestClose > high10
         const aboveSma20 = latestClose > sma20
+        const shortTermTrendUp = sma10 > sma20
         const marketCap = Number((quote as any)?.marketCap || 0)
 
-        const passesPrice = latestClose >= 10
-        const passesVolume = avgVolume20d >= 750_000
-        const passesDollarVolume = avgDollarVolume20d >= 20_000_000
-        const passesMarketCap = marketCap >= 1_000_000_000
+        const passesPrice = latestClose >= MIN_PRICE
+        const passesVolume = avgVolume20d >= MIN_AVG_VOLUME_20D
+        const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
+        const passesMarketCap = marketCap >= MIN_MARKET_CAP
 
-        const hasMomentum5d = return5d >= 4
+        const hasMomentum5d = return5d >= 3
+        const hasStrongMomentum5d = return5d >= 6
+        const hasMomentum10d = return10d >= 6
         const hasMomentum20d = return20d >= 10
-        const hasVolumeExpansion = volumeRatio >= 1.75
+        const hasStrongMomentum20d = return20d >= 18
+        const hasVolumeExpansion = volumeRatio >= 1.5
+        const hasStrongVolumeExpansion = volumeRatio >= 2
         const hasBreakout = breakout20d
+        const hasBreakout10d = breakout10d
         const hasTrend = aboveSma20
+        const isNearHigh = nearHigh20
+        const trendAcceleration = shortTermTrendUp
 
         let score = 0
         if (passesPrice) score += 1
@@ -403,28 +448,74 @@ export async function GET(request: Request) {
         if (passesDollarVolume) score += 2
         if (passesMarketCap) score += 1
         if (hasMomentum5d) score += 1
+        if (hasStrongMomentum5d) score += 1
+        if (hasMomentum10d) score += 1
         if (hasMomentum20d) score += 2
+        if (hasStrongMomentum20d) score += 1
         if (hasVolumeExpansion) score += 1
+        if (hasStrongVolumeExpansion) score += 1
         if (hasBreakout) score += 2
+        if (hasBreakout10d) score += 1
         if (hasTrend) score += 1
+        if (isNearHigh) score += 1
+        if (trendAcceleration) score += 1
 
-        const included =
+        const catalystCount = [
+          hasMomentum5d,
+          hasMomentum10d,
+          hasMomentum20d,
+          hasVolumeExpansion,
+          hasBreakout,
+          hasBreakout10d,
+          hasTrend,
+          isNearHigh,
+          trendAcceleration,
+        ].filter(Boolean).length
+
+        const buyCandidate =
           passesPrice &&
           passesDollarVolume &&
           passesMarketCap &&
-          score >= 6 &&
-          (hasMomentum5d || hasMomentum20d || hasVolumeExpansion || hasBreakout)
+          score >= 8 &&
+          catalystCount >= 3 &&
+          (hasMomentum10d || hasMomentum20d || hasBreakout || hasVolumeExpansion) &&
+          hasTrend
+
+        const strongBuyCandidate =
+          buyCandidate &&
+          passesVolume &&
+          score >= 11 &&
+          catalystCount >= 5 &&
+          (hasStrongMomentum5d || hasStrongMomentum20d || hasStrongVolumeExpansion) &&
+          (hasBreakout || isNearHigh)
+
+        const included = buyCandidate || strongBuyCandidate
 
         const reasons: string[] = []
-        if (passesPrice) reasons.push("price")
-        if (passesVolume) reasons.push("volume")
-        if (passesDollarVolume) reasons.push("dollar volume")
+        if (passesPrice) reasons.push(`price >= $${MIN_PRICE}`)
+        if (passesVolume) reasons.push("20d avg volume")
+        if (passesDollarVolume) reasons.push("20d dollar volume")
         if (passesMarketCap) reasons.push("market cap")
         if (hasMomentum5d) reasons.push("5d momentum")
+        if (hasStrongMomentum5d) reasons.push("strong 5d momentum")
+        if (hasMomentum10d) reasons.push("10d momentum")
         if (hasMomentum20d) reasons.push("20d momentum")
+        if (hasStrongMomentum20d) reasons.push("strong 20d momentum")
         if (hasVolumeExpansion) reasons.push("volume expansion")
+        if (hasStrongVolumeExpansion) reasons.push("strong volume expansion")
         if (hasBreakout) reasons.push("20d breakout")
+        if (hasBreakout10d) reasons.push("10d breakout")
         if (hasTrend) reasons.push("above 20d average")
+        if (isNearHigh) reasons.push("near 20d high")
+        if (trendAcceleration) reasons.push("short-term trend acceleration")
+
+        let exclusionReason = ""
+        if (!passesPrice) exclusionReason = `Below $${MIN_PRICE} minimum price`
+        else if (!passesDollarVolume) exclusionReason = "Below minimum dollar volume"
+        else if (!passesMarketCap) exclusionReason = "Below minimum market cap"
+        else if (!hasTrend) exclusionReason = "Below 20d average"
+        else if (score < 8) exclusionReason = "Score below buy threshold"
+        else if (catalystCount < 3) exclusionReason = "Not enough technical catalysts"
 
         const row: CandidateUniverseRow = {
           ticker,
@@ -445,7 +536,13 @@ export async function GET(request: Request) {
           passes_market_cap: passesMarketCap,
           candidate_score: score,
           included,
-          screen_reason: reasons.join(", ") || "No screen factors passed",
+          screen_reason: buildCandidateReason({
+            included,
+            strongBuy: strongBuyCandidate,
+            buy: buyCandidate,
+            reasons,
+            exclusionReason,
+          }),
           last_screened_at: nowIso,
           updated_at: nowIso,
         }
@@ -495,9 +592,11 @@ export async function GET(request: Request) {
           ok: true,
           included,
           score,
-          reason: reasons.join(", ") || "No screen factors passed",
+          tier: strongBuyCandidate ? "strong_buy" : buyCandidate ? "buy" : "watchlist",
+          reason: row.screen_reason,
           price: round2(latestClose),
           return5d: round2(return5d),
+          return10d: round2(return10d),
           return20d: round2(return20d),
           volumeRatio: round2(volumeRatio),
         })
@@ -554,6 +653,12 @@ export async function GET(request: Request) {
       retentionCleanup: retentionError ? retentionError.message : "ok",
       retainedDays: RETENTION_DAYS,
       screenedOn,
+      thresholds: {
+        minPrice: MIN_PRICE,
+        minAvgVolume20d: MIN_AVG_VOLUME_20D,
+        minAvgDollarVolume20d: MIN_AVG_DOLLAR_VOLUME_20D,
+        minMarketCap: MIN_MARKET_CAP,
+      },
       results,
     })
   } catch (error: any) {
