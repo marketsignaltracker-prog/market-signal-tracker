@@ -47,7 +47,7 @@ function getBaseUrl() {
   return appUrl.replace(/\/$/, "")
 }
 
-function getSupabaseAdmin() {
+function getSupabaseAdmin(): any {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
@@ -123,7 +123,7 @@ async function runStep(baseUrl: string, path: string): Promise<StepResult> {
   }
 }
 
-async function getPipelineState(supabase: ReturnType<typeof createClient>) {
+async function getPipelineState(supabase: any): Promise<PipelineStateRow> {
   const pipelineStateTable = supabase.from("pipeline_state") as any
 
   const { data, error } = await pipelineStateTable
@@ -171,9 +171,9 @@ async function getPipelineState(supabase: ReturnType<typeof createClient>) {
 }
 
 async function patchPipelineState(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   patch: Partial<PipelineStateRow>
-) {
+): Promise<PipelineStateRow> {
   const pipelineStateTable = supabase.from("pipeline_state") as any
 
   const { data, error } = await pipelineStateTable
