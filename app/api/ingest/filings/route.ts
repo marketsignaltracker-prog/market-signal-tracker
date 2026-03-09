@@ -251,11 +251,26 @@ function normalizeTicker(ticker: string | null | undefined) {
 }
 
 function normalizeFormType(formType: string | null | undefined) {
-  return (formType || "")
+  const normalized = (formType || "")
     .trim()
     .toUpperCase()
     .replace(/\s+/g, " ")
     .replace(/^FORM\s+/i, "")
+
+  if (normalized === "8K") return "8-K"
+  if (normalized === "6K") return "6-K"
+  if (normalized === "4A" || normalized === "4 /A") return "4/A"
+  if (normalized === "13DA" || normalized === "SCHEDULE 13D/A") return "13D/A"
+  if (normalized === "13GA" || normalized === "SCHEDULE 13G/A") return "13G/A"
+  if (normalized === "SCHEDULE 13D") return "13D"
+  if (normalized === "SCHEDULE 13G") return "13G"
+  if (normalized === "SC13D") return "SC 13D"
+  if (normalized === "SC13D/A") return "SC 13D/A"
+  if (normalized === "SC13G") return "SC 13G"
+  if (normalized === "SC13G/A") return "SC 13G/A"
+  if (normalized === "SC14D9" || normalized === "SC14D9C") return "SC 14D9"
+
+  return normalized
 }
 
 function padCik(cik: string | number | null | undefined) {

@@ -97,6 +97,8 @@ type SignalSource =
   | "8k"
   | "earnings"
   | "breakout"
+  | "form144"
+  | "proxy"
 
 type StrengthBucket = "Strong Buy" | "Buy" | "Neutral" | "Risk"
 type ScoreBreakdown = Record<string, number>
@@ -198,7 +200,7 @@ const SEC_FETCH_TIMEOUT_MS = 8000
 const TEXT_FETCH_TIMEOUT_MS = 8000
 const YAHOO_TIMEOUT_MS = 9000
 const CANDIDATE_SIGNAL_LOOKBACK_DAYS = 3
-const MIN_CANDIDATE_SCORE_FOR_TECHNICAL_SIGNAL = 8
+const MIN_CANDIDATE_SCORE_FOR_TECHNICAL_SIGNAL = 7
 
 function normalizeFormType(formType: string | null) {
   const normalized = (formType || "")
@@ -210,12 +212,15 @@ function normalizeFormType(formType: string | null) {
   if (normalized === "8K") return "8-K"
   if (normalized === "6K") return "6-K"
   if (normalized === "4A" || normalized === "4 /A") return "4/A"
-  if (normalized === "13DA") return "13D/A"
-  if (normalized === "13GA") return "13G/A"
+  if (normalized === "13DA" || normalized === "SCHEDULE 13D/A") return "13D/A"
+  if (normalized === "13GA" || normalized === "SCHEDULE 13G/A") return "13G/A"
+  if (normalized === "SCHEDULE 13D") return "13D"
+  if (normalized === "SCHEDULE 13G") return "13G"
   if (normalized === "SC13D") return "SC 13D"
   if (normalized === "SC13D/A") return "SC 13D/A"
   if (normalized === "SC13G") return "SC 13G"
   if (normalized === "SC13G/A") return "SC 13G/A"
+  if (normalized === "SC14D9" || normalized === "SC14D9C") return "SC 14D9"
 
   return normalized
 }
@@ -829,7 +834,14 @@ function classify8kEvent(text: string | null): string | null {
     ],
     [
       "legal",
-      [/\binvestigation\b/, /\blitigation\b/, /\bsubpoena\b/, /\bsettlement\b/, /\bdepartment of justice\b/, /\bsec\b/],
+      [
+        /\binvestigation\b/,
+        /\blitigation\b/,
+        /\bsubpoena\b/,
+        /\bsettlement\b/,
+        /\bdepartment of justice\b/,
+        /\bsec\b/,
+      ],
     ],
     ["bankruptcy", [/\bbankruptcy\b/, /\bchapter 11\b/, /\binsolvency\b/, /\bgoing concern\b/]],
     ["asset-sale", [/\basset sale\b/, /\bdivestiture\b/, /\bsale of assets\b/]],
@@ -936,8 +948,7 @@ async function getPriceConfirmation(ticker: string): Promise<PriceConfirmation> 
         const avg20Volume = prior20.reduce((s, c) => s + Number(c.volume || 0), 0) / prior20.length
 
         const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
-        const high52w =
-          prior252.length > 0 ? Math.max(...prior252.map((c) => Number(c.high || 0))) : high20
+        const high52w = prior252.length > 0 ? Math.max(...prior252.map((c) => Number(c.high || 0))) : high20
 
         const avg50Close = prior50.reduce((s, c) => s + Number(c.close || 0), 0) / prior50.length
 
@@ -1073,10 +1084,8 @@ async function getTickerSnapshot(ticker: string): Promise<TickerSnapshot> {
           safeNumber((summary.price as any)?.marketCap) ??
           safeNumber((quote as any)?.marketCap)
 
-        const sector =
-          ((summary.assetProfile as any)?.sector as string | undefined)?.trim() ?? null
-        const industry =
-          ((summary.assetProfile as any)?.industry as string | undefined)?.trim() ?? null
+        const sector = ((summary.assetProfile as any)?.sector as string | undefined)?.trim() ?? null
+        const industry = ((summary.assetProfile as any)?.industry as string | undefined)?.trim() ?? null
 
         const businessDescription =
           ((summary.assetProfile as any)?.longBusinessSummary as string | undefined)?.trim() ?? null
@@ -1169,9 +1178,7 @@ async function getEarningsSignal(ticker: string): Promise<EarningsSignal> {
         if (hasSignal) {
           const pieces = uniqueStrings([
             surprisePct !== null ? `EPS surprise ≈ ${surprisePct.toFixed(1)}%` : null,
-            revenueGrowthPct !== null
-              ? `revenue growth ≈ ${revenueGrowthPct.toFixed(1)}%`
-              : null,
+            revenueGrowthPct !== null ? `revenue growth ≈ ${revenueGrowthPct.toFixed(1)}%` : null,
             guidanceFlag ? "forward outlook appears constructive" : null,
           ])
           summaryText = pieces.length
@@ -1244,6 +1251,18 @@ function baseSignal(formType: string | null): BaseSignalData | null {
     }
   }
 
+  if (normalized === "144") {
+    return {
+      signal_type: "Registered Sale Notice",
+      signal_source: "form144",
+      bias: "Bearish",
+      score: 34,
+      title: "Registered sale notice filed",
+      summary:
+        "A Form 144 filing can signal intent to sell restricted or control securities and often belongs on the caution side.",
+    }
+  }
+
   if (
     normalized === "13D" ||
     normalized === "SC 13D" ||
@@ -1284,6 +1303,18 @@ function baseSignal(formType: string | null): BaseSignalData | null {
       score: 50,
       title: "Material corporate event filed",
       summary: "A current report filing can contain a meaningful event, agreement, or catalyst.",
+    }
+  }
+
+  if (normalized === "SC 14D9" || normalized === "DEFA14A") {
+    return {
+      signal_type: "Corporate Action / Proxy",
+      signal_source: "proxy",
+      bias: "Neutral",
+      score: 52,
+      title: "Corporate action or proxy event filed",
+      summary:
+        "A tender-offer response or proxy filing can point to a meaningful corporate event worth surfacing on the board.",
     }
   }
 
@@ -1380,7 +1411,7 @@ function maybeCreateCandidateTechnicalBase(
   let baseScore = 58
   if (candidateScore >= 11) baseScore = 74
   else if (candidateScore >= 9) baseScore = 68
-  else if (candidateScore >= 8) baseScore = 64
+  else if (candidateScore >= 7) baseScore = 62
 
   if (hasBreakout) baseScore += 4
   if (strongVolume) baseScore += 3
@@ -1455,20 +1486,20 @@ function deriveSignalCategory(params: {
     normalizedType.includes("breakout") ||
     params.candidate?.included === true ||
     (params.price.confirmed &&
-      ((params.price.return5d ?? 0) >= 5 ||
-        params.price.breakout20d ||
-        params.price.breakout52w))
+      ((params.price.return5d ?? 0) >= 5 || params.price.breakout20d || params.price.breakout52w))
   ) {
     return "Momentum"
   }
 
-  if ((params.price.volumeRatio ?? 0) >= 2) return "Flow"
+  if (form === "144" || (params.price.volumeRatio ?? 0) >= 2) return "Flow"
 
   if (
     form === "8-K" ||
     form === "6-K" ||
     form === "10-Q" ||
     form === "10-K" ||
+    form === "SC 14D9" ||
+    form === "DEFA14A" ||
     normalizedType.includes("catalyst") ||
     params.catalystType === "guidance" ||
     params.earnings.hasSignal ||
@@ -1500,6 +1531,15 @@ function buildSignalTags(params: {
 
   if (params.bias === "Bullish") tags.push("bullish")
   if (params.bias === "Bearish") tags.push("bearish")
+
+  if (params.source === "form144") {
+    tags.push("sale-notice")
+    tags.push("caution")
+  }
+
+  if (params.source === "proxy") {
+    tags.push("corporate-action")
+  }
 
   if (params.insider.action === "Buy") tags.push("insider-buy")
   if (params.insider.action === "Sell") {
@@ -1541,7 +1581,7 @@ function buildSignalTags(params: {
     tags.push("candidate-screen")
     if (params.candidate.included) tags.push("candidate-included")
     if ((params.candidate.candidate_score ?? 0) >= 11) tags.push("candidate-strong-buy")
-    else if ((params.candidate.candidate_score ?? 0) >= 8) tags.push("candidate-buy")
+    else if ((params.candidate.candidate_score ?? 0) >= 7) tags.push("candidate-buy")
     if ((params.candidate.volume_ratio ?? 0) >= 2) tags.push("screen-heavy-volume")
     if ((params.candidate.return_20d ?? 0) >= 15) tags.push("screen-momentum")
   }
@@ -1754,8 +1794,8 @@ function scoreCandidateTechnical(candidate: CandidateUniverseSignalInput | null)
   if (candidate.included) score += 10
   if (candidateScore >= 12) score += 14
   else if (candidateScore >= 10) score += 10
-  else if (candidateScore >= 8) score += 6
-  else if (candidateScore >= 6) score += 2
+  else if (candidateScore >= 7) score += 6
+  else if (candidateScore >= 5) score += 2
 
   if ((candidate.return_5d ?? 0) >= 6) score += 4
   else if ((candidate.return_5d ?? 0) >= 3) score += 2
@@ -1914,6 +1954,28 @@ function applyEnhancements(
     }
   }
 
+  if (form === "144") {
+    applyBreakdown(
+      breakdown,
+      reasons,
+      "form144",
+      -10,
+      "Sale notice filing introduces supply overhang risk"
+    )
+
+    if ((price.return5d ?? 0) < 0 || (price.relativeStrength20d ?? 0) < 0) {
+      applyBreakdown(
+        breakdown,
+        reasons,
+        "form144_price_weakness",
+        -6,
+        "Weak price action adds caution to the sale notice"
+      )
+    }
+
+    bias = "Bearish"
+  }
+
   if (source === "breakout" && candidate) {
     const candidateScore = scoreCandidateTechnical(candidate)
     applyBreakdown(
@@ -2059,9 +2121,7 @@ function applyEnhancements(
   const positivePillars = [
     (breakdown.insider_buying || 0) > 0 || (breakdown.repeat_buying || 0) > 0,
     (breakdown.momentum || 0) > 0 || (breakdown.relative_strength || 0) > 0,
-    (breakdown.earnings || 0) > 0 ||
-      (breakdown.catalyst || 0) > 0 ||
-      (breakdown.candidate_screen || 0) > 0,
+    (breakdown.earnings || 0) > 0 || (breakdown.catalyst || 0) > 0 || (breakdown.candidate_screen || 0) > 0,
     (breakdown.valuation || 0) > 0,
   ].filter(Boolean).length
 
@@ -2255,6 +2315,8 @@ function getMinimumScore(
   if (bias === "Bearish") return 0
   if (source === "earnings") return 45
   if (source === "breakout") return 55
+  if (source === "form144") return 0
+  if (source === "proxy") return 40
   if (form === "8-K" || form === "6-K") return 42
   if (form === "10-Q" || form === "10-K") return 42
   if (form.includes("13D")) return 50
@@ -2381,10 +2443,7 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
     if (sorted.length >= 3) stackedScore += 4
     if (sorted.length >= 4) stackedScore += 3
 
-    if (
-      (scoreBreakdown.relative_strength || 0) <= -20 &&
-      !((scoreBreakdown.insider_buying || 0) > 15)
-    ) {
+    if ((scoreBreakdown.relative_strength || 0) <= -20 && !((scoreBreakdown.insider_buying || 0) > 15)) {
       stackedScore = Math.min(stackedScore, 65)
       scoreCapsApplied.add("relative-strength-cap")
     }
@@ -2799,8 +2858,7 @@ export async function GET(request: Request) {
 
       const signalRow = {
         ticker: item.filing.ticker,
-        company_name:
-          item.filing.company_name || item.snapshot.companyName || item.candidate?.name || null,
+        company_name: item.filing.company_name || item.snapshot.companyName || item.candidate?.name || null,
         business_description: item.snapshot.businessDescription,
         pe_ratio: round2(item.snapshot.peRatio),
         pe_forward: round2(item.snapshot.forwardPe),

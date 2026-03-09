@@ -48,10 +48,11 @@ const DEFAULT_BATCH = 100
 const RETENTION_DAYS = 30
 const REQUEST_DELAY_MS = 120
 
+// Less strict than before so more real candidates flow downstream.
 const MIN_PRICE = 5
-const MIN_AVG_VOLUME_20D = 500_000
-const MIN_AVG_DOLLAR_VOLUME_20D = 10_000_000
-const MIN_MARKET_CAP = 300_000_000
+const MIN_AVG_VOLUME_20D = 300_000
+const MIN_AVG_DOLLAR_VOLUME_20D = 5_000_000
+const MIN_MARKET_CAP = 200_000_000
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -84,23 +85,32 @@ function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
 }
 
+// Much stricter about *actual* non-common-share patterns while avoiding false positives
+// on regular common tickers like AAP, ABR, ACHR, etc.
 function isProbablyCommonStockTicker(ticker: string) {
   if (!ticker) return false
+
+  const t = ticker.trim().toUpperCase()
 
   const badPatterns = [
     /\^/,
     /\//,
-    /-WS$/i,
-    /W$/,
-    /WS$/i,
-    /U$/,
-    /R$/,
-    /P$/,
-    /PR[A-Z]?$/i,
+
+    // Units / warrants / rights / subscription receipts
+    /(?:^|[-.])(WS|WT|WTS|WARRANT|WAR)$/i,
+    /(?:^|[-.])(W|U|R)$/i,
+    /(?:^|[-.])(RT|RIGHT|RIGHTS)$/i,
+
+    // Preferred / preference share classes
+    /(?:^|[-.])P(?:R)?[A-Z]{0,2}$/i,
+    /PREFERRED/i,
+    /PREF/i,
+
+    // Common SPAC-ish odd lots / test tickers
     /TEST/i,
   ]
 
-  return !badPatterns.some((pattern) => pattern.test(ticker))
+  return !badPatterns.some((pattern) => pattern.test(t))
 }
 
 function calcPercentChange(current: number, prior: number) {
@@ -114,6 +124,7 @@ function snapshotDateString(date: Date) {
 
 function buildCandidateReason(params: {
   included: boolean
+  candidateEligible: boolean
   strongBuy: boolean
   buy: boolean
   reasons: string[]
@@ -132,6 +143,10 @@ function buildCandidateReason(params: {
 
   if (params.buy) {
     return `Buy candidate: ${params.reasons.join(", ")}`
+  }
+
+  if (params.candidateEligible) {
+    return `Candidate setup: ${params.reasons.join(", ")}`
   }
 
   return params.reasons.join(", ") || "No screen factors passed"
@@ -435,10 +450,10 @@ export async function GET(request: Request) {
 
         const hasMomentum5d = return5d >= 3
         const hasStrongMomentum5d = return5d >= 6
-        const hasMomentum10d = return10d >= 6
-        const hasMomentum20d = return20d >= 10
+        const hasMomentum10d = return10d >= 5
+        const hasMomentum20d = return20d >= 8
         const hasStrongMomentum20d = return20d >= 18
-        const hasVolumeExpansion = volumeRatio >= 1.5
+        const hasVolumeExpansion = volumeRatio >= 1.4
         const hasStrongVolumeExpansion = volumeRatio >= 2
         const hasBreakout = breakout20d
         const hasBreakout10d = breakout10d
@@ -476,14 +491,28 @@ export async function GET(request: Request) {
           trendAcceleration,
         ].filter(Boolean).length
 
-        const buyCandidate =
+        const candidateEligible =
           passesPrice &&
           passesDollarVolume &&
           passesMarketCap &&
-          score >= 8 &&
+          hasTrend &&
+          score >= 7 &&
+          catalystCount >= 2 &&
+          (
+            hasMomentum5d ||
+            hasMomentum10d ||
+            hasMomentum20d ||
+            hasBreakout ||
+            hasVolumeExpansion ||
+            isNearHigh ||
+            trendAcceleration
+          )
+
+        const buyCandidate =
+          candidateEligible &&
+          score >= 9 &&
           catalystCount >= 3 &&
-          (hasMomentum10d || hasMomentum20d || hasBreakout || hasVolumeExpansion) &&
-          hasTrend
+          (hasMomentum10d || hasMomentum20d || hasBreakout || hasVolumeExpansion)
 
         const strongBuyCandidate =
           buyCandidate &&
@@ -493,7 +522,7 @@ export async function GET(request: Request) {
           (hasStrongMomentum5d || hasStrongMomentum20d || hasStrongVolumeExpansion) &&
           (hasBreakout || isNearHigh)
 
-        const included = buyCandidate || strongBuyCandidate
+        const included = candidateEligible
 
         const reasons: string[] = []
         if (passesPrice) reasons.push(`price >= $${MIN_PRICE}`)
@@ -518,8 +547,8 @@ export async function GET(request: Request) {
         else if (!passesDollarVolume) exclusionReason = "Below minimum dollar volume"
         else if (!passesMarketCap) exclusionReason = "Below minimum market cap"
         else if (!hasTrend) exclusionReason = "Below 20d average"
-        else if (score < 8) exclusionReason = "Score below buy threshold"
-        else if (catalystCount < 3) exclusionReason = "Not enough technical catalysts"
+        else if (score < 7) exclusionReason = "Score below candidate threshold"
+        else if (catalystCount < 2) exclusionReason = "Not enough technical catalysts"
 
         const row: CandidateUniverseRow = {
           ticker,
@@ -542,6 +571,7 @@ export async function GET(request: Request) {
           included,
           screen_reason: buildCandidateReason({
             included,
+            candidateEligible,
             strongBuy: strongBuyCandidate,
             buy: buyCandidate,
             reasons,
@@ -591,12 +621,20 @@ export async function GET(request: Request) {
         historyInserted += 1
         if (included) includedInBatch += 1
 
+        const tier = strongBuyCandidate
+          ? "strong_buy"
+          : buyCandidate
+            ? "buy"
+            : candidateEligible
+              ? "candidate"
+              : "watchlist"
+
         results.push({
           ticker,
           ok: true,
           included,
           score,
-          tier: strongBuyCandidate ? "strong_buy" : buyCandidate ? "buy" : "watchlist",
+          tier,
           reason: row.screen_reason,
           price: round2(latestClose),
           return5d: round2(return5d),
