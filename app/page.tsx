@@ -465,7 +465,7 @@ export default function Home() {
               We Did All The Research
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
-              A loong tough process made simple...
+              What and when to buy made simple...
             </h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <WhySubscribeCard
