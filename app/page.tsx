@@ -399,53 +399,50 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-                <section className="relative overflow-hidden rounded-[2.5rem] border border-emerald-400/15 bg-white/[0.04] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:p-8 lg:p-10">
+                        <section className="relative overflow-hidden rounded-[2.5rem] border border-emerald-400/15 bg-white/[0.04] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:p-8 lg:p-10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(234,179,8,0.08),_transparent_28%)]" />
           <div className="relative">
             <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">
-              Strong Buy Board
+              Daily Strong Buy List
             </p>
 
             <div className="mt-6 grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
               <div>
                 <h1 className="max-w-4xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-                  Only the highest-conviction stock setups right now
+                  Your cheat sheet for what to buy right now
                 </h1>
 
                 <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300 sm:text-lg">
-                  This board ranks the strongest current setups by conviction using stacked
-                  signals, price behavior, and confirmation data.
+                  This page gives you a simple daily shortlist of the strongest stocks right now.
+                  No huge watchlists. No confusing clutter. Just the clearest strong-buy names we
+                  think deserve attention today.
                 </p>
 
-                <div className="mt-6 text-sm text-slate-400">
-                  Ranked automatically by conviction so the strongest setups rise to the top.
+                <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300">
+                  Updated daily and built to answer one question:
+                  <span className="ml-1 font-semibold text-white">What should I buy now?</span>
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <HeroStat
-                  label="Live strong buys"
+                  label="Buy Now Stocks"
                   value={loading ? "…" : String(strongBuyCount)}
-                  subtext="Current shortlist"
+                  subtext="Current daily shortlist"
                 />
                 <HeroStat
-                  label="Elite setups"
+                  label="Best of the Best"
                   value={loading ? "…" : String(eliteCount)}
-                  subtext="90+ conviction"
-                />
-                <HeroStat
-                  label="Average score"
-                  value={loading ? "…" : String(avgScore)}
-                  subtext="Across visible names"
+                  subtext="Top-rated names today"
                 />
               </div>
             </div>
 
             <div className="mt-8 grid gap-3 rounded-[2rem] border border-white/10 bg-black/20 p-4 sm:grid-cols-2 xl:grid-cols-4">
-              <TrustPill title="Fresh only" text="Built around current actionable setups" />
-              <TrustPill title="High conviction" text="No weak watchlist clutter" />
-              <TrustPill title="Fast clarity" text="Thousands filtered down to a shortlist" />
-              <TrustPill title="Built to act" text="Made for investors and active traders" />
+              <TrustPill title="Updated daily" text="Fresh names for today’s market" />
+              <TrustPill title="Only strong buys" text="Weak names stay off the page" />
+              <TrustPill title="Easy to understand" text="Built like a cheat sheet, not a terminal" />
+              <TrustPill title="Made for action" text="Focused on what looks buyable now" />
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-400">
@@ -455,8 +452,8 @@ export default function Home() {
               </span>
               <span className="hidden sm:inline">•</span>
               <span>
-                Daily ranking by{" "}
-                <span className="font-semibold text-slate-100">Conviction Score</span>
+                Showing only{" "}
+                <span className="font-semibold text-slate-100">strong buy</span> names
               </span>
             </div>
           </div>
@@ -465,44 +462,44 @@ export default function Home() {
         <section className="mt-8 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl backdrop-blur-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-              Why this board exists
+              Why this page exists
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
-              Less noise. Better focus. Faster decisions.
+              It is supposed to make this simple
             </h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <WhySubscribeCard
-                title="We cut through thousands of stocks"
-                text="You do not need another giant watchlist. You need the few names worth real attention."
+                title="You do not need to know every stock"
+                text="Most people do not want to study thousands of names. They just want the best current ideas."
               />
               <WhySubscribeCard
-                title="Only strong buys make the board"
-                text="Weak maybes, stale setups, and low-conviction names stay out of the shortlist."
+                title="You do not need a giant watchlist"
+                text="This page is meant to narrow things down fast so you can focus on the strongest buy-now names."
               />
               <WhySubscribeCard
-                title="The board stays fresh"
-                text="The app is designed around current opportunity, not a pile of old ideas."
+                title="You do not need to speak market jargon"
+                text="The goal is clarity. We surface the names that look strongest right now in plain English."
               />
               <WhySubscribeCard
-                title="Clear enough to act on quickly"
-                text="The page is built to show why a setup matters now, not drown you in clutter."
+                title="You just need a daily shortlist"
+                text="Think of this like your daily cheat sheet for the stocks most worth looking at right now."
               />
             </div>
           </div>
 
           <div className="rounded-[2rem] border border-emerald-400/15 bg-emerald-400/[0.06] p-5 shadow-xl backdrop-blur-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-              What makes the shortlist
+              What makes the list
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
-              A premium daily shortlist, not a signal dump
+              Not every stock makes it here
             </h2>
             <div className="mt-5 space-y-3">
-              <MethodBullet text="Strong price action and breakout behavior" />
-              <MethodBullet text="Meaningful liquidity and participation" />
-              <MethodBullet text="Momentum that still looks actionable" />
-              <MethodBullet text="Supporting evidence from the signal stack" />
-              <MethodBullet text="Ranking by conviction, not random chronology" />
+              <MethodBullet text="The stock needs to look strong right now" />
+              <MethodBullet text="It needs real buying interest, not random noise" />
+              <MethodBullet text="It needs enough support to qualify as a strong buy" />
+              <MethodBullet text="Weak or stale names are left off the page" />
+              <MethodBullet text="The goal is a short list you can actually use today" />
             </div>
           </div>
         </section>
@@ -717,10 +714,12 @@ function HeroStat({
   subtext: string
 }) {
   return (
-    <div className="rounded-[1.75rem] border border-white/10 bg-black/20 p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <p className="mt-2 text-3xl font-bold text-white">{value}</p>
-      <p className="mt-1 text-sm text-slate-400">{subtext}</p>
+    <div className="rounded-[1.75rem] border border-white/10 bg-black/20 p-5">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-3 text-5xl font-bold tracking-tight text-white">{value}</p>
+      <p className="mt-2 text-sm text-slate-400">{subtext}</p>
     </div>
   )
 }
