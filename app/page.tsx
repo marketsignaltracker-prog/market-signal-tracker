@@ -145,56 +145,23 @@ type TickerScore = {
   updated_at?: string | null
 }
 
-type TickerScoreHistoryRow = {
-  ticker: string
-  company_name?: string | null
-  score_date?: string | null
-  score_timestamp?: string | null
-  app_score?: number | null
-  raw_score?: number | null
-  bias?: string | null
-  board_bucket?: string | null
-  score_version?: string | null
-  stacked_signal_count?: number | null
-  score_breakdown?: Record<string, number> | null
-  signal_reasons?: string[] | null
-  score_caps_applied?: string[] | null
-  source_accession_nos?: string[] | null
-  created_at?: string | null
-}
-
-type CoolingLeader = {
-  ticker: string
-  company_name: string | null
-  peakScore: number
-  lastScore: number
-  lastScoreDate: string | null
-  scoreDrop: number
-  currentRow: TickerScore | null
-}
-
-type ViewMode = "buy" | "sell" | "cooling"
-type PeFilterType = "all" | "15" | "25" | "40"
 type PriceFilterType =
   | "all"
-  | "under5"
-  | "5to10"
+  | "under10"
   | "10to25"
   | "25to100"
   | "100plus"
-  | "unknown"
-type BoardMode = "buy" | "risk" | "cooling"
-type SignalCategoryFilter =
-  | "all"
-  | "Insider Buys"
-  | "Cluster Buys"
-  | "Momentum"
-  | "Institutional"
-  | "Flow"
-  | "Fundamental"
-  | "Risk"
-  | "Market Signal"
-type ScoreBandFilter = "default" | "75" | "80" | "85" | "25" | "20" | "15"
+
+type PeFilterType = "all" | "20" | "30" | "50"
+type FreshnessFilterType = "all" | "today" | "3d" | "7d" | "14d"
+type ScoreFilterType = "all" | "70" | "75" | "80" | "85" | "90"
+type SectorFilterType = "all" | string
+
+type MiniMetricItem = {
+  label: string
+  value: string
+  tooltip?: string
+}
 
 type ReasonLine = {
   label: string
@@ -203,13 +170,7 @@ type ReasonLine = {
   weight: number
 }
 
-type MiniMetricItem = {
-  label: string
-  value: string
-  tooltip?: string
-}
-
-const CARDS_PER_PAGE = 24
+const CARDS_PER_PAGE = 18
 
 function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
   return {
@@ -285,20 +246,17 @@ function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
 
 export default function Home() {
   const [rows, setRows] = useState<TickerScore[]>([])
-  const [historyRows, setHistoryRows] = useState<TickerScoreHistoryRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [viewMode, setViewMode] = useState<ViewMode>("buy")
-  const [peFilter, setPeFilter] = useState<PeFilterType>("all")
-  const [priceFilter, setPriceFilter] = useState<PriceFilterType>("all")
-  const [categoryFilter, setCategoryFilter] = useState<SignalCategoryFilter>("all")
-  const [scoreBandFilter, setScoreBandFilter] = useState<ScoreBandFilter>("default")
+
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
-  const [hasInteracted, setHasInteracted] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
 
-  const boardMode: BoardMode =
-    viewMode === "sell" ? "risk" : viewMode === "cooling" ? "cooling" : "buy"
+  const [priceFilter, setPriceFilter] = useState<PriceFilterType>("all")
+  const [peFilter, setPeFilter] = useState<PeFilterType>("all")
+  const [freshnessFilter, setFreshnessFilter] = useState<FreshnessFilterType>("all")
+  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("80")
+  const [sectorFilter, setSectorFilter] = useState<SectorFilterType>("all")
 
   useEffect(() => {
     let isMounted = true
@@ -309,24 +267,13 @@ export default function Home() {
         setLoading(true)
         setError(null)
 
-        const thirtyDaysAgo = new Date()
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-        const historyStartDate = thirtyDaysAgo.toISOString().slice(0, 10)
-
-        const [tickerScoresResponse, historyResponse] = await Promise.all([
-          supabase
-            .from("ticker_scores_current")
-            .select("*")
-            .order("app_score", { ascending: false })
-            .order("filed_at", { ascending: false })
-            .limit(500),
-          supabase
-            .from("ticker_score_history")
-            .select("*")
-            .gte("score_date", historyStartDate)
-            .order("score_date", { ascending: false })
-            .limit(5000),
-        ])
+        const tickerScoresResponse = await supabase
+          .from("ticker_scores_current")
+          .select("*")
+          .gte("app_score", 70)
+          .order("app_score", { ascending: false })
+          .order("filed_at", { ascending: false })
+          .limit(500)
 
         if (!isMounted) return
 
@@ -334,12 +281,13 @@ export default function Home() {
 
         if (!tickerScoresResponse.error && (tickerScoresResponse.data?.length ?? 0) > 0) {
           currentRows = ((tickerScoresResponse.data as TickerScore[]) ?? []).filter(
-            (row) => !!row.ticker
+            (row) => !!row.ticker && getEffectiveScore(row) >= 70
           )
         } else {
           const signalsResponse = await supabase
             .from("signals")
             .select("*")
+            .gte("app_score", 70)
             .order("app_score", { ascending: false })
             .order("filed_at", { ascending: false })
             .limit(500)
@@ -350,34 +298,24 @@ export default function Home() {
             setError(
               tickerScoresResponse.error?.message ||
                 signalsResponse.error.message ||
-                "Error loading signals."
+                "Error loading strong buys."
             )
             setRows([])
-            setHistoryRows([])
             setLoading(false)
             return
           }
 
           currentRows = ((signalsResponse.data as SignalRow[]) ?? [])
             .map(mapSignalRowToTickerScore)
-            .filter((row) => !!row.ticker)
+            .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
         }
 
-        setRows(currentRows)
-        setHistoryRows(
-          ((historyResponse.data as TickerScoreHistoryRow[]) ?? []).filter((row) => !!row.ticker)
-        )
-
-        if (historyResponse.error && !tickerScoresResponse.error) {
-          setError(`Current board loaded, but history failed: ${historyResponse.error.message}`)
-        }
-
+        setRows(bestRowPerTicker(currentRows))
         setLoading(false)
       } catch (err: any) {
         if (!isMounted) return
-        setError(err?.message || "Error loading signals.")
+        setError(err?.message || "Error loading strong buys.")
         setRows([])
-        setHistoryRows([])
         setLoading(false)
       }
     }
@@ -391,151 +329,40 @@ export default function Home() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [viewMode, peFilter, priceFilter, categoryFilter, scoreBandFilter])
+  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter])
 
-  const coolingLeaders = useMemo(() => {
-    const currentBuyRows = bestRowPerTicker(
-      rows
-        .filter((row) => getBoardBucket(row) === "Buy")
-        .filter((row) => getEffectiveScore(row) >= 70),
-      "buy"
-    )
+  const sectorOptions = useMemo(() => {
+    const sectors = Array.from(
+      new Set(rows.map((row) => (row.sector || "").trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b))
 
-    const currentTickers = new Set(currentBuyRows.map((row) => row.ticker))
-    const currentByTicker = new Map(rows.map((row) => [row.ticker, row]))
-    const grouped = new Map<string, TickerScoreHistoryRow[]>()
+    return ["all", ...sectors]
+  }, [rows])
 
-    for (const row of historyRows) {
-      const ticker = (row.ticker || "").trim().toUpperCase()
-      if (!ticker) continue
-      if (!grouped.has(ticker)) grouped.set(ticker, [])
-      grouped.get(ticker)!.push(row)
-    }
-
-    const leaders: CoolingLeader[] = []
-
-    for (const [ticker, series] of grouped.entries()) {
-      const sorted = [...series].sort((a, b) => {
-        const aDate = getDateValue(a.score_date ?? a.score_timestamp)
-        const bDate = getDateValue(b.score_date ?? b.score_timestamp)
-        return bDate - aDate
-      })
-
-      const latest = sorted[0]
-      if (!latest) continue
-
-      const peakScore = Math.max(...sorted.map((r) => Number(r.app_score ?? 0)))
-      const lastScore = Number(latest.app_score ?? 0)
-      const scoreDrop = peakScore - lastScore
-
-      if (peakScore < 80) continue
-      if (lastScore >= 70) continue
-      if (currentTickers.has(ticker)) continue
-      if (scoreDrop < 8) continue
-
-      leaders.push({
-        ticker,
-        company_name: latest.company_name ?? null,
-        peakScore,
-        lastScore,
-        lastScoreDate: latest.score_date ?? latest.score_timestamp ?? null,
-        scoreDrop,
-        currentRow: currentByTicker.get(ticker) ?? null,
-      })
-    }
-
-    return leaders
-      .sort((a, b) => {
-        if (b.peakScore !== a.peakScore) return b.peakScore - a.peakScore
-        if (b.scoreDrop !== a.scoreDrop) return b.scoreDrop - a.scoreDrop
-        return getDateValue(b.lastScoreDate) - getDateValue(a.lastScoreDate)
-      })
-      .slice(0, 100)
-  }, [historyRows, rows])
-
-  const coolingOrderMap = useMemo(() => {
-    const map = new Map<string, number>()
-    coolingLeaders.forEach((leader, index) => {
-      map.set(leader.ticker, index)
-    })
-    return map
-  }, [coolingLeaders])
-
-  const categoryFilteredRows = useMemo(() => {
-    if (viewMode === "cooling") {
-      const mappedCoolingRows = coolingLeaders
-        .map((leader) => leader.currentRow)
-        .filter((row): row is TickerScore => Boolean(row))
-
-      if (categoryFilter === "all") return mappedCoolingRows
-      return mappedCoolingRows.filter((row) => getSignalCategory(row) === categoryFilter)
-    }
-
-    if (categoryFilter === "all") return rows
-    return rows.filter((row) => getSignalCategory(row) === categoryFilter)
-  }, [rows, categoryFilter, viewMode, coolingLeaders])
-
-  const processedRows = useMemo(() => {
-    let filtered = categoryFilteredRows
-      .filter((row) => matchesPeFilter(row, peFilter))
+  const filteredRows = useMemo(() => {
+    return rows
       .filter((row) => matchesPriceFilter(row, priceFilter))
+      .filter((row) => matchesPeFilter(row, peFilter))
+      .filter((row) => matchesFreshnessFilter(row, freshnessFilter))
+      .filter((row) => matchesScoreFilter(row, scoreFilter))
+      .filter((row) => matchesSectorFilter(row, sectorFilter))
+      .sort((a, b) => compareRows(a, b))
+  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter])
 
-    if (boardMode === "buy") {
-      const minScore = getBuyMinScore(scoreBandFilter)
-      filtered = filtered
-        .filter((row) => getBoardBucket(row) === "Buy")
-        .filter((row) => getEffectiveScore(row) >= minScore)
+  const featuredRows = useMemo(() => filteredRows.slice(0, 3), [filteredRows])
 
-      return [...filtered].sort((a, b) => compareRows(a, b, "buy"))
-    }
+  const remainingRows = useMemo(() => filteredRows.slice(3), [filteredRows])
 
-    if (boardMode === "risk") {
-      const maxScore = getRiskMaxScore(scoreBandFilter)
-      filtered = filtered
-        .filter((row) => getBoardBucket(row) === "Risk")
-        .filter((row) => getEffectiveScore(row) <= maxScore)
-
-      return [...filtered].sort((a, b) => compareRows(a, b, "risk"))
-    }
-
-    filtered = filtered.filter((row) => getEffectiveScore(row) < 70)
-
-    return [...filtered].sort((a, b) => {
-      const aRank = coolingOrderMap.get(a.ticker) ?? Number.MAX_SAFE_INTEGER
-      const bRank = coolingOrderMap.get(b.ticker) ?? Number.MAX_SAFE_INTEGER
-      if (aRank !== bRank) return aRank - bRank
-      return compareRows(a, b, "buy")
-    })
-  }, [categoryFilteredRows, peFilter, priceFilter, boardMode, scoreBandFilter, coolingOrderMap])
-
-  const uniqueProcessedRows = useMemo(() => {
-    if (boardMode === "cooling") {
-      const seen = new Set<string>()
-      const result: TickerScore[] = []
-
-      for (const item of processedRows) {
-        const ticker = (item.ticker || "").trim().toUpperCase()
-        if (!ticker || seen.has(ticker)) continue
-        seen.add(ticker)
-        result.push(item)
-      }
-
-      return result
-    }
-
-    return bestRowPerTicker(processedRows, boardMode === "risk" ? "risk" : "buy")
-  }, [processedRows, boardMode])
-
-  const totalPages = Math.max(1, Math.ceil(uniqueProcessedRows.length / CARDS_PER_PAGE))
+  const totalPages = Math.max(1, Math.ceil(remainingRows.length / CARDS_PER_PAGE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
 
   const paginatedRows = useMemo(() => {
     const startIndex = (safeCurrentPage - 1) * CARDS_PER_PAGE
-    return uniqueProcessedRows.slice(startIndex, startIndex + CARDS_PER_PAGE)
-  }, [uniqueProcessedRows, safeCurrentPage])
+    return remainingRows.slice(startIndex, startIndex + CARDS_PER_PAGE)
+  }, [remainingRows, safeCurrentPage])
 
-  const pageStart = uniqueProcessedRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
-  const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, uniqueProcessedRows.length)
+  const pageStart = remainingRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
+  const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, remainingRows.length)
 
   const selectedRow = useMemo(() => {
     if (!selectedTicker) return null
@@ -543,561 +370,597 @@ export default function Home() {
   }, [rows, selectedTicker])
 
   const lastUpdated = getLastUpdated(rows)
+  const strongBuyCount = filteredRows.length
+  const eliteCount = filteredRows.filter((row) => getEffectiveScore(row) >= 90).length
+  const avgScore = filteredRows.length
+    ? Math.round(
+        filteredRows.reduce((sum, row) => sum + getEffectiveScore(row), 0) / filteredRows.length
+      )
+    : 0
 
   function openDetails(ticker: string) {
     setSelectedTicker(ticker)
-    setHasInteracted(true)
   }
 
   function closeDetails() {
     setSelectedTicker(null)
   }
 
-  function switchMode(mode: ViewMode) {
-    setViewMode(mode)
-    setSelectedTicker(null)
-    setHasInteracted(false)
-    setCategoryFilter("all")
-    setScoreBandFilter("default")
-    setCurrentPage(1)
-  }
-
   function resetFilters() {
-    setPeFilter("all")
     setPriceFilter("all")
-    setCategoryFilter("all")
-    setScoreBandFilter("default")
+    setPeFilter("all")
+    setFreshnessFilter("all")
+    setScoreFilter("80")
+    setSectorFilter("all")
     setSelectedTicker(null)
-    setHasInteracted(false)
     setCurrentPage(1)
   }
-
-  const pageTitle =
-    boardMode === "risk"
-      ? "Highest Risk Setups Right Now"
-      : boardMode === "cooling"
-        ? "Recently Hot Names Losing Steam"
-        : "Best Setups Before Everyone Else Sees Them"
-
-  const subhead =
-    boardMode === "risk"
-      ? "Find the risks. Avoid the damage."
-      : boardMode === "cooling"
-        ? "Former leaders slipping off the radar before they potentially reload."
-        : "Catch the strongest setups while they still feel early."
-
-  const description =
-    boardMode === "risk"
-      ? "These are the weakest stacked ticker setups on the board based on insider selling, weak price behavior, negative corporate events, and other downside signals."
-      : boardMode === "cooling"
-        ? "These names were recently among the strongest setups on the board, but momentum has faded enough to knock them off the strict leader list. Sometimes this is where the next great re-entry starts."
-        : "These are the strongest stacked ticker setups on the board based on insider activity, momentum, earnings support, ownership signals, technical breakouts, and other bullish evidence. The goal is to spot them before the crowd piles in."
-
-  const searchFocusClass =
-    boardMode === "risk"
-      ? "focus:border-rose-400/50"
-      : boardMode === "cooling"
-        ? "focus:border-amber-400/50"
-        : "focus:border-emerald-400/50"
-
-  const resetHoverClass =
-    boardMode === "risk"
-      ? "hover:border-rose-400/40 hover:bg-rose-400/10 hover:text-rose-300"
-      : boardMode === "cooling"
-        ? "hover:border-amber-400/40 hover:bg-amber-400/10 hover:text-amber-300"
-        : "hover:border-emerald-400/40 hover:bg-emerald-400/10 hover:text-emerald-300"
-
-  const boardHeading =
-    boardMode === "risk"
-      ? "Names Flashing the Most Danger"
-      : boardMode === "cooling"
-        ? "Cooling-Off Listings"
-        : "High-Upside Setups Getting Attention"
-
-  const boardSubheading =
-    boardMode === "risk"
-      ? "The weakest names are ranked first. Click any card to open a larger detail view."
-      : boardMode === "cooling"
-        ? "These were recent leaders that cooled off enough to fall below the strict buy threshold. Click any card to inspect whether the story is breaking or just pausing."
-        : "The strongest names are ranked first automatically. Click any card to open a larger detail view."
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-        <div className="mb-8 sm:mb-10">
-          <p
-            className={[
-              "mb-3 inline-flex rounded-full border px-4 py-1 text-sm font-medium",
-              boardMode === "risk"
-                ? "border-rose-400/30 bg-rose-400/10 text-rose-300"
-                : boardMode === "cooling"
-                  ? "border-amber-400/30 bg-amber-400/10 text-amber-300"
-                  : "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
-            ].join(" ")}
-          >
-            {boardMode === "risk"
-              ? "Sell / Risk Board"
-              : boardMode === "cooling"
-                ? "Cooling Off Board"
-                : "Opportunity Board"}
-          </p>
+        <section className="relative overflow-hidden rounded-[2.5rem] border border-emerald-400/15 bg-white/[0.04] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:p-8 lg:p-10">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(234,179,8,0.08),_transparent_28%)]" />
+          <div className="relative">
+            <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">
+              Strong Buy Board
+            </p>
 
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
-            {pageTitle}
-          </h1>
+            <div className="mt-6 grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-end">
+              <div>
+                <h1 className="max-w-4xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+                  Only the highest-conviction stock setups right now
+                </h1>
 
-          <p
-            className={[
-              "mt-2 text-base font-semibold sm:text-lg",
-              boardMode === "risk"
-                ? "text-rose-300"
-                : boardMode === "cooling"
-                  ? "text-amber-300"
-                  : "text-emerald-300",
-            ].join(" ")}
-          >
-            {subhead}
-          </p>
+                <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300 sm:text-lg">
+                  We screen thousands of names and surface only the strongest current strong-buy
+                  setups — fresh breakouts with real confirmation, strong participation, and enough
+                  supporting evidence to matter.
+                </p>
 
-          <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300 sm:text-base lg:text-lg">
-            {description}
-          </p>
+                <div className="mt-6 text-sm text-slate-400">
+  Ranked automatically by conviction so the strongest setups rise to the top.
+</div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-400">
-            <span>
-              Last updated{" "}
-              <span className="font-semibold text-slate-200">{lastUpdated ?? "—"}</span>
-            </span>
-            <span className="hidden sm:inline">•</span>
-            <span>
-              Current board names{" "}
-              <span className="font-semibold text-slate-200">{uniqueProcessedRows.length}</span>
-            </span>
+              <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                <HeroStat
+                  label="Live strong buys"
+                  value={loading ? "…" : String(strongBuyCount)}
+                  subtext="Current shortlist"
+                />
+                <HeroStat
+                  label="Elite setups"
+                  value={loading ? "…" : String(eliteCount)}
+                  subtext="90+ conviction"
+                />
+                <HeroStat
+                  label="Average score"
+                  value={loading ? "…" : String(avgScore)}
+                  subtext="Across visible names"
+                />
+              </div>
+            </div>
+
+            <div className="mt-8 grid gap-3 rounded-[2rem] border border-white/10 bg-black/20 p-4 sm:grid-cols-2 xl:grid-cols-4">
+              <TrustPill title="Fresh only" text="Built around current actionable setups" />
+              <TrustPill title="High conviction" text="No weak watchlist clutter" />
+              <TrustPill title="Fast clarity" text="Thousands filtered down to a shortlist" />
+              <TrustPill title="Built to act" text="Made for investors and active traders" />
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-400">
+              <span>
+                Last updated{" "}
+                <span className="font-semibold text-slate-100">{lastUpdated ?? "—"}</span>
+              </span>
+              <span className="hidden sm:inline">•</span>
+              <span>
+                Daily ranking by{" "}
+                <span className="font-semibold text-slate-100">Conviction Score</span>
+              </span>
+            </div>
           </div>
-        </div>
-
-        <section className="mb-8 overflow-x-auto pb-1">
-          <div className="inline-flex min-w-max rounded-2xl border border-white/10 bg-white/5 p-1 shadow-xl">
-            <button
-              onClick={() => switchMode("buy")}
-              className={[
-                "rounded-xl px-5 py-3 text-sm font-semibold transition sm:px-6",
-                viewMode === "buy"
-                  ? "bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-900/30"
-                  : "text-slate-300 hover:bg-white/5 hover:text-white",
-              ].join(" ")}
-            >
-              Best Opportunities
-            </button>
-            <button
-              onClick={() => switchMode("sell")}
-              className={[
-                "rounded-xl px-5 py-3 text-sm font-semibold transition sm:px-6",
-                viewMode === "sell"
-                  ? "bg-rose-400 text-slate-950 shadow-lg shadow-rose-900/30"
-                  : "text-slate-300 hover:bg-white/5 hover:text-white",
-              ].join(" ")}
-            >
-              Sell / Risk
-            </button>
-            <button
-              onClick={() => switchMode("cooling")}
-              className={[
-                "rounded-xl px-5 py-3 text-sm font-semibold transition sm:px-6",
-                viewMode === "cooling"
-                  ? "bg-amber-400 text-slate-950 shadow-lg shadow-amber-900/30"
-                  : "text-slate-300 hover:bg-white/5 hover:text-white",
-              ].join(" ")}
-            >
-              Cooling Off
-            </button>
-          </div>
-
-          <p className="mt-3 text-sm text-slate-400">
-            {viewMode === "buy"
-              ? 'Best Opportunities = "strongest ranked setups, already sorted for you"'
-              : viewMode === "sell"
-                ? 'Sell / Risk = "weakest bearish setups, ranked by danger first"'
-                : 'Cooling Off = "former leaders that slipped, but may still be stalking candidates"'}
-          </p>
         </section>
 
-        <section className="mb-10">
-          <div className="rounded-[2rem] border border-white/[0.1] bg-white/[0.04] p-4 shadow-2xl backdrop-blur-sm sm:p-5 lg:p-6">
-            <div className="mb-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)] xl:items-end">
-              <div className="min-w-0">
-                <p
-                  className={[
-                    "text-xs font-semibold uppercase tracking-[0.18em]",
-                    boardMode === "risk"
-                      ? "text-rose-300/80"
-                      : boardMode === "cooling"
-                        ? "text-amber-300/80"
-                        : "text-emerald-300/80",
-                  ].join(" ")}
-                >
-                  Filter the board
-                </p>
-                <h2 className="mt-1 text-xl font-semibold text-white sm:text-2xl">
-                  Narrow the board
-                </h2>
-              </div>
+        <section className="mt-8 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl backdrop-blur-sm sm:p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+              Why people subscribe
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
+              Less noise. Better focus. Faster decisions.
+            </h2>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <WhySubscribeCard
+                title="We cut through thousands of stocks"
+                text="You do not need another giant watchlist. You need the few names worth real attention."
+              />
+              <WhySubscribeCard
+                title="Only strong buys make the board"
+                text="Weak maybes, stale setups, and low-conviction names stay out of the shortlist."
+              />
+              <WhySubscribeCard
+                title="The board stays fresh"
+                text="The app is designed around current opportunity, not a pile of old ideas."
+              />
+              <WhySubscribeCard
+                title="Clear enough to act on quickly"
+                text="The page is built to show why a setup matters now, not drown you in clutter."
+              />
+            </div>
+          </div>
 
-              <div className="max-w-2xl text-sm leading-6 text-slate-400 xl:justify-self-end xl:text-right">
-                {boardMode === "risk"
-                  ? "Use filters to isolate the ugliest setups fast."
-                  : boardMode === "cooling"
-                    ? "Focus on recent winners that slipped just enough to become interesting again."
-                    : "Use filters to zero in on the kind of setups most likely to get noticed next."}
-              </div>
+          <div className="rounded-[2rem] border border-emerald-400/15 bg-emerald-400/[0.06] p-5 shadow-xl backdrop-blur-sm sm:p-6">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+              What makes the shortlist
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
+              A premium daily shortlist, not a signal dump
+            </h2>
+            <div className="mt-5 space-y-3">
+              <MethodBullet text="Strong price action and breakout behavior" />
+              <MethodBullet text="Meaningful liquidity and participation" />
+              <MethodBullet text="Momentum that still looks actionable" />
+              <MethodBullet text="Supporting evidence from the signal stack" />
+              <MethodBullet text="Ranking by conviction, not random chronology" />
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-8 rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl backdrop-blur-sm sm:p-6">
+          <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                Refine today’s setups
+              </p>
+              <h2 className="mt-1 text-2xl font-semibold text-white sm:text-3xl">
+                The board is already curated for you
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400 sm:text-base">
+                Use filters to tighten the shortlist even further without turning the page into a
+                complicated terminal.
+              </p>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.85fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_140px] xl:gap-4">
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  Signal Type
-                </label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => {
-                    setCategoryFilter(e.target.value as SignalCategoryFilter)
-                    setHasInteracted(true)
-                  }}
-                  className={[
-                    "w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-white outline-none transition focus:bg-slate-950",
-                    searchFocusClass,
-                  ].join(" ")}
-                >
-                  <option value="all" className="bg-slate-900">
-                    All Signal Types
-                  </option>
-                  <option value="Insider Buys" className="bg-slate-900">
-                    Insider Buys
-                  </option>
-                  <option value="Cluster Buys" className="bg-slate-900">
-                    Cluster Buys
-                  </option>
-                  <option value="Momentum" className="bg-slate-900">
-                    Momentum
-                  </option>
-                  <option value="Institutional" className="bg-slate-900">
-                    Institutional
-                  </option>
-                  <option value="Flow" className="bg-slate-900">
-                    Flow
-                  </option>
-                  <option value="Fundamental" className="bg-slate-900">
-                    Fundamental
-                  </option>
-                  <option value="Risk" className="bg-slate-900">
-                    Risk
-                  </option>
-                  <option value="Market Signal" className="bg-slate-900">
-                    Market Signal
-                  </option>
-                </select>
-              </div>
+            <button
+              onClick={resetFilters}
+              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200"
+            >
+              Reset filters
+            </button>
+          </div>
 
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  Price
-                </label>
-                <select
-                  value={priceFilter}
-                  onChange={(e) => {
-                    setPriceFilter(e.target.value as PriceFilterType)
-                    setHasInteracted(true)
-                  }}
-                  className={[
-                    "w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-white outline-none transition focus:bg-slate-950",
-                    searchFocusClass,
-                  ].join(" ")}
-                >
-                  <option value="all" className="bg-slate-900">
-                    All Prices
-                  </option>
-                  <option value="under5" className="bg-slate-900">
-                    Under $5
-                  </option>
-                  <option value="5to10" className="bg-slate-900">
-                    $5 to $10
-                  </option>
-                  <option value="10to25" className="bg-slate-900">
-                    $10 to $25
-                  </option>
-                  <option value="25to100" className="bg-slate-900">
-                    $25 to $100
-                  </option>
-                  <option value="100plus" className="bg-slate-900">
-                    $100+
-                  </option>
-                  <option value="unknown" className="bg-slate-900">
-                    Unknown Price
-                  </option>
-                </select>
-              </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <FilterSelect
+              label="Price"
+              value={priceFilter}
+              onChange={(value) => setPriceFilter(value as PriceFilterType)}
+              options={[
+                { value: "all", label: "All prices" },
+                { value: "under10", label: "Under $10" },
+                { value: "10to25", label: "$10 to $25" },
+                { value: "25to100", label: "$25 to $100" },
+                { value: "100plus", label: "$100+" },
+              ]}
+            />
 
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  Valuation
-                </label>
-                <select
-                  value={peFilter}
-                  onChange={(e) => {
-                    setPeFilter(e.target.value as PeFilterType)
-                    setHasInteracted(true)
-                  }}
-                  className={[
-                    "w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-white outline-none transition focus:bg-slate-950",
-                    searchFocusClass,
-                  ].join(" ")}
-                >
-                  <option value="all" className="bg-slate-900">
-                    All Valuations
-                  </option>
-                  <option value="15" className="bg-slate-900">
-                    P/E ≤ 15
-                  </option>
-                  <option value="25" className="bg-slate-900">
-                    P/E ≤ 25
-                  </option>
-                  <option value="40" className="bg-slate-900">
-                    P/E ≤ 40
-                  </option>
-                </select>
-              </div>
+            <FilterSelect
+              label="Valuation"
+              value={peFilter}
+              onChange={(value) => setPeFilter(value as PeFilterType)}
+              options={[
+                { value: "all", label: "All valuations" },
+                { value: "20", label: "P/E ≤ 20" },
+                { value: "30", label: "P/E ≤ 30" },
+                { value: "50", label: "P/E ≤ 50" },
+              ]}
+            />
 
-              <div>
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  {boardMode === "risk"
-                    ? "Risk Score"
-                    : boardMode === "cooling"
-                      ? "Current Score"
-                      : "Opportunity Score"}
-                </label>
-                <select
-                  value={scoreBandFilter}
-                  onChange={(e) => {
-                    setScoreBandFilter(e.target.value as ScoreBandFilter)
-                    setHasInteracted(true)
-                  }}
-                  className={[
-                    "w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-white outline-none transition focus:bg-slate-950",
-                    searchFocusClass,
-                  ].join(" ")}
-                >
-                  {boardMode === "risk" ? (
-                    <>
-                      <option value="default" className="bg-slate-900">
-                        Risk Score ≤ 30
-                      </option>
-                      <option value="25" className="bg-slate-900">
-                        Risk Score ≤ 25
-                      </option>
-                      <option value="20" className="bg-slate-900">
-                        Risk Score ≤ 20
-                      </option>
-                      <option value="15" className="bg-slate-900">
-                        Risk Score ≤ 15
-                      </option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="default" className="bg-slate-900">
-                        Score ≥ 70
-                      </option>
-                      <option value="75" className="bg-slate-900">
-                        Score ≥ 75
-                      </option>
-                      <option value="80" className="bg-slate-900">
-                        Score ≥ 80
-                      </option>
-                      <option value="85" className="bg-slate-900">
-                        Score ≥ 85
-                      </option>
-                    </>
-                  )}
-                </select>
-              </div>
+            <FilterSelect
+              label="Freshness"
+              value={freshnessFilter}
+              onChange={(value) => setFreshnessFilter(value as FreshnessFilterType)}
+              options={[
+                { value: "all", label: "All freshness" },
+                { value: "today", label: "Today" },
+                { value: "3d", label: "Last 3 days" },
+                { value: "7d", label: "Last 7 days" },
+                { value: "14d", label: "Last 14 days" },
+              ]}
+            />
 
-              <div className="md:col-span-2 xl:col-span-1 xl:self-end">
-                <button
-                  onClick={resetFilters}
-                  className={[
-                    "w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm font-semibold text-slate-300 transition",
-                    resetHoverClass,
-                  ].join(" ")}
-                >
-                  Reset
-                </button>
-              </div>
+            <FilterSelect
+              label="Conviction"
+              value={scoreFilter}
+              onChange={(value) => setScoreFilter(value as ScoreFilterType)}
+              options={[
+                { value: "all", label: "All scores" },
+                { value: "70", label: "70+" },
+                { value: "75", label: "75+" },
+                { value: "80", label: "80+" },
+                { value: "85", label: "85+" },
+                { value: "90", label: "90+" },
+              ]}
+            />
+
+            <FilterSelect
+              label="Sector"
+              value={sectorFilter}
+              onChange={(value) => setSectorFilter(value)}
+              options={sectorOptions.map((sector) => ({
+                value: sector,
+                label: sector === "all" ? "All sectors" : sector,
+              }))}
+            />
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-2 text-sm text-slate-300">
+            <BoardChip label="Visible strong buys" value={String(filteredRows.length)} />
+            <BoardChip label="Elite" value={String(filteredRows.filter((r) => getEffectiveScore(r) >= 90).length)} />
+            <BoardChip label="Avg score" value={filteredRows.length ? String(avgScore) : "—"} />
+            <BoardChip
+              label="Freshest"
+              value={
+                filteredRows[0]?.filed_at
+                  ? formatDateShort(filteredRows[0].filed_at)
+                  : "—"
+              }
+            />
+          </div>
+        </section>
+
+        <section className="mt-8">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                Featured today
+              </p>
+              <h2 className="mt-1 text-2xl font-semibold text-white sm:text-3xl">
+                Today’s top strong-buy setups
+              </h2>
+              <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
+                These are the strongest names on the board right now, ranked by conviction.
+              </p>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2 text-sm text-slate-300">
-                  <span className="text-slate-400">Showing</span>
-                  <span className="rounded-full bg-white/10 px-3 py-1 font-semibold text-white">
-                    {uniqueProcessedRows.length}{" "}
-                    {boardMode === "risk"
-                      ? "risk names"
-                      : boardMode === "cooling"
-                        ? "cooling names"
-                        : "high-upside setups"}
-                  </span>
+            <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+              {loading ? "Loading board…" : `${filteredRows.length} names on the shortlist`}
+            </div>
+          </div>
 
-                  <span className="hidden sm:inline text-slate-500">•</span>
+          {loading ? (
+            <LoadingPanel />
+          ) : error ? (
+            <ErrorPanel message={error} />
+          ) : !filteredRows.length ? (
+            <EmptyPanel />
+          ) : (
+            <>
+              <div className="grid gap-5 lg:grid-cols-3">
+                {featuredRows.map((row, index) => (
+                  <FeaturedStrongBuyCard
+                    key={`${row.ticker}-${index}`}
+                    row={row}
+                    rank={index + 1}
+                    onClick={() => openDetails(row.ticker)}
+                  />
+                ))}
+              </div>
 
-                  <FilterChip
-                    label="Category"
-                    value={categoryFilter === "all" ? "All" : categoryFilter}
-                    tone={boardMode}
-                  />
-                  <FilterChip
-                    label="Price"
-                    value={getPriceFilterLabel(priceFilter)}
-                    tone={boardMode}
-                  />
-                  <FilterChip
-                    label="Valuation"
-                    value={getPeFilterLabel(peFilter)}
-                    tone={boardMode}
-                  />
-                  <FilterChip
-                    label={
-                      boardMode === "risk"
-                        ? "Risk Score"
-                        : boardMode === "cooling"
-                          ? "Score"
-                          : "Opportunity Score"
-                    }
-                    value={
-                      boardMode === "risk"
-                        ? `≤ ${getRiskMaxScore(scoreBandFilter)}`
-                        : `≥ ${getBuyMinScore(scoreBandFilter)}`
-                    }
-                    tone={boardMode}
-                  />
+              <section id="board" className="mt-8">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                      Full shortlist
+                    </p>
+                    <h2 className="mt-1 text-2xl font-semibold text-white sm:text-3xl">
+                      More high-conviction setups
+                    </h2>
+                    <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
+                      Ranked automatically by conviction so the strongest current opportunities rise
+                      to the top.
+                    </p>
+                  </div>
+
+                  <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+                    {remainingRows.length === 0
+                      ? "No additional names"
+                      : `${pageStart}-${pageEnd} of ${remainingRows.length}`}
+                  </div>
                 </div>
 
-                <p className="text-sm leading-6 text-slate-400">
-                  {boardMode === "risk"
-                    ? "This board is already ranked from most dangerous downward, so filters do the heavy lifting."
-                    : boardMode === "cooling"
-                      ? "This board is already ranked by the strongest former leaders first, so you can scan for second-chance setups without extra sorting."
-                      : "This board is already ranked from strongest setup downward, so there is no extra sort to mess with."}
-                </p>
-              </div>
-            </div>
-          </div>
+                <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  {paginatedRows.map((row, i) => (
+                    <TopSignalCard
+                      key={getRowKey(row, i)}
+                      row={row}
+                      isSelected={row.ticker === selectedTicker}
+                      onClick={() => openDetails(row.ticker)}
+                      rank={featuredRows.length + (safeCurrentPage - 1) * CARDS_PER_PAGE + i + 1}
+                    />
+                  ))}
+                </div>
+
+                {remainingRows.length > CARDS_PER_PAGE ? (
+                  <PaginationControls
+                    currentPage={safeCurrentPage}
+                    totalPages={totalPages}
+                    onPageChange={(page) => {
+                      setCurrentPage(page)
+                      window.scrollTo({ top: 0, behavior: "smooth" })
+                    }}
+                  />
+                ) : null}
+              </section>
+            </>
+          )}
         </section>
 
-        {loading && (
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
-            <h2 className="text-2xl font-semibold">
-              Loading{" "}
-              {boardMode === "risk"
-                ? "risks"
-                : boardMode === "cooling"
-                  ? "cooling setups"
-                  : "opportunities"}
-              ...
-            </h2>
-            <p className="mt-2 text-slate-400">Pulling the board together now.</p>
-          </div>
-        )}
-
-        {error && !loading && (
-          <div className="mb-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
-            {error}
-          </div>
-        )}
-
-        {!loading && !uniqueProcessedRows.length ? (
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
-            <h2 className="text-2xl font-semibold">
-              No{" "}
-              {boardMode === "risk"
-                ? "risk names"
-                : boardMode === "cooling"
-                  ? "cooling names"
-                  : "opportunities"}{" "}
-              found
-            </h2>
-            <p className="mt-2 text-slate-400">
-              {boardMode === "risk"
-                ? "Try widening the score ceiling, changing the signal category, or broadening the price filter."
-                : "Try lowering the score floor, changing the signal category, or broadening the price filter."}
-            </p>
-          </div>
-        ) : null}
-
-        {!loading && !!uniqueProcessedRows.length && (
-          <section className="mb-10">
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2
-                  className={[
-                    "text-2xl font-semibold",
-                    boardMode === "risk"
-                      ? "text-rose-300"
-                      : boardMode === "cooling"
-                        ? "text-amber-300"
-                        : "text-emerald-300",
-                  ].join(" ")}
-                >
-                  {boardHeading}
-                </h2>
-                <p className="mt-1 text-sm text-slate-400">{boardSubheading}</p>
-              </div>
-
-              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-                {uniqueProcessedRows.length === 0
-                  ? "No names"
-                  : `${pageStart}-${pageEnd} of ${uniqueProcessedRows.length}`}
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {paginatedRows.map((row, i) => (
-                <TopSignalCard
-                  key={getRowKey(row, i)}
-                  row={row}
-                  boardMode={boardMode}
-                  isSelected={row.ticker === selectedTicker}
-                  onClick={() => openDetails(row.ticker)}
-                  rank={(safeCurrentPage - 1) * CARDS_PER_PAGE + i + 1}
-                />
-              ))}
-            </div>
-
-            {uniqueProcessedRows.length > CARDS_PER_PAGE ? (
-              <PaginationControls
-                currentPage={safeCurrentPage}
-                totalPages={totalPages}
-                onPageChange={(page) => {
-                  setCurrentPage(page)
-                  window.scrollTo({ top: 0, behavior: "smooth" })
-                }}
-              />
-            ) : null}
-          </section>
-        )}
-
-        <footer className="border-t border-white/10 pt-8 text-sm text-slate-500">
-          Signal rankings are model-based and meant for idea generation, not guaranteed outcomes.
+        <footer className="mt-10 border-t border-white/10 pt-8 text-sm text-slate-500">
+          Strong-buy rankings are model-based and meant for idea generation, not guaranteed
+          outcomes.
         </footer>
       </div>
 
-      {selectedRow ? (
-        <SignalDetailsModal
-          row={selectedRow}
-          boardMode={boardMode}
-          onClose={closeDetails}
-        />
-      ) : null}
+      {selectedRow ? <SignalDetailsModal row={selectedRow} onClose={closeDetails} /> : null}
     </main>
   )
+}
+
+function HeroStat({
+  label,
+  value,
+  subtext,
+}: {
+  label: string
+  value: string
+  subtext: string
+}) {
+  return (
+    <div className="rounded-[1.75rem] border border-white/10 bg-black/20 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      <p className="mt-2 text-3xl font-bold text-white">{value}</p>
+      <p className="mt-1 text-sm text-slate-400">{subtext}</p>
+    </div>
+  )
+}
+
+function TrustPill({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+      <p className="text-sm font-semibold text-white">{title}</p>
+      <p className="mt-1 text-sm text-slate-400">{text}</p>
+    </div>
+  )
+}
+
+function WhySubscribeCard({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="text-base font-semibold text-white">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-400">{text}</p>
+    </div>
+  )
+}
+
+function MethodBullet({ text }: { text: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+      <span className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" />
+      <p className="text-sm leading-6 text-slate-300">{text}</p>
+    </div>
+  )
+}
+
+function UnlockCard({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+      <p className="text-sm font-semibold text-white">{title}</p>
+      <p className="mt-1 text-sm text-slate-400">{text}</p>
+    </div>
+  )
+}
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: Array<{ value: string; label: string }>
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-white outline-none transition focus:border-emerald-400/40 focus:bg-slate-950"
+      >
+        {options.map((option) => (
+          <option key={`${label}-${option.value}`} value={option.value} className="bg-slate-900">
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+function BoardChip({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-sm text-emerald-200">
+      <span className="text-slate-300">{label}:</span>
+      <span className="font-semibold text-white">{value}</span>
+    </span>
+  )
+}
+
+function LoadingPanel() {
+  return (
+    <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
+      <h2 className="text-2xl font-semibold">Loading today’s strong buys…</h2>
+      <p className="mt-2 text-slate-400">Pulling the shortlist together now.</p>
+    </div>
+  )
+}
+
+function ErrorPanel({ message }: { message: string }) {
+  return (
+    <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
+      {message}
+    </div>
+  )
+}
+
+function EmptyPanel() {
+  return (
+    <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
+      <h2 className="text-2xl font-semibold">No strong buys found</h2>
+      <p className="mt-2 text-slate-400">
+        Try widening freshness, valuation, or score filters to reveal more names.
+      </p>
+    </div>
+  )
+}
+
+function bestRowPerTicker(items: TickerScore[]) {
+  const map = new Map<string, TickerScore>()
+
+  for (const item of items) {
+    const ticker = (item.ticker || "").trim().toUpperCase()
+    if (!ticker) continue
+
+    const existing = map.get(ticker)
+    if (!existing) {
+      map.set(ticker, item)
+      continue
+    }
+
+    const comparison = compareRows(item, existing)
+    if (comparison < 0) {
+      map.set(ticker, item)
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => compareRows(a, b))
+}
+
+function compareRows(a: TickerScore, b: TickerScore) {
+  const aScore = getEffectiveScore(a)
+  const bScore = getEffectiveScore(b)
+  const aDate = getDateValue(a.filed_at ?? a.updated_at)
+  const bDate = getDateValue(b.filed_at ?? b.updated_at)
+
+  if (aScore !== bScore) return bScore - aScore
+  return bDate - aDate
+}
+
+function matchesPriceFilter(row: TickerScore, priceFilter: PriceFilterType) {
+  if (priceFilter === "all") return true
+
+  const price = row.price
+  if (price === null || price === undefined) return false
+
+  if (priceFilter === "under10") return price < 10
+  if (priceFilter === "10to25") return price >= 10 && price < 25
+  if (priceFilter === "25to100") return price >= 25 && price < 100
+  if (priceFilter === "100plus") return price >= 100
+
+  return true
+}
+
+function matchesPeFilter(row: TickerScore, peFilter: PeFilterType) {
+  if (peFilter === "all") return true
+
+  const pe = row.pe_ratio ?? row.pe_forward ?? null
+  if (pe === null || pe === undefined) return true
+
+  const maxPe = Number(peFilter)
+  return pe <= maxPe
+}
+
+function matchesFreshnessFilter(row: TickerScore, freshnessFilter: FreshnessFilterType) {
+  if (freshnessFilter === "all") return true
+
+  const age = row.age_days
+  if (age === null || age === undefined) return false
+
+  if (freshnessFilter === "today") return age <= 0
+  if (freshnessFilter === "3d") return age <= 3
+  if (freshnessFilter === "7d") return age <= 7
+  if (freshnessFilter === "14d") return age <= 14
+
+  return true
+}
+
+function matchesScoreFilter(row: TickerScore, scoreFilter: ScoreFilterType) {
+  if (scoreFilter === "all") return true
+  return getEffectiveScore(row) >= Number(scoreFilter)
+}
+
+function matchesSectorFilter(row: TickerScore, sectorFilter: SectorFilterType) {
+  if (sectorFilter === "all") return true
+  return (row.sector || "").trim() === sectorFilter
+}
+
+function getEffectiveScore(row: TickerScore) {
+  if (row.app_score !== null && row.app_score !== undefined) {
+    return Math.max(0, Math.min(100, Math.round(row.app_score)))
+  }
+
+  const rawScore = row.raw_score ?? 0
+  return Math.max(0, Math.min(100, Math.round(rawScore)))
+}
+
+function getLastUpdated(rows: TickerScore[]) {
+  const dates = rows
+    .map((row) => row.score_updated_at || row.updated_at)
+    .filter((v): v is string => Boolean(v))
+    .map((v) => new Date(v))
+    .filter((d) => !Number.isNaN(d.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime())
+
+  if (!dates.length) return null
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(dates[0])
+}
+
+function getDateValue(dateString: string | null | undefined) {
+  if (!dateString) return 0
+  const timestamp = new Date(dateString).getTime()
+  return Number.isNaN(timestamp) ? 0 : timestamp
+}
+
+function formatDateShort(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "—"
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(date)
+}
+
+function getRowKey(row: TickerScore, index: number) {
+  const accessionKey =
+    row.accession_nos?.join("-") ||
+    row.filed_at ||
+    row.updated_at ||
+    String(index)
+
+  return `${row.ticker}-${accessionKey}-${index}`
 }
 
 function Tooltip({
@@ -1133,204 +996,442 @@ function Tooltip({
   )
 }
 
-function SignalDetailsModal({
+function FeaturedStrongBuyCard({
   row,
-  boardMode,
-  onClose,
+  rank,
+  onClick,
 }: {
   row: TickerScore
-  boardMode: BoardMode
-  onClose: () => void
+  rank: number
+  onClick: () => void
 }) {
-  const tone = boardMode === "risk" ? "risk" : boardMode === "cooling" ? "cooling" : "buy"
+  const score = getEffectiveScore(row)
+  const palette = getScorePalette(score)
+  const reasons = getTopReasonChips(row)
+  const thesis = getFeaturedThesis(row)
+  const miniMetrics: MiniMetricItem[] = [
+    {
+      label: "Price",
+      value: formatMoney(row.price),
+      tooltip: getMiniMetricTooltip("Price", row),
+    },
+    {
+      label: "5D Move",
+      value: formatPercent(row.price_return_5d),
+      tooltip: getMiniMetricTooltip("5D Move", row),
+    },
+    {
+      label: "20D Move",
+      value: formatPercent(row.price_return_20d),
+      tooltip: getMiniMetricTooltip("20D Move", row),
+    },
+    {
+      label: "Volume",
+      value: formatRatio(row.volume_ratio),
+      tooltip: getMiniMetricTooltip("Volume", row),
+    },
+    {
+      label: "Vs Market",
+      value: formatPercent(row.relative_strength_20d),
+      tooltip: getMiniMetricTooltip("Vs Market", row),
+    },
+    {
+      label: "Stacked",
+      value: formatWholeNumber(row.stacked_signal_count),
+      tooltip: getMiniMetricTooltip("Stacked", row),
+    },
+  ].filter((item) => hasDisplayValue(item.value))
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6"
-      onClick={onClose}
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative overflow-hidden rounded-[2rem] border p-5 text-left shadow-[0_22px_60px_rgba(0,0,0,0.36)] transition duration-200 hover:-translate-y-1"
+      style={{
+        borderColor: `${palette.end}45`,
+        background: `linear-gradient(135deg, ${palette.start}16 0%, rgba(15,23,42,0.92) 35%, rgba(2,6,23,1) 100%)`,
+      }}
     >
-      <div
-        className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-t-[2rem] border border-white/10 bg-slate-950 shadow-2xl sm:rounded-[2rem]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-white/10 bg-slate-950/95 px-5 py-4 backdrop-blur sm:px-6">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.06),_transparent_25%)] opacity-0 transition group-hover:opacity-100" />
+
+      <div className="relative">
+        <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p
-              className={[
-                "text-xs font-semibold uppercase tracking-[0.18em]",
-                tone === "risk"
-                  ? "text-rose-300/80"
-                  : tone === "cooling"
-                    ? "text-amber-300/80"
-                    : "text-emerald-300/80",
-              ].join(" ")}
-            >
-              {tone === "risk"
-                ? "Risk Detail"
-                : tone === "cooling"
-                  ? "Cooling-Off Detail"
-                  : "Opportunity Detail"}
-            </p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <h2 className="text-2xl font-bold sm:text-3xl">{row.ticker}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <FeaturedRankBadge rank={rank} />
+              <SignalTypeBadge row={row} />
+              <FreshnessBadge row={row} />
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <h3 className="text-3xl font-bold tracking-tight sm:text-4xl">{row.ticker}</h3>
               <ScoreBadge row={row} large />
               <ConfidenceBadge row={row} />
-              <FreshnessBadge row={row} />
-              <SignalTypeBadge row={row} />
-              <StrengthBadge bucket={row.signal_strength_bucket} />
-              {has8kRisk(row) ? (
-                <RiskAlertBadge catalystType={getCatalystTypeFromRow(row)} />
-              ) : null}
             </div>
+
             {row.company_name ? (
-              <p className="mt-1 text-sm text-slate-400">{row.company_name}</p>
+              <p className="mt-2 text-sm text-slate-300 sm:text-base">{row.company_name}</p>
             ) : null}
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
-          >
-            Close
-          </button>
         </div>
 
-        <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="mt-5">
+          <ScoreBar row={row} />
+        </div>
+
+        <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-black/20 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+            Why this one stands out
+          </p>
+          <p className="mt-2 text-lg font-semibold text-white sm:text-xl">{thesis}</p>
+          <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
+            {getPlainEnglishSummary(row)}
+          </p>
+        </div>
+
+        {!!reasons.length && (
+          <div className="mt-5 flex flex-wrap gap-2">
+            {reasons.map((reason) => (
+              <ReasonChip key={reason} label={reason} />
+            ))}
+          </div>
+        )}
+
+        {!!miniMetrics.length && (
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {miniMetrics.map((item) => (
+              <MiniMetric
+                key={item.label}
+                label={item.label}
+                value={item.value}
+                tooltip={item.tooltip}
+              />
+            ))}
+          </div>
+        )}
+
+        <div className="mt-5 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
           <div className="min-w-0">
-            {row.business_description ? (
-              <p className="mb-5 text-sm leading-7 text-slate-300 sm:text-base">
-                {row.business_description}
-              </p>
-            ) : null}
-
-            <div className="mb-5">
-              <ScoreBar row={row} />
-            </div>
-
-            <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p
-                className={[
-                  "text-xs font-semibold uppercase tracking-[0.18em]",
-                  boardMode === "risk"
-                    ? "text-rose-300/80"
-                    : boardMode === "cooling"
-                      ? "text-amber-300/80"
-                      : "text-emerald-300/80",
-                ].join(" ")}
-              >
-                {boardMode === "risk"
-                  ? "Why Avoid It"
-                  : boardMode === "cooling"
-                    ? "Why It Still Matters"
-                    : "Why It Could Move"}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-200">
-                {getConfidenceStatement(row, boardMode === "risk" ? "risk" : "buy")}
-              </p>
-            </div>
-
-            <div className="mb-5">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Score Drivers
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {getTopReasonLines(row, boardMode === "risk" ? "risk" : "buy").map((reason) => (
-                  <ReasonCard key={`${reason.label}-${reason.value}`} reason={reason} />
-                ))}
-              </div>
-            </div>
-
-            <div className="mb-5">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Score Movement
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
-                <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Summary
-              </p>
-              <p className="text-sm leading-7 text-slate-200 sm:text-base">
-                {row.primary_summary || getSignalSummary(row)}
-              </p>
-
-              {!!normalizeTags(row.signal_tags).length && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {normalizeTags(row.signal_tags)
-                    .slice(0, 10)
-                    .map((tag) => (
-                      <TagPill key={tag} tag={tag} />
-                    ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="min-w-0 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-            <p
-              className={[
-                "text-xs font-semibold uppercase tracking-[0.18em]",
-                boardMode === "risk"
-                  ? "text-rose-300/80"
-                  : boardMode === "cooling"
-                    ? "text-amber-300/80"
-                    : "text-emerald-300/80",
-              ].join(" ")}
-            >
-              {boardMode === "risk"
-                ? "Risk Snapshot"
-                : boardMode === "cooling"
-                  ? "Re-Entry Snapshot"
-                  : "Conviction Snapshot"}
+            <p className="text-xs uppercase tracking-[0.16em] text-slate-400">
+              Primary driver
             </p>
-
-            <div className="mt-4 space-y-3">
-              <MetricRow label="Source" value={formatSource(row.primary_signal_source)} />
-              <MetricRow label="Category" value={getSignalCategory(row)} />
-              <MetricRow label="Board Score" value={formatScore(row)} />
-              <MetricRow label="Price" value={formatMoney(row.price)} />
-              <MetricRow
-                label="Confidence Tier"
-                value={getConfidenceTierLabel(getEffectiveScore(row))}
-              />
-              <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
-              <MetricRow label="Signals Stacked" value={formatWholeNumber(row.stacked_signal_count)} />
-              <MetricRow label="1D Score Change" value={formatScoreChange(row.ticker_score_change_1d)} />
-              <MetricRow label="7D Score Change" value={formatScoreChange(row.ticker_score_change_7d)} />
-              <MetricRow label="Insider Action" value={row.insider_action || null} />
-              <MetricRow label="Insider Shares" value={formatShares(row.insider_shares)} />
-              <MetricRow label="Insider Avg Price" value={formatMoney(row.insider_avg_price)} />
-              <MetricRow label="Insider Value" value={formatInsiderValue(row)} />
-              <MetricRow
-                label={boardMode === "risk" ? "Risk Cluster Size" : "Buying Wave Size"}
-                value={formatWholeNumber(row.cluster_buyers)}
-              />
-              <MetricRow
-                label={boardMode === "risk" ? "Cluster Shares" : "Buying Wave Shares"}
-                value={formatShares(row.cluster_shares)}
-              />
-              <MetricRow
-                label="Valuation"
-                value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)}
-              />
-              <MetricRow label="5D Move" value={formatPercent(row.price_return_5d)} />
-              <MetricRow label="20D Move" value={formatPercent(row.price_return_20d)} />
-              <MetricRow label="Volume Ratio" value={formatRatio(row.volume_ratio)} />
-              <MetricRow label="Earnings Surprise" value={formatPercent(row.earnings_surprise_pct)} />
-              <MetricRow label="Revenue Growth" value={formatPercent(row.revenue_growth_pct)} />
-              <MetricRow label="Vs Market 20D" value={formatPercent(row.relative_strength_20d)} />
-              <MetricRow label="Age" value={formatAge(row.age_days)} />
-              <MetricRow label="Model Version" value={row.score_version || null} />
-            </div>
+            <p className="mt-1 truncate text-sm font-semibold text-white">
+              {row.primary_title || "High-conviction strong buy"}
+            </p>
           </div>
+          <span className="shrink-0 rounded-full bg-emerald-400 px-3 py-1 text-xs font-bold text-slate-950">
+            Open setup
+          </span>
         </div>
       </div>
+    </button>
+  )
+}
+
+function TopSignalCard({
+  row,
+  onClick,
+  isSelected,
+  rank,
+}: {
+  row: TickerScore
+  onClick: () => void
+  isSelected: boolean
+  rank: number
+}) {
+  const score = getEffectiveScore(row)
+  const palette = getScorePalette(score)
+  const reasons = getTopReasonChips(row)
+  const metricItems: MiniMetricItem[] = [
+    {
+      label: "Price",
+      value: formatMoney(row.price),
+      tooltip: getMiniMetricTooltip("Price", row),
+    },
+    {
+      label: "Vs Market",
+      value: formatPercent(row.relative_strength_20d),
+      tooltip: getMiniMetricTooltip("Vs Market", row),
+    },
+    {
+      label: "5D Move",
+      value: formatPercent(row.price_return_5d),
+      tooltip: getMiniMetricTooltip("5D Move", row),
+    },
+    {
+      label: "Volume",
+      value: formatRatio(row.volume_ratio),
+      tooltip: getMiniMetricTooltip("Volume", row),
+    },
+    {
+      label: "1D Δ",
+      value: formatScoreChange(row.ticker_score_change_1d),
+      tooltip: getMiniMetricTooltip("1D Δ", row),
+    },
+    {
+      label: "Stacked",
+      value: formatWholeNumber(row.stacked_signal_count),
+      tooltip: getMiniMetricTooltip("Stacked", row),
+    },
+  ].filter((item) => hasDisplayValue(item.value))
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "flex h-full min-w-0 flex-col rounded-3xl border p-4 text-left shadow-xl transition duration-200 sm:p-5",
+        isSelected
+          ? "ring-2 ring-emerald-300/25"
+          : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
+      ].join(" ")}
+      style={{
+        borderColor: isSelected ? `${palette.end}80` : `${palette.end}33`,
+        background: `linear-gradient(135deg, ${palette.start}12 0%, rgba(15,23,42,0.92) 40%, rgba(2,6,23,1) 100%)`,
+      }}
+    >
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <CardRankBadge rank={rank} />
+            <p className="text-xs uppercase tracking-[0.2em] text-emerald-300/80">
+              {formatSource(row.primary_signal_source)}
+            </p>
+          </div>
+
+          <h3 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{row.ticker}</h3>
+          {row.company_name ? (
+            <p className="mt-1 truncate text-sm text-slate-400">{row.company_name}</p>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <ScoreBadge row={row} />
+          <FreshnessBadge row={row} />
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <ScoreBar row={row} compact />
+      </div>
+
+      <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+          Setup thesis
+        </p>
+        <p className="mt-2 text-sm font-semibold leading-6 text-white">
+          {getCardThesis(row)}
+        </p>
+      </div>
+
+      {!!reasons.length && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {reasons.map((reason) => (
+            <ReasonChip key={reason} label={reason} />
+          ))}
+        </div>
+      )}
+
+      {row.business_description ? (
+        <p className="mb-4 text-sm leading-6 text-slate-300">
+          {truncateText(row.business_description, 110)}
+        </p>
+      ) : null}
+
+      {!!metricItems.length && (
+        <div className="mb-4 grid grid-cols-2 gap-3 auto-rows-fr">
+          {metricItems.map((item) => (
+            <MiniMetric
+              key={item.label}
+              label={item.label}
+              value={item.value}
+              tooltip={item.tooltip}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="mt-auto rounded-2xl bg-black/20 p-4">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+          Why traders could notice it
+        </p>
+        <p className="text-sm leading-6 text-slate-100">
+          {truncateText(getPlainEnglishSummary(row), 180)}
+        </p>
+      </div>
+    </button>
+  )
+}
+
+function ScoreBar({
+  row,
+  compact = false,
+}: {
+  row: TickerScore
+  compact?: boolean
+}) {
+  const score = getEffectiveScore(row)
+  const palette = getScorePalette(score)
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+          Conviction Score
+        </p>
+        <p className="text-sm font-semibold text-white">{score}/100</p>
+      </div>
+
+      <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+        <div
+          className="h-full rounded-full transition-all duration-300"
+          style={{
+            width: `${score}%`,
+            background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
+          }}
+        />
+      </div>
+
+      {!compact ? (
+        <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.14em] text-slate-500">
+          <span>Good</span>
+          <span>Strong</span>
+          <span>Elite</span>
+        </div>
+      ) : null}
     </div>
+  )
+}
+
+function MiniMetric({
+  label,
+  value,
+  tooltip,
+}: {
+  label: string
+  value: string
+  tooltip?: string
+}) {
+  const card = (
+    <div className="flex h-full min-h-[88px] flex-col justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+      <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-white sm:text-base">{value}</p>
+    </div>
+  )
+
+  if (!tooltip) return card
+  return <Tooltip content={tooltip}>{card}</Tooltip>
+}
+
+function FeaturedRankBadge({ rank }: { rank: number }) {
+  return (
+    <Tooltip content={`This setup is ranked #${rank} on today’s strong-buy board.`}>
+      <span className="inline-flex cursor-help items-center rounded-full bg-emerald-400 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-950">
+        Top #{rank}
+      </span>
+    </Tooltip>
+  )
+}
+
+function CardRankBadge({ rank }: { rank: number }) {
+  return (
+    <Tooltip content={`This setup is ranked #${rank} on today’s board.`}>
+      <span className="inline-flex cursor-help items-center rounded-full bg-emerald-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200">
+        #{rank}
+      </span>
+    </Tooltip>
+  )
+}
+
+function ScoreBadge({
+  row,
+  large = false,
+}: {
+  row: TickerScore
+  large?: boolean
+}) {
+  const score = getEffectiveScore(row)
+  const palette = getScorePalette(score)
+
+  return (
+    <Tooltip content={getScoreTooltip(score)}>
+      <div
+        className={[
+          "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
+          large ? "px-4 py-2 text-sm" : "px-3 py-1 text-sm",
+        ].join(" ")}
+        style={{
+          background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
+          color: palette.text,
+        }}
+      >
+        {score}
+      </div>
+    </Tooltip>
+  )
+}
+
+function ConfidenceBadge({
+  row,
+  small = false,
+}: {
+  row: TickerScore
+  small?: boolean
+}) {
+  const score = getEffectiveScore(row)
+  const label = getConfidenceTierLabel(score)
+
+  return (
+    <Tooltip content={getConfidenceTooltip(score, label)}>
+      <span
+        className={[
+          "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 font-semibold text-slate-200",
+          small ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
+        ].join(" ")}
+      >
+        {label}
+      </span>
+    </Tooltip>
+  )
+}
+
+function FreshnessBadge({ row }: { row: TickerScore }) {
+  const label = getFreshnessLabel(row)
+  if (!label) return null
+
+  return (
+    <Tooltip content={getFreshnessTooltip(row)}>
+      <span className="inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
+        {label}
+      </span>
+    </Tooltip>
+  )
+}
+
+function SignalTypeBadge({ row }: { row: TickerScore }) {
+  const config = getSignalBadgeConfig(row)
+
+  return (
+    <Tooltip content={getSignalTypeTooltip(row, config.label)}>
+      <span
+        className={[
+          "inline-flex cursor-help items-center rounded-full border px-3 py-1.5 text-xs font-semibold",
+          config.className,
+        ].join(" ")}
+      >
+        {config.label}
+      </span>
+    </Tooltip>
+  )
+}
+
+function ReasonChip({ label }: { label: string }) {
+  return (
+    <Tooltip content={getReasonChipTooltip(label)}>
+      <span className="cursor-help rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-200">
+        {label}
+      </span>
+    </Tooltip>
   )
 }
 
@@ -1384,7 +1485,7 @@ function PaginationControls({
               className={[
                 "min-w-[42px] rounded-xl border px-3 py-2 text-sm font-semibold transition",
                 page === currentPage
-                  ? "border-white/20 bg-white/15 text-white"
+                  ? "border-emerald-400/30 bg-emerald-400/15 text-white"
                   : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white",
               ].join(" ")}
             >
@@ -1447,203 +1548,356 @@ function buildPaginationPages(currentPage: number, totalPages: number): Array<nu
   ]
 }
 
-function TopSignalCard({
+function getSignalBadgeConfig(row: TickerScore) {
+  const source = row.primary_signal_source
+  const category = getSignalCategory(row)
+
+  if (source === "breakout") {
+    return {
+      label: "Technical Buy",
+      className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+    }
+  }
+
+  if (category === "Cluster Buys") {
+    return {
+      label: "Buying Wave",
+      className: "border-cyan-400/30 bg-cyan-400/10 text-cyan-300",
+    }
+  }
+
+  if (category === "Insider Buys") {
+    return {
+      label: "Insider Buying",
+      className: "border-cyan-400/30 bg-cyan-400/10 text-cyan-300",
+    }
+  }
+
+  if (category === "Institutional") {
+    return {
+      label: "Big Investor",
+      className: "border-violet-400/30 bg-violet-400/10 text-violet-300",
+    }
+  }
+
+  if (category === "Momentum") {
+    return {
+      label: "Momentum",
+      className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+    }
+  }
+
+  if (category === "Fundamental") {
+    return {
+      label: "Fundamental",
+      className: "border-blue-400/30 bg-blue-400/10 text-blue-300",
+    }
+  }
+
+  return {
+    label: "Strong Buy",
+    className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+  }
+}
+
+function getSignalCategory(row: TickerScore) {
+  const storedCategory = (row.primary_signal_category ?? "").trim()
+  if (storedCategory) return storedCategory
+  return "Strong Buy"
+}
+
+function getFeaturedThesis(row: TickerScore) {
+  if (row.primary_signal_source === "breakout" && (row.volume_ratio ?? 0) >= 2) {
+    return "Fresh breakout with strong participation"
+  }
+
+  if ((row.cluster_buyers ?? 0) >= 2) {
+    return "Multiple bullish signals are stacking together"
+  }
+
+  if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
+    return "Momentum is being reinforced by earnings support"
+  }
+
+  if ((row.relative_strength_20d ?? 0) >= 8) {
+    return "This name is outperforming while conviction stays high"
+  }
+
+  return "A high-conviction setup with strong current support"
+}
+
+function getCardThesis(row: TickerScore) {
+  if (row.primary_title) return row.primary_title
+
+  if (row.primary_signal_source === "breakout") {
+    return "Fresh technical setup with confirmed momentum"
+  }
+
+  if ((row.cluster_buyers ?? 0) >= 2) {
+    return "Buying interest is showing up in a meaningful way"
+  }
+
+  if ((row.volume_ratio ?? 0) >= 2 && (row.price_return_5d ?? 0) >= 5) {
+    return "Participation and price action are moving together"
+  }
+
+  return "Strong buy conditions are lining up"
+}
+
+function SignalDetailsModal({
   row,
-  onClick,
-  isSelected,
-  boardMode,
-  rank,
+  onClose,
 }: {
   row: TickerScore
-  onClick: () => void
-  isSelected: boolean
-  boardMode: BoardMode
-  rank: number
+  onClose: () => void
 }) {
-  const tone = boardMode === "risk" ? "risk" : boardMode === "cooling" ? "cooling" : "buy"
-  const reasons = getTopReasonChips(row, boardMode === "risk" ? "risk" : "buy")
-  const score = getEffectiveScore(row)
-  const palette = getScorePalette(score)
-  const extremeGlow = getExtremeCardGlow(score)
-
-  const metricItems: MiniMetricItem[] = [
-    {
-      label: "Price",
-      value: formatMoney(row.price),
-      tooltip: getMiniMetricTooltip("Price", row),
-    },
-    {
-      label: "Vs Market",
-      value: formatPercent(row.relative_strength_20d),
-      tooltip: getMiniMetricTooltip("Vs Market", row),
-    },
-    {
-      label: "5D Move",
-      value: formatPercent(row.price_return_5d),
-      tooltip: getMiniMetricTooltip("5D Move", row),
-    },
-    {
-      label: "Volume",
-      value: formatRatio(row.volume_ratio),
-      tooltip: getMiniMetricTooltip("Volume", row),
-    },
-    {
-      label: "1D Δ",
-      value: formatScoreChange(row.ticker_score_change_1d),
-      tooltip: getMiniMetricTooltip("1D Δ", row),
-    },
-    {
-      label: "7D Δ",
-      value: formatScoreChange(row.ticker_score_change_7d),
-      tooltip: getMiniMetricTooltip("7D Δ", row),
-    },
-    {
-      label: "Stacked",
-      value: formatWholeNumber(row.stacked_signal_count),
-      tooltip: getMiniMetricTooltip("Stacked", row),
-    },
-    {
-      label: "Strength",
-      value: row.signal_strength_bucket || "—",
-      tooltip: getMiniMetricTooltip("Strength", row),
-    },
-  ].filter((item) => hasDisplayValue(item.value))
+  const reasons = getTopReasonLines(row)
+  const tags = normalizeTags(row.signal_tags)
+  const thesis = getFeaturedThesis(row)
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "flex h-full min-w-0 flex-col rounded-3xl border p-4 text-left shadow-xl transition duration-200 sm:p-5",
-        isSelected
-          ? "ring-2 ring-white/20"
-          : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
-      ].join(" ")}
-      style={{
-        borderColor: isSelected ? `${palette.end}80` : `${palette.end}33`,
-        background: `linear-gradient(135deg, ${palette.start}14 0%, rgba(15,23,42,0.92) 38%, rgba(2,6,23,1) 100%)`,
-        boxShadow: extremeGlow
-          ? isSelected
-            ? `0 22px 54px ${extremeGlow}`
-            : `0 16px 34px ${extremeGlow}`
-          : isSelected
-            ? "0 18px 42px rgba(0,0,0,0.35)"
-            : "0 14px 30px rgba(0,0,0,0.28)",
-      }}
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+      onClick={onClose}
     >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p
-              className={[
-                "text-xs uppercase tracking-[0.2em]",
-                tone === "risk"
-                  ? "text-rose-300/80"
-                  : tone === "cooling"
-                    ? "text-amber-300/80"
-                    : "text-emerald-300/80",
-              ].join(" ")}
-            >
-              {formatSource(row.primary_signal_source)}
+      <div
+        className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-t-[2rem] border border-white/10 bg-slate-950 shadow-2xl sm:rounded-[2rem]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-white/10 bg-slate-950/95 px-5 py-4 backdrop-blur sm:px-6">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+              Strong Buy Detail
             </p>
 
-            <RankBadge rank={rank} boardMode={boardMode} />
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <h2 className="text-2xl font-bold sm:text-3xl">{row.ticker}</h2>
+              <ScoreBadge row={row} large />
+              <ConfidenceBadge row={row} />
+              <FreshnessBadge row={row} />
+              <SignalTypeBadge row={row} />
+              <StrengthBadge bucket={row.signal_strength_bucket} />
+            </div>
+
+            {row.company_name ? (
+              <p className="mt-1 text-sm text-slate-400">{row.company_name}</p>
+            ) : null}
           </div>
 
-          <h3 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{row.ticker}</h3>
-          {row.company_name ? (
-            <p className="mt-1 truncate text-sm text-slate-400">{row.company_name}</p>
-          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+          >
+            Close
+          </button>
         </div>
 
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <ScoreBadge row={row} />
-          <ConfidenceBadge row={row} small />
-          <FreshnessBadge row={row} />
+        <div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="min-w-0">
+            <div className="mb-5 rounded-[1.75rem] border border-emerald-400/15 bg-[linear-gradient(135deg,rgba(16,185,129,0.10),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                Why this made the board
+              </p>
+              <p className="mt-2 text-xl font-semibold text-white sm:text-2xl">{thesis}</p>
+              <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
+                {getConfidenceStatement(row)}
+              </p>
+            </div>
+
+            {row.business_description ? (
+              <p className="mb-5 text-sm leading-7 text-slate-300 sm:text-base">
+                {row.business_description}
+              </p>
+            ) : null}
+
+            <div className="mb-5">
+              <ScoreBar row={row} />
+            </div>
+
+            <div className="mb-5">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Score drivers
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {reasons.map((reason) => (
+                  <ReasonCard key={`${reason.label}-${reason.value}`} reason={reason} />
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-5">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Score movement
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
+                <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
+              </div>
+            </div>
+
+            <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                Plain-English setup summary
+              </p>
+              <p className="mt-2 text-sm leading-7 text-slate-200 sm:text-base">
+                {row.primary_summary || getSignalSummary(row)}
+              </p>
+
+              {!!tags.length && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {tags.slice(0, 12).map((tag) => (
+                    <TagPill key={tag} tag={tag} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                What confirms the setup
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <ConfirmationRow
+                  label="Price confirmation"
+                  value={row.price_confirmed === true ? "Confirmed" : "Not confirmed"}
+                />
+                <ConfirmationRow
+                  label="Breakout"
+                  value={
+                    row.breakout_52w
+                      ? "52-week breakout"
+                      : row.breakout_20d
+                        ? "20-day breakout"
+                        : "No breakout flag"
+                  }
+                />
+                <ConfirmationRow
+                  label="Trend alignment"
+                  value={row.trend_aligned === true ? "Aligned" : "Mixed"}
+                />
+                <ConfirmationRow
+                  label="Relative strength"
+                  value={formatPercent(row.relative_strength_20d)}
+                />
+                <ConfirmationRow
+                  label="Participation"
+                  value={formatRatio(row.volume_ratio)}
+                />
+                <ConfirmationRow
+                  label="Signal stack"
+                  value={formatWholeNumber(row.stacked_signal_count)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="min-w-0 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+              Conviction snapshot
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <MetricRow label="Board score" value={formatScore(row)} />
+              <MetricRow label="Confidence tier" value={getConfidenceTierLabel(getEffectiveScore(row))} />
+              <MetricRow label="Price" value={formatMoney(row.price)} />
+              <MetricRow label="Primary signal" value={row.primary_title || "Strong buy setup"} />
+              <MetricRow label="Signal source" value={formatSource(row.primary_signal_source)} />
+              <MetricRow label="Signal category" value={getSignalCategory(row)} />
+              <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
+              <MetricRow label="Filed at" value={row.filed_at ? formatDateLong(row.filed_at) : null} />
+              <MetricRow label="Signals stacked" value={formatWholeNumber(row.stacked_signal_count)} />
+              <MetricRow label="1D score change" value={formatScoreChange(row.ticker_score_change_1d)} />
+              <MetricRow label="7D score change" value={formatScoreChange(row.ticker_score_change_7d)} />
+            </div>
+
+            <div className="mt-6 border-t border-white/10 pt-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Price and momentum
+              </p>
+
+              <div className="mt-4 space-y-3">
+                <MetricRow label="5D move" value={formatPercent(row.price_return_5d)} />
+                <MetricRow label="20D move" value={formatPercent(row.price_return_20d)} />
+                <MetricRow label="Volume ratio" value={formatRatio(row.volume_ratio)} />
+                <MetricRow label="Vs market 20D" value={formatPercent(row.relative_strength_20d)} />
+                <MetricRow label="Above 50DMA" value={formatBooleanLabel(row.above_50dma)} />
+                <MetricRow label="Trend aligned" value={formatBooleanLabel(row.trend_aligned)} />
+                <MetricRow label="Price confirmed" value={formatBooleanLabel(row.price_confirmed)} />
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-white/10 pt-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Supporting evidence
+              </p>
+
+              <div className="mt-4 space-y-3">
+                <MetricRow label="Insider action" value={row.insider_action || null} />
+                <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
+                <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
+                <MetricRow label="Insider value" value={formatInsiderValue(row)} />
+                <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
+                <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
+                <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
+                <MetricRow label="Revenue growth" value={formatPercent(row.revenue_growth_pct)} />
+                <MetricRow label="Guidance support" value={formatBooleanLabel(row.guidance_flag)} />
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-white/10 pt-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Valuation and company
+              </p>
+
+              <div className="mt-4 space-y-3">
+                <MetricRow label="Valuation" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
+                <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
+                <MetricRow label="Sector" value={row.sector || null} />
+                <MetricRow label="Industry" value={row.industry || null} />
+                <MetricRow label="Model version" value={row.score_version || null} />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-
-      <div className="mb-4">
-        <ScoreBar row={row} compact />
-      </div>
-
-      <div className="mb-4 flex flex-wrap gap-2">
-        {reasons.map((reason) => (
-          <ReasonChip key={reason} label={reason} boardMode={boardMode} />
-        ))}
-      </div>
-
-      {row.business_description ? (
-        <p className="mb-4 text-sm leading-6 text-slate-300">
-          {truncateText(row.business_description, 110)}
-        </p>
-      ) : null}
-
-      {!!metricItems.length && (
-        <div className="mb-4 grid grid-cols-2 gap-3 auto-rows-fr">
-          {metricItems.map((item) => (
-            <MiniMetric
-              key={item.label}
-              label={item.label}
-              value={item.value}
-              tooltip={item.tooltip}
-            />
-          ))}
-        </div>
-      )}
-
-      <div className="mt-auto rounded-2xl bg-black/20 p-4">
-        <p
-          className={[
-            "mb-2 text-xs font-semibold uppercase tracking-[0.18em]",
-            tone === "risk"
-              ? "text-rose-300/80"
-              : tone === "cooling"
-                ? "text-amber-300/80"
-                : isSelected
-                  ? "text-cyan-300/80"
-                  : "text-emerald-300/80",
-          ].join(" ")}
-        >
-          {tone === "risk"
-            ? "Why this is dangerous"
-            : tone === "cooling"
-              ? "Why this could matter again"
-              : "Why traders could pile in"}
-        </p>
-        <p className="text-sm leading-6 text-slate-100">
-          {truncateText(getPlainEnglishSummary(row, boardMode === "risk" ? "risk" : "buy"), 180)}
-        </p>
-      </div>
-    </button>
+    </div>
   )
 }
 
-function FilterChip({
+function MetricRow({
   label,
   value,
-  tone,
+}: {
+  label: string
+  value: string | null | undefined
+}) {
+  if (value === null || value === undefined || value === "" || value === "—") {
+    return null
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3 text-sm">
+      <span className="text-slate-400">{label}</span>
+      <span className="max-w-[58%] truncate text-right font-semibold text-white">
+        {value}
+      </span>
+    </div>
+  )
+}
+
+function ConfirmationRow({
+  label,
+  value,
 }: {
   label: string
   value: string
-  tone: BoardMode
 }) {
   return (
-    <Tooltip content={getFilterChipTooltip(label, value)}>
-      <span
-        className={[
-          "inline-flex cursor-help items-center gap-1 rounded-full border px-3 py-1 text-sm",
-          tone === "risk"
-            ? "border-rose-400/20 bg-rose-500/10 text-rose-200"
-            : tone === "cooling"
-              ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
-              : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
-        ].join(" ")}
-      >
-        <span className="text-slate-300">{label}:</span>
-        <span className="font-semibold text-white">{value}</span>
-      </span>
-    </Tooltip>
+    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+      <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-white">{value}</p>
+    </div>
   )
 }
 
@@ -1678,6 +1932,7 @@ function MovementCard({
   value: number | null | undefined
 }) {
   const formatted = formatScoreChange(value)
+
   if (formatted === "—") {
     return (
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -1714,228 +1969,26 @@ function MovementCard({
   )
 }
 
-function MiniMetric({
-  label,
-  value,
-  tooltip,
-}: {
-  label: string
-  value: string
-  tooltip?: string
-}) {
-  const card = (
-    <div className="flex h-full min-h-[88px] flex-col justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-      <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-white sm:text-base">{value}</p>
-    </div>
-  )
-
-  if (!tooltip) return card
-
-  return <Tooltip content={tooltip}>{card}</Tooltip>
-}
-
-function MetricRow({
-  label,
-  value,
-}: {
-  label: string
-  value: string | null | undefined
-}) {
-  if (value === null || value === undefined || value === "" || value === "—") {
-    return null
-  }
+function TagPill({ tag }: { tag: string }) {
+  const pretty = prettifyTag(tag)
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3 text-sm">
-      <span className="text-slate-400">{label}</span>
-      <span className="max-w-[55%] truncate text-right font-semibold text-white">
-        {value}
-      </span>
-    </div>
-  )
-}
-
-function RankBadge({
-  rank,
-  boardMode,
-}: {
-  rank: number
-  boardMode: BoardMode
-}) {
-  return (
-    <Tooltip
-      content={
-        boardMode === "risk"
-          ? `This name is ranked #${rank} on the risk board. Lower scores and more danger rank closer to the top.`
-          : boardMode === "cooling"
-            ? `This name is ranked #${rank} on the cooling-off board based on how strong it recently was and how much it has faded.`
-            : `This name is ranked #${rank} on the opportunity board. Higher-ranked names are the strongest current setups.`
-      }
-    >
-      <span
-        className={[
-          "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em]",
-          boardMode === "risk"
-            ? "bg-rose-400/15 text-rose-200"
-            : boardMode === "cooling"
-              ? "bg-amber-400/15 text-amber-200"
-              : "bg-emerald-400/15 text-emerald-200",
-        ].join(" ")}
-      >
-        #{rank}
-      </span>
-    </Tooltip>
-  )
-}
-
-function FreshnessBadge({ row }: { row: TickerScore }) {
-  const label = getFreshnessLabel(row)
-  if (!label) return null
-
-  return (
-    <Tooltip content={getFreshnessTooltip(row)}>
-      <span className="inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
-        {label}
-      </span>
-    </Tooltip>
-  )
-}
-
-function ScoreBadge({
-  row,
-  large = false,
-}: {
-  row: TickerScore
-  large?: boolean
-}) {
-  const score = getEffectiveScore(row)
-  const palette = getScorePalette(score)
-
-  return (
-    <Tooltip content={getScoreTooltip(score)}>
-      <div
-        className={[
-          "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
-          large ? "px-4 py-2 text-sm" : "px-3 py-1 text-sm",
-        ].join(" ")}
-        style={{
-          background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
-          color: palette.text,
-        }}
-      >
-        Score {score}
-      </div>
-    </Tooltip>
-  )
-}
-
-function ConfidenceBadge({
-  row,
-  small = false,
-}: {
-  row: TickerScore
-  small?: boolean
-}) {
-  const score = getEffectiveScore(row)
-  const label = getConfidenceTierLabel(score)
-  const extremeGlow = getExtremeCardGlow(score)
-
-  return (
-    <Tooltip content={getConfidenceTooltip(score, label)}>
-      <span
-        className={[
-          "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 font-semibold text-slate-200",
-          small ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
-        ].join(" ")}
-        style={extremeGlow ? { boxShadow: `0 0 18px ${extremeGlow}` } : undefined}
-      >
-        {label}
-      </span>
-    </Tooltip>
-  )
-}
-
-function ScoreBar({
-  row,
-  compact = false,
-}: {
-  row: TickerScore
-  compact?: boolean
-}) {
-  const score = getEffectiveScore(row)
-  const palette = getScorePalette(score)
-  const extremeGlow = getExtremeCardGlow(score)
-
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-          Signal Strength
-        </p>
-        <p className="text-sm font-semibold text-white">{score}/100</p>
-      </div>
-
-      <div className="h-3 overflow-hidden rounded-full bg-slate-800">
-        <div
-          className="h-full rounded-full transition-all duration-300"
-          style={{
-            width: `${score}%`,
-            background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
-            boxShadow: extremeGlow ? `0 0 18px ${extremeGlow}` : undefined,
-          }}
-        />
-      </div>
-
-      {!compact ? (
-        <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.14em] text-slate-500">
-          <span>Strong Sell</span>
-          <span>Neutral</span>
-          <span>Strong Buy</span>
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function SignalTypeBadge({ row }: { row: TickerScore }) {
-  const config = getSignalBadgeConfig(row)
-
-  return (
-    <Tooltip content={getSignalTypeTooltip(row, config.label)}>
-      <span
-        className={[
-          "inline-flex cursor-help items-center rounded-full border px-3 py-1.5 text-xs font-semibold",
-          config.className,
-        ].join(" ")}
-      >
-        {config.label}
-      </span>
-    </Tooltip>
-  )
-}
-
-function RiskAlertBadge({ catalystType }: { catalystType?: string | null }) {
-  const label = formatCatalystBadgeLabel(catalystType)
-  return (
-    <Tooltip content={getRiskAlertTooltip(catalystType)}>
-      <span className="inline-flex cursor-help items-center rounded-full border border-rose-400/30 bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-200">
-        {label}
+    <Tooltip content={getTagTooltip(tag, pretty)}>
+      <span className="cursor-help rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+        {pretty}
       </span>
     </Tooltip>
   )
 }
 
 function StrengthBadge({ bucket }: { bucket?: string | null }) {
-  const value = bucket ?? "Signal"
+  const value = bucket ?? "Strong Buy"
   const classes =
     value === "Strong Buy"
       ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
       : value === "Buy"
         ? "border-blue-400/30 bg-blue-400/10 text-blue-300"
-        : value === "Risk"
-          ? "border-rose-400/30 bg-rose-400/10 text-rose-300"
-          : "border-yellow-400/30 bg-yellow-400/10 text-yellow-300"
+        : "border-yellow-400/30 bg-yellow-400/10 text-yellow-300"
 
   return (
     <Tooltip content={getStrengthTooltip(value)}>
@@ -1948,232 +2001,182 @@ function StrengthBadge({ bucket }: { bucket?: string | null }) {
   )
 }
 
-function TagPill({ tag }: { tag: string }) {
-  const isRiskTag =
-    tag === "8k-risk" ||
-    tag === "legal-risk" ||
-    tag === "bankruptcy-risk" ||
-    tag === "financing-risk" ||
-    tag === "debt-risk"
+function getTopReasonChips(row: TickerScore) {
+  const tags = normalizeTags(row.signal_tags)
+  const chips: string[] = []
 
-  const pretty = prettifyTag(tag)
+  if (row.primary_signal_source === "breakout") chips.push("Technical Setup")
+  if (tags.includes("cluster-buy") || (row.cluster_buyers ?? 0) >= 2) chips.push("Buying Wave")
+  if (tags.includes("insider-buy") || row.insider_action === "Buy") chips.push("Insider Buying")
+  if ((row.relative_strength_20d ?? 0) > 0) chips.push("Stronger Than Market")
 
-  return (
-    <Tooltip content={getTagTooltip(tag, pretty)}>
-      <span
-        className={[
-          "cursor-help rounded-full border px-3 py-1 text-xs",
-          isRiskTag
-            ? "border-rose-400/25 bg-rose-500/10 text-rose-200"
-            : "border-white/10 bg-white/5 text-slate-300",
-        ].join(" ")}
-      >
-        {pretty}
-      </span>
-    </Tooltip>
-  )
-}
-
-function ReasonChip({
-  label,
-  boardMode,
-}: {
-  label: string
-  boardMode: BoardMode
-}) {
-  return (
-    <Tooltip content={getReasonChipTooltip(label, boardMode)}>
-      <span
-        className={[
-          "cursor-help rounded-full border px-3 py-1.5 text-xs font-semibold",
-          boardMode === "risk"
-            ? "border-rose-400/20 bg-rose-500/10 text-rose-200"
-            : boardMode === "cooling"
-              ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
-              : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
-        ].join(" ")}
-      >
-        {label}
-      </span>
-    </Tooltip>
-  )
-}
-
-function bestRowPerTicker(items: TickerScore[], boardMode: "buy" | "risk") {
-  const map = new Map<string, TickerScore>()
-
-  for (const item of items) {
-    const ticker = (item.ticker || "").trim().toUpperCase()
-    if (!ticker) continue
-
-    const existing = map.get(ticker)
-    if (!existing) {
-      map.set(ticker, item)
-      continue
-    }
-
-    const comparison = compareRows(item, existing, boardMode)
-    if (comparison < 0) {
-      map.set(ticker, item)
-    }
-  }
-
-  return Array.from(map.values()).sort((a, b) => compareRows(a, b, boardMode))
-}
-
-function getRowKey(row: TickerScore, index: number) {
-  const accessionKey =
-    row.accession_nos?.join("-") ||
-    row.filed_at ||
-    row.updated_at ||
-    String(index)
-
-  return `${row.ticker}-${accessionKey}-${index}`
-}
-
-function getSignalBadgeConfig(row: TickerScore) {
-  const category = getSignalCategory(row)
-  const source = row.primary_signal_source
-
-  if (source === "breakout") {
-    return {
-      label: "Technical Buy",
-      className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
-    }
-  }
-  if (category === "Cluster Buys") {
-    return {
-      label: "Buying Wave",
-      className: "border-cyan-400/30 bg-cyan-400/10 text-cyan-300",
-    }
-  }
-  if (category === "Insider Buys") {
-    return {
-      label: "Insider Buying",
-      className: "border-cyan-400/30 bg-cyan-400/10 text-cyan-300",
-    }
-  }
-  if (category === "Institutional") {
-    return {
-      label: "Big Investor",
-      className: "border-violet-400/30 bg-violet-400/10 text-violet-300",
-    }
-  }
-  if (category === "Momentum") {
-    return {
-      label: "Momentum",
-      className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
-    }
-  }
-  if (category === "Flow") {
-    return {
-      label: "Heavy Activity",
-      className: "border-amber-400/30 bg-amber-400/10 text-amber-300",
-    }
-  }
-  if (category === "Fundamental") {
-    return {
-      label: "Company Strength",
-      className: "border-blue-400/30 bg-blue-400/10 text-blue-300",
-    }
-  }
-  if (category === "Risk") {
-    return {
-      label: "Risk",
-      className: "border-rose-400/30 bg-rose-400/10 text-rose-300",
-    }
-  }
-
-  return {
-    label: "Signal",
-    className: "border-slate-400/30 bg-slate-400/10 text-slate-300",
-  }
-}
-
-function getSignalCategory(row: TickerScore) {
-  const storedCategory = (row.primary_signal_category ?? "").trim()
-  if (storedCategory) return storedCategory
-  return "Market Signal"
-}
-
-function matchesPeFilter(row: TickerScore, peFilter: PeFilterType) {
-  if (peFilter === "all") return true
-
-  const pe = row.pe_ratio ?? row.pe_forward ?? null
-  if (pe === null || pe === undefined) return true
-
-  const maxPe = Number(peFilter)
-  return pe <= maxPe
-}
-
-function matchesPriceFilter(row: TickerScore, priceFilter: PriceFilterType) {
-  if (priceFilter === "all") return true
-
-  const price = row.price
-  if (price === null || price === undefined) {
-    return priceFilter === "unknown"
-  }
-
-  if (priceFilter === "under5") return price < 5
-  if (priceFilter === "5to10") return price >= 5 && price < 10
-  if (priceFilter === "10to25") return price >= 10 && price < 25
-  if (priceFilter === "25to100") return price >= 25 && price < 100
-  if (priceFilter === "100plus") return price >= 100
-
-  return true
-}
-
-function getBoardBucket(row: TickerScore): "Buy" | "Risk" | "Watch" {
   if (
-    row.board_bucket === "Buy" ||
-    row.board_bucket === "Risk" ||
-    row.board_bucket === "Watch"
+    tags.includes("momentum-confirmed") ||
+    tags.includes("breakout-20d") ||
+    tags.includes("breakout-52w") ||
+    (row.price_return_5d ?? 0) >= 5
   ) {
-    return row.board_bucket
+    chips.push("Strong Momentum")
   }
 
+  if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
+    chips.push("Strong Earnings")
+  }
+
+  if ((row.volume_ratio ?? 0) >= 1.5) chips.push("Heavy Demand")
+  if ((row.pe_ratio ?? row.pe_forward ?? 999) <= 25) chips.push("Reasonable Valuation")
+  if (getSignalCategory(row) === "Institutional") chips.push("Big Investor Interest")
+  if ((row.stacked_signal_count ?? 0) >= 3) chips.push("Multi-Signal Stack")
+
+  return Array.from(new Set(chips)).slice(0, 4)
+}
+
+function getTopReasonLines(row: TickerScore): ReasonLine[] {
+  const items: ReasonLine[] = []
+  const breakdown = row.score_breakdown || {}
+
+  const labelMap: Record<string, { label: string; tone: "good" | "bad" | "neutral" }> = {
+    insider_buying: { label: "Insiders", tone: "good" },
+    repeat_buying: { label: "Repeat Buying", tone: "good" },
+    senior_executive_buy: { label: "Executive Buy", tone: "good" },
+    momentum: { label: "Momentum", tone: "good" },
+    relative_strength: { label: "Vs Market", tone: "good" },
+    earnings: { label: "Earnings", tone: "good" },
+    valuation: { label: "Valuation", tone: "neutral" },
+    catalyst: { label: "Catalyst", tone: "good" },
+    freshness: { label: "Freshness", tone: "neutral" },
+    time_decay: { label: "Time Decay", tone: "bad" },
+    candidate_screen: { label: "Technical Screen", tone: "good" },
+    candidate_tier_bonus: { label: "Tier Bonus", tone: "good" },
+    candidate_volume: { label: "Screen Volume", tone: "good" },
+    candidate_momentum: { label: "Screen Momentum", tone: "good" },
+    candidate_breakout: { label: "Screen Breakout", tone: "good" },
+    base: { label: "Base Signal", tone: "neutral" },
+  }
+
+  for (const [key, rawValue] of Object.entries(breakdown)) {
+    const value = Number(rawValue || 0)
+    if (!Number.isFinite(value) || value === 0) continue
+
+    const meta = labelMap[key] || {
+      label: prettifyTag(key),
+      tone: value > 0 ? "good" : value < 0 ? "bad" : "neutral",
+    }
+
+    items.push({
+      label: meta.label,
+      value: `${value > 0 ? "+" : ""}${Math.round(value * 10) / 10}`,
+      tone: meta.tone,
+      weight: Math.abs(value),
+    })
+  }
+
+  if (!items.length) {
+    items.push({
+      label: "Model",
+      value: "Bullish signals outweigh negatives",
+      tone: "good",
+      weight: 1,
+    })
+  }
+
+  return items.sort((a, b) => b.weight - a.weight).slice(0, 4)
+}
+
+function getPlainEnglishSummary(row: TickerScore) {
+  const reasons = getTopReasonChips(row)
+
+  if (!reasons.length) {
+    return "Several bullish signals are stacking up here, which keeps the setup on the strong-buy board."
+  }
+
+  return `This name is showing ${reasons.join(", ").toLowerCase()}, which keeps it near the top of the strong-buy board.`
+}
+
+function getConfidenceStatement(row: TickerScore) {
   const score = getEffectiveScore(row)
-  if (score >= 70) return "Buy"
-  if (score <= 30) return "Risk"
-  return "Watch"
-}
+  const tags = normalizeTags(row.signal_tags)
 
-function getEffectiveScore(row: TickerScore) {
-  if (row.app_score !== null && row.app_score !== undefined) {
-    return Math.max(0, Math.min(100, Math.round(row.app_score)))
+  const hasCluster = (row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")
+  const heavyCluster = (row.cluster_buyers ?? 0) >= 3 || tags.includes("cluster-strong")
+  const hasMomentum =
+    (row.price_return_5d ?? 0) >= 5 ||
+    tags.includes("momentum-confirmed") ||
+    tags.includes("breakout-20d") ||
+    tags.includes("breakout-52w") ||
+    row.primary_signal_source === "breakout"
+
+  const hasVolume = (row.volume_ratio ?? 0) >= 1.5 || tags.includes("volume-confirmed")
+  const hasEarnings =
+    (row.earnings_surprise_pct ?? 0) >= 10 ||
+    (row.revenue_growth_pct ?? 0) >= 15 ||
+    row.guidance_flag === true ||
+    tags.includes("earnings-support")
+
+  const hasValue =
+    (row.pe_ratio ?? row.pe_forward ?? 999) <= 25 ||
+    tags.includes("reasonable-valuation") ||
+    tags.includes("deep-value")
+
+  const source = formatSource(row.primary_signal_source)
+
+  if (heavyCluster && hasMomentum) {
+    return "Multiple bullish signals are stacking together, and the stock is still acting well. That combination is much more interesting than a one-off headline."
   }
 
-  const rawScore = row.raw_score ?? 0
-  return Math.max(0, Math.min(100, Math.round(rawScore)))
-}
-
-function getBias(row: TickerScore): "Bullish" | "Neutral" | "Bearish" {
-  if (row.bias === "Bullish" || row.bias === "Neutral" || row.bias === "Bearish") {
-    return row.bias
+  if (row.primary_signal_source === "breakout" && hasMomentum && hasVolume) {
+    return "This is not just a filing-driven idea. Technical strength, participation, and broader momentum are all reinforcing the setup."
   }
 
-  const rawScore = getEffectiveScore(row)
-  if (rawScore >= 70) return "Bullish"
-  if (rawScore <= 30) return "Bearish"
-  return "Neutral"
+  if (score >= 90 && hasCluster && hasMomentum) {
+    return "This stands out because several bullish signals are lining up at once, including buying interest and strong price action."
+  }
+
+  if (hasEarnings && hasMomentum && hasVolume) {
+    return "Recent earnings support, stronger price action, and elevated trading activity are all pointing in the same direction."
+  }
+
+  if (hasCluster && hasValue) {
+    return "Buying interest looks meaningful, and valuation still appears reasonable enough to keep the setup attractive."
+  }
+
+  if (hasMomentum && hasValue) {
+    return "The chart is acting well, and valuation still looks disciplined instead of obviously stretched."
+  }
+
+  if (hasVolume && hasMomentum) {
+    return "This move is being supported by both price and participation, which usually matters more than a headline alone."
+  }
+
+  if (score >= 85) {
+    return "This name ranks highly because several independent signals are still leaning bullish at the same time."
+  }
+
+  return `This remains a constructive setup overall, with ${source} providing the original signal and the broader evaluation still holding up.`
 }
 
-function getBuyMinScore(scoreBandFilter: ScoreBandFilter) {
-  if (scoreBandFilter === "75") return 75
-  if (scoreBandFilter === "80") return 80
-  if (scoreBandFilter === "85") return 85
-  return 70
+function getSignalSummary(row: TickerScore) {
+  if (row.primary_summary) return row.primary_summary
+  return `${row.ticker} is showing a strong-buy setup based on stacked signals, price action, and broader confirmation.`
 }
 
-function getRiskMaxScore(scoreBandFilter: ScoreBandFilter) {
-  if (scoreBandFilter === "25") return 25
-  if (scoreBandFilter === "20") return 20
-  if (scoreBandFilter === "15") return 15
-  return 30
+function normalizeTags(tags: TickerScore["signal_tags"]) {
+  if (!tags) return []
+  if (Array.isArray(tags)) return tags.filter(Boolean)
+  return []
+}
+
+function prettifyTag(tag: string) {
+  return tag
+    .replace(/^source:/, "")
+    .replace(/^8k:/, "8-K ")
+    .replace(/_/g, " ")
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase())
 }
 
 function formatSource(source?: string | null) {
-  if (!source) return "—"
+  if (!source) return "Model"
   if (source === "form4") return "Form 4"
   if (source === "13d") return "13D"
   if (source === "13g") return "13G"
@@ -2184,7 +2187,7 @@ function formatSource(source?: string | null) {
 }
 
 function formatScore(row: TickerScore) {
-  return getEffectiveScore(row).toString()
+  return `${getEffectiveScore(row)}`
 }
 
 function formatPercent(value: number | null | undefined) {
@@ -2204,6 +2207,7 @@ function formatAge(value: number | null | undefined) {
 
 function formatMoney(value: number | null | undefined) {
   if (value === null || value === undefined) return "—"
+
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -2219,6 +2223,27 @@ function formatWholeNumber(value: number | null | undefined) {
 function formatShares(value: number | null | undefined) {
   if (value === null || value === undefined) return "—"
   return `${Math.round(value).toLocaleString()}`
+}
+
+function formatMarketCap(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—"
+
+  if (value >= 1_000_000_000_000) {
+    return `$${(value / 1_000_000_000_000).toFixed(2)}T`
+  }
+  if (value >= 1_000_000_000) {
+    return `$${(value / 1_000_000_000).toFixed(2)}B`
+  }
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1)}M`
+  }
+
+  return formatMoney(value)
+}
+
+function formatBooleanLabel(value: boolean | null | undefined) {
+  if (value === null || value === undefined) return "—"
+  return value ? "Yes" : "No"
 }
 
 function formatInsiderValue(row: TickerScore) {
@@ -2254,427 +2279,35 @@ function formatPe(
   return "—"
 }
 
-function formatCatalystBadgeLabel(catalystType?: string | null) {
-  if (catalystType === "legal") return "Legal Risk"
-  if (catalystType === "bankruptcy") return "Bankruptcy Risk"
-  if (catalystType === "financing") return "Financing Risk"
-  if (catalystType === "debt-restructuring") return "Debt Risk"
-  return "Risk Alert"
-}
-
-function getCatalystTypeFromRow(row: TickerScore) {
-  const tags = normalizeTags(row.signal_tags)
-  if (tags.includes("bankruptcy-risk")) return "bankruptcy"
-  if (tags.includes("legal-risk")) return "legal"
-  if (tags.includes("financing-risk")) return "financing"
-  if (tags.includes("debt-risk")) return "debt-restructuring"
-  return null
-}
-
-function getFreshnessLabel(row: TickerScore) {
-  const bucket = (row.freshness_bucket ?? "").trim()
-  const age = row.age_days
-
-  if (bucket === "today") return "Filed today"
-  if (bucket === "fresh") return "Filed 1-3d ago"
-  if (bucket === "recent") return "Filed 4-7d ago"
-  if (bucket === "aging") return "Filed 8-14d ago"
-  if (bucket === "stale") return "Older filing"
-
-  if (typeof age === "number") {
-    if (age <= 0) return "Filed today"
-    if (age === 1) return "Filed 1d ago"
-    return `Filed ${age}d ago`
-  }
-
-  return null
-}
-
 function formatScoreChange(value: number | null | undefined) {
   if (value === null || value === undefined) return "—"
   const rounded = Math.round(value * 10) / 10
   return `${rounded > 0 ? "+" : ""}${rounded}`
 }
 
-function has8kRisk(row: TickerScore) {
-  const tags = normalizeTags(row.signal_tags)
-  return (
-    tags.includes("8k-risk") ||
-    tags.includes("legal-risk") ||
-    tags.includes("bankruptcy-risk") ||
-    tags.includes("financing-risk") ||
-    tags.includes("debt-risk")
-  )
-}
-
-function normalizeTags(tags: TickerScore["signal_tags"]) {
-  if (!tags) return []
-  if (Array.isArray(tags)) return tags.filter(Boolean)
-  return []
-}
-
-function prettifyTag(tag: string) {
-  return tag
-    .replace(/^source:/, "")
-    .replace(/^8k:/, "8-K ")
-    .replace("8k risk", "8-K Risk")
-    .replace("legal risk", "Legal Risk")
-    .replace("bankruptcy risk", "Bankruptcy Risk")
-    .replace("financing risk", "Financing Risk")
-    .replace("debt risk", "Debt Risk")
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (m) => m.toUpperCase())
-}
-
-function getSignalSummary(row: TickerScore) {
-  if (row.primary_summary) return row.primary_summary
-  return `${row.ticker} is showing a ${getSignalCategory(row).toLowerCase()} setup based on stacked signals, price action, and fundamentals.`
-}
-
-function getPlainEnglishSummary(row: TickerScore, boardMode: "buy" | "risk") {
-  const reasons = getTopReasonChips(row, boardMode)
-  if (!reasons.length) {
-    return boardMode === "risk"
-      ? "Several bearish signals are stacking up here."
-      : "Several bullish signals are stacking up here."
-  }
-
-  if (boardMode === "risk") {
-    return `This name is showing ${reasons.join(", ").toLowerCase()}, which keeps it near the top of the sell board.`
-  }
-
-  return `This name is showing ${reasons.join(", ").toLowerCase()}, which keeps it near the top of the opportunity board.`
-}
-
-function getConfidenceStatement(row: TickerScore, boardMode: "buy" | "risk") {
-  const score = getEffectiveScore(row)
-  const tags = normalizeTags(row.signal_tags)
-  const hasCluster = (row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")
-  const heavyCluster = (row.cluster_buyers ?? 0) >= 3 || tags.includes("cluster-strong")
-  const hasMomentum =
-    (row.price_return_5d ?? 0) >= 5 ||
-    tags.includes("momentum-confirmed") ||
-    tags.includes("breakout-20d") ||
-    tags.includes("breakout-52w") ||
-    row.primary_signal_source === "breakout"
-  const hasVolume = (row.volume_ratio ?? 0) >= 1.5 || tags.includes("volume-confirmed")
-  const hasEarnings =
-    (row.earnings_surprise_pct ?? 0) >= 10 ||
-    (row.revenue_growth_pct ?? 0) >= 15 ||
-    row.guidance_flag === true ||
-    tags.includes("earnings-support")
-  const hasValue =
-    (row.pe_ratio ?? row.pe_forward ?? 999) <= 25 ||
-    tags.includes("reasonable-valuation") ||
-    tags.includes("deep-value")
-  const hasSellCaution = tags.includes("insider-sell") || tags.includes("caution")
-  const has8kRiskTag = has8kRisk(row)
-  const weakPrice = (row.price_return_5d ?? 0) < 0
-  const weakRelative = (row.relative_strength_20d ?? 0) < 0
-  const source = formatSource(row.primary_signal_source)
-
-  if (boardMode === "risk") {
-    if (getCatalystTypeFromRow(row) === "bankruptcy") {
-      return "This ticker is showing bankruptcy or going-concern stress, which is one of the clearest danger signs on the board."
-    }
-
-    if (getCatalystTypeFromRow(row) === "legal") {
-      return "Legal or regulatory trouble is now part of the story, and that kind of event can keep pressure on a stock."
-    }
-
-    if (
-      getCatalystTypeFromRow(row) === "financing" ||
-      getCatalystTypeFromRow(row) === "debt-restructuring"
-    ) {
-      return "Balance-sheet pressure is showing up here, which raises the odds of dilution, stress, or further downside."
-    }
-
-    if (has8kRiskTag && weakPrice) {
-      return "A bearish corporate event is landing while price action is already weak, which makes this a sharper risk setup."
-    }
-
-    if (hasSellCaution && weakPrice && weakRelative) {
-      return "Selling pressure and weaker market behavior are showing up together, which makes this a stronger warning sign."
-    }
-
-    if ((row.price_return_5d ?? 0) <= -5 && hasVolume) {
-      return "The stock is weakening on meaningful activity, which often makes downside risk harder to ignore."
-    }
-
-    if ((row.earnings_surprise_pct ?? 0) <= -10) {
-      return "Weak earnings context is adding pressure here, and that can keep risk elevated beyond a single day."
-    }
-
-    if (hasSellCaution) {
-      return "Insider selling is showing up alongside enough weakness to move this name onto the sell board."
-    }
-
-    return "Several signals are leaning the wrong way at once, which is why this name ranks near the top of the sell board."
-  }
-
-  if (heavyCluster && hasMomentum) {
-    return "Multiple bullish signals are stacking together, and the stock is still acting well. That combination is much more interesting than a one-off filing."
-  }
-
-  if (row.primary_signal_source === "breakout" && hasMomentum && hasVolume) {
-    return "This setup is not just filing-driven. Technical strength, participation, and broader momentum are all reinforcing the idea."
-  }
-
-  if (score >= 90 && hasCluster && hasMomentum) {
-    return "This stands out because several bullish signals are lining up at once, including buying interest and strong price action."
-  }
-
-  if (hasEarnings && hasMomentum && hasVolume) {
-    return "Recent earnings support, stronger price action, and elevated trading activity are all pointing in the same direction."
-  }
-
-  if (hasCluster && hasValue) {
-    return "Buying interest looks meaningful, and valuation still appears reasonable enough to keep the setup attractive."
-  }
-
-  if (hasMomentum && hasValue) {
-    return "The chart is acting well, and valuation still looks disciplined instead of obviously stretched."
-  }
-
-  if (hasVolume && hasMomentum) {
-    return "This move is being supported by both price and participation, which usually matters more than a headline alone."
-  }
-
-  if (hasSellCaution && score >= 70) {
-    return "The overall setup is still constructive, but insider selling takes some shine off the story and lowers conviction a bit."
-  }
-
-  if (score >= 85) {
-    return "This name ranks highly because several independent signals are still leaning bullish at the same time."
-  }
-
-  return `This remains a constructive setup overall, with ${source} providing the original signal and the broader evaluation still holding up.`
-}
-
-function getTopReasonChips(row: TickerScore, boardMode: "buy" | "risk") {
-  const tags = normalizeTags(row.signal_tags)
-  const chips: string[] = []
-
-  if (boardMode === "risk") {
-    if (hasTagOrCap(row, "bankruptcy-risk", "hard-risk-cap")) chips.push("Bankruptcy Risk")
-    if (tags.includes("legal-risk")) chips.push("Legal Trouble")
-    if (tags.includes("financing-risk")) chips.push("Financing Pressure")
-    if (tags.includes("debt-risk")) chips.push("Debt Stress")
-    if (tags.includes("insider-sell") || row.insider_action === "Sell") chips.push("Insider Selling")
-    if ((row.relative_strength_20d ?? 0) < 0) chips.push("Weaker Than Market")
-    if ((row.price_return_5d ?? 0) < 0) chips.push("Weak Price Action")
-    if ((row.earnings_surprise_pct ?? 0) <= -10) chips.push("Weak Earnings")
-    if ((row.volume_ratio ?? 0) >= 1.5 && (row.price_return_5d ?? 0) < 0) {
-      chips.push("Heavy Selling Pressure")
-    }
-  } else {
-    if (row.primary_signal_source === "breakout") chips.push("Technical Setup")
-    if (tags.includes("cluster-buy") || (row.cluster_buyers ?? 0) >= 2) chips.push("Buying Wave")
-    if (tags.includes("insider-buy") || row.insider_action === "Buy") chips.push("Insider Buying")
-    if ((row.relative_strength_20d ?? 0) > 0) chips.push("Stronger Than Market")
-    if (
-      tags.includes("momentum-confirmed") ||
-      tags.includes("breakout-20d") ||
-      tags.includes("breakout-52w") ||
-      (row.price_return_5d ?? 0) >= 5
-    ) {
-      chips.push("Strong Momentum")
-    }
-    if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
-      chips.push("Strong Earnings")
-    }
-    if ((row.volume_ratio ?? 0) >= 1.5) chips.push("Heavy Demand")
-    if ((row.pe_ratio ?? row.pe_forward ?? 999) <= 25) chips.push("Reasonable Valuation")
-    if (getSignalCategory(row) === "Institutional") chips.push("Big Investor Interest")
-    if ((row.stacked_signal_count ?? 0) >= 3) chips.push("Multi-Signal Stack")
-  }
-
-  return Array.from(new Set(chips)).slice(0, 4)
-}
-
-function getTopReasonLines(row: TickerScore, boardMode: "buy" | "risk"): ReasonLine[] {
-  const items: ReasonLine[] = []
-  const breakdown = row.score_breakdown || {}
-
-  const labelMap: Record<string, { label: string; tone: "good" | "bad" | "neutral" }> = {
-    insider_buying: { label: "Insiders", tone: "good" },
-    repeat_buying: { label: "Repeat Buying", tone: "good" },
-    senior_executive_buy: { label: "Executive Buy", tone: "good" },
-    momentum: { label: "Momentum", tone: "good" },
-    relative_strength: { label: "Vs Market", tone: "good" },
-    earnings: { label: "Earnings", tone: "good" },
-    valuation: { label: "Valuation", tone: "neutral" },
-    catalyst: { label: "Catalyst", tone: "good" },
-    freshness: { label: "Freshness", tone: "neutral" },
-    time_decay: { label: "Time Decay", tone: "bad" },
-    insider_selling: { label: "Insider Selling", tone: "bad" },
-    relative_strength_cap: { label: "Risk Cap", tone: "bad" },
-    hard_risk_cap: { label: "Risk Cap", tone: "bad" },
-    minimum_evidence_cap: { label: "Evidence Cap", tone: "bad" },
-    candidate_screen: { label: "Technical Screen", tone: "good" },
-    candidate_tier_bonus: { label: "Tier Bonus", tone: "good" },
-    candidate_volume: { label: "Screen Volume", tone: "good" },
-    candidate_momentum: { label: "Screen Momentum", tone: "good" },
-    candidate_breakout: { label: "Screen Breakout", tone: "good" },
-    base: { label: "Base Signal", tone: "neutral" },
-  }
-
-  for (const [key, rawValue] of Object.entries(breakdown)) {
-    const value = Number(rawValue || 0)
-    if (!Number.isFinite(value) || value === 0) continue
-
-    const meta = labelMap[key] || {
-      label: prettifyTag(key),
-      tone: value > 0 ? "good" : value < 0 ? "bad" : "neutral",
-    }
-
-    items.push({
-      label: meta.label,
-      value: `${value > 0 ? "+" : ""}${Math.round(value * 10) / 10}`,
-      tone:
-        value > 0
-          ? boardMode === "risk" && key === "valuation"
-            ? "neutral"
-            : meta.tone
-          : meta.tone,
-      weight: Math.abs(value),
-    })
-  }
-
-  if (!items.length) {
-    items.push({
-      label: "Model",
-      value:
-        getEffectiveScore(row) >= 70
-          ? "Bullish signals outweigh negatives"
-          : "Bearish signals outweigh positives",
-      tone: getEffectiveScore(row) >= 70 ? "good" : "bad",
-      weight: 1,
-    })
-  }
-
-  return items.sort((a, b) => b.weight - a.weight).slice(0, 4)
-}
-
-function hasTagOrCap(row: TickerScore, tag: string, cap: string) {
-  const tags = normalizeTags(row.signal_tags)
-  const caps = normalizeStringArray(row.score_caps_applied)
-  return tags.includes(tag) || caps.includes(cap)
-}
-
-function compareRows(
-  a: TickerScore,
-  b: TickerScore,
-  boardMode: "buy" | "risk"
-) {
-  const aScore = getEffectiveScore(a)
-  const bScore = getEffectiveScore(b)
-  const aDate = getDateValue(a.filed_at ?? a.updated_at)
-  const bDate = getDateValue(b.filed_at ?? b.updated_at)
-  const aRisk = getRiskRank(a)
-  const bRisk = getRiskRank(b)
-
-  if (boardMode === "risk") {
-    if (aScore !== bScore) return aScore - bScore
-    if (aRisk !== bRisk) return bRisk - aRisk
-    return bDate - aDate
-  }
-
-  if (aScore !== bScore) return bScore - aScore
-  return bDate - aDate
-}
-
-function getRiskRank(row: TickerScore) {
-  let rank = 0
-  const tags = normalizeTags(row.signal_tags)
-
-  if (getBias(row) === "Bearish") rank += 25
-  if (getSignalCategory(row) === "Risk") rank += 20
-  if (tags.includes("8k-risk")) rank += 20
-  if (tags.includes("bankruptcy-risk")) rank += 24
-  if (tags.includes("legal-risk")) rank += 16
-  if (tags.includes("debt-risk")) rank += 14
-  if (tags.includes("financing-risk")) rank += 12
-  if (tags.includes("insider-sell")) rank += 16
-  if ((row.price_return_5d ?? 0) <= -8) rank += 14
-  else if ((row.price_return_5d ?? 0) <= -4) rank += 8
-  if ((row.relative_strength_20d ?? 0) <= -8) rank += 10
-  else if ((row.relative_strength_20d ?? 0) < 0) rank += 5
-  if (row.signal_strength_bucket === "Risk") rank += 10
-  if (row.signal_strength_bucket === "Neutral") rank += 4
-  if ((row.earnings_surprise_pct ?? 0) <= -10) rank += 8
-  if ((row.revenue_growth_pct ?? 0) <= -10) rank += 5
-
-  rank += 100 - getEffectiveScore(row)
-
-  return rank
-}
-
-function getLastUpdated(rows: TickerScore[]) {
-  const dates = rows
-    .map((row) => row.score_updated_at || row.updated_at)
-    .filter((v): v is string => Boolean(v))
-    .map((v) => new Date(v))
-    .filter((d) => !Number.isNaN(d.getTime()))
-    .sort((a, b) => b.getTime() - a.getTime())
-
-  if (!dates.length) return null
+function formatDateLong(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "—"
 
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(dates[0])
+  }).format(date)
 }
 
-function normalizeStringArray(values: string[] | null | undefined) {
-  if (!values) return []
-  return Array.isArray(values) ? values.filter(Boolean) : []
+function hasDisplayValue(value: string | null | undefined) {
+  return !(value === null || value === undefined || value === "" || value === "—")
 }
 
-function getPeFilterLabel(peFilter: PeFilterType) {
-  if (peFilter === "all") return "All"
-  return `≤ ${peFilter}`
-}
-
-function getPriceFilterLabel(priceFilter: PriceFilterType) {
-  if (priceFilter === "all") return "All"
-  if (priceFilter === "under5") return "Under $5"
-  if (priceFilter === "5to10") return "$5 to $10"
-  if (priceFilter === "10to25") return "$10 to $25"
-  if (priceFilter === "25to100") return "$25 to $100"
-  if (priceFilter === "100plus") return "$100+"
-  return "Unknown"
-}
-
-function getDateValue(dateString: string | null | undefined) {
-  if (!dateString) return 0
-  const timestamp = new Date(dateString).getTime()
-  return Number.isNaN(timestamp) ? 0 : timestamp
+function truncateText(value: string | null | undefined, maxLength: number) {
+  if (!value) return ""
+  if (value.length <= maxLength) return value
+  return `${value.slice(0, maxLength).trim()}…`
 }
 
 function getScorePalette(score: number) {
   const s = Math.max(0, Math.min(100, score))
-
-  if (s <= 30) {
-    return {
-      start: "#ef4444",
-      end: "#dc2626",
-      glow: "rgba(239,68,68,0.38)",
-      text: "#fff7f7",
-    }
-  }
-
-  if (s <= 49) {
-    return {
-      start: "#f97316",
-      end: "#ea580c",
-      glow: "rgba(249,115,22,0.34)",
-      text: "#fffaf5",
-    }
-  }
 
   if (s <= 69) {
     return {
@@ -2711,38 +2344,45 @@ function getScorePalette(score: number) {
   }
 }
 
-function getExtremeCardGlow(score: number) {
-  if (score === 100) return "rgba(34,197,94,0.40)"
-  if (score === 0) return "rgba(239,68,68,0.40)"
+function getConfidenceTierLabel(score: number) {
+  if (score >= 90) return "Elite"
+  if (score >= 80) return "High Conviction"
+  if (score >= 70) return "Strong"
+  return "Building"
+}
+
+function getFreshnessLabel(row: TickerScore) {
+  const bucket = (row.freshness_bucket ?? "").trim()
+  const age = row.age_days
+
+  if (bucket === "today") return "Today"
+  if (bucket === "fresh") return "1-3D"
+  if (bucket === "recent") return "4-7D"
+  if (bucket === "aging") return "8-14D"
+  if (bucket === "stale") return "Older"
+
+  if (typeof age === "number") {
+    if (age <= 0) return "Today"
+    if (age <= 3) return "1-3D"
+    if (age <= 7) return "4-7D"
+    if (age <= 14) return "8-14D"
+    return "Older"
+  }
+
   return null
 }
 
-function getConfidenceTierLabel(score: number) {
-  if (score >= 90) return "Elite"
-  if (score >= 80) return "Strong"
-  if (score >= 70) return "Good"
-  if (score >= 31) return "Mixed"
-  if (score >= 11) return "Weak"
-  return "Danger"
-}
-
-function truncateText(value: string | null | undefined, maxLength: number) {
-  if (!value) return ""
-  if (value.length <= maxLength) return value
-  return `${value.slice(0, maxLength).trim()}…`
-}
-
-function hasDisplayValue(value: string | null | undefined) {
-  return !(value === null || value === undefined || value === "" || value === "—")
-}
-
 function getScoreTooltip(score: number) {
-  if (score >= 90) return `Score ${score}: elite setup quality. This is one of the strongest readings on the board.`
-  if (score >= 80) return `Score ${score}: strong setup quality with multiple positives lining up.`
-  if (score >= 70) return `Score ${score}: solid setup quality and strong enough for the main opportunity board.`
-  if (score >= 31) return `Score ${score}: mixed setup. Some positives exist, but conviction is lower.`
-  if (score >= 11) return `Score ${score}: weak setup and trending toward danger.`
-  return `Score ${score}: extreme risk or extremely weak setup.`
+  if (score >= 90) {
+    return `Conviction Score ${score}: elite setup quality. This is one of the strongest readings on the board.`
+  }
+  if (score >= 80) {
+    return `Conviction Score ${score}: strong setup quality with multiple positives lining up.`
+  }
+  if (score >= 70) {
+    return `Conviction Score ${score}: solid setup quality and strong enough for the main strong-buy board.`
+  }
+  return `Conviction Score ${score}: below the normal strong-buy threshold.`
 }
 
 function getConfidenceTooltip(score: number, label: string) {
@@ -2751,7 +2391,7 @@ function getConfidenceTooltip(score: number, label: string) {
 
 function getFreshnessTooltip(row: TickerScore) {
   const label = getFreshnessLabel(row)
-  return `${label ?? "Freshness unknown"}. Fresher filings and signals usually matter more than older ones.`
+  return `${label ?? "Freshness unknown"}. Fresher signals usually matter more than older ones.`
 }
 
 function getSignalTypeTooltip(row: TickerScore, label: string) {
@@ -2761,53 +2401,39 @@ function getSignalTypeTooltip(row: TickerScore, label: string) {
 }
 
 function getStrengthTooltip(value: string) {
-  if (value === "Strong Buy") return "Strong Buy means the model sees unusually strong bullish evidence."
-  if (value === "Buy") return "Buy means the setup is constructive and clears the main bullish threshold."
-  if (value === "Risk") return "Risk means the setup is weak enough to belong on the danger board."
+  if (value === "Strong Buy") {
+    return "Strong Buy means the model sees unusually strong bullish evidence."
+  }
+  if (value === "Buy") {
+    return "Buy means the setup is constructive and clears the main bullish threshold."
+  }
   return "Signal strength is a quick label for how the model buckets the setup."
 }
 
-function getRiskAlertTooltip(catalystType?: string | null) {
-  if (catalystType === "legal") return "Legal Risk means the name is linked to litigation, regulatory trouble, or similar event risk."
-  if (catalystType === "bankruptcy") return "Bankruptcy Risk means distress or going-concern pressure may be in play."
-  if (catalystType === "financing") return "Financing Risk means capital raising or funding pressure could hurt the stock."
-  if (catalystType === "debt-restructuring") return "Debt Risk means debt stress or restructuring risk may be affecting the setup."
-  return "Risk Alert flags a serious bearish catalyst that deserves extra caution."
-}
-
-function getFilterChipTooltip(label: string, value: string) {
-  return `${label} filter is currently set to ${value}. This controls which names stay visible on the board.`
-}
-
-function getReasonChipTooltip(label: string, boardMode: BoardMode) {
-  const modeText =
-    boardMode === "risk"
-      ? "This is one of the main reasons the model considers the name risky."
-      : boardMode === "cooling"
-        ? "This is one of the traits still worth watching even though the name has cooled off."
-        : "This is one of the main reasons the model likes the setup."
-  return `${label}. ${modeText}`
+function getReasonChipTooltip(label: string) {
+  return `${label}. This is one of the main reasons the model likes the setup.`
 }
 
 function getTagTooltip(tag: string, pretty: string) {
   const map: Record<string, string> = {
-    "8k-risk": "An 8-K-related event suggests elevated corporate risk.",
-    "legal-risk": "Legal or regulatory trouble is part of the setup.",
-    "bankruptcy-risk": "The name may be facing severe financial distress.",
-    "financing-risk": "Funding pressure or dilution risk may be present.",
-    "debt-risk": "Debt stress is a meaningful part of the story.",
     "cluster-buy": "Multiple insiders or participants bought close together.",
     "cluster-strong": "A stronger version of clustered buying interest.",
     "insider-buy": "Insiders are buying shares, which can support a bullish case.",
-    "insider-sell": "Insiders are selling shares, which can weaken confidence.",
     "momentum-confirmed": "Price strength is being confirmed by momentum behavior.",
     "breakout-20d": "The stock is breaking above a recent 20-day range.",
     "breakout-52w": "The stock is approaching or breaking a 52-week high area.",
     "volume-confirmed": "Trading activity is elevated enough to support the move.",
+    "heavy-volume": "Trading activity is meaningfully above normal.",
     "earnings-support": "Recent earnings results are helping the setup.",
     "reasonable-valuation": "Valuation still looks reasonable compared to growth or quality.",
     "deep-value": "The setup may also have a value angle.",
-    caution: "The model found at least one cautionary detail worth respecting.",
+    "guidance-support": "Forward guidance or expectations appear constructive.",
+    "relative-strength": "The stock is outperforming the broader market.",
+    "candidate-screen": "The setup also passed the technical candidate screening layer.",
+    "candidate-included": "The setup made it into the live strong-buy universe.",
+    "candidate-strong-buy": "The technical candidate score is especially strong.",
+    "screen-heavy-volume": "The screening layer also saw elevated volume.",
+    "screen-momentum": "The screening layer also saw strong momentum.",
   }
 
   return map[tag] ?? `${pretty} is a model tag used to explain part of the setup.`
@@ -2824,29 +2450,29 @@ function getMiniMetricTooltip(label: string, row: TickerScore) {
         row.relative_strength_20d
       )}.`
     case "5D Move":
-      return `The stock’s move over the last 5 trading days. Helps show short-term momentum or weakness. Current value: ${formatPercent(
+      return `The stock’s move over the last 5 trading days. Helps show short-term momentum. Current value: ${formatPercent(
         row.price_return_5d
+      )}.`
+    case "20D Move":
+      return `The stock’s move over the last 20 trading days. Helps show the bigger recent move. Current value: ${formatPercent(
+        row.price_return_20d
       )}.`
     case "Volume":
       return `Trading volume compared with normal. Around 1.00x is normal, above that suggests heavier activity. Current value: ${formatRatio(
         row.volume_ratio
       )}.`
     case "1D Δ":
-      return `Change in the model score over the last day. Positive means the setup improved, negative means it weakened. Current value: ${formatScoreChange(
+      return `Change in the model score over the last day. Positive means the setup improved. Current value: ${formatScoreChange(
         row.ticker_score_change_1d
       )}.`
     case "7D Δ":
-      return `Change in the model score over the last 7 days. Good for spotting improving or fading setups. Current value: ${formatScoreChange(
+      return `Change in the model score over the last 7 days. Good for spotting improving setups. Current value: ${formatScoreChange(
         row.ticker_score_change_7d
       )}.`
     case "Stacked":
       return `How many distinct supporting signals are stacked into this setup. More stacked signals usually means more evidence. Current value: ${formatWholeNumber(
         row.stacked_signal_count
       )}.`
-    case "Strength":
-      return `Quick model bucket for the setup quality. Current value: ${
-        row.signal_strength_bucket || "—"
-      }. ${getStrengthTooltip(row.signal_strength_bucket || "Signal")}`
     default:
       return ""
   }
