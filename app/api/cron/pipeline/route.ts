@@ -169,8 +169,8 @@ async function getPipelineState(supabase: any): Promise<PipelineStateRow> {
     .maybeSingle()
 
   if (error) {
-    throw new Error(`Failed to load pipeline state: ${error.message}`)
-  }
+  throw new Error(`Failed to load pipeline state: ${JSON.stringify(error)}`)
+}
 
   if (data) {
     return data as PipelineStateRow
