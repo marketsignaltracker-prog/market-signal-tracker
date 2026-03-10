@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { supabase } from "../lib/supabase"
 
 type SignalRow = {
@@ -1094,6 +1094,39 @@ export default function Home() {
   )
 }
 
+function Tooltip({
+  content,
+  children,
+}: {
+  content: ReactNode
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onClick={(e) => {
+        e.stopPropagation()
+        setOpen((prev) => !prev)
+      }}
+    >
+      <span className="inline-flex">{children}</span>
+
+      <span
+        className={[
+          "pointer-events-none absolute bottom-[calc(100%+10px)] left-1/2 z-40 w-max max-w-[260px] -translate-x-1/2 rounded-xl border border-white/10 bg-slate-950/95 px-3 py-2 text-left text-xs leading-5 text-slate-200 shadow-2xl backdrop-blur transition",
+          open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
+        ].join(" ")}
+      >
+        {content}
+      </span>
+    </span>
+  )
+}
+
 function SignalDetailsModal({
   row,
   boardMode,
@@ -1548,19 +1581,21 @@ function FilterChip({
   tone: BoardMode
 }) {
   return (
-    <span
-      className={[
-        "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm",
-        tone === "risk"
-          ? "border-rose-400/20 bg-rose-500/10 text-rose-200"
-          : tone === "cooling"
-            ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
-            : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
-      ].join(" ")}
-    >
-      <span className="text-slate-300">{label}:</span>
-      <span className="font-semibold text-white">{value}</span>
-    </span>
+    <Tooltip content={getFilterChipTooltip(label, value)}>
+      <span
+        className={[
+          "inline-flex cursor-help items-center gap-1 rounded-full border px-3 py-1 text-sm",
+          tone === "risk"
+            ? "border-rose-400/20 bg-rose-500/10 text-rose-200"
+            : tone === "cooling"
+              ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
+              : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
+        ].join(" ")}
+      >
+        <span className="text-slate-300">{label}:</span>
+        <span className="font-semibold text-white">{value}</span>
+      </span>
+    </Tooltip>
   )
 }
 
@@ -1679,18 +1714,28 @@ function RankBadge({
   boardMode: BoardMode
 }) {
   return (
-    <span
-      className={[
-        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em]",
+    <Tooltip
+      content={
         boardMode === "risk"
-          ? "bg-rose-400/15 text-rose-200"
+          ? `This name is ranked #${rank} on the risk board. Lower scores and more danger rank closer to the top.`
           : boardMode === "cooling"
-            ? "bg-amber-400/15 text-amber-200"
-            : "bg-emerald-400/15 text-emerald-200",
-      ].join(" ")}
+            ? `This name is ranked #${rank} on the cooling-off board based on how strong it recently was and how much it has faded.`
+            : `This name is ranked #${rank} on the opportunity board. Higher-ranked names are the strongest current setups.`
+      }
     >
-      #{rank}
-    </span>
+      <span
+        className={[
+          "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em]",
+          boardMode === "risk"
+            ? "bg-rose-400/15 text-rose-200"
+            : boardMode === "cooling"
+              ? "bg-amber-400/15 text-amber-200"
+              : "bg-emerald-400/15 text-emerald-200",
+        ].join(" ")}
+      >
+        #{rank}
+      </span>
+    </Tooltip>
   )
 }
 
@@ -1699,9 +1744,11 @@ function FreshnessBadge({ row }: { row: TickerScore }) {
   if (!label) return null
 
   return (
-    <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
-      {label}
-    </span>
+    <Tooltip content={getFreshnessTooltip(row)}>
+      <span className="inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
+        {label}
+      </span>
+    </Tooltip>
   )
 }
 
@@ -1716,18 +1763,20 @@ function ScoreBadge({
   const palette = getScorePalette(score)
 
   return (
-    <div
-      className={[
-        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
-        large ? "px-4 py-2 text-sm" : "px-3 py-1 text-sm",
-      ].join(" ")}
-      style={{
-        background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
-        color: palette.text,
-      }}
-    >
-      Score {score}
-    </div>
+    <Tooltip content={getScoreTooltip(score)}>
+      <div
+        className={[
+          "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
+          large ? "px-4 py-2 text-sm" : "px-3 py-1 text-sm",
+        ].join(" ")}
+        style={{
+          background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
+          color: palette.text,
+        }}
+      >
+        Score {score}
+      </div>
+    </Tooltip>
   )
 }
 
@@ -1743,15 +1792,17 @@ function ConfidenceBadge({
   const extremeGlow = getExtremeCardGlow(score)
 
   return (
-    <span
-      className={[
-        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 font-semibold text-slate-200",
-        small ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
-      ].join(" ")}
-      style={extremeGlow ? { boxShadow: `0 0 18px ${extremeGlow}` } : undefined}
-    >
-      {label}
-    </span>
+    <Tooltip content={getConfidenceTooltip(score, label)}>
+      <span
+        className={[
+          "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 font-semibold text-slate-200",
+          small ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
+        ].join(" ")}
+        style={extremeGlow ? { boxShadow: `0 0 18px ${extremeGlow}` } : undefined}
+      >
+        {label}
+      </span>
+    </Tooltip>
   )
 }
 
@@ -1801,22 +1852,27 @@ function SignalTypeBadge({ row }: { row: TickerScore }) {
   const config = getSignalBadgeConfig(row)
 
   return (
-    <span
-      className={[
-        "inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold",
-        config.className,
-      ].join(" ")}
-    >
-      {config.label}
-    </span>
+    <Tooltip content={getSignalTypeTooltip(row, config.label)}>
+      <span
+        className={[
+          "inline-flex cursor-help items-center rounded-full border px-3 py-1.5 text-xs font-semibold",
+          config.className,
+        ].join(" ")}
+      >
+        {config.label}
+      </span>
+    </Tooltip>
   )
 }
 
 function RiskAlertBadge({ catalystType }: { catalystType?: string | null }) {
+  const label = formatCatalystBadgeLabel(catalystType)
   return (
-    <span className="inline-flex items-center rounded-full border border-rose-400/30 bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-200">
-      {formatCatalystBadgeLabel(catalystType)}
-    </span>
+    <Tooltip content={getRiskAlertTooltip(catalystType)}>
+      <span className="inline-flex cursor-help items-center rounded-full border border-rose-400/30 bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-200">
+        {label}
+      </span>
+    </Tooltip>
   )
 }
 
@@ -1832,11 +1888,13 @@ function StrengthBadge({ bucket }: { bucket?: string | null }) {
           : "border-yellow-400/30 bg-yellow-400/10 text-yellow-300"
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}
-    >
-      {value}
-    </span>
+    <Tooltip content={getStrengthTooltip(value)}>
+      <span
+        className={`inline-flex cursor-help items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}
+      >
+        {value}
+      </span>
+    </Tooltip>
   )
 }
 
@@ -1848,17 +1906,21 @@ function TagPill({ tag }: { tag: string }) {
     tag === "financing-risk" ||
     tag === "debt-risk"
 
+  const pretty = prettifyTag(tag)
+
   return (
-    <span
-      className={[
-        "rounded-full border px-3 py-1 text-xs",
-        isRiskTag
-          ? "border-rose-400/25 bg-rose-500/10 text-rose-200"
-          : "border-white/10 bg-white/5 text-slate-300",
-      ].join(" ")}
-    >
-      {prettifyTag(tag)}
-    </span>
+    <Tooltip content={getTagTooltip(tag, pretty)}>
+      <span
+        className={[
+          "cursor-help rounded-full border px-3 py-1 text-xs",
+          isRiskTag
+            ? "border-rose-400/25 bg-rose-500/10 text-rose-200"
+            : "border-white/10 bg-white/5 text-slate-300",
+        ].join(" ")}
+      >
+        {pretty}
+      </span>
+    </Tooltip>
   )
 }
 
@@ -1870,18 +1932,20 @@ function ReasonChip({
   boardMode: BoardMode
 }) {
   return (
-    <span
-      className={[
-        "rounded-full border px-3 py-1.5 text-xs font-semibold",
-        boardMode === "risk"
-          ? "border-rose-400/20 bg-rose-500/10 text-rose-200"
-          : boardMode === "cooling"
-            ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
-            : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
-      ].join(" ")}
-    >
-      {label}
-    </span>
+    <Tooltip content={getReasonChipTooltip(label, boardMode)}>
+      <span
+        className={[
+          "cursor-help rounded-full border px-3 py-1.5 text-xs font-semibold",
+          boardMode === "risk"
+            ? "border-rose-400/20 bg-rose-500/10 text-rose-200"
+            : boardMode === "cooling"
+              ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
+              : "border-emerald-400/20 bg-emerald-500/10 text-emerald-200",
+        ].join(" ")}
+      >
+        {label}
+      </span>
+    </Tooltip>
   )
 }
 
@@ -2616,4 +2680,81 @@ function truncateText(value: string | null | undefined, maxLength: number) {
   if (!value) return ""
   if (value.length <= maxLength) return value
   return `${value.slice(0, maxLength).trim()}…`
+}
+
+function getScoreTooltip(score: number) {
+  if (score >= 90) return `Score ${score}: elite setup quality. This is one of the strongest readings on the board.`
+  if (score >= 80) return `Score ${score}: strong setup quality with multiple positives lining up.`
+  if (score >= 70) return `Score ${score}: solid setup quality and strong enough for the main opportunity board.`
+  if (score >= 31) return `Score ${score}: mixed setup. Some positives exist, but conviction is lower.`
+  if (score >= 11) return `Score ${score}: weak setup and trending toward danger.`
+  return `Score ${score}: extreme risk or extremely weak setup.`
+}
+
+function getConfidenceTooltip(score: number, label: string) {
+  return `${label} is the confidence tier for a score of ${score}. Higher tiers mean the model sees stronger supporting evidence.`
+}
+
+function getFreshnessTooltip(row: TickerScore) {
+  const label = getFreshnessLabel(row)
+  return `${label ?? "Freshness unknown"}. Fresher filings and signals usually matter more than older ones.`
+}
+
+function getSignalTypeTooltip(row: TickerScore, label: string) {
+  return `${label} describes the main kind of signal driving this setup. Source: ${formatSource(
+    row.primary_signal_source
+  )}. Category: ${getSignalCategory(row)}.`
+}
+
+function getStrengthTooltip(value: string) {
+  if (value === "Strong Buy") return "Strong Buy means the model sees unusually strong bullish evidence."
+  if (value === "Buy") return "Buy means the setup is constructive and clears the main bullish threshold."
+  if (value === "Risk") return "Risk means the setup is weak enough to belong on the danger board."
+  return "Signal strength is a quick label for how the model buckets the setup."
+}
+
+function getRiskAlertTooltip(catalystType?: string | null) {
+  if (catalystType === "legal") return "Legal Risk means the name is linked to litigation, regulatory trouble, or similar event risk."
+  if (catalystType === "bankruptcy") return "Bankruptcy Risk means distress or going-concern pressure may be in play."
+  if (catalystType === "financing") return "Financing Risk means capital raising or funding pressure could hurt the stock."
+  if (catalystType === "debt-restructuring") return "Debt Risk means debt stress or restructuring risk may be affecting the setup."
+  return "Risk Alert flags a serious bearish catalyst that deserves extra caution."
+}
+
+function getFilterChipTooltip(label: string, value: string) {
+  return `${label} filter is currently set to ${value}. This controls which names stay visible on the board.`
+}
+
+function getReasonChipTooltip(label: string, boardMode: BoardMode) {
+  const modeText =
+    boardMode === "risk"
+      ? "This is one of the main reasons the model considers the name risky."
+      : boardMode === "cooling"
+        ? "This is one of the traits still worth watching even though the name has cooled off."
+        : "This is one of the main reasons the model likes the setup."
+  return `${label}. ${modeText}`
+}
+
+function getTagTooltip(tag: string, pretty: string) {
+  const map: Record<string, string> = {
+    "8k-risk": "An 8-K-related event suggests elevated corporate risk.",
+    "legal-risk": "Legal or regulatory trouble is part of the setup.",
+    "bankruptcy-risk": "The name may be facing severe financial distress.",
+    "financing-risk": "Funding pressure or dilution risk may be present.",
+    "debt-risk": "Debt stress is a meaningful part of the story.",
+    "cluster-buy": "Multiple insiders or participants bought close together.",
+    "cluster-strong": "A stronger version of clustered buying interest.",
+    "insider-buy": "Insiders are buying shares, which can support a bullish case.",
+    "insider-sell": "Insiders are selling shares, which can weaken confidence.",
+    "momentum-confirmed": "Price strength is being confirmed by momentum behavior.",
+    "breakout-20d": "The stock is breaking above a recent 20-day range.",
+    "breakout-52w": "The stock is approaching or breaking a 52-week high area.",
+    "volume-confirmed": "Trading activity is elevated enough to support the move.",
+    "earnings-support": "Recent earnings results are helping the setup.",
+    "reasonable-valuation": "Valuation still looks reasonable compared to growth or quality.",
+    "deep-value": "The setup may also have a value angle.",
+    caution: "The model found at least one cautionary detail worth respecting.",
+  }
+
+  return map[tag] ?? `${pretty} is a model tag used to explain part of the setup.`
 }
