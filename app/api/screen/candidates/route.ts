@@ -16,11 +16,18 @@ type CandidateUniverseRow = {
   market_cap: number | null
   avg_volume_20d: number | null
   avg_dollar_volume_20d: number | null
+  one_day_return: number | null
   return_5d: number | null
+  return_10d: number | null
   return_20d: number | null
   volume_ratio: number | null
   breakout_20d: boolean
+  breakout_10d: boolean
   above_sma_20: boolean
+  breakout_clearance_pct: number | null
+  extension_from_sma20_pct: number | null
+  close_in_day_range: number | null
+  catalyst_count: number
   passes_price: boolean
   passes_volume: boolean
   passes_dollar_volume: boolean
@@ -49,7 +56,7 @@ const RETENTION_DAYS = 30
 const REQUEST_DELAY_MS = 120
 
 // Strong Buy Now universe should be liquid, established, and tradable.
-const MIN_PRICE = 10
+const MIN_PRICE = 5
 const MIN_AVG_VOLUME_20D = 500_000
 const MIN_AVG_DOLLAR_VOLUME_20D = 15_000_000
 const MIN_MARKET_CAP = 500_000_000
@@ -158,7 +165,7 @@ function buildCandidateReason(params: {
   }
 
   return params.reasons.length
-    ? `Watchlist only: ${params.reasons.join(", ")}`
+    ? `Not included: ${params.reasons.join(", ")}`
     : "No strong-buy-now factors passed"
 }
 
@@ -401,6 +408,34 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   }
 }
 
+async function writeHistoryRow(
+  candidateHistoryTable: any,
+  row: CandidateUniverseRow,
+  screenedOn: string,
+  nowIso: string
+) {
+  const historyRow: CandidateHistoryRow = {
+    ...row,
+    screened_on: screenedOn,
+    snapshot_key: `${screenedOn}_${row.ticker}`,
+    created_at: nowIso,
+  }
+
+  return candidateHistoryTable.upsert(historyRow, {
+    onConflict: "snapshot_key",
+  })
+}
+
+async function removeFromUniverse(candidateUniverseTable: any, ticker: string) {
+  return candidateUniverseTable.delete().eq("ticker", ticker)
+}
+
+async function upsertUniverseRow(candidateUniverseTable: any, row: CandidateUniverseRow) {
+  return candidateUniverseTable.upsert(row, {
+    onConflict: "ticker",
+  })
+}
+
 export async function GET(request: Request) {
   const pipelineToken = process.env.PIPELINE_TOKEN
   const suppliedToken = request.headers.get("x-pipeline-token")
@@ -472,6 +507,7 @@ export async function GET(request: Request) {
     let includedInBatch = 0
     let failedInBatch = 0
     let historyInserted = 0
+    let removedFromUniverseInBatch = 0
 
     for (const company of (companies || []) as CompanyRow[]) {
       const ticker = normalizeTicker(company.ticker)
@@ -479,11 +515,17 @@ export async function GET(request: Request) {
       try {
         if (!ticker || !company.cik) {
           failedInBatch += 1
+          if (ticker) {
+            await removeFromUniverse(candidateUniverseTable, ticker)
+            removedFromUniverseInBatch += 1
+          }
+
           results.push({
             ticker: ticker || null,
             ok: false,
             error: "Missing ticker or cik",
           })
+
           await sleep(REQUEST_DELAY_MS)
           continue
         }
@@ -497,11 +539,18 @@ export async function GET(request: Request) {
             market_cap: null,
             avg_volume_20d: null,
             avg_dollar_volume_20d: null,
+            one_day_return: null,
             return_5d: null,
+            return_10d: null,
             return_20d: null,
             volume_ratio: null,
             breakout_20d: false,
+            breakout_10d: false,
             above_sma_20: false,
+            breakout_clearance_pct: null,
+            extension_from_sma20_pct: null,
+            close_in_day_range: null,
+            catalyst_count: 0,
             passes_price: false,
             passes_volume: false,
             passes_dollar_volume: false,
@@ -513,31 +562,26 @@ export async function GET(request: Request) {
             updated_at: nowIso,
           }
 
-          const universeResult = await candidateUniverseTable.upsert(excludedRow, {
-            onConflict: "ticker",
-          })
-
-          if (universeResult.error) {
+          const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+          if (deleteResult.error) {
             failedInBatch += 1
             results.push({
               ticker,
               ok: false,
-              error: universeResult.error.message,
+              error: deleteResult.error.message,
             })
             await sleep(REQUEST_DELAY_MS)
             continue
           }
 
-          const historyRow: CandidateHistoryRow = {
-            ...excludedRow,
-            screened_on: screenedOn,
-            snapshot_key: `${screenedOn}_${ticker}`,
-            created_at: nowIso,
-          }
+          removedFromUniverseInBatch += 1
 
-          const historyResult = await candidateHistoryTable.upsert(historyRow, {
-            onConflict: "snapshot_key",
-          })
+          const historyResult = await writeHistoryRow(
+            candidateHistoryTable,
+            excludedRow,
+            screenedOn,
+            nowIso
+          )
 
           if (historyResult.error) {
             failedInBatch += 1
@@ -558,7 +602,7 @@ export async function GET(request: Request) {
             included: false,
             score: 0,
             tier: "excluded",
-            reason: "Excluded likely non-common-share ticker",
+            reason: excludedRow.screen_reason,
           })
 
           await sleep(REQUEST_DELAY_MS)
@@ -597,11 +641,18 @@ export async function GET(request: Request) {
             market_cap: null,
             avg_volume_20d: null,
             avg_dollar_volume_20d: null,
+            one_day_return: null,
             return_5d: null,
+            return_10d: null,
             return_20d: null,
             volume_ratio: null,
             breakout_20d: false,
+            breakout_10d: false,
             above_sma_20: false,
+            breakout_clearance_pct: null,
+            extension_from_sma20_pct: null,
+            close_in_day_range: null,
+            catalyst_count: 0,
             passes_price: false,
             passes_volume: false,
             passes_dollar_volume: false,
@@ -613,31 +664,26 @@ export async function GET(request: Request) {
             updated_at: nowIso,
           }
 
-          const universeResult = await candidateUniverseTable.upsert(row, {
-            onConflict: "ticker",
-          })
-
-          if (universeResult.error) {
+          const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+          if (deleteResult.error) {
             failedInBatch += 1
             results.push({
               ticker,
               ok: false,
-              error: universeResult.error.message,
+              error: deleteResult.error.message,
             })
             await sleep(REQUEST_DELAY_MS)
             continue
           }
 
-          const historyRow: CandidateHistoryRow = {
-            ...row,
-            screened_on: screenedOn,
-            snapshot_key: `${screenedOn}_${ticker}`,
-            created_at: nowIso,
-          }
+          removedFromUniverseInBatch += 1
 
-          const historyResult = await candidateHistoryTable.upsert(historyRow, {
-            onConflict: "snapshot_key",
-          })
+          const historyResult = await writeHistoryRow(
+            candidateHistoryTable,
+            row,
+            screenedOn,
+            nowIso
+          )
 
           if (historyResult.error) {
             failedInBatch += 1
@@ -657,8 +703,8 @@ export async function GET(request: Request) {
             ok: true,
             included: false,
             score: 0,
-            tier: "excluded",
-            reason: "Not enough price history",
+            tier: "not_included",
+            reason: row.screen_reason,
           })
 
           await sleep(REQUEST_DELAY_MS)
@@ -822,11 +868,18 @@ export async function GET(request: Request) {
           market_cap: marketCap || null,
           avg_volume_20d: round2(avgVolume20d),
           avg_dollar_volume_20d: round2(avgDollarVolume20d),
+          one_day_return: round2(oneDayReturn),
           return_5d: round2(return5d),
+          return_10d: round2(return10d),
           return_20d: round2(return20d),
           volume_ratio: round2(volumeRatio),
           breakout_20d: breakout20d,
+          breakout_10d: breakout10d,
           above_sma_20: aboveSma20,
+          breakout_clearance_pct: round2(breakoutClearancePct),
+          extension_from_sma20_pct: round2(extensionFromSma20Pct),
+          close_in_day_range: round2(closeInDayRange),
+          catalyst_count: catalystCount,
           passes_price: passesPrice,
           passes_volume: passesVolume,
           passes_dollar_volume: passesDollarVolume,
@@ -843,31 +896,44 @@ export async function GET(request: Request) {
           updated_at: nowIso,
         }
 
-        const universeResult = await candidateUniverseTable.upsert(row, {
-          onConflict: "ticker",
-        })
+        if (included) {
+          const universeResult = await upsertUniverseRow(candidateUniverseTable, row)
 
-        if (universeResult.error) {
-          failedInBatch += 1
-          results.push({
-            ticker,
-            ok: false,
-            error: universeResult.error.message,
-          })
-          await sleep(REQUEST_DELAY_MS)
-          continue
+          if (universeResult.error) {
+            failedInBatch += 1
+            results.push({
+              ticker,
+              ok: false,
+              error: universeResult.error.message,
+            })
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          includedInBatch += 1
+        } else {
+          const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+
+          if (deleteResult.error) {
+            failedInBatch += 1
+            results.push({
+              ticker,
+              ok: false,
+              error: deleteResult.error.message,
+            })
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          removedFromUniverseInBatch += 1
         }
 
-        const historyRow: CandidateHistoryRow = {
-          ...row,
-          screened_on: screenedOn,
-          snapshot_key: `${screenedOn}_${ticker}`,
-          created_at: nowIso,
-        }
-
-        const historyResult = await candidateHistoryTable.upsert(historyRow, {
-          onConflict: "snapshot_key",
-        })
+        const historyResult = await writeHistoryRow(
+          candidateHistoryTable,
+          row,
+          screenedOn,
+          nowIso
+        )
 
         if (historyResult.error) {
           failedInBatch += 1
@@ -881,9 +947,6 @@ export async function GET(request: Request) {
         }
 
         historyInserted += 1
-        if (included) includedInBatch += 1
-
-        const tier = strongBuyNowCandidate ? "strong_buy_now" : "watchlist"
 
         results.push({
           ticker,
@@ -891,7 +954,7 @@ export async function GET(request: Request) {
           included,
           score,
           rawScore: round2(scoreDetails.rawScore),
-          tier,
+          tier: included ? "strong_buy_now" : "not_included",
           reason: row.screen_reason,
           price: round2(latestClose),
           oneDayReturn: round2(oneDayReturn),
@@ -902,6 +965,7 @@ export async function GET(request: Request) {
           breakoutClearancePct: round2(breakoutClearancePct),
           extensionFromSma20Pct: round2(extensionFromSma20Pct),
           closeInDayRange: round2(closeInDayRange),
+          catalystCount,
           scoreBreakdown: {
             quality: round2(scoreDetails.qualityScore),
             momentum: round2(scoreDetails.momentumScore),
@@ -913,6 +977,14 @@ export async function GET(request: Request) {
         })
       } catch (err: any) {
         failedInBatch += 1
+
+        if (ticker) {
+          const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+          if (!deleteResult.error) {
+            removedFromUniverseInBatch += 1
+          }
+        }
+
         results.push({
           ticker,
           ok: false,
@@ -958,6 +1030,7 @@ export async function GET(request: Request) {
       onlyActive,
       includedInBatch,
       failedInBatch,
+      removedFromUniverseInBatch,
       includedCount: includedCountError ? null : candidateCount,
       historyInserted,
       historyCount: historyCountError ? null : historyCount,

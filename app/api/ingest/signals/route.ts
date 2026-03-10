@@ -22,11 +22,18 @@ type CandidateUniverseSignalInput = {
   market_cap: number | null
   avg_volume_20d: number | null
   avg_dollar_volume_20d: number | null
+  one_day_return?: number | null
   return_5d: number | null
+  return_10d?: number | null
   return_20d: number | null
   volume_ratio: number | null
   breakout_20d: boolean | null
+  breakout_10d?: boolean | null
   above_sma_20: boolean | null
+  breakout_clearance_pct?: number | null
+  extension_from_sma20_pct?: number | null
+  close_in_day_range?: number | null
+  catalyst_count?: number | null
   candidate_score: number | null
   included: boolean | null
   screen_reason: string | null
@@ -81,14 +88,12 @@ type ClusterInfo = {
 }
 
 type SignalCategory =
-  | "Insider Buys"
-  | "Cluster Buys"
-  | "Momentum"
-  | "Institutional"
-  | "Flow"
-  | "Fundamental"
-  | "Risk"
-  | "Market Signal"
+  | "Insider Buying"
+  | "Breakout"
+  | "Earnings Breakout"
+  | "Catalyst"
+  | "Ownership"
+  | "Multi-Signal Strong Buy"
 
 type SignalSource =
   | "form4"
@@ -97,16 +102,14 @@ type SignalSource =
   | "8k"
   | "earnings"
   | "breakout"
-  | "form144"
-  | "proxy"
 
-type StrengthBucket = "Strong Buy" | "Buy" | "Neutral" | "Risk"
+type StrengthBucket = "Buy" | "Strong Buy" | "Elite Buy"
 type ScoreBreakdown = Record<string, number>
 
 type BaseSignalData = {
   signal_type: string
   signal_source: SignalSource
-  bias: "Bullish" | "Neutral" | "Bearish"
+  bias: "Bullish"
   score: number
   title: string
   summary: string
@@ -129,10 +132,10 @@ type EnhancedSignal = {
   signal_category: SignalCategory
   signal_strength_bucket: StrengthBucket
   signal_tags: string[]
-  bias: "Bullish" | "Neutral" | "Bearish"
+  bias: "Bullish"
   score: number
   app_score: number
-  board_bucket: "Buy" | "Risk" | "Watch"
+  board_bucket: "Buy"
   title: string
   summary: string
   insiderBuyValue: number | null
@@ -158,6 +161,8 @@ type Diagnostics = {
   scanned: number
   skippedNoTicker: number
   skippedNoBaseSignal: number
+  skippedNotBullishEnough: number
+  skippedFailedEligibility: number
   preparedCount: number
   enhancedNull: number
   filteredByMinScore: number
@@ -194,13 +199,17 @@ const MAX_LIMIT = 1500
 const DEFAULT_LOOKBACK_DAYS = 14
 const MAX_LOOKBACK_DAYS = 30
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v4"
+const SCORE_VERSION = "v5"
 
 const SEC_FETCH_TIMEOUT_MS = 8000
 const TEXT_FETCH_TIMEOUT_MS = 8000
 const YAHOO_TIMEOUT_MS = 9000
 const CANDIDATE_SIGNAL_LOOKBACK_DAYS = 3
-const MIN_CANDIDATE_SCORE_FOR_TECHNICAL_SIGNAL = 55
+
+const MIN_SIGNAL_APP_SCORE = 80
+const MIN_TICKER_APP_SCORE = 82
+const MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL = 90
+const MAX_SIGNAL_AGE_DAYS = 14
 
 function normalizeFormType(formType: string | null) {
   const normalized = (formType || "")
@@ -496,9 +505,7 @@ function parseOwnershipDocument(doc: any): InsiderParseResult | null {
   })
 
   const structuredResult = chooseMostRecentRelevantAction(parsedRows, role, insiderName)
-  if (structuredResult && structuredResult.action !== "Other") {
-    return structuredResult
-  }
+  if (structuredResult) return structuredResult
 
   return {
     action: "Other",
@@ -631,22 +638,11 @@ function parseTransformedHtmlFallback(body: string): InsiderParseResult | null {
   const pairResult = chooseMostRecentRelevantAction(pairRows, null, null)
   if (pairResult && pairResult.action !== "Other") return pairResult
 
-  const hasStrongSellEvidence =
-    /\btransaction\s+code\s*[:\-]?\s*S\b/i.test(text) ||
-    /\bopen market sale\b/i.test(lower) ||
-    (/\bweighted average price\b/i.test(lower) && /\bsold\b/i.test(lower)) ||
-    /\bshares were sold\b/i.test(lower) ||
-    /\bsold in multiple transactions\b/i.test(lower)
-
   const hasStrongBuyEvidence =
     /\btransaction\s+code\s*[:\-]?\s*P\b/i.test(text) ||
     /\bopen market purchase\b/i.test(lower) ||
     /\bshares were purchased\b/i.test(lower) ||
     /\bpurchased in multiple transactions\b/i.test(lower)
-
-  if (hasStrongSellEvidence) {
-    return { action: "Sell", shares: null, avgPrice: null, role: null, insiderName: null }
-  }
 
   if (hasStrongBuyEvidence) {
     return { action: "Buy", shares: null, avgPrice: null, role: null, insiderName: null }
@@ -676,7 +672,7 @@ async function fetchAndParseOwnershipXml(url: string): Promise<InsiderParseResul
       const parsed = xmlParser.parse(body)
       const doc = parsed?.ownershipDocument
       const xmlResult = parseOwnershipDocument(doc)
-      if (xmlResult && xmlResult.action !== "Other") return xmlResult
+      if (xmlResult && xmlResult.action === "Buy") return xmlResult
     } catch {
       // fall through
     }
@@ -727,7 +723,7 @@ async function parseForm4(filing: RawFiling): Promise<InsiderParseResult> {
 
   for (const url of urls) {
     const parsed = await fetchAndParseOwnershipXml(url)
-    if (parsed && parsed.action && parsed.action !== "Other") return parsed
+    if (parsed && parsed.action === "Buy") return parsed
   }
 
   for (const url of urls) {
@@ -807,43 +803,6 @@ function classify8kEvent(text: string | null): string | null {
       ],
     ],
     ["product", [/\bproduct launch\b/, /\bcommercial launch\b/, /\bapproval\b/, /\bclearance\b/]],
-    [
-      "financing",
-      [
-        /\bprivate placement\b/,
-        /\boffering\b/,
-        /\bnotes\b/,
-        /\bconvertible\b/,
-        /\bcredit agreement\b/,
-        /\bterm loan\b/,
-      ],
-    ],
-    [
-      "debt-restructuring",
-      [/\brestructuring\b/, /\bdebt\b/, /\bexchange offer\b/, /\bforbearance\b/, /\brefinancing\b/],
-    ],
-    [
-      "leadership",
-      [
-        /\bchief executive officer\b/,
-        /\bchief financial officer\b/,
-        /\bappointed\b/,
-        /\bresigned\b/,
-        /\bboard of directors\b/,
-      ],
-    ],
-    [
-      "legal",
-      [
-        /\binvestigation\b/,
-        /\blitigation\b/,
-        /\bsubpoena\b/,
-        /\bsettlement\b/,
-        /\bdepartment of justice\b/,
-        /\bsec\b/,
-      ],
-    ],
-    ["bankruptcy", [/\bbankruptcy\b/, /\bchapter 11\b/, /\binsolvency\b/, /\bgoing concern\b/]],
     ["asset-sale", [/\basset sale\b/, /\bdivestiture\b/, /\bsale of assets\b/]],
   ]
 
@@ -851,32 +810,18 @@ function classify8kEvent(text: string | null): string | null {
     if (patterns.some((p) => p.test(t))) return label
   }
 
-  return "other-8k"
-}
-
-function isBearish8kCatalyst(catalystType: string | null) {
-  return (
-    catalystType === "legal" ||
-    catalystType === "bankruptcy" ||
-    catalystType === "financing" ||
-    catalystType === "debt-restructuring"
-  )
-}
-
-function get8kRiskSummary(catalystType: string | null) {
-  if (catalystType === "legal") {
-    return "The filing points to legal or regulatory trouble, which can drag on sentiment and raise downside risk."
-  }
-  if (catalystType === "bankruptcy") {
-    return "The filing points to bankruptcy or going-concern stress, which is one of the clearest red flags on the board."
-  }
-  if (catalystType === "financing") {
-    return "The filing points to financing pressure, which can mean dilution, balance-sheet stress, or reduced flexibility."
-  }
-  if (catalystType === "debt-restructuring") {
-    return "The filing points to debt restructuring or refinancing stress, which usually belongs on the risk side of the app."
-  }
   return null
+}
+
+function isPositive8kCatalyst(catalystType: string | null) {
+  return (
+    catalystType === "guidance" ||
+    catalystType === "partnership" ||
+    catalystType === "customer" ||
+    catalystType === "product" ||
+    catalystType === "m&a" ||
+    catalystType === "asset-sale"
+  )
 }
 
 async function getPriceConfirmation(ticker: string): Promise<PriceConfirmation> {
@@ -948,7 +893,8 @@ async function getPriceConfirmation(ticker: string): Promise<PriceConfirmation> 
         const avg20Volume = prior20.reduce((s, c) => s + Number(c.volume || 0), 0) / prior20.length
 
         const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
-        const high52w = prior252.length > 0 ? Math.max(...prior252.map((c) => Number(c.high || 0))) : high20
+        const high52w =
+          prior252.length > 0 ? Math.max(...prior252.map((c) => Number(c.high || 0))) : high20
 
         const avg50Close = prior50.reduce((s, c) => s + Number(c.close || 0), 0) / prior50.length
 
@@ -979,10 +925,10 @@ async function getPriceConfirmation(ticker: string): Promise<PriceConfirmation> 
         }
 
         const confirmed =
-          (return5d !== null && return5d > 3) ||
           breakout20d ||
           breakout52w ||
-          (volumeRatio !== null && volumeRatio >= 1.5)
+          ((return5d ?? 0) >= 4 && (volumeRatio ?? 0) >= 1.5) ||
+          ((return20d ?? 0) >= 12 && above50dma)
 
         return {
           return5d,
@@ -1085,7 +1031,8 @@ async function getTickerSnapshot(ticker: string): Promise<TickerSnapshot> {
           safeNumber((quote as any)?.marketCap)
 
         const sector = ((summary.assetProfile as any)?.sector as string | undefined)?.trim() ?? null
-        const industry = ((summary.assetProfile as any)?.industry as string | undefined)?.trim() ?? null
+        const industry =
+          ((summary.assetProfile as any)?.industry as string | undefined)?.trim() ?? null
 
         const businessDescription =
           ((summary.assetProfile as any)?.longBusinessSummary as string | undefined)?.trim() ?? null
@@ -1237,29 +1184,21 @@ function isSeniorRole(role: string | null) {
   )
 }
 
+function isDirectorRole(role: string | null) {
+  return (role || "").toLowerCase().includes("director")
+}
+
 function baseSignal(formType: string | null): BaseSignalData | null {
   const normalized = normalizeFormType(formType)
 
   if (normalized === "4" || normalized === "4/A") {
     return {
-      signal_type: "Insider Activity",
+      signal_type: "Insider Buy Signal",
       signal_source: "form4",
-      bias: "Neutral",
-      score: 42,
-      title: "Insider filing detected",
-      summary: "A Form 4 filing was detected and parsed for insider activity.",
-    }
-  }
-
-  if (normalized === "144") {
-    return {
-      signal_type: "Registered Sale Notice",
-      signal_source: "form144",
-      bias: "Bearish",
-      score: 28,
-      title: "Registered sale notice filed",
-      summary:
-        "A Form 144 filing can signal intent to sell restricted or control securities and often belongs on the caution side.",
+      bias: "Bullish",
+      score: 52,
+      title: "Insider buying setup detected",
+      summary: "A Form 4 filing was detected and will only be kept if buying is confirmed.",
     }
   }
 
@@ -1270,12 +1209,12 @@ function baseSignal(formType: string | null): BaseSignalData | null {
     normalized === "SC 13D/A"
   ) {
     return {
-      signal_type: "Activist / Ownership",
+      signal_type: "Ownership Catalyst",
       signal_source: "13d",
       bias: "Bullish",
-      score: 56,
-      title: "Major ownership stake disclosed",
-      summary: "A 13D-style filing may indicate a meaningful investor building influence.",
+      score: 58,
+      title: "Major ownership catalyst detected",
+      summary: "A 13D-style filing can indicate a meaningful investor building influence.",
     }
   }
 
@@ -1286,46 +1225,34 @@ function baseSignal(formType: string | null): BaseSignalData | null {
     normalized === "SC 13G/A"
   ) {
     return {
-      signal_type: "Institutional Ownership",
+      signal_type: "Institutional Accumulation",
       signal_source: "13g",
       bias: "Bullish",
       score: 50,
       title: "Institutional ownership signal detected",
-      summary: "A 13G-style filing can indicate large-holder accumulation.",
+      summary: "A 13G-style filing can support a strong-buy setup when price action confirms.",
     }
   }
 
   if (normalized === "8-K" || normalized === "6-K") {
     return {
-      signal_type: "Corporate Catalyst",
+      signal_type: "Positive Catalyst",
       signal_source: "8k",
-      bias: "Neutral",
-      score: 40,
-      title: "Material corporate event filed",
-      summary: "A current report filing can contain a meaningful event, agreement, or catalyst.",
-    }
-  }
-
-  if (normalized === "SC 14D9" || normalized === "DEFA14A") {
-    return {
-      signal_type: "Corporate Action / Proxy",
-      signal_source: "proxy",
-      bias: "Neutral",
-      score: 42,
-      title: "Corporate action or proxy event filed",
-      summary:
-        "A tender-offer response or proxy filing can point to a meaningful corporate event worth surfacing on the board.",
+      bias: "Bullish",
+      score: 48,
+      title: "Potential positive catalyst detected",
+      summary: "A current report filing may contain a constructive catalyst if follow-through is present.",
     }
   }
 
   if (normalized === "10-Q" || normalized === "10-K") {
     return {
-      signal_type: "Fundamental Update",
+      signal_type: "Earnings-Fundamental Support",
       signal_source: "earnings",
-      bias: "Neutral",
-      score: 38,
-      title: "Periodic financial filing detected",
-      summary: "A periodic report was filed and may contain meaningful fundamental updates.",
+      bias: "Bullish",
+      score: 46,
+      title: "Constructive earnings setup detected",
+      summary: "A periodic report can support a strong-buy setup when earnings and price action align.",
     }
   }
 
@@ -1342,13 +1269,14 @@ function maybeCreateEarningsBreakoutBase(
 
   if (
     earnings.hasSignal &&
-    (price.breakout20d || price.breakout52w || (price.volumeRatio ?? 0) >= 1.75)
+    (price.breakout20d || price.breakout52w || (price.volumeRatio ?? 0) >= 1.75) &&
+    (price.relativeStrength20d ?? 0) >= 3
   ) {
     return {
       signal_type: "Earnings Breakout",
       signal_source: "earnings",
       bias: "Bullish",
-      score: 54,
+      score: 62,
       title: "Earnings-backed breakout setup",
       summary:
         earnings.summary ??
@@ -1402,26 +1330,29 @@ function maybeCreateCandidateTechnicalBase(
 
   const technicalSetup =
     included ||
-    candidateScore >= MIN_CANDIDATE_SCORE_FOR_TECHNICAL_SIGNAL ||
-    (hasBreakout && hasTrend) ||
-    (strongVolume && strongMomentum)
+    (candidateScore >= MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL &&
+      hasBreakout &&
+      hasTrend &&
+      strongVolume &&
+      strongMomentum)
 
   if (!technicalSetup) return null
 
-  let baseScore = 44
-  if (candidateScore >= 90) baseScore = 64
-  else if (candidateScore >= 80) baseScore = 58
-  else if (candidateScore >= 70) baseScore = 52
-  else if (candidateScore >= 55) baseScore = 47
+  let baseScore = included ? 66 : 62
+  if (candidateScore >= 98) baseScore = 74
+  else if (candidateScore >= 95) baseScore = 71
+  else if (candidateScore >= 90) baseScore = 68
 
-  if (hasBreakout) baseScore += 4
-  if (strongVolume) baseScore += 3
-  if (earnings.hasSignal) baseScore += 3
+  if (hasBreakout) baseScore += 3
+  if (strongVolume) baseScore += 2
+  if (earnings.hasSignal) baseScore += 2
 
   const title =
-    candidateScore >= 85 || (included && strongMomentum)
-      ? "Strong technical buy setup detected"
-      : "Technical buy setup detected"
+    candidateScore >= 95
+      ? "Elite technical strong-buy setup"
+      : candidateScore >= 90
+        ? "High-conviction technical strong-buy setup"
+        : "Technical strong-buy setup"
 
   const summaryParts = uniqueStrings([
     candidate.screen_reason,
@@ -1432,91 +1363,42 @@ function maybeCreateCandidateTechnicalBase(
   ])
 
   return {
-    signal_type: "Technical Candidate",
+    signal_type: "Technical Strong Buy",
     signal_source: "breakout",
     bias: "Bullish",
-    score: clamp(baseScore, 40, 78),
+    score: clamp(baseScore, 60, 80),
     title,
     summary: summaryParts.length
-      ? `Candidate screen is constructive: ${summaryParts.join(", ")}.`
-      : "Candidate screen and market action point to a constructive technical setup.",
+      ? `Technical screen is highly constructive: ${summaryParts.join(", ")}.`
+      : "Technical screen and market action point to a highly constructive setup.",
   }
 }
 
-function getStrengthBucket(
-  bias: "Bullish" | "Neutral" | "Bearish",
-  score: number
-): StrengthBucket {
-  if (bias === "Bearish" || score <= 30) return "Risk"
-  if (score >= 88) return "Strong Buy"
-  if (score >= 70) return "Buy"
-  return "Neutral"
+function getStrengthBucket(score: number): StrengthBucket {
+  if (score >= 97) return "Elite Buy"
+  if (score >= 90) return "Strong Buy"
+  return "Buy"
 }
 
 function deriveSignalCategory(params: {
-  formType: string | null
-  signalType: string
-  bias: "Bullish" | "Neutral" | "Bearish"
-  insiderAction: InsiderParseResult["action"]
+  source: SignalSource
   clusterInfo: ClusterInfo | null
-  price: PriceConfirmation
-  peRatio: number | null
-  forwardPe: number | null
-  catalystType: string | null
-  earnings: EarningsSignal
   candidate: CandidateUniverseSignalInput | null
-}): SignalCategory {
-  const form = normalizeFormType(params.formType)
-  const normalizedType = params.signalType.toLowerCase()
-  const effectivePe = params.peRatio ?? params.forwardPe
-
-  if ((params.clusterInfo?.clusterSize ?? 0) >= 2) return "Cluster Buys"
-  if (params.bias === "Bearish") return "Risk"
-
-  if (
-    form.includes("13D") ||
-    form.includes("13G") ||
-    normalizedType.includes("ownership") ||
-    normalizedType.includes("institutional")
-  ) {
-    return "Institutional"
-  }
-
-  if (
-    normalizedType.includes("technical") ||
-    normalizedType.includes("breakout") ||
-    params.candidate?.included === true ||
-    (params.price.confirmed &&
-      ((params.price.return5d ?? 0) >= 5 || params.price.breakout20d || params.price.breakout52w))
-  ) {
-    return "Momentum"
-  }
-
-  if (form === "144" || (params.price.volumeRatio ?? 0) >= 2) return "Flow"
-
-  if (
-    form === "8-K" ||
-    form === "6-K" ||
-    form === "10-Q" ||
-    form === "10-K" ||
-    form === "SC 14D9" ||
-    form === "DEFA14A" ||
-    normalizedType.includes("catalyst") ||
-    params.catalystType === "guidance" ||
-    params.earnings.hasSignal ||
-    (effectivePe !== null && effectivePe <= 25)
-  ) {
-    return "Fundamental"
-  }
-
-  if (params.insiderAction === "Buy") return "Insider Buys"
-
-  return "Market Signal"
+  earnings: EarningsSignal
+  catalystType: string | null
+}) {
+  if ((params.clusterInfo?.clusterSize ?? 0) >= 2) return "Multi-Signal Strong Buy" as const
+  if (params.source === "form4") return "Insider Buying" as const
+  if (params.source === "breakout") return "Breakout" as const
+  if (params.source === "earnings" && params.earnings.hasSignal) return "Earnings Breakout" as const
+  if (params.source === "8k" && params.catalystType) return "Catalyst" as const
+  if (params.source === "13d" || params.source === "13g") return "Ownership" as const
+  if (params.candidate?.included) return "Breakout" as const
+  return "Multi-Signal Strong Buy" as const
 }
 
 function buildSignalTags(params: {
   source: SignalSource
-  bias: "Bullish" | "Neutral" | "Bearish"
   insider: InsiderParseResult
   clusterInfo: ClusterInfo | null
   insiderBuyValue: number | null
@@ -1529,28 +1411,12 @@ function buildSignalTags(params: {
   const tags: string[] = []
 
   tags.push(`source:${params.source}`)
-
-  if (params.bias === "Bullish") tags.push("bullish")
-  if (params.bias === "Bearish") tags.push("bearish")
-
-  if (params.source === "form144") {
-    tags.push("sale-notice")
-    tags.push("caution")
-  }
-
-  if (params.source === "proxy") {
-    tags.push("corporate-action")
-  }
+  tags.push("bullish")
+  tags.push("strong-buy-only")
 
   if (params.insider.action === "Buy") tags.push("insider-buy")
-  if (params.insider.action === "Sell") {
-    tags.push("insider-sell")
-    tags.push("caution")
-  }
-
   if ((params.clusterInfo?.clusterSize ?? 0) >= 2) tags.push("cluster-buy")
   if ((params.clusterInfo?.clusterSize ?? 0) >= 3) tags.push("cluster-strong")
-  if ((params.clusterInfo?.clusterSize ?? 0) >= 4) tags.push("cluster-heavy")
   if (params.clusterInfo?.repeatBuyer) tags.push("repeat-buyer")
 
   if ((params.insiderBuyValue ?? 0) >= 250_000) tags.push("large-insider-buy")
@@ -1564,14 +1430,10 @@ function buildSignalTags(params: {
   if (params.price.above50dma) tags.push("above-50dma")
   if (params.price.trendAligned) tags.push("trend-aligned")
   if ((params.price.relativeStrength20d ?? 0) >= 5) tags.push("relative-strength")
-  if ((params.price.relativeStrength20d ?? 0) <= -3) tags.push("weak-relative-strength")
-  if ((params.price.return5d ?? 0) < 0) tags.push("negative-short-term-price")
 
   const effectivePe = params.snapshot.peRatio ?? params.snapshot.forwardPe
   if (effectivePe !== null && effectivePe <= 18) tags.push("reasonable-valuation")
   if (effectivePe !== null && effectivePe <= 10) tags.push("deep-value")
-  if (effectivePe !== null && effectivePe >= 40) tags.push("expensive")
-  if ((params.snapshot.psRatio ?? 0) >= 10) tags.push("rich-sales-multiple")
 
   if (params.earnings.hasSignal) tags.push("earnings-support")
   if ((params.earnings.surprisePct ?? 0) >= 10) tags.push("eps-beat")
@@ -1581,42 +1443,25 @@ function buildSignalTags(params: {
   if (params.candidate) {
     tags.push("candidate-screen")
     if (params.candidate.included) tags.push("candidate-included")
-    if ((params.candidate.candidate_score ?? 0) >= 85) tags.push("candidate-strong-buy")
-    else if ((params.candidate.candidate_score ?? 0) >= 70) tags.push("candidate-buy")
+    if ((params.candidate.candidate_score ?? 0) >= 95) tags.push("candidate-elite")
+    else if ((params.candidate.candidate_score ?? 0) >= 90) tags.push("candidate-strong-buy")
     if ((params.candidate.volume_ratio ?? 0) >= 2) tags.push("screen-heavy-volume")
     if ((params.candidate.return_20d ?? 0) >= 15) tags.push("screen-momentum")
   }
 
   if (params.catalystType) tags.push(`8k:${params.catalystType}`)
-  if (isBearish8kCatalyst(params.catalystType)) {
-    tags.push("8k-risk")
-    tags.push("caution")
-  }
-  if (params.catalystType === "legal") tags.push("legal-risk")
-  if (params.catalystType === "bankruptcy") tags.push("bankruptcy-risk")
-  if (params.catalystType === "financing") tags.push("financing-risk")
-  if (params.catalystType === "debt-restructuring") tags.push("debt-risk")
-  if (params.catalystType === "guidance") tags.push("guidance-positive")
-  if (params.catalystType === "partnership") tags.push("partnership-positive")
-  if (params.catalystType === "customer") tags.push("customer-positive")
-  if (params.catalystType === "product") tags.push("product-positive")
 
   return uniqueStrings(tags)
 }
 
-function score8kCatalyst(catalystType: string | null) {
+function scorePositive8kCatalyst(catalystType: string | null) {
   if (!catalystType) return 0
   if (catalystType === "guidance") return 10
   if (catalystType === "partnership") return 8
-  if (catalystType === "customer") return 7
-  if (catalystType === "product") return 6
-  if (catalystType === "m&a") return 7
+  if (catalystType === "customer") return 8
+  if (catalystType === "product") return 7
+  if (catalystType === "m&a") return 8
   if (catalystType === "asset-sale") return 3
-  if (catalystType === "leadership") return 1
-  if (catalystType === "financing") return -16
-  if (catalystType === "debt-restructuring") return -18
-  if (catalystType === "legal") return -22
-  if (catalystType === "bankruptcy") return -34
   return 0
 }
 
@@ -1624,22 +1469,15 @@ function scoreEarnings(earnings: EarningsSignal) {
   let score = 0
 
   if ((earnings.surprisePct ?? 0) >= 25) score += 8
-  else if ((earnings.surprisePct ?? 0) >= 10) score += 5
-  else if ((earnings.surprisePct ?? 0) <= -20) score -= 16
-  else if ((earnings.surprisePct ?? 0) <= -10) score -= 9
+  else if ((earnings.surprisePct ?? 0) >= 15) score += 6
+  else if ((earnings.surprisePct ?? 0) >= 10) score += 4
 
   if ((earnings.revenueGrowthPct ?? 0) >= 25) score += 6
   else if ((earnings.revenueGrowthPct ?? 0) >= 15) score += 4
-  else if ((earnings.revenueGrowthPct ?? 0) <= -10) score -= 7
 
   if (earnings.guidanceFlag) score += 4
 
   return score
-}
-
-function scoreDecay(ageDays: number | null) {
-  if (ageDays === null) return 1
-  return Math.exp(-ageDays / 10)
 }
 
 function applyBreakdown(
@@ -1657,7 +1495,7 @@ function applyBreakdown(
 function getRoleWeight(role: string | null) {
   if (!role) return 0
   if (isSeniorRole(role)) return 8
-  if (role.toLowerCase().includes("director")) return 4
+  if (isDirectorRole(role)) return 4
   if (role.toLowerCase().includes("officer")) return 5
   return 2
 }
@@ -1669,51 +1507,23 @@ function scoreInsiderBuy(
 ) {
   let score = 0
   if (insiderBuyValue !== null) {
-    if (insiderBuyValue >= 5_000_000) score += 16
-    else if (insiderBuyValue >= 1_000_000) score += 12
-    else if (insiderBuyValue >= 500_000) score += 9
-    else if (insiderBuyValue >= 100_000) score += 6
-    else score += 3
+    if (insiderBuyValue >= 5_000_000) score += 18
+    else if (insiderBuyValue >= 1_000_000) score += 14
+    else if (insiderBuyValue >= 500_000) score += 10
+    else if (insiderBuyValue >= 100_000) score += 7
+    else score += 4
   } else {
     score += 3
   }
 
   score += getRoleWeight(role)
 
-  if ((clusterInfo?.clusterSize ?? 0) >= 5) score += 18
-  else if ((clusterInfo?.clusterSize ?? 0) === 4) score += 14
+  if ((clusterInfo?.clusterSize ?? 0) >= 5) score += 16
+  else if ((clusterInfo?.clusterSize ?? 0) === 4) score += 13
   else if ((clusterInfo?.clusterSize ?? 0) === 3) score += 10
   else if ((clusterInfo?.clusterSize ?? 0) === 2) score += 7
 
-  if (clusterInfo?.repeatBuyer) score += 5
-
-  return score
-}
-
-function scoreInsiderSell(
-  sellValue: number | null,
-  shares: number | null,
-  price: PriceConfirmation
-) {
-  let score = 0
-
-  if (sellValue !== null) {
-    if (sellValue >= 10_000_000) score -= 24
-    else if (sellValue >= 5_000_000) score -= 18
-    else if (sellValue >= 2_000_000) score -= 14
-    else if (sellValue >= 500_000) score -= 10
-    else if (sellValue >= 100_000) score -= 7
-    else score -= 3
-  } else {
-    if ((shares ?? 0) >= 1_000_000) score -= 16
-    else if ((shares ?? 0) >= 100_000) score -= 10
-    else if ((shares ?? 0) >= 10_000) score -= 7
-    else if ((shares ?? 0) > 0) score -= 3
-  }
-
-  if ((price.return5d ?? 0) < 0 || (price.relativeStrength20d ?? 0) < 0) {
-    score -= 5
-  }
+  if (clusterInfo?.repeatBuyer) score += 4
 
   return score
 }
@@ -1721,18 +1531,13 @@ function scoreInsiderSell(
 function scoreMomentum(price: PriceConfirmation) {
   let score = 0
 
-  if ((price.return5d ?? 0) >= 10) score += 9
-  else if ((price.return5d ?? 0) >= 5) score += 6
-  else if ((price.return5d ?? 0) >= 2) score += 3
-  else if ((price.return5d ?? 0) <= -8) score -= 14
-  else if ((price.return5d ?? 0) <= -5) score -= 9
-  else if ((price.return5d ?? 0) <= -2) score -= 4
+  if ((price.return5d ?? 0) >= 10) score += 8
+  else if ((price.return5d ?? 0) >= 6) score += 6
+  else if ((price.return5d ?? 0) >= 3) score += 3
 
   if ((price.return20d ?? 0) >= 20) score += 7
-  else if ((price.return20d ?? 0) >= 10) score += 4
-  else if ((price.return20d ?? 0) >= 5) score += 2
-  else if ((price.return20d ?? 0) <= -15) score -= 9
-  else if ((price.return20d ?? 0) <= -8) score -= 5
+  else if ((price.return20d ?? 0) >= 12) score += 5
+  else if ((price.return20d ?? 0) >= 8) score += 3
 
   if (price.breakout20d) score += 5
   if (price.breakout52w) score += 7
@@ -1748,15 +1553,10 @@ function scoreMomentum(price: PriceConfirmation) {
 
 function scoreRelativeStrength(value: number | null) {
   if (value === null) return 0
-  if (value >= 12) return 10
-  if (value >= 8) return 7
+  if (value >= 12) return 9
+  if (value >= 8) return 6
   if (value >= 4) return 4
-  if (value >= 1) return 1
-  if (value <= -20) return -26
-  if (value <= -15) return -20
-  if (value <= -10) return -14
-  if (value <= -5) return -9
-  if (value < 0) return -4
+  if (value >= 2) return 2
   return 0
 }
 
@@ -1767,20 +1567,15 @@ function scoreValuation(snapshot: TickerSnapshot) {
   if (pe !== null) {
     if (pe <= 10) score += 6
     else if (pe <= 18) score += 4
-    else if (pe <= 25) score += 1
-    else if (pe >= 60) score -= 14
-    else if (pe >= 40) score -= 8
+    else if (pe <= 25) score += 2
   }
 
   if (snapshot.psRatio !== null) {
     if (snapshot.psRatio <= 2) score += 3
     else if (snapshot.psRatio <= 5) score += 1
-    else if (snapshot.psRatio >= 15) score -= 7
-    else if (snapshot.psRatio >= 10) score -= 3
   }
 
   if (snapshot.marketCap !== null) {
-    if (snapshot.marketCap < 300_000_000) score -= 3
     if (snapshot.marketCap >= 1_000_000_000 && snapshot.marketCap <= 50_000_000_000) score += 1
   }
 
@@ -1793,12 +1588,11 @@ function scoreCandidateTechnical(candidate: CandidateUniverseSignalInput | null)
   let score = 0
   const candidateScore = Number(candidate.candidate_score || 0)
 
-  if (candidate.included) score += 6
-  if (candidateScore >= 95) score += 14
-  else if (candidateScore >= 85) score += 11
-  else if (candidateScore >= 75) score += 8
-  else if (candidateScore >= 65) score += 5
-  else if (candidateScore >= 55) score += 2
+  if (candidate.included) score += 8
+  if (candidateScore >= 98) score += 16
+  else if (candidateScore >= 95) score += 13
+  else if (candidateScore >= 90) score += 10
+  else if (candidateScore >= 85) score += 6
 
   if ((candidate.return_5d ?? 0) >= 6) score += 3
   else if ((candidate.return_5d ?? 0) >= 3) score += 1
@@ -1817,18 +1611,11 @@ function scoreCandidateTechnical(candidate: CandidateUniverseSignalInput | null)
 
 function ageAdjustment(ageDays: number | null) {
   if (ageDays === null) return 0
-  if (ageDays <= 1) return 5
-  if (ageDays <= 3) return 3
-  if (ageDays <= 7) return 1
-  if (ageDays >= 20) return -8
-  if (ageDays >= 14) return -5
-  return 0
-}
-
-function getBoardBucket(appScore: number) {
-  if (appScore >= 70) return "Buy" as const
-  if (appScore <= 30) return "Risk" as const
-  return "Watch" as const
+  if (ageDays <= 1) return 6
+  if (ageDays <= 3) return 4
+  if (ageDays <= 7) return 2
+  if (ageDays <= 14) return 0
+  return -8
 }
 
 function getValuationFlavor(
@@ -1841,13 +1628,10 @@ function getValuationFlavor(
     if (pe <= 10) return "deep value"
     if (pe <= 18) return "reasonable value"
     if (pe <= 25) return "fair value"
-    if (pe >= 60) return "very expensive"
-    if (pe >= 40) return "expensive"
   }
 
   if (psRatio !== null) {
     if (psRatio <= 2) return "low sales multiple"
-    if (psRatio >= 15) return "very rich sales multiple"
   }
 
   return null
@@ -1865,62 +1649,129 @@ function countPositiveEvidencePillars(breakdown: ScoreBreakdown) {
   ].filter(Boolean).length
 }
 
-function mapToAppScore(
-  rawScore: number,
-  params: {
-    bias: "Bullish" | "Neutral" | "Bearish"
-    breakoutConfirmed: boolean
-    strongVolume: boolean
-    clusterBuy: boolean
-    largeInsiderBuy: boolean
-    candidateScore: number | null
-    positivePillars: number
-    hasFreshCatalyst: boolean
-    hasEarningsSupport: boolean
-    severeRisk: boolean
-  }
-) {
-  const clampedRaw = clamp(rawScore, 0, 100)
+function hasStrongPositivePriceConfirmation(price: PriceConfirmation) {
+  return (
+    price.confirmed &&
+    (price.relativeStrength20d ?? 0) >= 2 &&
+    ((price.breakout20d || price.breakout52w) ||
+      ((price.return5d ?? 0) >= 4 && (price.volumeRatio ?? 0) >= 1.5) ||
+      ((price.return20d ?? 0) >= 12 && price.trendAligned))
+  )
+}
 
-  if (params.bias === "Bearish" || params.severeRisk) {
-    return clamp(Math.round(clampedRaw), 0, 100)
+function isEligibleStrongBuySignal(params: {
+  filing: RawFiling
+  base: BaseSignalData
+  insider: InsiderParseResult
+  price: PriceConfirmation
+  earnings: EarningsSignal
+  catalystType: string | null
+  candidate: CandidateUniverseSignalInput | null
+  ageDays: number | null
+  clusterInfo: ClusterInfo | null
+}) {
+  const form = normalizeFormType(params.filing.form_type)
+  const candidateScore = Number(params.candidate?.candidate_score || 0)
+  const candidateIncluded = params.candidate?.included === true
+  const strongPrice = hasStrongPositivePriceConfirmation(params.price)
+  const freshEnough = (params.ageDays ?? 999) <= MAX_SIGNAL_AGE_DAYS
+
+  if (!freshEnough) return false
+  if ((params.price.relativeStrength20d ?? 0) < 2) return false
+  if ((params.price.return5d ?? 0) < -1) return false
+
+  if (params.base.signal_source === "breakout") {
+    return (
+      strongPrice &&
+      (candidateIncluded ||
+        candidateScore >= MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL ||
+        ((params.candidate?.breakout_20d === true || params.price.breakout20d) &&
+          (params.candidate?.volume_ratio ?? params.price.volumeRatio ?? 0) >= 1.75))
+    )
   }
 
-  let appScore = Math.round(Math.pow(clampedRaw / 100, 1.22) * 100)
+  if (form === "4" || form === "4/A") {
+    if (params.insider.action !== "Buy") return false
+
+    const buyValue = getInsiderBuyValue(params.insider)
+    const hasMeaningfulInsiderSize =
+      (buyValue ?? 0) >= 100_000 || (params.insider.shares ?? 0) >= 10_000
+
+    return (
+      strongPrice &&
+      hasMeaningfulInsiderSize &&
+      ((params.clusterInfo?.clusterSize ?? 0) >= 2 ||
+        (buyValue ?? 0) >= 250_000 ||
+        isSeniorRole(params.insider.role))
+    )
+  }
+
+  if (
+    form === "13D" ||
+    form === "SC 13D" ||
+    form === "13D/A" ||
+    form === "SC 13D/A"
+  ) {
+    return strongPrice
+  }
+
+  if (
+    form === "13G" ||
+    form === "SC 13G" ||
+    form === "13G/A" ||
+    form === "SC 13G/A"
+  ) {
+    return strongPrice && (candidateIncluded || candidateScore >= 90)
+  }
+
+  if (form === "8-K" || form === "6-K") {
+    return strongPrice && isPositive8kCatalyst(params.catalystType)
+  }
+
+  if (form === "10-Q" || form === "10-K" || params.base.signal_source === "earnings") {
+    return strongPrice && params.earnings.hasSignal
+  }
+
+  return false
+}
+
+function mapToAppScore(rawScore: number, params: {
+  breakoutConfirmed: boolean
+  strongVolume: boolean
+  clusterBuy: boolean
+  largeInsiderBuy: boolean
+  candidateScore: number | null
+  positivePillars: number
+  hasFreshCatalyst: boolean
+  hasEarningsSupport: boolean
+  freshSignal: boolean
+}) {
+  let appScore = Math.round(Math.pow(clamp(rawScore, 0, 100) / 100, 1.35) * 100)
 
   const eliteEvidenceCount = [
     params.breakoutConfirmed,
     params.strongVolume,
     params.clusterBuy || params.largeInsiderBuy,
-    (params.candidateScore ?? 0) >= 85,
+    (params.candidateScore ?? 0) >= 95,
     params.hasFreshCatalyst || params.hasEarningsSupport,
+    params.positivePillars >= 4,
+    params.freshSignal,
   ].filter(Boolean).length
 
-  if (params.positivePillars < 3) {
-    appScore = Math.min(appScore, 88)
-  }
-
-  if (params.positivePillars < 4) {
-    appScore = Math.min(appScore, 94)
-  }
-
-  if (eliteEvidenceCount < 3) {
-    appScore = Math.min(appScore, 96)
-  }
-
-  if (eliteEvidenceCount < 4) {
-    appScore = Math.min(appScore, 98)
-  }
+  if (params.positivePillars < 3) appScore = Math.min(appScore, 87)
+  if (params.positivePillars < 4) appScore = Math.min(appScore, 93)
+  if (eliteEvidenceCount < 4) appScore = Math.min(appScore, 96)
+  if (eliteEvidenceCount < 5) appScore = Math.min(appScore, 98)
 
   if (
     !(
       params.breakoutConfirmed &&
       params.strongVolume &&
       params.positivePillars >= 4 &&
-      eliteEvidenceCount >= 4 &&
+      eliteEvidenceCount >= 5 &&
       (params.clusterBuy ||
         params.largeInsiderBuy ||
-        (params.candidateScore ?? 0) >= 95)
+        (params.candidateScore ?? 0) >= 98)
     )
   ) {
     appScore = Math.min(appScore, 99)
@@ -1940,7 +1791,6 @@ function applyEnhancements(
   catalystType: string | null,
   candidate: CandidateUniverseSignalInput | null
 ): EnhancedSignal | null {
-  let bias: "Bullish" | "Neutral" | "Bearish" = base.bias
   let title = base.title
   let summary = base.summary
   let insiderSignalFlavor = "Standard"
@@ -1948,107 +1798,55 @@ function applyEnhancements(
   const source = base.signal_source
   const ageDays = daysBetween(filing.filed_at)
   const freshnessBucket = freshnessBucketFromAge(ageDays)
-  const decay = scoreDecay(ageDays)
 
   const breakdown: ScoreBreakdown = {}
   const reasons: string[] = []
   const scoreCapsApplied: string[] = []
 
-  applyBreakdown(breakdown, reasons, "base", base.score, "Base signal")
+  applyBreakdown(breakdown, reasons, "base", base.score, "Base strong-buy signal")
 
   const form = normalizeFormType(filing.form_type)
 
   if (form === "4" || form === "4/A") {
-    if (insider.action === "Buy") {
-      insiderBuyValue = getInsiderBuyValue(insider)
-      const insiderScore = scoreInsiderBuy(insiderBuyValue, insider.role, clusterInfo)
-      applyBreakdown(
-        breakdown,
-        reasons,
-        "insider_buying",
-        insiderScore,
-        insiderBuyValue !== null ? "Insider buying support" : "Recent insider buy"
-      )
+    if (insider.action !== "Buy") return null
 
-      title = "Insider buy detected"
-      summary = `Form 4 shows the most recent relevant insider action is a buy${
-        insider.shares ? ` of about ${Math.round(insider.shares).toLocaleString()} shares` : ""
-      }.`
-
-      if (insiderBuyValue !== null && insiderBuyValue >= 1_000_000) {
-        insiderSignalFlavor = "Large Buy"
-        title = "Large Insider Buy"
-      }
-
-      if ((clusterInfo?.clusterSize ?? 0) >= 2) {
-        insiderSignalFlavor = "Cluster Buy"
-        title = "Cluster Insider Buying"
-        summary =
-          `${clusterInfo?.clusterSize} recent insider buy filings were detected within 7 days` +
-          `${clusterInfo?.totalShares ? `, total shares ≈ ${Math.round(
-            clusterInfo.totalShares
-          ).toLocaleString()}` : ""}.`
-      }
-
-      if (clusterInfo?.repeatBuyer) {
-        applyBreakdown(breakdown, reasons, "repeat_buying", 5, "Repeat insider buying")
-      }
-
-      if (isSeniorRole(insider.role)) {
-        applyBreakdown(breakdown, reasons, "senior_executive_buy", 6, "Senior executive buying")
-      }
-
-      bias = "Bullish"
-    } else if (insider.action === "Sell") {
-      const insiderSellValue = getInsiderTradeValue(insider)
-      const sellPenalty = scoreInsiderSell(insiderSellValue, insider.shares, price)
-      applyBreakdown(
-        breakdown,
-        reasons,
-        "insider_selling",
-        sellPenalty,
-        "Insider selling pressure"
-      )
-
-      title = "Insider sell detected"
-      summary = `Form 4 shows the most recent relevant insider action is a sell${
-        insider.shares ? ` of about ${Math.round(insider.shares).toLocaleString()} shares` : ""
-      }${
-        insiderSellValue
-          ? `, estimated value ≈ $${Math.round(insiderSellValue).toLocaleString()}`
-          : ""
-      }.`
-
-      insiderSignalFlavor = "Sell"
-      bias = "Bearish"
-    } else if (insider.action === "Other") {
-      title = "Other insider filing detected"
-      summary =
-        "Form 4 activity was detected, but no clear recent buy or sell code could be extracted from the filing."
-      insiderSignalFlavor = "Other"
-    }
-  }
-
-  if (form === "144") {
+    insiderBuyValue = getInsiderBuyValue(insider)
+    const insiderScore = scoreInsiderBuy(insiderBuyValue, insider.role, clusterInfo)
     applyBreakdown(
       breakdown,
       reasons,
-      "form144",
-      -10,
-      "Sale notice filing introduces supply overhang risk"
+      "insider_buying",
+      insiderScore,
+      insiderBuyValue !== null ? "Insider buying support" : "Recent insider buy"
     )
 
-    if ((price.return5d ?? 0) < 0 || (price.relativeStrength20d ?? 0) < 0) {
-      applyBreakdown(
-        breakdown,
-        reasons,
-        "form144_price_weakness",
-        -5,
-        "Weak price action adds caution to the sale notice"
-      )
+    title = "Insider buy detected"
+    summary = `Form 4 shows the most recent relevant insider action is a buy${
+      insider.shares ? ` of about ${Math.round(insider.shares).toLocaleString()} shares` : ""
+    }.`
+
+    if (insiderBuyValue !== null && insiderBuyValue >= 1_000_000) {
+      insiderSignalFlavor = "Large Buy"
+      title = "Large Insider Buy"
     }
 
-    bias = "Bearish"
+    if ((clusterInfo?.clusterSize ?? 0) >= 2) {
+      insiderSignalFlavor = "Cluster Buy"
+      title = "Cluster Insider Buying"
+      summary =
+        `${clusterInfo?.clusterSize} recent insider buy filings were detected within 7 days` +
+        `${clusterInfo?.totalShares ? `, total shares ≈ ${Math.round(
+          clusterInfo.totalShares
+        ).toLocaleString()}` : ""}.`
+    }
+
+    if (clusterInfo?.repeatBuyer) {
+      applyBreakdown(breakdown, reasons, "repeat_buying", 4, "Repeat insider buying")
+    }
+
+    if (isSeniorRole(insider.role)) {
+      applyBreakdown(breakdown, reasons, "senior_executive_buy", 6, "Senior executive buying")
+    }
   }
 
   if (source === "breakout" && candidate) {
@@ -2063,23 +1861,22 @@ function applyEnhancements(
         : "Technical candidate screen support"
     )
 
-    if (candidate.included) {
-      title =
-        (candidate.candidate_score ?? 0) >= 85
-          ? "Strong buy candidate setup"
-          : "Buy candidate setup"
-      summary =
-        candidate.screen_reason
-          ? `The technical candidate screen is constructive: ${candidate.screen_reason}.`
-          : "The technical candidate screen is constructive."
+    title =
+      (candidate.candidate_score ?? 0) >= 95
+        ? "Elite technical strong-buy setup"
+        : (candidate.candidate_score ?? 0) >= 90
+          ? "High-conviction technical strong-buy setup"
+          : "Technical strong-buy setup"
 
-      if ((candidate.candidate_score ?? 0) >= 85) {
-        applyBreakdown(breakdown, reasons, "candidate_tier_bonus", 5, "Strong buy tier")
-      } else if ((candidate.candidate_score ?? 0) >= 70) {
-        applyBreakdown(breakdown, reasons, "candidate_tier_bonus", 2, "Buy tier")
-      }
+    summary =
+      candidate.screen_reason
+        ? `The technical candidate screen is highly constructive: ${candidate.screen_reason}.`
+        : "The technical candidate screen is highly constructive."
 
-      bias = "Bullish"
+    if ((candidate.candidate_score ?? 0) >= 95) {
+      applyBreakdown(breakdown, reasons, "candidate_tier_bonus", 6, "Elite candidate tier")
+    } else if ((candidate.candidate_score ?? 0) >= 90) {
+      applyBreakdown(breakdown, reasons, "candidate_tier_bonus", 4, "Strong buy tier")
     }
 
     if ((candidate.volume_ratio ?? 0) >= 2) {
@@ -2096,22 +1893,10 @@ function applyEnhancements(
   }
 
   const momentumScore = scoreMomentum(price)
-  applyBreakdown(
-    breakdown,
-    reasons,
-    "momentum",
-    momentumScore,
-    momentumScore > 0 ? "Price and trend support" : momentumScore < 0 ? "Weak price behavior" : null
-  )
+  applyBreakdown(breakdown, reasons, "momentum", momentumScore, "Price and trend support")
 
   const rsScore = scoreRelativeStrength(price.relativeStrength20d)
-  applyBreakdown(
-    breakdown,
-    reasons,
-    "relative_strength",
-    rsScore,
-    rsScore > 0 ? "Stronger than market" : rsScore < 0 ? "Weaker than market" : null
-  )
+  applyBreakdown(breakdown, reasons, "relative_strength", rsScore, "Stronger than market")
 
   const valuationScore = scoreValuation(snapshot)
   applyBreakdown(
@@ -2119,7 +1904,7 @@ function applyEnhancements(
     reasons,
     "valuation",
     valuationScore,
-    valuationScore > 0 ? "Valuation support" : valuationScore < 0 ? "Rich valuation" : null
+    valuationScore > 0 ? "Valuation support" : null
   )
 
   const earningsScore = scoreEarnings(earnings)
@@ -2128,16 +1913,16 @@ function applyEnhancements(
     reasons,
     "earnings",
     earningsScore,
-    earningsScore > 0 ? "Earnings support" : earningsScore < 0 ? "Weak earnings context" : null
+    earningsScore > 0 ? "Earnings support" : null
   )
 
-  const catalystScore = score8kCatalyst(catalystType)
+  const catalystScore = scorePositive8kCatalyst(catalystType)
   applyBreakdown(
     breakdown,
     reasons,
     "catalyst",
     catalystScore,
-    catalystScore > 0 ? "Positive catalyst" : catalystScore < 0 ? "Negative catalyst" : null
+    catalystScore > 0 ? "Positive catalyst" : null
   )
 
   const ageScore = ageAdjustment(ageDays)
@@ -2146,32 +1931,13 @@ function applyEnhancements(
     reasons,
     "freshness",
     ageScore,
-    ageScore > 0 ? "Fresh signal" : ageScore < 0 ? "Older signal" : null
+    ageScore > 0 ? "Fresh signal" : null
   )
-
-  if (decay < 1) {
-    const preDecayPositive = Object.values(breakdown)
-      .filter((v) => v > 0)
-      .reduce((a, b) => a + b, 0)
-    const decayPenalty = -(preDecayPositive * (1 - decay))
-    applyBreakdown(
-      breakdown,
-      reasons,
-      "time_decay",
-      decayPenalty,
-      ageDays !== null ? "Time decay applied" : null
-    )
-  }
-
-  if (earnings.hasSignal && bias !== "Bearish") {
-    bias = "Bullish"
-    if (earnings.summary) summary += ` ${earnings.summary}`
-  }
 
   const valuationFlavor = getValuationFlavor(snapshot.peRatio, snapshot.forwardPe, snapshot.psRatio)
   if (valuationFlavor) summary += ` Valuation currently looks ${valuationFlavor}.`
 
-  if (price.confirmed && bias === "Bullish") {
+  if (price.confirmed) {
     title = `${title} with price/volume confirmation`
     summary += " Price and volume action are also confirming the setup."
   }
@@ -2180,20 +1946,12 @@ function applyEnhancements(
     summary += " Trading activity is elevated versus normal volume."
   }
 
-  if (price.return5d !== null && price.return5d < 0) {
-    summary += " Near-term price action is not helping."
+  if (earnings.hasSignal && earnings.summary) {
+    summary += ` ${earnings.summary}`
   }
-
-  const ugly8kSummary = get8kRiskSummary(catalystType)
-  if (ugly8kSummary) {
-    bias = "Bearish"
-    title = `Risk Alert: ${title}`
-    summary += ` ${ugly8kSummary}`
-  }
-
-  let preCapScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
 
   const positivePillars = countPositiveEvidencePillars(breakdown)
+  let preCapScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
 
   if (preCapScore > 88 && positivePillars < 3) {
     const target = 88
@@ -2223,55 +1981,9 @@ function applyEnhancements(
     preCapScore = target
   }
 
-  if (
-    (price.relativeStrength20d ?? 0) <= -20 &&
-    !((clusterInfo?.clusterSize ?? 0) >= 2) &&
-    !catalystType &&
-    source !== "breakout"
-  ) {
-    const target = Math.min(preCapScore, 65)
-    const capAdjustment = target - preCapScore
-    if (capAdjustment !== 0) {
-      applyBreakdown(
-        breakdown,
-        reasons,
-        "relative_strength_cap",
-        capAdjustment,
-        "Score capped for very weak relative strength"
-      )
-      scoreCapsApplied.push("relative-strength-cap")
-      preCapScore = target
-    }
-  }
-
-  if (
-    catalystType === "bankruptcy" ||
-    catalystType === "legal" ||
-    ((breakdown.insider_selling || 0) <= -18 && (price.relativeStrength20d ?? 0) <= -10)
-  ) {
-    const target = Math.min(preCapScore, 60)
-    const capAdjustment = target - preCapScore
-    if (capAdjustment !== 0) {
-      applyBreakdown(
-        breakdown,
-        reasons,
-        "hard_risk_cap",
-        capAdjustment,
-        "Risk cap applied due to severe downside signals"
-      )
-      scoreCapsApplied.push("hard-risk-cap")
-      preCapScore = target
-    }
-  }
-
   const rawScore = clamp(Math.round(preCapScore), 0, 100)
 
-  if (rawScore >= 70 && bias !== "Bearish") bias = "Bullish"
-  else if (rawScore <= 30 || isBearish8kCatalyst(catalystType)) bias = "Bearish"
-  else if (bias !== "Bearish" && bias !== "Bullish") bias = "Neutral"
-
   const appScore = mapToAppScore(rawScore, {
-    bias,
     breakoutConfirmed: price.breakout20d || price.breakout52w || candidate?.breakout_20d === true,
     strongVolume: (price.volumeRatio ?? 0) >= 2 || (candidate?.volume_ratio ?? 0) >= 2,
     clusterBuy: (clusterInfo?.clusterSize ?? 0) >= 2,
@@ -2280,29 +1992,19 @@ function applyEnhancements(
     positivePillars,
     hasFreshCatalyst: catalystScore > 0 && (ageDays ?? 99) <= 7,
     hasEarningsSupport: earningsScore > 0,
-    severeRisk:
-      catalystType === "bankruptcy" ||
-      catalystType === "legal" ||
-      ((breakdown.insider_selling || 0) <= -18 && (price.relativeStrength20d ?? 0) <= -10),
+    freshSignal: (ageDays ?? 999) <= 3,
   })
 
   const signalCategory = deriveSignalCategory({
-    formType: filing.form_type,
-    signalType: base.signal_type,
-    bias,
-    insiderAction: insider.action,
+    source,
     clusterInfo,
-    price,
-    peRatio: snapshot.peRatio,
-    forwardPe: snapshot.forwardPe,
-    catalystType,
-    earnings,
     candidate,
+    earnings,
+    catalystType,
   })
 
   const tags = buildSignalTags({
     source,
-    bias,
     insider,
     clusterInfo,
     insiderBuyValue,
@@ -2313,19 +2015,16 @@ function applyEnhancements(
     candidate,
   })
 
-  const strengthBucket = getStrengthBucket(bias, appScore)
-  const boardBucket = getBoardBucket(appScore)
-
   return {
     signal_type: base.signal_type,
     signal_source: source,
     signal_category: signalCategory,
-    signal_strength_bucket: strengthBucket,
+    signal_strength_bucket: getStrengthBucket(appScore),
     signal_tags: tags,
-    bias,
+    bias: "Bullish",
     score: rawScore,
     app_score: appScore,
-    board_bucket: boardBucket,
+    board_bucket: "Buy",
     title,
     summary,
     insiderBuyValue,
@@ -2403,27 +2102,6 @@ function buildClusterMap(items: PreparedSignal[]) {
   }
 
   return result
-}
-
-function getMinimumScore(
-  formType: string | null,
-  source: SignalSource,
-  bias: "Bullish" | "Neutral" | "Bearish"
-) {
-  const form = normalizeFormType(formType)
-
-  if (bias === "Bearish") return 0
-  if (source === "earnings") return 42
-  if (source === "breakout") return 52
-  if (source === "form144") return 0
-  if (source === "proxy") return 38
-  if (form === "8-K" || form === "6-K") return 40
-  if (form === "10-Q" || form === "10-K") return 40
-  if (form.includes("13D")) return 48
-  if (form.includes("13G")) return 46
-  if (form === "4" || form === "4/A") return 40
-
-  return 40
 }
 
 function buildHistoryKey(runDate: string, accessionNo: string) {
@@ -2535,20 +2213,19 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
 
     let stackedScore = Number(primary.app_score || 0)
 
-    if (sorted.length >= 2) stackedScore += 4
-    if (sorted.length >= 3) stackedScore += 3
-    if (sorted.length >= 4) stackedScore += 2
-    if (sorted.length >= 5) stackedScore += 1
+    if (sorted.length >= 2) stackedScore += 2
+    if (sorted.length >= 3) stackedScore += 1
+    if (sorted.length >= 4) stackedScore += 1
 
     const positivePillars = countPositiveEvidencePillars(scoreBreakdown)
 
     if (positivePillars < 3) {
-      stackedScore = Math.min(stackedScore, 90)
+      stackedScore = Math.min(stackedScore, 89)
       scoreCapsApplied.add("stacked-limited-evidence-cap")
     }
 
     if (positivePillars < 4) {
-      stackedScore = Math.min(stackedScore, 95)
+      stackedScore = Math.min(stackedScore, 94)
       scoreCapsApplied.add("stacked-broad-confirmation-cap")
     }
 
@@ -2558,40 +2235,29 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
       primary.breakout_52w === true
 
     const hasHeavyVolume =
-      (primary.volume_ratio ?? 0) >= 2 ||
-      (scoreBreakdown.candidate_volume || 0) > 0
+      (primary.volume_ratio ?? 0) >= 2 || (scoreBreakdown.candidate_volume || 0) > 0
 
     const hasEliteInsiderSupport =
-      (scoreBreakdown.insider_buying || 0) >= 16 ||
-      (primary.cluster_buyers ?? 0) >= 2
+      (scoreBreakdown.insider_buying || 0) >= 14 || (primary.cluster_buyers ?? 0) >= 2
 
-    if (!(hasBreakoutSupport && hasHeavyVolume && positivePillars >= 4 && hasEliteInsiderSupport)) {
+    if (!(hasBreakoutSupport && hasHeavyVolume && positivePillars >= 4)) {
+      stackedScore = Math.min(stackedScore, 97)
+      scoreCapsApplied.add("stacked-elite-confirmation-cap")
+    }
+
+    if (
+      !(hasBreakoutSupport &&
+        hasHeavyVolume &&
+        positivePillars >= 4 &&
+        (hasEliteInsiderSupport || Number(primary.app_score || 0) >= 97))
+    ) {
       stackedScore = Math.min(stackedScore, 99)
       scoreCapsApplied.add("stacked-no-perfect-score-cap")
     }
 
-    if (
-      (scoreBreakdown.relative_strength || 0) <= -20 &&
-      !((scoreBreakdown.insider_buying || 0) > 15)
-    ) {
-      stackedScore = Math.min(stackedScore, 65)
-      scoreCapsApplied.add("relative-strength-cap")
-    }
-
-    if (
-      (scoreBreakdown.catalyst || 0) <= -22 ||
-      (scoreBreakdown.insider_selling || 0) <= -18 ||
-      primary.catalyst_type === "bankruptcy" ||
-      primary.catalyst_type === "legal"
-    ) {
-      stackedScore = Math.min(stackedScore, 60)
-      scoreCapsApplied.add("hard-risk-cap")
-    }
-
     const finalScore = clamp(Math.round(stackedScore), 0, 100)
-    const boardBucket = getBoardBucket(finalScore)
-    const bias = finalScore >= 70 ? "Bullish" : finalScore <= 30 ? "Bearish" : "Neutral"
-    const strengthBucket = getStrengthBucket(bias, finalScore)
+
+    if (finalScore < MIN_TICKER_APP_SCORE) continue
 
     rows.push({
       ticker,
@@ -2599,9 +2265,9 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
       business_description: primary.business_description,
       app_score: finalScore,
       raw_score: finalScore,
-      bias,
-      board_bucket: boardBucket,
-      signal_strength_bucket: strengthBucket,
+      bias: "Bullish",
+      board_bucket: "Buy",
+      signal_strength_bucket: getStrengthBucket(finalScore),
       score_version: SCORE_VERSION,
       score_updated_at: new Date().toISOString(),
       stacked_signal_count: sorted.length,
@@ -2758,6 +2424,8 @@ export async function GET(request: Request) {
       scanned: 0,
       skippedNoTicker: 0,
       skippedNoBaseSignal: 0,
+      skippedNotBullishEnough: 0,
+      skippedFailedEligibility: 0,
       preparedCount: 0,
       enhancedNull: 0,
       filteredByMinScore: 0,
@@ -2786,11 +2454,9 @@ export async function GET(request: Request) {
         supabase
           .from("candidate_universe")
           .select(
-            "ticker, cik, name, price, market_cap, avg_volume_20d, avg_dollar_volume_20d, return_5d, return_20d, volume_ratio, breakout_20d, above_sma_20, candidate_score, included, screen_reason, last_screened_at"
+            "ticker, cik, name, price, market_cap, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, candidate_score, included, screen_reason, last_screened_at"
           )
-          .or(
-            `included.eq.true,candidate_score.gte.${MIN_CANDIDATE_SCORE_FOR_TECHNICAL_SIGNAL}`
-          )
+          .or(`included.eq.true,candidate_score.gte.${MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL}`)
           .gte("last_screened_at", candidateCutoffDateString)
           .order("candidate_score", { ascending: false })
           .limit(limit),
@@ -2883,6 +2549,19 @@ export async function GET(request: Request) {
         }
       }
 
+      if (
+        (form === "4" || form === "4/A") &&
+        insider.action !== "Buy"
+      ) {
+        diagnostics.skippedNotBullishEnough += 1
+        continue
+      }
+
+      if ((form === "8-K" || form === "6-K") && !isPositive8kCatalyst(catalystType)) {
+        diagnostics.skippedNotBullishEnough += 1
+        continue
+      }
+
       prepared.push({
         filing: { ...filing, ticker },
         base,
@@ -2954,6 +2633,24 @@ export async function GET(request: Request) {
 
     for (const item of prepared) {
       const clusterInfo = clusterMap.get(item.filing.accession_no) ?? null
+      const ageDays = daysBetween(item.filing.filed_at)
+
+      const eligible = isEligibleStrongBuySignal({
+        filing: item.filing,
+        base: item.base,
+        insider: item.insider,
+        price: item.price,
+        earnings: item.earnings,
+        catalystType: item.catalystType,
+        candidate: item.candidate,
+        ageDays,
+        clusterInfo,
+      })
+
+      if (!eligible) {
+        diagnostics.skippedFailedEligibility += 1
+        continue
+      }
 
       const enhanced = applyEnhancements(
         item.filing,
@@ -2972,13 +2669,7 @@ export async function GET(request: Request) {
         continue
       }
 
-      const minScore = getMinimumScore(
-        item.filing.form_type,
-        enhanced.signal_source,
-        enhanced.bias
-      )
-
-      if (enhanced.score < minScore) {
+      if (enhanced.app_score < MIN_SIGNAL_APP_SCORE) {
         diagnostics.filteredByMinScore += 1
         continue
       }
@@ -3095,6 +2786,7 @@ export async function GET(request: Request) {
       .from("signals")
       .select("*")
       .gte("filed_at", cutoffDateString)
+      .gte("app_score", MIN_SIGNAL_APP_SCORE)
       .order("app_score", { ascending: false })
       .order("filed_at", { ascending: false })
 
@@ -3170,29 +2862,15 @@ export async function GET(request: Request) {
       .delete()
       .lt("score_date", retentionCutoffString)
 
-    const [
-      { count: strongBuyCount },
-      { count: buyCount },
-      { count: riskCount },
-      { count: watchCount },
-    ] = await Promise.all([
+    const [{ count: strongBuyCount }, { count: eliteBuyCount }] = await Promise.all([
       supabase
         .from("ticker_scores_current")
         .select("*", { count: "exact", head: true })
-        .gte("app_score", 88),
+        .gte("app_score", 90),
       supabase
         .from("ticker_scores_current")
         .select("*", { count: "exact", head: true })
-        .gte("app_score", 70),
-      supabase
-        .from("ticker_scores_current")
-        .select("*", { count: "exact", head: true })
-        .lte("app_score", 30),
-      supabase
-        .from("ticker_scores_current")
-        .select("*", { count: "exact", head: true })
-        .gt("app_score", 30)
-        .lt("app_score", 70),
+        .gte("app_score", 97),
     ])
 
     return Response.json({
@@ -3208,15 +2886,15 @@ export async function GET(request: Request) {
       lookbackDays,
       retainedDays: RETENTION_DAYS,
       scoreVersion: SCORE_VERSION,
+      minSignalAppScore: MIN_SIGNAL_APP_SCORE,
+      minTickerAppScore: MIN_TICKER_APP_SCORE,
       retentionCleanup: retentionError ? retentionError.message : "ok",
       tickerRetentionCleanup: tickerRetentionError ? tickerRetentionError.message : "ok",
       strongBuyCount: strongBuyCount ?? 0,
-      buyCount: buyCount ?? 0,
-      riskCount: riskCount ?? 0,
-      watchCount: watchCount ?? 0,
+      eliteBuyCount: eliteBuyCount ?? 0,
       diagnostics,
       message:
-        "Signals generated from both filings and technical candidate setups, with ticker-level scoring, history, score breakdowns, and retention cleanup.",
+        "Strong-buy-only signals generated from filings and technical candidate setups, with ticker-level grading, history, and freshness cleanup.",
     })
   } catch (error: any) {
     return Response.json(

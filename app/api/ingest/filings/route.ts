@@ -16,6 +16,15 @@ type SecSubmissions = {
       filingDate?: string[]
       form?: string[]
       primaryDocument?: string[]
+      acceptanceDateTime?: string[]
+      act?: string[]
+      fileNumber?: string[]
+      filmNumber?: string[]
+      items?: string[]
+      size?: number[]
+      isXBRL?: number[]
+      isInlineXBRL?: number[]
+      reportDate?: string[]
     }
   }
 }
@@ -37,15 +46,24 @@ type FilingInsertRow = {
 type Diagnostics = {
   companiesLoaded: number
   companiesAttempted: number
-  companiesWithRecentFilings: number
-  companiesWithNoRecentFilings: number
+  companiesWithRelevantRecentFilings: number
+  companiesWithNoRelevantRecentFilings: number
   companiesWithFetchErrors: number
   companiesWithUpsertErrors: number
   invalidCompanies: number
+  secRetryCount: number
   totalFetchedRows: number
+  totalRelevantRows: number
   totalInsertedRows: number
+  totalNewRows: number
+  totalExistingRows: number
+  totalSkippedOldRows: number
+  totalSkippedIrrelevantRows: number
+  totalSkippedInvalidRows: number
   totalErrors: number
   formsSeen: Record<string, number>
+  relevantFormsSeen: Record<string, number>
+  filingCategoriesSeen: Record<string, number>
 }
 
 type Database = {
@@ -98,9 +116,18 @@ type Database = {
           market_cap: number | null
           avg_volume_20d: number | null
           avg_dollar_volume_20d: number | null
+          one_day_return: number | null
           return_5d: number | null
+          return_10d: number | null
+          return_20d: number | null
           volume_ratio: number | null
           breakout_20d: boolean | null
+          breakout_10d: boolean | null
+          above_sma_20: boolean | null
+          breakout_clearance_pct: number | null
+          extension_from_sma20_pct: number | null
+          close_in_day_range: number | null
+          catalyst_count: number | null
           passes_price: boolean | null
           passes_volume: boolean | null
           passes_dollar_volume: boolean | null
@@ -109,8 +136,6 @@ type Database = {
           included: boolean | null
           screen_reason: string | null
           last_screened_at: string | null
-          return_20d: number | null
-          above_sma_20: boolean | null
           updated_at: string | null
           created_at: string | null
         }
@@ -122,9 +147,18 @@ type Database = {
           market_cap?: number | null
           avg_volume_20d?: number | null
           avg_dollar_volume_20d?: number | null
+          one_day_return?: number | null
           return_5d?: number | null
+          return_10d?: number | null
+          return_20d?: number | null
           volume_ratio?: number | null
           breakout_20d?: boolean | null
+          breakout_10d?: boolean | null
+          above_sma_20?: boolean | null
+          breakout_clearance_pct?: number | null
+          extension_from_sma20_pct?: number | null
+          close_in_day_range?: number | null
+          catalyst_count?: number | null
           passes_price?: boolean | null
           passes_volume?: boolean | null
           passes_dollar_volume?: boolean | null
@@ -133,8 +167,6 @@ type Database = {
           included?: boolean | null
           screen_reason?: string | null
           last_screened_at?: string | null
-          return_20d?: number | null
-          above_sma_20?: boolean | null
           updated_at?: string | null
           created_at?: string | null
         }
@@ -146,9 +178,18 @@ type Database = {
           market_cap?: number | null
           avg_volume_20d?: number | null
           avg_dollar_volume_20d?: number | null
+          one_day_return?: number | null
           return_5d?: number | null
+          return_10d?: number | null
+          return_20d?: number | null
           volume_ratio?: number | null
           breakout_20d?: boolean | null
+          breakout_10d?: boolean | null
+          above_sma_20?: boolean | null
+          breakout_clearance_pct?: number | null
+          extension_from_sma20_pct?: number | null
+          close_in_day_range?: number | null
+          catalyst_count?: number | null
           passes_price?: boolean | null
           passes_volume?: boolean | null
           passes_dollar_volume?: boolean | null
@@ -157,8 +198,6 @@ type Database = {
           included?: boolean | null
           screen_reason?: string | null
           last_screened_at?: string | null
-          return_20d?: number | null
-          above_sma_20?: boolean | null
           updated_at?: string | null
           created_at?: string | null
         }
@@ -232,6 +271,24 @@ const MAX_FILINGS_PER_COMPANY = 25
 const RETENTION_DAYS = 30
 const SEC_FETCH_TIMEOUT_MS = 12000
 const MAX_UPSERT_RETRIES = 4
+const MAX_SEC_FETCH_RETRIES = 4
+
+const RELEVANT_FORM_TYPES = new Set([
+  "8-K",
+  "10-Q",
+  "10-K",
+  "6-K",
+  "4",
+  "4/A",
+  "13D",
+  "13D/A",
+  "13G",
+  "13G/A",
+  "SC 13D",
+  "SC 13D/A",
+  "SC 13G",
+  "SC 13G/A",
+])
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -294,6 +351,54 @@ function isDeadlockError(message: string | undefined | null) {
   return (message || "").toLowerCase().includes("deadlock detected")
 }
 
+function isRetryableSecStatus(status: number) {
+  return status === 403 || status === 408 || status === 425 || status === 429 || status >= 500
+}
+
+function isRetryableFetchError(error: unknown) {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error || "").toLowerCase()
+  return (
+    message.includes("aborted") ||
+    message.includes("timeout") ||
+    message.includes("network") ||
+    message.includes("fetch failed")
+  )
+}
+
+function daysAgoIso(days: number) {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+function isDateOlderThanCutoff(dateStr: string | null | undefined, cutoffDate: string) {
+  if (!dateStr) return false
+  return dateStr < cutoffDate
+}
+
+function categorizeFormType(formType: string | null) {
+  switch (formType) {
+    case "8-K":
+    case "6-K":
+      return "corporate_event"
+    case "10-Q":
+    case "10-K":
+      return "financial_reporting"
+    case "4":
+    case "4/A":
+      return "insider_activity"
+    case "13D":
+    case "13D/A":
+    case "SC 13D":
+    case "SC 13D/A":
+    case "13G":
+    case "13G/A":
+    case "SC 13G":
+    case "SC 13G/A":
+      return "ownership_change"
+    default:
+      return "other"
+  }
+}
+
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -352,33 +457,77 @@ async function upsertWithRetry(
   }
 }
 
-async function fetchRecentFilingsForCompany(company: CompanyRow) {
+async function fetchRecentFilingsForCompany(
+  company: CompanyRow,
+  diagnostics: Diagnostics
+) {
   const cikPadded = padCik(company.cik)
   const secUrl = buildSecSubmissionUrl(cikPadded)
 
-  const response = await fetchWithTimeout(
-    secUrl,
-    {
-      headers: {
-        "User-Agent": SEC_USER_AGENT,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    },
-    SEC_FETCH_TIMEOUT_MS
-  )
+  let attempt = 0
 
-  if (!response.ok) {
-    throw new Error(`SEC request failed with status ${response.status}`)
+  while (attempt < MAX_SEC_FETCH_RETRIES) {
+    try {
+      const response = await fetchWithTimeout(
+        secUrl,
+        {
+          headers: {
+            "User-Agent": SEC_USER_AGENT,
+            Accept: "application/json",
+          },
+          cache: "no-store",
+        },
+        SEC_FETCH_TIMEOUT_MS
+      )
+
+      if (!response.ok) {
+        if (isRetryableSecStatus(response.status) && attempt < MAX_SEC_FETCH_RETRIES - 1) {
+          attempt += 1
+          diagnostics.secRetryCount += 1
+          await sleep(500 * Math.pow(2, attempt - 1))
+          continue
+        }
+
+        throw new Error(`SEC request failed with status ${response.status}`)
+      }
+
+      const json = (await response.json()) as SecSubmissions
+
+      return {
+        cikPadded,
+        secUrl,
+        json,
+      }
+    } catch (error) {
+      if (attempt < MAX_SEC_FETCH_RETRIES - 1 && isRetryableFetchError(error)) {
+        attempt += 1
+        diagnostics.secRetryCount += 1
+        await sleep(500 * Math.pow(2, attempt - 1))
+        continue
+      }
+
+      throw error
+    }
   }
 
-  const json = (await response.json()) as SecSubmissions
+  throw new Error("SEC fetch failed after retries")
+}
 
-  return {
-    cikPadded,
-    secUrl,
-    json,
+async function getExistingAccessionNumbersForTicker(
+  supabase: SupabaseClient<Database>,
+  ticker: string
+) {
+  const rawFilingsTable = supabase.from("raw_filings") as any
+
+  const { data, error } = await rawFilingsTable
+    .select("accession_no")
+    .eq("ticker", ticker)
+
+  if (error) {
+    throw new Error(`Existing filings lookup failed: ${error.message}`)
   }
+
+  return new Set<string>((data || []).map((row: { accession_no: string }) => row.accession_no))
 }
 
 function mapRecentFilingsToRows(
@@ -387,6 +536,7 @@ function mapRecentFilingsToRows(
   secUrl: string,
   json: SecSubmissions,
   fetchedAt: string,
+  freshnessCutoffDate: string,
   diagnostics: Diagnostics
 ): FilingInsertRow[] {
   const recent = json.filings?.recent
@@ -396,18 +546,54 @@ function mapRecentFilingsToRows(
   const filingDates = recent.filingDate || []
   const forms = recent.form || []
   const primaryDocuments = recent.primaryDocument || []
+  const acceptanceDateTimes = recent.acceptanceDateTime || []
+  const acts = recent.act || []
+  const fileNumbers = recent.fileNumber || []
+  const filmNumbers = recent.filmNumber || []
+  const items = recent.items || []
+  const sizes = recent.size || []
+  const isXbrlFlags = recent.isXBRL || []
+  const isInlineXbrlFlags = recent.isInlineXBRL || []
+  const reportDates = recent.reportDate || []
+
+  const sharedLength = Math.min(
+    accessionNumbers.length,
+    filingDates.length,
+    forms.length,
+    primaryDocuments.length || accessionNumbers.length
+  )
 
   const rows: FilingInsertRow[] = []
 
-  for (let i = 0; i < Math.min(accessionNumbers.length, MAX_FILINGS_PER_COMPANY); i++) {
+  for (let i = 0; i < Math.min(sharedLength, MAX_FILINGS_PER_COMPANY); i++) {
     const accessionNo = accessionNumbers[i]?.trim()
     const filingDate = filingDates[i]?.trim() || null
     const formType = normalizeFormType(forms[i] || null) || null
     const primaryDoc = primaryDocuments[i]?.trim() || null
 
-    if (!accessionNo || !formType) continue
+    if (!accessionNo || !formType) {
+      diagnostics.totalSkippedInvalidRows += 1
+      continue
+    }
 
     diagnostics.formsSeen[formType] = (diagnostics.formsSeen[formType] || 0) + 1
+
+    if (!RELEVANT_FORM_TYPES.has(formType)) {
+      diagnostics.totalSkippedIrrelevantRows += 1
+      continue
+    }
+
+    if (isDateOlderThanCutoff(filingDate, freshnessCutoffDate)) {
+      diagnostics.totalSkippedOldRows += 1
+      break
+    }
+
+    diagnostics.relevantFormsSeen[formType] =
+      (diagnostics.relevantFormsSeen[formType] || 0) + 1
+
+    const filingCategory = categorizeFormType(formType)
+    diagnostics.filingCategoriesSeen[filingCategory] =
+      (diagnostics.filingCategoriesSeen[filingCategory] || 0) + 1
 
     rows.push({
       cik: cikPadded,
@@ -424,6 +610,17 @@ function mapRecentFilingsToRows(
         form: formType,
         primaryDocument: primaryDoc,
         source: secUrl,
+        signalRelevant: true,
+        filingCategory,
+        acceptanceDateTime: acceptanceDateTimes[i] || null,
+        act: acts[i] || null,
+        fileNumber: fileNumbers[i] || null,
+        filmNumber: filmNumbers[i] || null,
+        items: items[i] || null,
+        size: sizes[i] ?? null,
+        isXBRL: isXbrlFlags[i] ?? null,
+        isInlineXBRL: isInlineXbrlFlags[i] ?? null,
+        reportDate: reportDates[i] || null,
       },
       fetched_at: fetchedAt,
       updated_at: fetchedAt,
@@ -533,19 +730,29 @@ export async function GET(request: Request) {
     const to = safeStart + safeBatch - 1
 
     const fetchedAt = new Date().toISOString()
+    const freshnessCutoffDate = daysAgoIso(RETENTION_DAYS)
 
     const diagnostics: Diagnostics = {
       companiesLoaded: 0,
       companiesAttempted: 0,
-      companiesWithRecentFilings: 0,
-      companiesWithNoRecentFilings: 0,
+      companiesWithRelevantRecentFilings: 0,
+      companiesWithNoRelevantRecentFilings: 0,
       companiesWithFetchErrors: 0,
       companiesWithUpsertErrors: 0,
       invalidCompanies: 0,
+      secRetryCount: 0,
       totalFetchedRows: 0,
+      totalRelevantRows: 0,
       totalInsertedRows: 0,
+      totalNewRows: 0,
+      totalExistingRows: 0,
+      totalSkippedOldRows: 0,
+      totalSkippedIrrelevantRows: 0,
+      totalSkippedInvalidRows: 0,
       totalErrors: 0,
       formsSeen: {},
+      relevantFormsSeen: {},
+      filingCategoriesSeen: {},
     }
 
     const { companies, totalCompanies, sourceTable } = await loadCompaniesForBatch(
@@ -583,26 +790,36 @@ export async function GET(request: Request) {
       }
 
       try {
-        const { secUrl, json } = await fetchRecentFilingsForCompany(company)
+        const existingAccessionNumbers = await getExistingAccessionNumbersForTicker(
+          supabase,
+          normalizedTicker
+        )
+
+        const { secUrl, json } = await fetchRecentFilingsForCompany(company, diagnostics)
+
         const rows = mapRecentFilingsToRows(
           company,
           cikPadded,
           secUrl,
           json,
           fetchedAt,
+          freshnessCutoffDate,
           diagnostics
         )
 
         diagnostics.totalFetchedRows += rows.length
+        diagnostics.totalRelevantRows += rows.length
 
         if (rows.length === 0) {
-          diagnostics.companiesWithNoRecentFilings += 1
+          diagnostics.companiesWithNoRelevantRecentFilings += 1
 
           results.push({
             ticker: normalizedTicker,
             ok: true,
-            stage: "no_recent_filings",
-            inserted: 0,
+            stage: "no_relevant_recent_filings",
+            fetchedRows: 0,
+            newRows: 0,
+            existingRows: 0,
             secUrl,
           })
 
@@ -610,10 +827,15 @@ export async function GET(request: Request) {
           continue
         }
 
+        const newRows = rows.filter((row) => !existingAccessionNumbers.has(row.accession_no))
+        const existingRows = rows.length - newRows.length
+
         await upsertWithRetry(supabase, rows)
 
-        diagnostics.companiesWithRecentFilings += 1
+        diagnostics.companiesWithRelevantRecentFilings += 1
         diagnostics.totalInsertedRows += rows.length
+        diagnostics.totalNewRows += newRows.length
+        diagnostics.totalExistingRows += existingRows
 
         if (sampleInsertedRows.length < 5) {
           for (const row of rows.slice(0, 2)) {
@@ -628,6 +850,9 @@ export async function GET(request: Request) {
           ok: true,
           stage: "upsert",
           inserted: rows.length,
+          fetchedRows: rows.length,
+          newRows: newRows.length,
+          existingRows,
           firstForm: rows[0]?.form_type ?? null,
           firstFiledAt: rows[0]?.filed_at ?? null,
           secUrl,
@@ -696,6 +921,8 @@ export async function GET(request: Request) {
       batch: safeBatch,
       nextStart,
       retainedDays: RETENTION_DAYS,
+      freshnessCutoffDate,
+      relevantForms: Array.from(RELEVANT_FORM_TYPES),
       retentionCleanupByFiledAt: retentionErrorByFiledAt
         ? retentionErrorByFiledAt.message
         : "ok",
@@ -708,9 +935,11 @@ export async function GET(request: Request) {
       sampleInsertedRows,
       results,
       message:
-        diagnostics.totalInsertedRows > 0
-          ? "Filings ingest completed and rows were written to raw_filings."
-          : "Filings ingest completed but no rows were written. Check diagnostics and results.",
+        diagnostics.totalNewRows > 0
+          ? "Filings ingest completed and new relevant filings were written to raw_filings."
+          : diagnostics.totalInsertedRows > 0
+            ? "Filings ingest completed and existing relevant filings were refreshed."
+            : "Filings ingest completed but no relevant fresh filings were written. Check diagnostics and results.",
     })
   } catch (error: any) {
     return Response.json(
