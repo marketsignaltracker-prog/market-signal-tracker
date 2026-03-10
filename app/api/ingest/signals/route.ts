@@ -189,8 +189,8 @@ const SEC_USER_AGENT =
   process.env.SEC_USER_AGENT ||
   "Market Signal Tracker marketsignaltracker@gmail.com"
 
-const DEFAULT_LIMIT = 80
-const MAX_LIMIT = 150
+const DEFAULT_LIMIT = 500
+const MAX_LIMIT = 1500
 const DEFAULT_LOOKBACK_DAYS = 14
 const MAX_LOOKBACK_DAYS = 30
 const RETENTION_DAYS = 30
