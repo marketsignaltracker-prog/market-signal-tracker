@@ -203,6 +203,12 @@ type ReasonLine = {
   weight: number
 }
 
+type MiniMetricItem = {
+  label: string
+  value: string
+  tooltip?: string
+}
+
 const CARDS_PER_PAGE = 24
 
 function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
@@ -1460,6 +1466,49 @@ function TopSignalCard({
   const palette = getScorePalette(score)
   const extremeGlow = getExtremeCardGlow(score)
 
+  const metricItems: MiniMetricItem[] = [
+    {
+      label: "Price",
+      value: formatMoney(row.price),
+      tooltip: getMiniMetricTooltip("Price", row),
+    },
+    {
+      label: "Vs Market",
+      value: formatPercent(row.relative_strength_20d),
+      tooltip: getMiniMetricTooltip("Vs Market", row),
+    },
+    {
+      label: "5D Move",
+      value: formatPercent(row.price_return_5d),
+      tooltip: getMiniMetricTooltip("5D Move", row),
+    },
+    {
+      label: "Volume",
+      value: formatRatio(row.volume_ratio),
+      tooltip: getMiniMetricTooltip("Volume", row),
+    },
+    {
+      label: "1D Δ",
+      value: formatScoreChange(row.ticker_score_change_1d),
+      tooltip: getMiniMetricTooltip("1D Δ", row),
+    },
+    {
+      label: "7D Δ",
+      value: formatScoreChange(row.ticker_score_change_7d),
+      tooltip: getMiniMetricTooltip("7D Δ", row),
+    },
+    {
+      label: "Stacked",
+      value: formatWholeNumber(row.stacked_signal_count),
+      tooltip: getMiniMetricTooltip("Stacked", row),
+    },
+    {
+      label: "Strength",
+      value: row.signal_strength_bucket || "—",
+      tooltip: getMiniMetricTooltip("Strength", row),
+    },
+  ].filter((item) => hasDisplayValue(item.value))
+
   return (
     <button
       type="button"
@@ -1530,51 +1579,18 @@ function TopSignalCard({
         </p>
       ) : null}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 text-sm">
-        <MiniMetric
-          label="Price"
-          value={formatMoney(row.price)}
-          tooltip={getMiniMetricTooltip("Price", row)}
-        />
-        <MiniMetric
-          label="Vs Market"
-          value={formatPercent(row.relative_strength_20d)}
-          tooltip={getMiniMetricTooltip("Vs Market", row)}
-        />
-        <MiniMetric
-          label="5D Move"
-          value={formatPercent(row.price_return_5d)}
-          tooltip={getMiniMetricTooltip("5D Move", row)}
-        />
-        <MiniMetric
-          label="Volume"
-          value={formatRatio(row.volume_ratio)}
-          tooltip={getMiniMetricTooltip("Volume", row)}
-        />
-      </div>
-
-      <div className="mb-4 grid grid-cols-2 gap-3 text-sm">
-        <MiniMetric
-          label="1D Δ"
-          value={formatScoreChange(row.ticker_score_change_1d)}
-          tooltip={getMiniMetricTooltip("1D Δ", row)}
-        />
-        <MiniMetric
-          label="7D Δ"
-          value={formatScoreChange(row.ticker_score_change_7d)}
-          tooltip={getMiniMetricTooltip("7D Δ", row)}
-        />
-        <MiniMetric
-          label="Stacked"
-          value={formatWholeNumber(row.stacked_signal_count)}
-          tooltip={getMiniMetricTooltip("Stacked", row)}
-        />
-        <MiniMetric
-          label="Strength"
-          value={row.signal_strength_bucket || "—"}
-          tooltip={getMiniMetricTooltip("Strength", row)}
-        />
-      </div>
+      {!!metricItems.length && (
+        <div className="mb-4 grid grid-cols-2 gap-3 auto-rows-fr">
+          {metricItems.map((item) => (
+            <MiniMetric
+              key={item.label}
+              label={item.label}
+              value={item.value}
+              tooltip={item.tooltip}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="mt-auto rounded-2xl bg-black/20 p-4">
         <p
@@ -1704,17 +1720,13 @@ function MiniMetric({
   tooltip,
 }: {
   label: string
-  value: string | null | undefined
+  value: string
   tooltip?: string
 }) {
-  if (value === null || value === undefined || value === "" || value === "—") {
-    return null
-  }
-
   const card = (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+    <div className="flex h-full min-h-[88px] flex-col justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
       <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-white">{value}</p>
+      <p className="mt-2 text-sm font-semibold text-white sm:text-base">{value}</p>
     </div>
   )
 
@@ -2718,6 +2730,10 @@ function truncateText(value: string | null | undefined, maxLength: number) {
   if (!value) return ""
   if (value.length <= maxLength) return value
   return `${value.slice(0, maxLength).trim()}…`
+}
+
+function hasDisplayValue(value: string | null | undefined) {
+  return !(value === null || value === undefined || value === "" || value === "—")
 }
 
 function getScoreTooltip(score: number) {
