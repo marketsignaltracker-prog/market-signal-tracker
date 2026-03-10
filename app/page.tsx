@@ -484,6 +484,10 @@ export default function Home() {
                 text="Think of this like your daily cheat sheet for the stocks most worth buying right now."
               />
             </div>
+            <div className="mt-6 text-center text-sm text-slate-400">
+  Unlike some analysts or fund managers, we are not paid to promote stocks.  
+  The names shown here come from our screening and ranking system, not sponsorships.
+</div>
           </div>
 
           <div className="rounded-[2rem] border border-emerald-400/15 bg-emerald-400/[0.06] p-5 shadow-xl backdrop-blur-sm sm:p-6">
