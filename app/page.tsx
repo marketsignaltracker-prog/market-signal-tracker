@@ -469,10 +469,10 @@ export default function Home() {
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <WhySubscribeCard
                 title="No need to learn stock screening"
-                text="Most people don't want to study thousands of stocks. They just want the best opportunities right now."
+                text="Most people don't know how to screen for the best buys now stocks."
               />
               <WhySubscribeCard
-                title="You do not need a giant watchlist"
+                title="You don't need a giant watchlist"
                 text="We narrow things down fast so you can focus on the strongest buy-now stocks."
               />
               <WhySubscribeCard
