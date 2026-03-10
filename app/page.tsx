@@ -688,7 +688,7 @@ export default function Home() {
 
           <p className="mt-3 text-sm text-slate-400">
             {viewMode === "buy"
-              ? 'Best Opportunities = "highest-conviction setups that could get chased next"'
+              ? 'Best Opportunities = "highest scoring setups that could get chased next"'
               : viewMode === "sell"
                 ? 'Sell / Risk = "lowest scoring bearish setups"'
                 : 'Cooling Off = "recent leaders that slipped, but may still be stalking candidates"'}
@@ -742,7 +742,7 @@ export default function Home() {
                         ? "Worst First"
                         : boardMode === "cooling"
                           ? "Best Former Leaders"
-                          : "Highest Conviction"
+                          : "Best"
                     }
                   />
                   <SortButton
