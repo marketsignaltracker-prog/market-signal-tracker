@@ -48,7 +48,6 @@ const DEFAULT_BATCH = 300
 const RETENTION_DAYS = 30
 const REQUEST_DELAY_MS = 120
 
-// Less strict than before so more real candidates flow downstream.
 const MIN_PRICE = 5
 const MIN_AVG_VOLUME_20D = 300_000
 const MIN_AVG_DOLLAR_VOLUME_20D = 5_000_000
@@ -72,6 +71,11 @@ function round2(value: number | null | undefined) {
   return Math.round(value * 100) / 100
 }
 
+function roundWhole(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return null
+  return Math.round(value)
+}
+
 function parseInteger(value: string | null | undefined, fallback: number) {
   if (value === null || value === undefined || value.trim() === "") {
     return fallback
@@ -83,6 +87,16 @@ function parseInteger(value: string | null | undefined, fallback: number) {
 
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function scaleBetween(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return 0
+  if (max <= min) return value >= max ? 1 : 0
+  return clamp((value - min) / (max - min), 0, 1)
 }
 
 // Much stricter about *actual* non-common-share patterns while avoiding false positives
@@ -150,6 +164,213 @@ function buildCandidateReason(params: {
   }
 
   return params.reasons.join(", ") || "No screen factors passed"
+}
+
+type CandidateScoreInput = {
+  latestClose: number
+  marketCap: number
+  avgVolume20d: number
+  avgDollarVolume20d: number
+  return5d: number
+  return10d: number
+  return20d: number
+  volumeRatio: number
+  breakout20d: boolean
+  breakout10d: boolean
+  nearHigh20: boolean
+  aboveSma20: boolean
+  shortTermTrendUp: boolean
+  sma10: number
+  sma20: number
+  high20: number
+  passesPrice: boolean
+  passesVolume: boolean
+  passesDollarVolume: boolean
+  passesMarketCap: boolean
+}
+
+type CandidateScoreOutput = {
+  candidateScore: number
+  rawScore: number
+  qualityScore: number
+  momentumScore: number
+  volumeScore: number
+  breakoutScore: number
+  trendScore: number
+  penaltyScore: number
+  catalystCount: number
+  highConvictionSetup: boolean
+  eliteSetup: boolean
+}
+
+function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutput {
+  const {
+    latestClose,
+    marketCap,
+    avgVolume20d,
+    avgDollarVolume20d,
+    return5d,
+    return10d,
+    return20d,
+    volumeRatio,
+    breakout20d,
+    breakout10d,
+    nearHigh20,
+    aboveSma20,
+    shortTermTrendUp,
+    sma10,
+    sma20,
+    high20,
+    passesPrice,
+    passesVolume,
+    passesDollarVolume,
+    passesMarketCap,
+  } = input
+
+  // Quality / tradability matters, but should not dominate.
+  const qualityScore =
+    16 *
+    (
+      0.2 * (passesPrice ? 1 : 0) +
+      0.2 * scaleBetween(avgVolume20d, MIN_AVG_VOLUME_20D, 2_500_000) +
+      0.35 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 50_000_000) +
+      0.25 * scaleBetween(marketCap, MIN_MARKET_CAP, 5_000_000_000)
+    )
+
+  // Momentum should help, but not make every hot name a 100.
+  const momentumScore =
+    22 *
+    (
+      0.3 * scaleBetween(return5d, 1, 10) +
+      0.25 * scaleBetween(return10d, 3, 16) +
+      0.45 * scaleBetween(return20d, 5, 30)
+    )
+
+  // Volume expansion is important confirmation.
+  const volumeScore =
+    15 *
+    (
+      0.65 * scaleBetween(volumeRatio, 1.1, 3.0) +
+      0.35 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 30_000_000)
+    )
+
+  // Breakout quality: actual breakout > near-high drift.
+  const distanceFrom20dHighPct =
+    high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
+
+  let breakoutQuality = 0
+  if (breakout20d) breakoutQuality += 0.6
+  if (breakout10d) breakoutQuality += 0.15
+  if (nearHigh20) breakoutQuality += 0.15
+  breakoutQuality += 0.1 * scaleBetween(distanceFrom20dHighPct, 0, 5)
+
+  const breakoutScore = 20 * clamp(breakoutQuality, 0, 1)
+
+  // Trend alignment matters a lot for sustainable buy setups.
+  const smaSpreadPct = sma20 > 0 ? ((sma10 - sma20) / sma20) * 100 : 0
+
+  const trendScore =
+    19 *
+    (
+      0.45 * (aboveSma20 ? 1 : 0) +
+      0.35 * (shortTermTrendUp ? 1 : 0) +
+      0.2 * scaleBetween(smaSpreadPct, 0, 4)
+    )
+
+  let penaltyScore = 0
+
+  if (!passesPrice) penaltyScore -= 12
+  if (!passesDollarVolume) penaltyScore -= 12
+  if (!passesMarketCap) penaltyScore -= 8
+  if (!aboveSma20) penaltyScore -= 16
+  if (return5d < -2) penaltyScore -= 8
+  if (return20d < 0) penaltyScore -= 10
+  if (volumeRatio < 0.85) penaltyScore -= 6
+
+  // Too extended without real breakout confirmation should not score like an elite setup.
+  if (return5d >= 14 && !breakout20d) penaltyScore -= 6
+  if (return20d >= 35 && volumeRatio < 1.5) penaltyScore -= 5
+
+  const rawScore = qualityScore + momentumScore + volumeScore + breakoutScore + trendScore + penaltyScore
+
+  // Nonlinear compression: good names still score well, but 90+ becomes much harder.
+  const normalized = clamp(rawScore / 92, 0, 1)
+  let candidateScore = Math.round(Math.pow(normalized, 1.28) * 100)
+
+  const catalystCount = [
+    return5d >= 3,
+    return10d >= 6,
+    return20d >= 10,
+    volumeRatio >= 1.5,
+    volumeRatio >= 2.25,
+    breakout20d,
+    breakout10d,
+    nearHigh20,
+    aboveSma20,
+    shortTermTrendUp,
+  ].filter(Boolean).length
+
+  const highConvictionSetup =
+    passesPrice &&
+    passesDollarVolume &&
+    passesMarketCap &&
+    aboveSma20 &&
+    shortTermTrendUp &&
+    return20d >= 12 &&
+    (breakout20d || nearHigh20) &&
+    volumeRatio >= 1.5
+
+  const eliteSetup =
+    highConvictionSetup &&
+    breakout20d &&
+    volumeRatio >= 2.5 &&
+    return5d >= 6 &&
+    return20d >= 20 &&
+    avgDollarVolume20d >= 15_000_000 &&
+    catalystCount >= 6
+
+  // Hard caps to keep 100 rare.
+  if (!highConvictionSetup) {
+    candidateScore = Math.min(candidateScore, 84)
+  } else if (!eliteSetup) {
+    candidateScore = Math.min(candidateScore, 95)
+  } else if (
+    !(
+      return20d >= 24 &&
+      volumeRatio >= 3 &&
+      avgDollarVolume20d >= 25_000_000 &&
+      marketCap >= 500_000_000
+    )
+  ) {
+    candidateScore = Math.min(candidateScore, 98)
+  }
+
+  // Only the very best get 100.
+  if (
+    eliteSetup &&
+    return20d >= 24 &&
+    return5d >= 7 &&
+    volumeRatio >= 3 &&
+    avgDollarVolume20d >= 25_000_000 &&
+    marketCap >= 500_000_000 &&
+    catalystCount >= 7
+  ) {
+    candidateScore = 100
+  }
+
+  return {
+    candidateScore: clamp(candidateScore, 0, 100),
+    rawScore: round2(rawScore) ?? 0,
+    qualityScore: round2(qualityScore) ?? 0,
+    momentumScore: round2(momentumScore) ?? 0,
+    volumeScore: round2(volumeScore) ?? 0,
+    breakoutScore: round2(breakoutScore) ?? 0,
+    trendScore: round2(trendScore) ?? 0,
+    penaltyScore: round2(penaltyScore) ?? 0,
+    catalystCount,
+    highConvictionSetup,
+    eliteSetup,
+  }
 }
 
 export async function GET(request: Request) {
@@ -448,79 +669,68 @@ export async function GET(request: Request) {
         const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
         const passesMarketCap = marketCap >= MIN_MARKET_CAP
 
-        const hasMomentum5d = return5d >= 3
-        const hasStrongMomentum5d = return5d >= 6
-        const hasMomentum10d = return10d >= 5
-        const hasMomentum20d = return20d >= 8
-        const hasStrongMomentum20d = return20d >= 18
-        const hasVolumeExpansion = volumeRatio >= 1.4
-        const hasStrongVolumeExpansion = volumeRatio >= 2
-        const hasBreakout = breakout20d
-        const hasBreakout10d = breakout10d
-        const hasTrend = aboveSma20
-        const isNearHigh = nearHigh20
-        const trendAcceleration = shortTermTrendUp
+        const scoreDetails = calculateCandidateScore({
+          latestClose,
+          marketCap,
+          avgVolume20d,
+          avgDollarVolume20d,
+          return5d,
+          return10d,
+          return20d,
+          volumeRatio,
+          breakout20d,
+          breakout10d,
+          nearHigh20,
+          aboveSma20,
+          shortTermTrendUp,
+          sma10,
+          sma20,
+          high20,
+          passesPrice,
+          passesVolume,
+          passesDollarVolume,
+          passesMarketCap,
+        })
 
-        let score = 0
-        if (passesPrice) score += 1
-        if (passesVolume) score += 1
-        if (passesDollarVolume) score += 2
-        if (passesMarketCap) score += 1
-        if (hasMomentum5d) score += 1
-        if (hasStrongMomentum5d) score += 1
-        if (hasMomentum10d) score += 1
-        if (hasMomentum20d) score += 2
-        if (hasStrongMomentum20d) score += 1
-        if (hasVolumeExpansion) score += 1
-        if (hasStrongVolumeExpansion) score += 1
-        if (hasBreakout) score += 2
-        if (hasBreakout10d) score += 1
-        if (hasTrend) score += 1
-        if (isNearHigh) score += 1
-        if (trendAcceleration) score += 1
+        const score = scoreDetails.candidateScore
+        const catalystCount = scoreDetails.catalystCount
 
-        const catalystCount = [
-          hasMomentum5d,
-          hasMomentum10d,
-          hasMomentum20d,
-          hasVolumeExpansion,
-          hasBreakout,
-          hasBreakout10d,
-          hasTrend,
-          isNearHigh,
-          trendAcceleration,
-        ].filter(Boolean).length
-
+        // Keep list breadth, but make top tiers harder.
         const candidateEligible =
           passesPrice &&
           passesDollarVolume &&
           passesMarketCap &&
-          hasTrend &&
-          score >= 7 &&
+          aboveSma20 &&
+          score >= 52 &&
           catalystCount >= 2 &&
           (
-            hasMomentum5d ||
-            hasMomentum10d ||
-            hasMomentum20d ||
-            hasBreakout ||
-            hasVolumeExpansion ||
-            isNearHigh ||
-            trendAcceleration
+            breakout20d ||
+            nearHigh20 ||
+            return10d >= 6 ||
+            return20d >= 10 ||
+            volumeRatio >= 1.4 ||
+            shortTermTrendUp
           )
 
         const buyCandidate =
           candidateEligible &&
-          score >= 9 &&
-          catalystCount >= 3 &&
-          (hasMomentum10d || hasMomentum20d || hasBreakout || hasVolumeExpansion)
+          score >= 70 &&
+          catalystCount >= 4 &&
+          (
+            breakout20d ||
+            (return20d >= 15 && volumeRatio >= 1.5) ||
+            (nearHigh20 && shortTermTrendUp && return10d >= 8)
+          )
 
         const strongBuyCandidate =
           buyCandidate &&
-          passesVolume &&
-          score >= 11 &&
-          catalystCount >= 5 &&
-          (hasStrongMomentum5d || hasStrongMomentum20d || hasStrongVolumeExpansion) &&
-          (hasBreakout || isNearHigh)
+          score >= 85 &&
+          scoreDetails.highConvictionSetup &&
+          catalystCount >= 6 &&
+          (
+            breakout20d ||
+            (nearHigh20 && volumeRatio >= 2.25 && return20d >= 20)
+          )
 
         const included = candidateEligible
 
@@ -529,25 +739,27 @@ export async function GET(request: Request) {
         if (passesVolume) reasons.push("20d avg volume")
         if (passesDollarVolume) reasons.push("20d dollar volume")
         if (passesMarketCap) reasons.push("market cap")
-        if (hasMomentum5d) reasons.push("5d momentum")
-        if (hasStrongMomentum5d) reasons.push("strong 5d momentum")
-        if (hasMomentum10d) reasons.push("10d momentum")
-        if (hasMomentum20d) reasons.push("20d momentum")
-        if (hasStrongMomentum20d) reasons.push("strong 20d momentum")
-        if (hasVolumeExpansion) reasons.push("volume expansion")
-        if (hasStrongVolumeExpansion) reasons.push("strong volume expansion")
-        if (hasBreakout) reasons.push("20d breakout")
-        if (hasBreakout10d) reasons.push("10d breakout")
-        if (hasTrend) reasons.push("above 20d average")
-        if (isNearHigh) reasons.push("near 20d high")
-        if (trendAcceleration) reasons.push("short-term trend acceleration")
+        if (return5d >= 3) reasons.push("5d momentum")
+        if (return5d >= 6) reasons.push("strong 5d momentum")
+        if (return10d >= 6) reasons.push("10d momentum")
+        if (return20d >= 10) reasons.push("20d momentum")
+        if (return20d >= 20) reasons.push("strong 20d momentum")
+        if (volumeRatio >= 1.4) reasons.push("volume expansion")
+        if (volumeRatio >= 2.25) reasons.push("strong volume expansion")
+        if (breakout20d) reasons.push("20d breakout")
+        if (breakout10d) reasons.push("10d breakout")
+        if (aboveSma20) reasons.push("above 20d average")
+        if (nearHigh20) reasons.push("near 20d high")
+        if (shortTermTrendUp) reasons.push("short-term trend acceleration")
+        if (scoreDetails.highConvictionSetup) reasons.push("high-conviction setup")
+        if (scoreDetails.eliteSetup) reasons.push("elite setup")
 
         let exclusionReason = ""
         if (!passesPrice) exclusionReason = `Below $${MIN_PRICE} minimum price`
         else if (!passesDollarVolume) exclusionReason = "Below minimum dollar volume"
         else if (!passesMarketCap) exclusionReason = "Below minimum market cap"
-        else if (!hasTrend) exclusionReason = "Below 20d average"
-        else if (score < 7) exclusionReason = "Score below candidate threshold"
+        else if (!aboveSma20) exclusionReason = "Below 20d average"
+        else if (score < 52) exclusionReason = "Score below candidate threshold"
         else if (catalystCount < 2) exclusionReason = "Not enough technical catalysts"
 
         const row: CandidateUniverseRow = {
@@ -561,8 +773,8 @@ export async function GET(request: Request) {
           return_5d: round2(return5d),
           return_20d: round2(return20d),
           volume_ratio: round2(volumeRatio),
-          breakout_20d: hasBreakout,
-          above_sma_20: hasTrend,
+          breakout_20d: breakout20d,
+          above_sma_20: aboveSma20,
           passes_price: passesPrice,
           passes_volume: passesVolume,
           passes_dollar_volume: passesDollarVolume,
@@ -634,6 +846,7 @@ export async function GET(request: Request) {
           ok: true,
           included,
           score,
+          rawScore: round2(scoreDetails.rawScore),
           tier,
           reason: row.screen_reason,
           price: round2(latestClose),
@@ -641,6 +854,14 @@ export async function GET(request: Request) {
           return10d: round2(return10d),
           return20d: round2(return20d),
           volumeRatio: round2(volumeRatio),
+          scoreBreakdown: {
+            quality: round2(scoreDetails.qualityScore),
+            momentum: round2(scoreDetails.momentumScore),
+            volume: round2(scoreDetails.volumeScore),
+            breakout: round2(scoreDetails.breakoutScore),
+            trend: round2(scoreDetails.trendScore),
+            penalty: round2(scoreDetails.penaltyScore),
+          },
         })
       } catch (err: any) {
         failedInBatch += 1
@@ -700,6 +921,9 @@ export async function GET(request: Request) {
         minAvgVolume20d: MIN_AVG_VOLUME_20D,
         minAvgDollarVolume20d: MIN_AVG_DOLLAR_VOLUME_20D,
         minMarketCap: MIN_MARKET_CAP,
+        candidateEligibleScore: 52,
+        buyScore: 70,
+        strongBuyScore: 85,
       },
       results,
     })

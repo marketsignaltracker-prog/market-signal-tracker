@@ -194,13 +194,13 @@ const MAX_LIMIT = 150
 const DEFAULT_LOOKBACK_DAYS = 14
 const MAX_LOOKBACK_DAYS = 30
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v3"
+const SCORE_VERSION = "v4"
 
 const SEC_FETCH_TIMEOUT_MS = 8000
 const TEXT_FETCH_TIMEOUT_MS = 8000
 const YAHOO_TIMEOUT_MS = 9000
 const CANDIDATE_SIGNAL_LOOKBACK_DAYS = 3
-const MIN_CANDIDATE_SCORE_FOR_TECHNICAL_SIGNAL = 7
+const MIN_CANDIDATE_SCORE_FOR_TECHNICAL_SIGNAL = 55
 
 function normalizeFormType(formType: string | null) {
   const normalized = (formType || "")
@@ -1245,7 +1245,7 @@ function baseSignal(formType: string | null): BaseSignalData | null {
       signal_type: "Insider Activity",
       signal_source: "form4",
       bias: "Neutral",
-      score: 50,
+      score: 42,
       title: "Insider filing detected",
       summary: "A Form 4 filing was detected and parsed for insider activity.",
     }
@@ -1256,7 +1256,7 @@ function baseSignal(formType: string | null): BaseSignalData | null {
       signal_type: "Registered Sale Notice",
       signal_source: "form144",
       bias: "Bearish",
-      score: 34,
+      score: 28,
       title: "Registered sale notice filed",
       summary:
         "A Form 144 filing can signal intent to sell restricted or control securities and often belongs on the caution side.",
@@ -1273,7 +1273,7 @@ function baseSignal(formType: string | null): BaseSignalData | null {
       signal_type: "Activist / Ownership",
       signal_source: "13d",
       bias: "Bullish",
-      score: 68,
+      score: 56,
       title: "Major ownership stake disclosed",
       summary: "A 13D-style filing may indicate a meaningful investor building influence.",
     }
@@ -1289,7 +1289,7 @@ function baseSignal(formType: string | null): BaseSignalData | null {
       signal_type: "Institutional Ownership",
       signal_source: "13g",
       bias: "Bullish",
-      score: 60,
+      score: 50,
       title: "Institutional ownership signal detected",
       summary: "A 13G-style filing can indicate large-holder accumulation.",
     }
@@ -1300,7 +1300,7 @@ function baseSignal(formType: string | null): BaseSignalData | null {
       signal_type: "Corporate Catalyst",
       signal_source: "8k",
       bias: "Neutral",
-      score: 50,
+      score: 40,
       title: "Material corporate event filed",
       summary: "A current report filing can contain a meaningful event, agreement, or catalyst.",
     }
@@ -1311,7 +1311,7 @@ function baseSignal(formType: string | null): BaseSignalData | null {
       signal_type: "Corporate Action / Proxy",
       signal_source: "proxy",
       bias: "Neutral",
-      score: 52,
+      score: 42,
       title: "Corporate action or proxy event filed",
       summary:
         "A tender-offer response or proxy filing can point to a meaningful corporate event worth surfacing on the board.",
@@ -1323,7 +1323,7 @@ function baseSignal(formType: string | null): BaseSignalData | null {
       signal_type: "Fundamental Update",
       signal_source: "earnings",
       bias: "Neutral",
-      score: 48,
+      score: 38,
       title: "Periodic financial filing detected",
       summary: "A periodic report was filed and may contain meaningful fundamental updates.",
     }
@@ -1348,7 +1348,7 @@ function maybeCreateEarningsBreakoutBase(
       signal_type: "Earnings Breakout",
       signal_source: "earnings",
       bias: "Bullish",
-      score: 64,
+      score: 54,
       title: "Earnings-backed breakout setup",
       summary:
         earnings.summary ??
@@ -1408,17 +1408,18 @@ function maybeCreateCandidateTechnicalBase(
 
   if (!technicalSetup) return null
 
-  let baseScore = 58
-  if (candidateScore >= 11) baseScore = 74
-  else if (candidateScore >= 9) baseScore = 68
-  else if (candidateScore >= 7) baseScore = 62
+  let baseScore = 44
+  if (candidateScore >= 90) baseScore = 64
+  else if (candidateScore >= 80) baseScore = 58
+  else if (candidateScore >= 70) baseScore = 52
+  else if (candidateScore >= 55) baseScore = 47
 
   if (hasBreakout) baseScore += 4
   if (strongVolume) baseScore += 3
   if (earnings.hasSignal) baseScore += 3
 
   const title =
-    candidateScore >= 11 || (included && strongMomentum)
+    candidateScore >= 85 || (included && strongMomentum)
       ? "Strong technical buy setup detected"
       : "Technical buy setup detected"
 
@@ -1434,7 +1435,7 @@ function maybeCreateCandidateTechnicalBase(
     signal_type: "Technical Candidate",
     signal_source: "breakout",
     bias: "Bullish",
-    score: clamp(baseScore, 45, 85),
+    score: clamp(baseScore, 40, 78),
     title,
     summary: summaryParts.length
       ? `Candidate screen is constructive: ${summaryParts.join(", ")}.`
@@ -1447,7 +1448,7 @@ function getStrengthBucket(
   score: number
 ): StrengthBucket {
   if (bias === "Bearish" || score <= 30) return "Risk"
-  if (score >= 85) return "Strong Buy"
+  if (score >= 88) return "Strong Buy"
   if (score >= 70) return "Buy"
   return "Neutral"
 }
@@ -1580,8 +1581,8 @@ function buildSignalTags(params: {
   if (params.candidate) {
     tags.push("candidate-screen")
     if (params.candidate.included) tags.push("candidate-included")
-    if ((params.candidate.candidate_score ?? 0) >= 11) tags.push("candidate-strong-buy")
-    else if ((params.candidate.candidate_score ?? 0) >= 7) tags.push("candidate-buy")
+    if ((params.candidate.candidate_score ?? 0) >= 85) tags.push("candidate-strong-buy")
+    else if ((params.candidate.candidate_score ?? 0) >= 70) tags.push("candidate-buy")
     if ((params.candidate.volume_ratio ?? 0) >= 2) tags.push("screen-heavy-volume")
     if ((params.candidate.return_20d ?? 0) >= 15) tags.push("screen-momentum")
   }
@@ -1605,33 +1606,33 @@ function buildSignalTags(params: {
 
 function score8kCatalyst(catalystType: string | null) {
   if (!catalystType) return 0
-  if (catalystType === "guidance") return 12
-  if (catalystType === "partnership") return 10
-  if (catalystType === "customer") return 9
-  if (catalystType === "product") return 8
-  if (catalystType === "m&a") return 8
-  if (catalystType === "asset-sale") return 4
+  if (catalystType === "guidance") return 10
+  if (catalystType === "partnership") return 8
+  if (catalystType === "customer") return 7
+  if (catalystType === "product") return 6
+  if (catalystType === "m&a") return 7
+  if (catalystType === "asset-sale") return 3
   if (catalystType === "leadership") return 1
-  if (catalystType === "financing") return -18
-  if (catalystType === "debt-restructuring") return -20
-  if (catalystType === "legal") return -24
-  if (catalystType === "bankruptcy") return -35
+  if (catalystType === "financing") return -16
+  if (catalystType === "debt-restructuring") return -18
+  if (catalystType === "legal") return -22
+  if (catalystType === "bankruptcy") return -34
   return 0
 }
 
 function scoreEarnings(earnings: EarningsSignal) {
   let score = 0
 
-  if ((earnings.surprisePct ?? 0) >= 25) score += 10
-  else if ((earnings.surprisePct ?? 0) >= 10) score += 7
-  else if ((earnings.surprisePct ?? 0) <= -20) score -= 18
-  else if ((earnings.surprisePct ?? 0) <= -10) score -= 10
+  if ((earnings.surprisePct ?? 0) >= 25) score += 8
+  else if ((earnings.surprisePct ?? 0) >= 10) score += 5
+  else if ((earnings.surprisePct ?? 0) <= -20) score -= 16
+  else if ((earnings.surprisePct ?? 0) <= -10) score -= 9
 
-  if ((earnings.revenueGrowthPct ?? 0) >= 25) score += 7
-  else if ((earnings.revenueGrowthPct ?? 0) >= 15) score += 5
-  else if ((earnings.revenueGrowthPct ?? 0) <= -10) score -= 8
+  if ((earnings.revenueGrowthPct ?? 0) >= 25) score += 6
+  else if ((earnings.revenueGrowthPct ?? 0) >= 15) score += 4
+  else if ((earnings.revenueGrowthPct ?? 0) <= -10) score -= 7
 
-  if (earnings.guidanceFlag) score += 5
+  if (earnings.guidanceFlag) score += 4
 
   return score
 }
@@ -1655,10 +1656,10 @@ function applyBreakdown(
 
 function getRoleWeight(role: string | null) {
   if (!role) return 0
-  if (isSeniorRole(role)) return 10
-  if (role.toLowerCase().includes("director")) return 5
-  if (role.toLowerCase().includes("officer")) return 6
-  return 3
+  if (isSeniorRole(role)) return 8
+  if (role.toLowerCase().includes("director")) return 4
+  if (role.toLowerCase().includes("officer")) return 5
+  return 2
 }
 
 function scoreInsiderBuy(
@@ -1668,23 +1669,23 @@ function scoreInsiderBuy(
 ) {
   let score = 0
   if (insiderBuyValue !== null) {
-    if (insiderBuyValue >= 5_000_000) score += 20
-    else if (insiderBuyValue >= 1_000_000) score += 16
-    else if (insiderBuyValue >= 500_000) score += 12
-    else if (insiderBuyValue >= 100_000) score += 8
-    else score += 4
+    if (insiderBuyValue >= 5_000_000) score += 16
+    else if (insiderBuyValue >= 1_000_000) score += 12
+    else if (insiderBuyValue >= 500_000) score += 9
+    else if (insiderBuyValue >= 100_000) score += 6
+    else score += 3
   } else {
-    score += 4
+    score += 3
   }
 
   score += getRoleWeight(role)
 
-  if ((clusterInfo?.clusterSize ?? 0) >= 5) score += 22
-  else if ((clusterInfo?.clusterSize ?? 0) === 4) score += 18
-  else if ((clusterInfo?.clusterSize ?? 0) === 3) score += 14
-  else if ((clusterInfo?.clusterSize ?? 0) === 2) score += 10
+  if ((clusterInfo?.clusterSize ?? 0) >= 5) score += 18
+  else if ((clusterInfo?.clusterSize ?? 0) === 4) score += 14
+  else if ((clusterInfo?.clusterSize ?? 0) === 3) score += 10
+  else if ((clusterInfo?.clusterSize ?? 0) === 2) score += 7
 
-  if (clusterInfo?.repeatBuyer) score += 8
+  if (clusterInfo?.repeatBuyer) score += 5
 
   return score
 }
@@ -1697,21 +1698,21 @@ function scoreInsiderSell(
   let score = 0
 
   if (sellValue !== null) {
-    if (sellValue >= 10_000_000) score -= 26
-    else if (sellValue >= 5_000_000) score -= 20
-    else if (sellValue >= 2_000_000) score -= 16
-    else if (sellValue >= 500_000) score -= 12
-    else if (sellValue >= 100_000) score -= 8
-    else score -= 4
+    if (sellValue >= 10_000_000) score -= 24
+    else if (sellValue >= 5_000_000) score -= 18
+    else if (sellValue >= 2_000_000) score -= 14
+    else if (sellValue >= 500_000) score -= 10
+    else if (sellValue >= 100_000) score -= 7
+    else score -= 3
   } else {
-    if ((shares ?? 0) >= 1_000_000) score -= 18
-    else if ((shares ?? 0) >= 100_000) score -= 12
-    else if ((shares ?? 0) >= 10_000) score -= 8
-    else if ((shares ?? 0) > 0) score -= 4
+    if ((shares ?? 0) >= 1_000_000) score -= 16
+    else if ((shares ?? 0) >= 100_000) score -= 10
+    else if ((shares ?? 0) >= 10_000) score -= 7
+    else if ((shares ?? 0) > 0) score -= 3
   }
 
   if ((price.return5d ?? 0) < 0 || (price.relativeStrength20d ?? 0) < 0) {
-    score -= 6
+    score -= 5
   }
 
   return score
@@ -1720,41 +1721,42 @@ function scoreInsiderSell(
 function scoreMomentum(price: PriceConfirmation) {
   let score = 0
 
-  if ((price.return5d ?? 0) >= 10) score += 12
-  else if ((price.return5d ?? 0) >= 5) score += 8
-  else if ((price.return5d ?? 0) >= 2) score += 4
-  else if ((price.return5d ?? 0) <= -8) score -= 16
-  else if ((price.return5d ?? 0) <= -5) score -= 10
-  else if ((price.return5d ?? 0) <= -2) score -= 5
+  if ((price.return5d ?? 0) >= 10) score += 9
+  else if ((price.return5d ?? 0) >= 5) score += 6
+  else if ((price.return5d ?? 0) >= 2) score += 3
+  else if ((price.return5d ?? 0) <= -8) score -= 14
+  else if ((price.return5d ?? 0) <= -5) score -= 9
+  else if ((price.return5d ?? 0) <= -2) score -= 4
 
-  if ((price.return20d ?? 0) >= 15) score += 6
-  else if ((price.return20d ?? 0) >= 8) score += 3
-  else if ((price.return20d ?? 0) <= -15) score -= 10
+  if ((price.return20d ?? 0) >= 20) score += 7
+  else if ((price.return20d ?? 0) >= 10) score += 4
+  else if ((price.return20d ?? 0) >= 5) score += 2
+  else if ((price.return20d ?? 0) <= -15) score -= 9
   else if ((price.return20d ?? 0) <= -8) score -= 5
 
-  if (price.breakout20d) score += 6
-  if (price.breakout52w) score += 8
+  if (price.breakout20d) score += 5
+  if (price.breakout52w) score += 7
   if (price.above50dma) score += 2
-  if (price.trendAligned) score += 4
+  if (price.trendAligned) score += 3
 
-  if ((price.volumeRatio ?? 0) >= 2.5) score += 8
-  else if ((price.volumeRatio ?? 0) >= 2) score += 5
-  else if ((price.volumeRatio ?? 0) >= 1.5) score += 3
+  if ((price.volumeRatio ?? 0) >= 2.5) score += 6
+  else if ((price.volumeRatio ?? 0) >= 2) score += 4
+  else if ((price.volumeRatio ?? 0) >= 1.5) score += 2
 
   return score
 }
 
 function scoreRelativeStrength(value: number | null) {
   if (value === null) return 0
-  if (value >= 12) return 12
-  if (value >= 8) return 8
-  if (value >= 4) return 5
-  if (value >= 1) return 2
-  if (value <= -20) return -28
-  if (value <= -15) return -22
-  if (value <= -10) return -16
-  if (value <= -5) return -10
-  if (value < 0) return -5
+  if (value >= 12) return 10
+  if (value >= 8) return 7
+  if (value >= 4) return 4
+  if (value >= 1) return 1
+  if (value <= -20) return -26
+  if (value <= -15) return -20
+  if (value <= -10) return -14
+  if (value <= -5) return -9
+  if (value < 0) return -4
   return 0
 }
 
@@ -1763,23 +1765,23 @@ function scoreValuation(snapshot: TickerSnapshot) {
   const pe = snapshot.peRatio ?? snapshot.forwardPe
 
   if (pe !== null) {
-    if (pe <= 10) score += 8
-    else if (pe <= 18) score += 5
-    else if (pe <= 25) score += 2
-    else if (pe >= 60) score -= 16
-    else if (pe >= 40) score -= 10
+    if (pe <= 10) score += 6
+    else if (pe <= 18) score += 4
+    else if (pe <= 25) score += 1
+    else if (pe >= 60) score -= 14
+    else if (pe >= 40) score -= 8
   }
 
   if (snapshot.psRatio !== null) {
-    if (snapshot.psRatio <= 2) score += 4
+    if (snapshot.psRatio <= 2) score += 3
     else if (snapshot.psRatio <= 5) score += 1
-    else if (snapshot.psRatio >= 15) score -= 8
-    else if (snapshot.psRatio >= 10) score -= 4
+    else if (snapshot.psRatio >= 15) score -= 7
+    else if (snapshot.psRatio >= 10) score -= 3
   }
 
   if (snapshot.marketCap !== null) {
     if (snapshot.marketCap < 300_000_000) score -= 3
-    if (snapshot.marketCap >= 1_000_000_000 && snapshot.marketCap <= 50_000_000_000) score += 2
+    if (snapshot.marketCap >= 1_000_000_000 && snapshot.marketCap <= 50_000_000_000) score += 1
   }
 
   return score
@@ -1791,39 +1793,36 @@ function scoreCandidateTechnical(candidate: CandidateUniverseSignalInput | null)
   let score = 0
   const candidateScore = Number(candidate.candidate_score || 0)
 
-  if (candidate.included) score += 10
-  if (candidateScore >= 12) score += 14
-  else if (candidateScore >= 10) score += 10
-  else if (candidateScore >= 7) score += 6
-  else if (candidateScore >= 5) score += 2
+  if (candidate.included) score += 6
+  if (candidateScore >= 95) score += 14
+  else if (candidateScore >= 85) score += 11
+  else if (candidateScore >= 75) score += 8
+  else if (candidateScore >= 65) score += 5
+  else if (candidateScore >= 55) score += 2
 
-  if ((candidate.return_5d ?? 0) >= 6) score += 4
-  else if ((candidate.return_5d ?? 0) >= 3) score += 2
+  if ((candidate.return_5d ?? 0) >= 6) score += 3
+  else if ((candidate.return_5d ?? 0) >= 3) score += 1
 
-  if ((candidate.return_20d ?? 0) >= 18) score += 7
-  else if ((candidate.return_20d ?? 0) >= 10) score += 4
+  if ((candidate.return_20d ?? 0) >= 20) score += 5
+  else if ((candidate.return_20d ?? 0) >= 12) score += 3
 
-  if ((candidate.volume_ratio ?? 0) >= 2) score += 5
-  else if ((candidate.volume_ratio ?? 0) >= 1.5) score += 3
+  if ((candidate.volume_ratio ?? 0) >= 2.5) score += 4
+  else if ((candidate.volume_ratio ?? 0) >= 1.75) score += 2
 
-  if (candidate.breakout_20d) score += 6
-  if (candidate.above_sma_20) score += 3
+  if (candidate.breakout_20d) score += 4
+  if (candidate.above_sma_20) score += 2
 
   return score
 }
 
 function ageAdjustment(ageDays: number | null) {
   if (ageDays === null) return 0
-  if (ageDays <= 1) return 6
-  if (ageDays <= 3) return 4
-  if (ageDays <= 7) return 2
+  if (ageDays <= 1) return 5
+  if (ageDays <= 3) return 3
+  if (ageDays <= 7) return 1
   if (ageDays >= 20) return -8
   if (ageDays >= 14) return -5
   return 0
-}
-
-function mapToAppScore(rawScore: number) {
-  return clamp(Math.round(rawScore), 0, 100)
 }
 
 function getBoardBucket(appScore: number) {
@@ -1852,6 +1851,82 @@ function getValuationFlavor(
   }
 
   return null
+}
+
+function countPositiveEvidencePillars(breakdown: ScoreBreakdown) {
+  return [
+    (breakdown.insider_buying || 0) > 0 ||
+      (breakdown.repeat_buying || 0) > 0 ||
+      (breakdown.senior_executive_buy || 0) > 0,
+    (breakdown.momentum || 0) > 0 || (breakdown.relative_strength || 0) > 0,
+    (breakdown.earnings || 0) > 0 || (breakdown.catalyst || 0) > 0,
+    (breakdown.candidate_screen || 0) > 0 || (breakdown.candidate_breakout || 0) > 0,
+    (breakdown.valuation || 0) > 0,
+  ].filter(Boolean).length
+}
+
+function mapToAppScore(
+  rawScore: number,
+  params: {
+    bias: "Bullish" | "Neutral" | "Bearish"
+    breakoutConfirmed: boolean
+    strongVolume: boolean
+    clusterBuy: boolean
+    largeInsiderBuy: boolean
+    candidateScore: number | null
+    positivePillars: number
+    hasFreshCatalyst: boolean
+    hasEarningsSupport: boolean
+    severeRisk: boolean
+  }
+) {
+  const clampedRaw = clamp(rawScore, 0, 100)
+
+  if (params.bias === "Bearish" || params.severeRisk) {
+    return clamp(Math.round(clampedRaw), 0, 100)
+  }
+
+  let appScore = Math.round(Math.pow(clampedRaw / 100, 1.22) * 100)
+
+  const eliteEvidenceCount = [
+    params.breakoutConfirmed,
+    params.strongVolume,
+    params.clusterBuy || params.largeInsiderBuy,
+    (params.candidateScore ?? 0) >= 85,
+    params.hasFreshCatalyst || params.hasEarningsSupport,
+  ].filter(Boolean).length
+
+  if (params.positivePillars < 3) {
+    appScore = Math.min(appScore, 88)
+  }
+
+  if (params.positivePillars < 4) {
+    appScore = Math.min(appScore, 94)
+  }
+
+  if (eliteEvidenceCount < 3) {
+    appScore = Math.min(appScore, 96)
+  }
+
+  if (eliteEvidenceCount < 4) {
+    appScore = Math.min(appScore, 98)
+  }
+
+  if (
+    !(
+      params.breakoutConfirmed &&
+      params.strongVolume &&
+      params.positivePillars >= 4 &&
+      eliteEvidenceCount >= 4 &&
+      (params.clusterBuy ||
+        params.largeInsiderBuy ||
+        (params.candidateScore ?? 0) >= 95)
+    )
+  ) {
+    appScore = Math.min(appScore, 99)
+  }
+
+  return clamp(appScore, 0, 100)
 }
 
 function applyEnhancements(
@@ -1916,11 +1991,11 @@ function applyEnhancements(
       }
 
       if (clusterInfo?.repeatBuyer) {
-        applyBreakdown(breakdown, reasons, "repeat_buying", 8, "Repeat insider buying")
+        applyBreakdown(breakdown, reasons, "repeat_buying", 5, "Repeat insider buying")
       }
 
       if (isSeniorRole(insider.role)) {
-        applyBreakdown(breakdown, reasons, "senior_executive_buy", 8, "Senior executive buying")
+        applyBreakdown(breakdown, reasons, "senior_executive_buy", 6, "Senior executive buying")
       }
 
       bias = "Bullish"
@@ -1968,7 +2043,7 @@ function applyEnhancements(
         breakdown,
         reasons,
         "form144_price_weakness",
-        -6,
+        -5,
         "Weak price action adds caution to the sale notice"
       )
     }
@@ -1990,7 +2065,7 @@ function applyEnhancements(
 
     if (candidate.included) {
       title =
-        (candidate.candidate_score ?? 0) >= 11
+        (candidate.candidate_score ?? 0) >= 85
           ? "Strong buy candidate setup"
           : "Buy candidate setup"
       summary =
@@ -1998,25 +2073,25 @@ function applyEnhancements(
           ? `The technical candidate screen is constructive: ${candidate.screen_reason}.`
           : "The technical candidate screen is constructive."
 
-      if ((candidate.candidate_score ?? 0) >= 11) {
-        applyBreakdown(breakdown, reasons, "candidate_tier_bonus", 6, "Strong buy tier")
-      } else {
-        applyBreakdown(breakdown, reasons, "candidate_tier_bonus", 3, "Buy tier")
+      if ((candidate.candidate_score ?? 0) >= 85) {
+        applyBreakdown(breakdown, reasons, "candidate_tier_bonus", 5, "Strong buy tier")
+      } else if ((candidate.candidate_score ?? 0) >= 70) {
+        applyBreakdown(breakdown, reasons, "candidate_tier_bonus", 2, "Buy tier")
       }
 
       bias = "Bullish"
     }
 
     if ((candidate.volume_ratio ?? 0) >= 2) {
-      applyBreakdown(breakdown, reasons, "candidate_volume", 4, "Elevated screen volume")
+      applyBreakdown(breakdown, reasons, "candidate_volume", 3, "Elevated screen volume")
     }
 
     if ((candidate.return_20d ?? 0) >= 15) {
-      applyBreakdown(breakdown, reasons, "candidate_momentum", 5, "Strong screened momentum")
+      applyBreakdown(breakdown, reasons, "candidate_momentum", 4, "Strong screened momentum")
     }
 
     if (candidate.breakout_20d) {
-      applyBreakdown(breakdown, reasons, "candidate_breakout", 5, "Candidate breakout")
+      applyBreakdown(breakdown, reasons, "candidate_breakout", 4, "Candidate breakout")
     }
   }
 
@@ -2118,15 +2193,11 @@ function applyEnhancements(
 
   let preCapScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
 
-  const positivePillars = [
-    (breakdown.insider_buying || 0) > 0 || (breakdown.repeat_buying || 0) > 0,
-    (breakdown.momentum || 0) > 0 || (breakdown.relative_strength || 0) > 0,
-    (breakdown.earnings || 0) > 0 || (breakdown.catalyst || 0) > 0 || (breakdown.candidate_screen || 0) > 0,
-    (breakdown.valuation || 0) > 0,
-  ].filter(Boolean).length
+  const positivePillars = countPositiveEvidencePillars(breakdown)
 
-  if (preCapScore > 90 && positivePillars < 2) {
-    const capAdjustment = 90 - preCapScore
+  if (preCapScore > 88 && positivePillars < 3) {
+    const target = 88
+    const capAdjustment = target - preCapScore
     applyBreakdown(
       breakdown,
       reasons,
@@ -2135,7 +2206,21 @@ function applyEnhancements(
       "High score capped due to limited confirming evidence"
     )
     scoreCapsApplied.push("minimum-evidence-cap")
-    preCapScore = 90
+    preCapScore = target
+  }
+
+  if (preCapScore > 94 && positivePillars < 4) {
+    const target = 94
+    const capAdjustment = target - preCapScore
+    applyBreakdown(
+      breakdown,
+      reasons,
+      "broad_confirmation_cap",
+      capAdjustment,
+      "Top-end score capped until more independent pillars align"
+    )
+    scoreCapsApplied.push("broad-confirmation-cap")
+    preCapScore = target
   }
 
   if (
@@ -2179,11 +2264,27 @@ function applyEnhancements(
     }
   }
 
-  const score = clamp(Math.round(preCapScore), 0, 100)
+  const rawScore = clamp(Math.round(preCapScore), 0, 100)
 
-  if (score >= 70 && bias !== "Bearish") bias = "Bullish"
-  else if (score <= 30 || isBearish8kCatalyst(catalystType)) bias = "Bearish"
+  if (rawScore >= 70 && bias !== "Bearish") bias = "Bullish"
+  else if (rawScore <= 30 || isBearish8kCatalyst(catalystType)) bias = "Bearish"
   else if (bias !== "Bearish" && bias !== "Bullish") bias = "Neutral"
+
+  const appScore = mapToAppScore(rawScore, {
+    bias,
+    breakoutConfirmed: price.breakout20d || price.breakout52w || candidate?.breakout_20d === true,
+    strongVolume: (price.volumeRatio ?? 0) >= 2 || (candidate?.volume_ratio ?? 0) >= 2,
+    clusterBuy: (clusterInfo?.clusterSize ?? 0) >= 2,
+    largeInsiderBuy: (insiderBuyValue ?? 0) >= 1_000_000,
+    candidateScore: candidate?.candidate_score ?? null,
+    positivePillars,
+    hasFreshCatalyst: catalystScore > 0 && (ageDays ?? 99) <= 7,
+    hasEarningsSupport: earningsScore > 0,
+    severeRisk:
+      catalystType === "bankruptcy" ||
+      catalystType === "legal" ||
+      ((breakdown.insider_selling || 0) <= -18 && (price.relativeStrength20d ?? 0) <= -10),
+  })
 
   const signalCategory = deriveSignalCategory({
     formType: filing.form_type,
@@ -2212,8 +2313,7 @@ function applyEnhancements(
     candidate,
   })
 
-  const strengthBucket = getStrengthBucket(bias, score)
-  const appScore = mapToAppScore(score)
+  const strengthBucket = getStrengthBucket(bias, appScore)
   const boardBucket = getBoardBucket(appScore)
 
   return {
@@ -2223,7 +2323,7 @@ function applyEnhancements(
     signal_strength_bucket: strengthBucket,
     signal_tags: tags,
     bias,
-    score,
+    score: rawScore,
     app_score: appScore,
     board_bucket: boardBucket,
     title,
@@ -2313,28 +2413,24 @@ function getMinimumScore(
   const form = normalizeFormType(formType)
 
   if (bias === "Bearish") return 0
-  if (source === "earnings") return 45
-  if (source === "breakout") return 55
+  if (source === "earnings") return 42
+  if (source === "breakout") return 52
   if (source === "form144") return 0
-  if (source === "proxy") return 40
-  if (form === "8-K" || form === "6-K") return 42
-  if (form === "10-Q" || form === "10-K") return 42
-  if (form.includes("13D")) return 50
-  if (form.includes("13G")) return 48
-  if (form === "4" || form === "4/A") return 42
+  if (source === "proxy") return 38
+  if (form === "8-K" || form === "6-K") return 40
+  if (form === "10-Q" || form === "10-K") return 40
+  if (form.includes("13D")) return 48
+  if (form.includes("13G")) return 46
+  if (form === "4" || form === "4/A") return 40
 
-  return 42
+  return 40
 }
 
 function buildHistoryKey(runDate: string, accessionNo: string) {
   return `${runDate}_${accessionNo}`
 }
 
-function buildSignalHistoryRow(
-  signalRow: any,
-  runDate: string,
-  runTimestamp: string
-) {
+function buildSignalHistoryRow(signalRow: any, runDate: string, runTimestamp: string) {
   return {
     ticker: signalRow.ticker,
     company_name: signalRow.company_name,
@@ -2439,18 +2535,52 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
 
     let stackedScore = Number(primary.app_score || 0)
 
-    if (sorted.length >= 2) stackedScore += 5
-    if (sorted.length >= 3) stackedScore += 4
-    if (sorted.length >= 4) stackedScore += 3
+    if (sorted.length >= 2) stackedScore += 4
+    if (sorted.length >= 3) stackedScore += 3
+    if (sorted.length >= 4) stackedScore += 2
+    if (sorted.length >= 5) stackedScore += 1
 
-    if ((scoreBreakdown.relative_strength || 0) <= -20 && !((scoreBreakdown.insider_buying || 0) > 15)) {
+    const positivePillars = countPositiveEvidencePillars(scoreBreakdown)
+
+    if (positivePillars < 3) {
+      stackedScore = Math.min(stackedScore, 90)
+      scoreCapsApplied.add("stacked-limited-evidence-cap")
+    }
+
+    if (positivePillars < 4) {
+      stackedScore = Math.min(stackedScore, 95)
+      scoreCapsApplied.add("stacked-broad-confirmation-cap")
+    }
+
+    const hasBreakoutSupport =
+      (scoreBreakdown.candidate_breakout || 0) > 0 ||
+      primary.breakout_20d === true ||
+      primary.breakout_52w === true
+
+    const hasHeavyVolume =
+      (primary.volume_ratio ?? 0) >= 2 ||
+      (scoreBreakdown.candidate_volume || 0) > 0
+
+    const hasEliteInsiderSupport =
+      (scoreBreakdown.insider_buying || 0) >= 16 ||
+      (primary.cluster_buyers ?? 0) >= 2
+
+    if (!(hasBreakoutSupport && hasHeavyVolume && positivePillars >= 4 && hasEliteInsiderSupport)) {
+      stackedScore = Math.min(stackedScore, 99)
+      scoreCapsApplied.add("stacked-no-perfect-score-cap")
+    }
+
+    if (
+      (scoreBreakdown.relative_strength || 0) <= -20 &&
+      !((scoreBreakdown.insider_buying || 0) > 15)
+    ) {
       stackedScore = Math.min(stackedScore, 65)
       scoreCapsApplied.add("relative-strength-cap")
     }
 
     if (
-      (scoreBreakdown.catalyst || 0) <= -24 ||
-      (scoreBreakdown.insider_selling || 0) <= -20 ||
+      (scoreBreakdown.catalyst || 0) <= -22 ||
+      (scoreBreakdown.insider_selling || 0) <= -18 ||
       primary.catalyst_type === "bankruptcy" ||
       primary.catalyst_type === "legal"
     ) {
@@ -2522,10 +2652,7 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
   return rows
 }
 
-async function attachTickerScoreChangesToCurrentRows(
-  supabase: any,
-  currentRows: any[]
-) {
+async function attachTickerScoreChangesToCurrentRows(supabase: any, currentRows: any[]) {
   const tickers = uniqueStrings(currentRows.map((row) => row.ticker))
   if (!tickers.length) return currentRows
 
@@ -2858,7 +2985,8 @@ export async function GET(request: Request) {
 
       const signalRow = {
         ticker: item.filing.ticker,
-        company_name: item.filing.company_name || item.snapshot.companyName || item.candidate?.name || null,
+        company_name:
+          item.filing.company_name || item.snapshot.companyName || item.candidate?.name || null,
         business_description: item.snapshot.businessDescription,
         pe_ratio: round2(item.snapshot.peRatio),
         pe_forward: round2(item.snapshot.forwardPe),
@@ -3051,7 +3179,7 @@ export async function GET(request: Request) {
       supabase
         .from("ticker_scores_current")
         .select("*", { count: "exact", head: true })
-        .gte("app_score", 85),
+        .gte("app_score", 88),
       supabase
         .from("ticker_scores_current")
         .select("*", { count: "exact", head: true })
