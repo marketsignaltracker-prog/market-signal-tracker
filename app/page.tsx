@@ -439,10 +439,10 @@ export default function Home() {
             </div>
 
             <div className="mt-8 grid gap-3 rounded-[2rem] border border-white/10 bg-black/20 p-4 sm:grid-cols-2 xl:grid-cols-4">
-              <TrustPill title="Updated daily" text="Fresh names for today’s market" />
-              <TrustPill title="Only strong buys" text="Weak names stay off the page" />
-              <TrustPill title="Easy to understand" text="Built like a cheat sheet, not a terminal" />
-              <TrustPill title="Made for action" text="Focused on what looks buyable now" />
+              <TrustPill title="Updated daily" text="Fresh names, not last months heat map" />
+              <TrustPill title="Only strong buys" text="Weak names don't make the cut" />
+              <TrustPill title="Easy to understand" text="Built like a cheat sheet" />
+              <TrustPill title="Made for action" text="Focused on what to buy now" />
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-400">
@@ -469,20 +469,20 @@ export default function Home() {
             </h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <WhySubscribeCard
-                title="You do not need to know every stock"
-                text="Most people do not want to study thousands of names. They just want the best current ideas."
+                title="You don't need to research every stock"
+                text="Most people do not want to study thousands of stocks. They just want the best opportunities right now."
               />
               <WhySubscribeCard
                 title="You do not need a giant watchlist"
-                text="This page is meant to narrow things down fast so you can focus on the strongest buy-now names."
+                text="We narrow things down fast so you can focus on the strongest buy-now stocks."
               />
               <WhySubscribeCard
                 title="You do not need to speak market jargon"
-                text="The goal is clarity. We surface the names that look strongest right now in plain English."
+                text="The goal is clarity. We uncover the names that are strongest right now in plain English."
               />
               <WhySubscribeCard
                 title="You just need a daily shortlist"
-                text="Think of this like your daily cheat sheet for the stocks most worth looking at right now."
+                text="Think of this like your daily cheat sheet for the stocks most worth buying right now."
               />
             </div>
           </div>
