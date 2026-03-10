@@ -45,6 +45,52 @@ type CandidateHistoryRow = CandidateUniverseRow & {
   created_at: string
 }
 
+type CandidateScoreInput = {
+  latestClose: number
+  marketCap: number
+  avgVolume20d: number
+  avgDollarVolume20d: number
+  return5d: number
+  return10d: number
+  return20d: number
+  oneDayReturn: number
+  volumeRatio: number
+  breakout20d: boolean
+  breakout10d: boolean
+  nearHigh20: boolean
+  aboveSma20: boolean
+  shortTermTrendUp: boolean
+  sma10: number
+  sma20: number
+  high20: number
+  breakoutClearancePct: number
+  extensionFromSma20Pct: number
+  closeInDayRange: number
+  passesPrice: boolean
+  passesVolume: boolean
+  passesDollarVolume: boolean
+  passesMarketCap: boolean
+}
+
+type CandidateScoreOutput = {
+  candidateScore: number
+  rawScore: number
+  qualityScore: number
+  momentumScore: number
+  volumeScore: number
+  breakoutScore: number
+  trendScore: number
+  penaltyScore: number
+  catalystCount: number
+  highConvictionSetup: boolean
+  eliteSetup: boolean
+}
+
+type YahooErrorDisposition = {
+  kind: "permanent" | "transient"
+  reason: string
+}
+
 const yahooFinance = new YahooFinance({
   queue: { concurrency: 1 },
   suppressNotices: ["ripHistorical", "yahooSurvey"],
@@ -169,45 +215,57 @@ function buildCandidateReason(params: {
     : "No strong-buy-now factors passed"
 }
 
-type CandidateScoreInput = {
-  latestClose: number
-  marketCap: number
-  avgVolume20d: number
-  avgDollarVolume20d: number
-  return5d: number
-  return10d: number
-  return20d: number
-  oneDayReturn: number
-  volumeRatio: number
-  breakout20d: boolean
-  breakout10d: boolean
-  nearHigh20: boolean
-  aboveSma20: boolean
-  shortTermTrendUp: boolean
-  sma10: number
-  sma20: number
-  high20: number
-  breakoutClearancePct: number
-  extensionFromSma20Pct: number
-  closeInDayRange: number
-  passesPrice: boolean
-  passesVolume: boolean
-  passesDollarVolume: boolean
-  passesMarketCap: boolean
+function sanitizeYahooErrorMessage(raw: unknown) {
+  const message = String((raw as any)?.message || raw || "Unknown screening error").trim()
+
+  if (message.includes("<!doctype html") || message.includes("<html>")) {
+    return "Yahoo returned an HTML error page"
+  }
+
+  return message
 }
 
-type CandidateScoreOutput = {
-  candidateScore: number
-  rawScore: number
-  qualityScore: number
-  momentumScore: number
-  volumeScore: number
-  breakoutScore: number
-  trendScore: number
-  penaltyScore: number
-  catalystCount: number
-  highConvictionSetup: boolean
-  eliteSetup: boolean
+function classifyYahooError(raw: unknown): YahooErrorDisposition {
+  const message = sanitizeYahooErrorMessage(raw).toLowerCase()
+
+  if (
+    message.includes("no data found") ||
+    message.includes("symbol may be delisted") ||
+    message.includes("possibly delisted") ||
+    message.includes("not found") ||
+    message.includes("invalid ticker")
+  ) {
+    return {
+      kind: "permanent",
+      reason: sanitizeYahooErrorMessage(raw),
+    }
+  }
+
+  if (
+    message.includes("schema validation") ||
+    message.includes("html error page") ||
+    message.includes("bad request") ||
+    message.includes("status 400") ||
+    message.includes("status 401") ||
+    message.includes("status 403") ||
+    message.includes("status 404") ||
+    message.includes("status 429") ||
+    message.includes("timeout") ||
+    message.includes("network") ||
+    message.includes("fetch") ||
+    message.includes("connection") ||
+    message.includes("temporarily unavailable")
+  ) {
+    return {
+      kind: "transient",
+      reason: sanitizeYahooErrorMessage(raw),
+    }
+  }
+
+  return {
+    kind: "transient",
+    reason: sanitizeYahooErrorMessage(raw),
+  }
 }
 
 function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutput {
@@ -507,7 +565,9 @@ export async function GET(request: Request) {
     let includedInBatch = 0
     let failedInBatch = 0
     let historyInserted = 0
+    let historyWriteErrors = 0
     let removedFromUniverseInBatch = 0
+    let keptUniverseOnTransientError = 0
 
     for (const company of (companies || []) as CompanyRow[]) {
       const ticker = normalizeTicker(company.ticker)
@@ -515,9 +575,10 @@ export async function GET(request: Request) {
       try {
         if (!ticker || !company.cik) {
           failedInBatch += 1
+
           if (ticker) {
-            await removeFromUniverse(candidateUniverseTable, ticker)
-            removedFromUniverseInBatch += 1
+            const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+            if (!deleteResult.error) removedFromUniverseInBatch += 1
           }
 
           results.push({
@@ -584,11 +645,15 @@ export async function GET(request: Request) {
           )
 
           if (historyResult.error) {
-            failedInBatch += 1
+            historyWriteErrors += 1
             results.push({
               ticker,
-              ok: false,
-              error: historyResult.error.message,
+              ok: true,
+              included: false,
+              score: 0,
+              tier: "excluded",
+              reason: excludedRow.screen_reason,
+              historyWarning: historyResult.error.message,
             })
             await sleep(REQUEST_DELAY_MS)
             continue
@@ -613,14 +678,51 @@ export async function GET(request: Request) {
         const startDate = new Date()
         startDate.setDate(startDate.getDate() - 60)
 
-        const [candles, quote] = await Promise.all([
-          yahooFinance.historical(ticker, {
-            period1: toIsoDateString(startDate),
-            period2: toIsoDateString(endDate),
-            interval: "1d",
-          }),
-          yahooFinance.quote(ticker),
-        ])
+        let candles: any[] | null = null
+        let quote: any = null
+
+        try {
+          ;[candles, quote] = await Promise.all([
+            yahooFinance.historical(ticker, {
+              period1: toIsoDateString(startDate),
+              period2: toIsoDateString(endDate),
+              interval: "1d",
+            }),
+            yahooFinance.quote(ticker),
+          ])
+        } catch (err: any) {
+          const disposition = classifyYahooError(err)
+
+          if (disposition.kind === "permanent") {
+            const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+            if (!deleteResult.error) removedFromUniverseInBatch += 1
+
+            failedInBatch += 1
+            results.push({
+              ticker,
+              ok: false,
+              error: disposition.reason,
+              errorKind: "permanent_yahoo_error",
+              removedFromUniverse: true,
+            })
+
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          keptUniverseOnTransientError += 1
+          failedInBatch += 1
+          results.push({
+            ticker,
+            ok: false,
+            error: disposition.reason,
+            errorKind: "transient_yahoo_error",
+            removedFromUniverse: false,
+          })
+
+          await sleep(REQUEST_DELAY_MS)
+          continue
+        }
 
         const clean = (candles || [])
           .filter(
@@ -686,11 +788,15 @@ export async function GET(request: Request) {
           )
 
           if (historyResult.error) {
-            failedInBatch += 1
+            historyWriteErrors += 1
             results.push({
               ticker,
-              ok: false,
-              error: historyResult.error.message,
+              ok: true,
+              included: false,
+              score: 0,
+              tier: "not_included",
+              reason: row.screen_reason,
+              historyWarning: historyResult.error.message,
             })
             await sleep(REQUEST_DELAY_MS)
             continue
@@ -794,7 +900,6 @@ export async function GET(request: Request) {
         const score = scoreDetails.candidateScore
         const catalystCount = scoreDetails.catalystCount
 
-        // Strong Buy Now only. No soft inclusion.
         const strongBuyNowCandidate =
           passesPrice &&
           passesVolume &&
@@ -936,17 +1041,10 @@ export async function GET(request: Request) {
         )
 
         if (historyResult.error) {
-          failedInBatch += 1
-          results.push({
-            ticker,
-            ok: false,
-            error: historyResult.error.message,
-          })
-          await sleep(REQUEST_DELAY_MS)
-          continue
+          historyWriteErrors += 1
+        } else {
+          historyInserted += 1
         }
-
-        historyInserted += 1
 
         results.push({
           ticker,
@@ -966,6 +1064,7 @@ export async function GET(request: Request) {
           extensionFromSma20Pct: round2(extensionFromSma20Pct),
           closeInDayRange: round2(closeInDayRange),
           catalystCount,
+          historyWarning: historyResult.error ? historyResult.error.message : null,
           scoreBreakdown: {
             quality: round2(scoreDetails.qualityScore),
             momentum: round2(scoreDetails.momentumScore),
@@ -977,13 +1076,6 @@ export async function GET(request: Request) {
         })
       } catch (err: any) {
         failedInBatch += 1
-
-        if (ticker) {
-          const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
-          if (!deleteResult.error) {
-            removedFromUniverseInBatch += 1
-          }
-        }
 
         results.push({
           ticker,
@@ -1030,6 +1122,8 @@ export async function GET(request: Request) {
       onlyActive,
       includedInBatch,
       failedInBatch,
+      historyWriteErrors,
+      keptUniverseOnTransientError,
       removedFromUniverseInBatch,
       includedCount: includedCountError ? null : candidateCount,
       historyInserted,
