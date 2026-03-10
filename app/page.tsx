@@ -413,14 +413,13 @@ export default function Home() {
                 </h1>
 
                 <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300 sm:text-lg">
-                  This page gives you a simple daily shortlist of the strongest stocks right now.
-                  No huge watchlists. No confusing clutter. Just the clearest strong-buy names we
-                  think deserve attention today.
+                  We give you a simple daily shortlist of the strongest stocks right now.
+                  No huge watchlists. No confusing clutter. Just the clearest strong-buy names that deserve a Strong Buy rating today.
                 </p>
 
                 <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300">
                   Updated daily and built to answer one question:
-                  <span className="ml-1 font-semibold text-white">What should I buy now?</span>
+                  <span className="ml-1 font-semibold text-white">What should I buy right now?</span>
                 </div>
               </div>
 
@@ -439,10 +438,10 @@ export default function Home() {
             </div>
 
             <div className="mt-8 grid gap-3 rounded-[2rem] border border-white/10 bg-black/20 p-4 sm:grid-cols-2 xl:grid-cols-4">
-              <TrustPill title="Updated daily" text="Fresh names, not last months heat map" />
+              <TrustPill title="Updated daily" text="Fresh names, not last months hype" />
               <TrustPill title="Only strong buys" text="Weak names don't make the cut" />
               <TrustPill title="Easy to understand" text="Built like a cheat sheet" />
-              <TrustPill title="Made for action" text="Focused on what to buy now" />
+              <TrustPill title="Made for action" text="Focused on what to buy right now" />
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-400">
@@ -462,22 +461,22 @@ export default function Home() {
         <section className="mt-8 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl backdrop-blur-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-              We Did All The Research
+              We Do All The Research
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
               What and when to buy made simple...
             </h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <WhySubscribeCard
-                title="You don't need to research every stock"
-                text="Most people do not want to study thousands of stocks. They just want the best opportunities right now."
+                title="No need to learn stock screening"
+                text="Most people don't want to study thousands of stocks. They just want the best opportunities right now."
               />
               <WhySubscribeCard
                 title="You do not need a giant watchlist"
                 text="We narrow things down fast so you can focus on the strongest buy-now stocks."
               />
               <WhySubscribeCard
-                title="You do not need to speak market jargon"
+                title="No need to speak market jargon"
                 text="The goal is clarity. We uncover the names that are strongest right now in plain English."
               />
               <WhySubscribeCard
