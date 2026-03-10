@@ -1531,17 +1531,49 @@ function TopSignalCard({
       ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-sm">
-        <MiniMetric label="Price" value={formatMoney(row.price)} />
-        <MiniMetric label="Vs Market" value={formatPercent(row.relative_strength_20d)} />
-        <MiniMetric label="5D Move" value={formatPercent(row.price_return_5d)} />
-        <MiniMetric label="Volume" value={formatRatio(row.volume_ratio)} />
+        <MiniMetric
+          label="Price"
+          value={formatMoney(row.price)}
+          tooltip={getMiniMetricTooltip("Price", row)}
+        />
+        <MiniMetric
+          label="Vs Market"
+          value={formatPercent(row.relative_strength_20d)}
+          tooltip={getMiniMetricTooltip("Vs Market", row)}
+        />
+        <MiniMetric
+          label="5D Move"
+          value={formatPercent(row.price_return_5d)}
+          tooltip={getMiniMetricTooltip("5D Move", row)}
+        />
+        <MiniMetric
+          label="Volume"
+          value={formatRatio(row.volume_ratio)}
+          tooltip={getMiniMetricTooltip("Volume", row)}
+        />
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-sm">
-        <MiniMetric label="1D Δ" value={formatScoreChange(row.ticker_score_change_1d)} />
-        <MiniMetric label="7D Δ" value={formatScoreChange(row.ticker_score_change_7d)} />
-        <MiniMetric label="Stacked" value={formatWholeNumber(row.stacked_signal_count)} />
-        <MiniMetric label="Strength" value={row.signal_strength_bucket || "—"} />
+        <MiniMetric
+          label="1D Δ"
+          value={formatScoreChange(row.ticker_score_change_1d)}
+          tooltip={getMiniMetricTooltip("1D Δ", row)}
+        />
+        <MiniMetric
+          label="7D Δ"
+          value={formatScoreChange(row.ticker_score_change_7d)}
+          tooltip={getMiniMetricTooltip("7D Δ", row)}
+        />
+        <MiniMetric
+          label="Stacked"
+          value={formatWholeNumber(row.stacked_signal_count)}
+          tooltip={getMiniMetricTooltip("Stacked", row)}
+        />
+        <MiniMetric
+          label="Strength"
+          value={row.signal_strength_bucket || "—"}
+          tooltip={getMiniMetricTooltip("Strength", row)}
+        />
       </div>
 
       <div className="mt-auto rounded-2xl bg-black/20 p-4">
@@ -1669,20 +1701,26 @@ function MovementCard({
 function MiniMetric({
   label,
   value,
+  tooltip,
 }: {
   label: string
   value: string | null | undefined
+  tooltip?: string
 }) {
   if (value === null || value === undefined || value === "" || value === "—") {
     return null
   }
 
-  return (
+  const card = (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
       <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-white">{value}</p>
     </div>
   )
+
+  if (!tooltip) return card
+
+  return <Tooltip content={tooltip}>{card}</Tooltip>
 }
 
 function MetricRow({
@@ -2757,4 +2795,43 @@ function getTagTooltip(tag: string, pretty: string) {
   }
 
   return map[tag] ?? `${pretty} is a model tag used to explain part of the setup.`
+}
+
+function getMiniMetricTooltip(label: string, row: TickerScore) {
+  switch (label) {
+    case "Price":
+      return `Current share price. Useful for filtering by stock size and trading style. Current value: ${formatMoney(
+        row.price
+      )}.`
+    case "Vs Market":
+      return `Relative strength versus the broader market over the recent period. Positive means it is outperforming. Current value: ${formatPercent(
+        row.relative_strength_20d
+      )}.`
+    case "5D Move":
+      return `The stock’s move over the last 5 trading days. Helps show short-term momentum or weakness. Current value: ${formatPercent(
+        row.price_return_5d
+      )}.`
+    case "Volume":
+      return `Trading volume compared with normal. Around 1.00x is normal, above that suggests heavier activity. Current value: ${formatRatio(
+        row.volume_ratio
+      )}.`
+    case "1D Δ":
+      return `Change in the model score over the last day. Positive means the setup improved, negative means it weakened. Current value: ${formatScoreChange(
+        row.ticker_score_change_1d
+      )}.`
+    case "7D Δ":
+      return `Change in the model score over the last 7 days. Good for spotting improving or fading setups. Current value: ${formatScoreChange(
+        row.ticker_score_change_7d
+      )}.`
+    case "Stacked":
+      return `How many distinct supporting signals are stacked into this setup. More stacked signals usually means more evidence. Current value: ${formatWholeNumber(
+        row.stacked_signal_count
+      )}.`
+    case "Strength":
+      return `Quick model bucket for the setup quality. Current value: ${
+        row.signal_strength_bucket || "—"
+      }. ${getStrengthTooltip(row.signal_strength_bucket || "Signal")}`
+    default:
+      return ""
+  }
 }
