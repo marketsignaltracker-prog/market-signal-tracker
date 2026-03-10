@@ -462,10 +462,10 @@ export default function Home() {
         <section className="mt-8 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl backdrop-blur-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-              Why this page exists
+              We Did All The Research
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
-              It is supposed to make this simple
+              A loong tough process made simple...
             </h2>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               <WhySubscribeCard
