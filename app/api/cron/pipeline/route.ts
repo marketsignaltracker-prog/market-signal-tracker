@@ -45,12 +45,17 @@ type PipelineStateRow = {
 }
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
+
 const DEFAULT_SCREEN_BATCH = 300
 const MAX_SCREEN_BATCH = 350
 
+const DEFAULT_FILINGS_BATCH = 500
+const DEFAULT_SIGNALS_LIMIT = 1000
+const DEFAULT_SIGNALS_LOOKBACK_DAYS = 30
+
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
-const MAX_BATCHES_PER_RUN = 1
+const MAX_BATCHES_PER_RUN = 8
 const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
 
 function nowIso() {
@@ -358,6 +363,29 @@ export async function GET(request: NextRequest) {
       let batchesThisRun = 0
 
       while (!screeningComplete) {
+        if (shouldStopForRuntime(startedAtMs)) {
+          const updated = await patchPipelineState(supabase, {
+            stage: "screening",
+            status: "running",
+            screen_start: nextStart,
+            screen_next_start: nextStart,
+            screen_batch: batchSize,
+            last_run_finished_at: nowIso(),
+          })
+
+          return NextResponse.json({
+            ok: true,
+            message:
+              "Pipeline checkpointed during screening because runtime was nearly exhausted.",
+            stage: updated.stage,
+            status: updated.status,
+            nextStart: updated.screen_next_start,
+            batchesThisRun,
+            batchSize,
+            results,
+          })
+        }
+
         if (batchesThisRun >= MAX_BATCHES_PER_RUN) {
           const updated = await patchPipelineState(supabase, {
             stage: "screening",
@@ -371,28 +399,6 @@ export async function GET(request: NextRequest) {
           return NextResponse.json({
             ok: true,
             message: "Batch limit reached for this cron run.",
-            stage: updated.stage,
-            status: updated.status,
-            nextStart: updated.screen_next_start,
-            batchesThisRun,
-            batchSize,
-            results,
-          })
-        }
-
-        if (shouldStopForRuntime(startedAtMs)) {
-          const updated = await patchPipelineState(supabase, {
-            stage: "screening",
-            status: "running",
-            screen_start: nextStart,
-            screen_next_start: nextStart,
-            screen_batch: batchSize,
-            last_run_finished_at: nowIso(),
-          })
-
-          return NextResponse.json({
-            ok: true,
-            message: "Pipeline checkpointed during screening. Continue on next cron run.",
             stage: updated.stage,
             status: updated.status,
             nextStart: updated.screen_next_start,
@@ -481,7 +487,7 @@ export async function GET(request: NextRequest) {
         withSearchParams("/api/ingest/filings", {
           scope: "candidates",
           start: 0,
-          batch: 250,
+          batch: DEFAULT_FILINGS_BATCH,
         })
       )
 
@@ -535,8 +541,8 @@ export async function GET(request: NextRequest) {
       const signalsResult = await runStep(
         baseUrl,
         withSearchParams("/api/ingest/signals", {
-          limit: 150,
-          lookbackDays: 14,
+          limit: DEFAULT_SIGNALS_LIMIT,
+          lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
         })
       )
 
