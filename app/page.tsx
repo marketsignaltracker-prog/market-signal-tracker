@@ -174,8 +174,6 @@ type CoolingLeader = {
 }
 
 type ViewMode = "buy" | "sell" | "cooling"
-type SortPreset = "best" | "newest"
-type SortBy = "score-desc" | "date-desc"
 type PeFilterType = "all" | "15" | "25" | "40"
 type PriceFilterType =
   | "all"
@@ -285,7 +283,6 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("buy")
-  const [sortPreset, setSortPreset] = useState<SortPreset>("best")
   const [peFilter, setPeFilter] = useState<PeFilterType>("all")
   const [priceFilter, setPriceFilter] = useState<PriceFilterType>("all")
   const [categoryFilter, setCategoryFilter] = useState<SignalCategoryFilter>("all")
@@ -388,20 +385,14 @@ export default function Home() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [viewMode, sortPreset, peFilter, priceFilter, categoryFilter, scoreBandFilter])
-
-  const sortBy = useMemo<SortBy>(() => {
-    if (sortPreset === "newest") return "date-desc"
-    return "score-desc"
-  }, [sortPreset])
+  }, [viewMode, peFilter, priceFilter, categoryFilter, scoreBandFilter])
 
   const coolingLeaders = useMemo(() => {
     const currentBuyRows = bestRowPerTicker(
       rows
         .filter((row) => getBoardBucket(row) === "Buy")
         .filter((row) => getEffectiveScore(row) >= 70),
-      "buy",
-      "score-desc"
+      "buy"
     )
 
     const currentTickers = new Set(currentBuyRows.map((row) => row.ticker))
@@ -450,11 +441,19 @@ export default function Home() {
     return leaders
       .sort((a, b) => {
         if (b.peakScore !== a.peakScore) return b.peakScore - a.peakScore
-        if (b.lastScore !== a.lastScore) return b.lastScore - a.lastScore
+        if (b.scoreDrop !== a.scoreDrop) return b.scoreDrop - a.scoreDrop
         return getDateValue(b.lastScoreDate) - getDateValue(a.lastScoreDate)
       })
       .slice(0, 100)
   }, [historyRows, rows])
+
+  const coolingOrderMap = useMemo(() => {
+    const map = new Map<string, number>()
+    coolingLeaders.forEach((leader, index) => {
+      map.set(leader.ticker, index)
+    })
+    return map
+  }, [coolingLeaders])
 
   const categoryFilteredRows = useMemo(() => {
     if (viewMode === "cooling") {
@@ -480,22 +479,46 @@ export default function Home() {
       filtered = filtered
         .filter((row) => getBoardBucket(row) === "Buy")
         .filter((row) => getEffectiveScore(row) >= minScore)
-    } else if (boardMode === "risk") {
+
+      return [...filtered].sort((a, b) => compareRows(a, b, "buy"))
+    }
+
+    if (boardMode === "risk") {
       const maxScore = getRiskMaxScore(scoreBandFilter)
       filtered = filtered
         .filter((row) => getBoardBucket(row) === "Risk")
         .filter((row) => getEffectiveScore(row) <= maxScore)
-    } else {
-      filtered = filtered.filter((row) => getEffectiveScore(row) < 70)
+
+      return [...filtered].sort((a, b) => compareRows(a, b, "risk"))
     }
 
-    return [...filtered].sort((a, b) => compareRows(a, b, sortBy, boardMode === "risk" ? "risk" : "buy"))
-  }, [categoryFilteredRows, peFilter, priceFilter, sortBy, boardMode, scoreBandFilter])
+    filtered = filtered.filter((row) => getEffectiveScore(row) < 70)
 
-  const uniqueProcessedRows = useMemo(
-    () => bestRowPerTicker(processedRows, boardMode === "risk" ? "risk" : "buy", sortBy),
-    [processedRows, boardMode, sortBy]
-  )
+    return [...filtered].sort((a, b) => {
+      const aRank = coolingOrderMap.get(a.ticker) ?? Number.MAX_SAFE_INTEGER
+      const bRank = coolingOrderMap.get(b.ticker) ?? Number.MAX_SAFE_INTEGER
+      if (aRank !== bRank) return aRank - bRank
+      return compareRows(a, b, "buy")
+    })
+  }, [categoryFilteredRows, peFilter, priceFilter, boardMode, scoreBandFilter, coolingOrderMap])
+
+  const uniqueProcessedRows = useMemo(() => {
+    if (boardMode === "cooling") {
+      const seen = new Set<string>()
+      const result: TickerScore[] = []
+
+      for (const item of processedRows) {
+        const ticker = (item.ticker || "").trim().toUpperCase()
+        if (!ticker || seen.has(ticker)) continue
+        seen.add(ticker)
+        result.push(item)
+      }
+
+      return result
+    }
+
+    return bestRowPerTicker(processedRows, boardMode === "risk" ? "risk" : "buy")
+  }, [processedRows, boardMode])
 
   const totalPages = Math.max(1, Math.ceil(uniqueProcessedRows.length / CARDS_PER_PAGE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
@@ -528,14 +551,12 @@ export default function Home() {
     setViewMode(mode)
     setSelectedTicker(null)
     setHasInteracted(false)
-    setSortPreset("best")
     setCategoryFilter("all")
     setScoreBandFilter("default")
     setCurrentPage(1)
   }
 
   function resetFilters() {
-    setSortPreset("best")
     setPeFilter("all")
     setPriceFilter("all")
     setCategoryFilter("all")
@@ -589,10 +610,10 @@ export default function Home() {
 
   const boardSubheading =
     boardMode === "risk"
-      ? "The worst names appear first. Click any card to open a larger detail view."
+      ? "The weakest names are ranked first. Click any card to open a larger detail view."
       : boardMode === "cooling"
         ? "These were recent leaders that cooled off enough to fall below the strict buy threshold. Click any card to inspect whether the story is breaking or just pausing."
-        : "These are the names most likely to get chased once more eyes notice them. Click any card to open a larger detail view."
+        : "The strongest names are ranked first automatically. Click any card to open a larger detail view."
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-white">
@@ -688,10 +709,10 @@ export default function Home() {
 
           <p className="mt-3 text-sm text-slate-400">
             {viewMode === "buy"
-              ? 'Best Opportunities = "highest scoring setups that could get chased next"'
+              ? 'Best Opportunities = "strongest ranked setups, already sorted for you"'
               : viewMode === "sell"
-                ? 'Sell / Risk = "lowest scoring bearish setups"'
-                : 'Cooling Off = "recent leaders that slipped, but may still be stalking candidates"'}
+                ? 'Sell / Risk = "weakest bearish setups, ranked by danger first"'
+                : 'Cooling Off = "former leaders that slipped, but may still be stalking candidates"'}
           </p>
         </section>
 
@@ -712,50 +733,20 @@ export default function Home() {
                   Filter the board
                 </p>
                 <h2 className="mt-1 text-xl font-semibold text-white sm:text-2xl">
-                  Tune the signal view
+                  Narrow the board
                 </h2>
               </div>
 
               <div className="max-w-2xl text-sm leading-6 text-slate-400 xl:justify-self-end xl:text-right">
                 {boardMode === "risk"
-                  ? "Narrow the weakest names by risk type, price, and score."
+                  ? "Use filters to isolate the ugliest setups fast."
                   : boardMode === "cooling"
-                    ? "Focus on recently hot names that have cooled enough to fall off the main leader board."
-                    : "Narrow the strongest names by setup type, price, valuation, and score so you can spot the ones most likely to run next."}
+                    ? "Focus on recent winners that slipped just enough to become interesting again."
+                    : "Use filters to zero in on the kind of setups most likely to get noticed next."}
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,0.95fr)_140px] xl:gap-4">
-              <div className="md:col-span-2 xl:col-span-1">
-                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  Sort
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <SortButton
-                    active={sortPreset === "best"}
-                    onClick={() => {
-                      setSortPreset("best")
-                      setHasInteracted(true)
-                    }}
-                    label={
-                      boardMode === "risk"
-                        ? "Worst First"
-                        : boardMode === "cooling"
-                          ? "Best Former Leaders"
-                          : "Best"
-                    }
-                  />
-                  <SortButton
-                    active={sortPreset === "newest"}
-                    onClick={() => {
-                      setSortPreset("newest")
-                      setHasInteracted(true)
-                    }}
-                    label="Newest"
-                  />
-                </div>
-              </div>
-
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.85fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_140px] xl:gap-4">
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
                   Signal Type
@@ -985,10 +976,10 @@ export default function Home() {
 
                 <p className="text-sm leading-6 text-slate-400">
                   {boardMode === "risk"
-                    ? "This view is tuned for the weakest current setups. Tighten the filters to isolate the most dangerous names, or widen them to scan the broader risk board."
+                    ? "This board is already ranked from most dangerous downward, so filters do the heavy lifting."
                     : boardMode === "cooling"
-                      ? "This view is tuned for names that recently looked strong enough to matter, then lost enough momentum to fall out of the spotlight. Sometimes those are dead money. Sometimes they are early second-chance entries."
-                      : "This view is tuned for the strongest current setups. Use category, price, valuation, and score filters to zero in on the names most likely to attract attention next."}
+                      ? "This board is already ranked by the strongest former leaders first, so you can scan for second-chance setups without extra sorting."
+                      : "This board is already ranked from strongest setup downward, so there is no extra sort to mess with."}
                 </p>
               </div>
             </div>
@@ -998,7 +989,13 @@ export default function Home() {
         {loading && (
           <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
             <h2 className="text-2xl font-semibold">
-              Loading {boardMode === "risk" ? "risks" : boardMode === "cooling" ? "cooling setups" : "opportunities"}...
+              Loading{" "}
+              {boardMode === "risk"
+                ? "risks"
+                : boardMode === "cooling"
+                  ? "cooling setups"
+                  : "opportunities"}
+              ...
             </h2>
             <p className="mt-2 text-slate-400">Pulling the board together now.</p>
           </div>
@@ -1013,7 +1010,13 @@ export default function Home() {
         {!loading && !uniqueProcessedRows.length ? (
           <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
             <h2 className="text-2xl font-semibold">
-              No {boardMode === "risk" ? "risk names" : boardMode === "cooling" ? "cooling names" : "opportunities"} found
+              No{" "}
+              {boardMode === "risk"
+                ? "risk names"
+                : boardMode === "cooling"
+                  ? "cooling names"
+                  : "opportunities"}{" "}
+              found
             </h2>
             <p className="mt-2 text-slate-400">
               {boardMode === "risk"
@@ -1039,9 +1042,7 @@ export default function Home() {
                 >
                   {boardHeading}
                 </h2>
-                <p className="mt-1 text-sm text-slate-400">
-                  {boardSubheading}
-                </p>
+                <p className="mt-1 text-sm text-slate-400">{boardSubheading}</p>
               </div>
 
               <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
@@ -1537,30 +1538,6 @@ function TopSignalCard({
   )
 }
 
-function SortButton({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean
-  onClick: () => void
-  label: string
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "w-full rounded-2xl border px-4 py-3 text-sm font-semibold transition",
-        active
-          ? "border-white/20 bg-white/10 text-white"
-          : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10",
-      ].join(" ")}
-    >
-      {label}
-    </button>
-  )
-}
-
 function FilterChip({
   label,
   value,
@@ -1908,11 +1885,7 @@ function ReasonChip({
   )
 }
 
-function bestRowPerTicker(
-  items: TickerScore[],
-  boardMode: "buy" | "risk",
-  sortBy: SortBy
-) {
+function bestRowPerTicker(items: TickerScore[], boardMode: "buy" | "risk") {
   const map = new Map<string, TickerScore>()
 
   for (const item of items) {
@@ -1925,13 +1898,13 @@ function bestRowPerTicker(
       continue
     }
 
-    const comparison = compareRows(item, existing, sortBy, boardMode)
+    const comparison = compareRows(item, existing, boardMode)
     if (comparison < 0) {
       map.set(ticker, item)
     }
   }
 
-  return Array.from(map.values()).sort((a, b) => compareRows(a, b, sortBy, boardMode))
+  return Array.from(map.values()).sort((a, b) => compareRows(a, b, boardMode))
 }
 
 function getRowKey(row: TickerScore, index: number) {
@@ -2478,7 +2451,6 @@ function hasTagOrCap(row: TickerScore, tag: string, cap: string) {
 function compareRows(
   a: TickerScore,
   b: TickerScore,
-  sortBy: SortBy,
   boardMode: "buy" | "risk"
 ) {
   const aScore = getEffectiveScore(a)
@@ -2488,28 +2460,14 @@ function compareRows(
   const aRisk = getRiskRank(a)
   const bRisk = getRiskRank(b)
 
-  switch (sortBy) {
-    case "score-desc":
-      if (boardMode === "risk") {
-        if (aScore !== bScore) return aScore - bScore
-        if (aRisk !== bRisk) return bRisk - aRisk
-        return bDate - aDate
-      }
-      if (aScore !== bScore) return bScore - aScore
-      return bDate - aDate
-
-    case "date-desc":
-      if (aDate !== bDate) return bDate - aDate
-      if (boardMode === "risk") {
-        if (aScore !== bScore) return aScore - bScore
-        return bRisk - aRisk
-      }
-      if (aScore !== bScore) return bScore - aScore
-      return 0
-
-    default:
-      return 0
+  if (boardMode === "risk") {
+    if (aScore !== bScore) return aScore - bScore
+    if (aRisk !== bRisk) return bRisk - aRisk
+    return bDate - aDate
   }
+
+  if (aScore !== bScore) return bScore - aScore
+  return bDate - aDate
 }
 
 function getRiskRank(row: TickerScore) {
