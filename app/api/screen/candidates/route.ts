@@ -101,22 +101,23 @@ const DEFAULT_BATCH = 300
 const RETENTION_DAYS = 30
 const REQUEST_DELAY_MS = 120
 
-// Strong Buy Now universe should be liquid, established, and tradable.
+// Strong-buy-now universe should still be liquid and tradable.
 const MIN_PRICE = 5
 const MIN_AVG_VOLUME_20D = 500_000
 const MIN_AVG_DOLLAR_VOLUME_20D = 15_000_000
 const MIN_MARKET_CAP = 500_000_000
 
-// Hard gate thresholds for "Strong Buy Now".
-const MIN_STRONG_BUY_SCORE = 85
-const MIN_STRONG_BUY_VOLUME_RATIO = 1.5
-const MIN_STRONG_BUY_RETURN_10D = 6
-const MIN_STRONG_BUY_RETURN_20D = 15
-const MAX_STRONG_BUY_RETURN_20D = 35
-const MAX_EXTENSION_FROM_SMA20_PCT = 18
-const MIN_BREAKOUT_CLEARANCE_PCT = 0.25
-const MIN_CLOSE_IN_DAY_RANGE = 0.65
-const MIN_CATALYST_COUNT = 7
+// Strong-buy-now thresholds.
+// The live universe should start around 70 and 100 should be genuinely rare.
+const MIN_STRONG_BUY_SCORE = 70
+const MIN_STRONG_BUY_VOLUME_RATIO = 1.35
+const MIN_STRONG_BUY_RETURN_10D = 5
+const MIN_STRONG_BUY_RETURN_20D = 12
+const MAX_STRONG_BUY_RETURN_20D = 40
+const MAX_EXTENSION_FROM_SMA20_PCT = 22
+const MIN_BREAKOUT_CLEARANCE_PCT = 0.1
+const MIN_CLOSE_IN_DAY_RANGE = 0.55
+const MIN_CATALYST_COUNT = 6
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -159,8 +160,6 @@ function scaleBetween(value: number, min: number, max: number) {
   return clamp((value - min) / (max - min), 0, 1)
 }
 
-// Stricter about excluding non-common-share patterns while avoiding false positives
-// on regular common tickers like AAP, ABR, ACHR, etc.
 function isProbablyCommonStockTicker(ticker: string) {
   if (!ticker) return false
 
@@ -180,7 +179,6 @@ function isProbablyCommonStockTicker(ticker: string) {
     /PREFERRED/i,
     /PREF/i,
 
-    // Common SPAC-ish odd lots / test tickers
     /TEST/i,
   ]
 
@@ -297,89 +295,93 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   } = input
 
   const qualityScore =
-    18 *
+    20 *
     (
-      0.15 * (passesPrice ? 1 : 0) +
+      0.1 * (passesPrice ? 1 : 0) +
       0.2 * (passesVolume ? 1 : 0) +
       0.35 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 60_000_000) +
-      0.3 * scaleBetween(marketCap, MIN_MARKET_CAP, 10_000_000_000)
+      0.35 * scaleBetween(marketCap, MIN_MARKET_CAP, 10_000_000_000)
     )
 
   const momentumScore =
-    18 *
+    22 *
     (
-      0.2 * scaleBetween(oneDayReturn, 0, 5) +
-      0.2 * scaleBetween(return5d, 2, 10) +
-      0.25 * scaleBetween(return10d, 6, 18) +
-      0.35 * scaleBetween(return20d, 10, 28)
+      0.15 * scaleBetween(oneDayReturn, 0, 6) +
+      0.2 * scaleBetween(return5d, 1, 12) +
+      0.3 * scaleBetween(return10d, 4, 20) +
+      0.35 * scaleBetween(return20d, 8, 30)
     )
 
   const volumeScore =
     18 *
     (
-      0.7 * scaleBetween(volumeRatio, 1.2, 3.25) +
-      0.3 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 40_000_000)
+      0.75 * scaleBetween(volumeRatio, 1.1, 3.25) +
+      0.25 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 40_000_000)
     )
 
   const distanceFrom20dHighPct =
     high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
 
   let breakoutQuality = 0
-  if (breakout20d) breakoutQuality += 0.6
-  if (breakout10d) breakoutQuality += 0.1
-  if (nearHigh20) breakoutQuality += 0.05
-  breakoutQuality += 0.15 * scaleBetween(breakoutClearancePct, MIN_BREAKOUT_CLEARANCE_PCT, 3)
-  breakoutQuality += 0.1 * scaleBetween(closeInDayRange, 0.6, 1)
+  if (breakout20d) breakoutQuality += 0.5
+  if (breakout10d) breakoutQuality += 0.12
+  if (nearHigh20) breakoutQuality += 0.08
+  breakoutQuality += 0.14 * scaleBetween(breakoutClearancePct, MIN_BREAKOUT_CLEARANCE_PCT, 3)
+  breakoutQuality += 0.16 * scaleBetween(closeInDayRange, 0.55, 1)
   breakoutQuality += 0.1 * scaleBetween(distanceFrom20dHighPct, 0, 4)
 
-  const breakoutScore = 26 * clamp(breakoutQuality, 0, 1)
+  const breakoutScore = 22 * clamp(breakoutQuality, 0, 1)
 
   const smaSpreadPct = sma20 > 0 ? ((sma10 - sma20) / sma20) * 100 : 0
 
   const trendScore =
-    20 *
+    18 *
     (
-      0.35 * (aboveSma20 ? 1 : 0) +
-      0.25 * (shortTermTrendUp ? 1 : 0) +
-      0.2 * scaleBetween(smaSpreadPct, 0.3, 4) +
-      0.2 * (extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT ? 1 : 0)
+      0.32 * (aboveSma20 ? 1 : 0) +
+      0.24 * (shortTermTrendUp ? 1 : 0) +
+      0.2 * scaleBetween(smaSpreadPct, 0.2, 4) +
+      0.24 * (extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT ? 1 : 0)
     )
 
   let penaltyScore = 0
 
-  if (!passesPrice) penaltyScore -= 12
+  if (!passesPrice) penaltyScore -= 10
   if (!passesVolume) penaltyScore -= 8
-  if (!passesDollarVolume) penaltyScore -= 14
-  if (!passesMarketCap) penaltyScore -= 10
-  if (!aboveSma20) penaltyScore -= 16
-  if (!shortTermTrendUp) penaltyScore -= 10
-  if (oneDayReturn < 0) penaltyScore -= 6
-  if (return5d < 0) penaltyScore -= 8
-  if (return10d < 5) penaltyScore -= 10
-  if (return20d < 10) penaltyScore -= 14
-  if (volumeRatio < 1.2) penaltyScore -= 12
-  if (!breakout20d) penaltyScore -= 22
-  if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) penaltyScore -= 8
-  if (closeInDayRange < 0.55) penaltyScore -= 8
-  if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) penaltyScore -= 14
+  if (!passesDollarVolume) penaltyScore -= 12
+  if (!passesMarketCap) penaltyScore -= 8
+  if (!aboveSma20) penaltyScore -= 12
+  if (!shortTermTrendUp) penaltyScore -= 8
+  if (oneDayReturn < 0) penaltyScore -= 4
+  if (return5d < 0) penaltyScore -= 6
+  if (return10d < 3) penaltyScore -= 8
+  if (return20d < 8) penaltyScore -= 12
+  if (volumeRatio < 1.0) penaltyScore -= 10
+  if (!breakout20d) penaltyScore -= 16
+  if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) penaltyScore -= 5
+  if (closeInDayRange < 0.5) penaltyScore -= 6
+  if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) penaltyScore -= 10
 
-  // Fresh, high-quality breakouts should be preferred over exhausted moves.
-  if (return20d > MAX_STRONG_BUY_RETURN_20D && volumeRatio < 2.25) penaltyScore -= 10
-  if (return5d > 12 && !breakout20d) penaltyScore -= 8
+  // Strong moves can still be buy-now opportunities, but truly stretched names should come down.
+  if (return20d > MAX_STRONG_BUY_RETURN_20D) penaltyScore -= 8
+  if (extensionFromSma20Pct > 28) penaltyScore -= 8
+  if (extensionFromSma20Pct > 35) penaltyScore -= 10
+  if (return20d > 55) penaltyScore -= 10
 
   const rawScore =
     qualityScore + momentumScore + volumeScore + breakoutScore + trendScore + penaltyScore
 
-  const normalized = clamp(rawScore / 96, 0, 1)
-  let candidateScore = Math.round(Math.pow(normalized, 1.45) * 100)
+  // This mapping intentionally opens up the 70-90 zone so real buy-now names show up,
+  // while keeping 100 genuinely difficult.
+  const normalized = clamp((rawScore + 12) / 88, 0, 1)
+  let candidateScore = Math.round(Math.pow(normalized, 1.16) * 100)
 
   const catalystCount = [
     oneDayReturn > 0,
-    return5d >= 3,
+    return5d >= 2,
     return10d >= MIN_STRONG_BUY_RETURN_10D,
     return20d >= MIN_STRONG_BUY_RETURN_20D,
     return20d <= MAX_STRONG_BUY_RETURN_20D,
-    volumeRatio >= 1.5,
+    volumeRatio >= 1.25,
     volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO,
     breakout20d,
     breakout10d,
@@ -412,22 +414,24 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
 
   const eliteSetup =
     highConvictionSetup &&
-    volumeRatio >= 2.25 &&
-    return5d >= 5 &&
+    volumeRatio >= 2.1 &&
+    return5d >= 4 &&
     return10d >= 10 &&
     return20d >= 18 &&
     avgDollarVolume20d >= 25_000_000 &&
     marketCap >= 1_000_000_000 &&
-    catalystCount >= MIN_CATALYST_COUNT
+    catalystCount >= MIN_CATALYST_COUNT + 1
 
-  // Hard caps to stop mediocre setups from drifting into top scores.
-  if (!highConvictionSetup) {
+  // Caps keep mediocre names from drifting too high.
+  if (!breakout20d || !aboveSma20) {
+    candidateScore = Math.min(candidateScore, 69)
+  } else if (!highConvictionSetup) {
     candidateScore = Math.min(candidateScore, 84)
   } else if (!eliteSetup) {
-    candidateScore = Math.min(candidateScore, 92)
+    candidateScore = Math.min(candidateScore, 93)
   } else if (
     !(
-      volumeRatio >= 2.5 &&
+      volumeRatio >= 2.4 &&
       return10d >= 12 &&
       return20d >= 20 &&
       avgDollarVolume20d >= 35_000_000 &&
@@ -441,12 +445,14 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     eliteSetup &&
     volumeRatio >= 2.75 &&
     return5d >= 6 &&
-    return10d >= 12 &&
-    return20d >= 20 &&
+    return10d >= 14 &&
+    return20d >= 22 &&
     return20d <= 30 &&
-    avgDollarVolume20d >= 35_000_000 &&
-    marketCap >= 2_000_000_000 &&
-    catalystCount >= 9
+    avgDollarVolume20d >= 40_000_000 &&
+    marketCap >= 2_500_000_000 &&
+    catalystCount >= 10 &&
+    closeInDayRange >= 0.8 &&
+    breakoutClearancePct >= 1
   ) {
     candidateScore = 100
   }
@@ -900,6 +906,8 @@ export async function GET(request: Request) {
         const score = scoreDetails.candidateScore
         const catalystCount = scoreDetails.catalystCount
 
+        // This is intentionally simpler than before.
+        // The score itself already encodes most of the quality filter.
         const strongBuyNowCandidate =
           passesPrice &&
           passesVolume &&
@@ -908,7 +916,6 @@ export async function GET(request: Request) {
           breakout20d &&
           breakout10d &&
           aboveSma20 &&
-          shortTermTrendUp &&
           oneDayReturn >= 0 &&
           return10d >= MIN_STRONG_BUY_RETURN_10D &&
           return20d >= MIN_STRONG_BUY_RETURN_20D &&
@@ -918,7 +925,6 @@ export async function GET(request: Request) {
           closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE &&
           extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT &&
           score >= MIN_STRONG_BUY_SCORE &&
-          scoreDetails.highConvictionSetup &&
           catalystCount >= MIN_CATALYST_COUNT
 
         const included = strongBuyNowCandidate
@@ -929,11 +935,11 @@ export async function GET(request: Request) {
         if (passesDollarVolume) reasons.push("20d dollar volume")
         if (passesMarketCap) reasons.push("market cap")
         if (oneDayReturn > 0) reasons.push("positive day")
-        if (return5d >= 3) reasons.push("5d momentum")
+        if (return5d >= 2) reasons.push("5d momentum")
         if (return10d >= MIN_STRONG_BUY_RETURN_10D) reasons.push("10d momentum")
         if (return20d >= MIN_STRONG_BUY_RETURN_20D) reasons.push("20d momentum")
         if (return20d <= MAX_STRONG_BUY_RETURN_20D) reasons.push("not overextended on 20d move")
-        if (volumeRatio >= 1.5) reasons.push("volume expansion")
+        if (volumeRatio >= 1.25) reasons.push("volume expansion")
         if (volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO) reasons.push("strong volume expansion")
         if (breakout10d) reasons.push("10d breakout")
         if (breakout20d) reasons.push("20d breakout")
@@ -951,7 +957,6 @@ export async function GET(request: Request) {
         else if (!passesDollarVolume) exclusionReason = "Below minimum dollar volume"
         else if (!passesMarketCap) exclusionReason = "Below minimum market cap"
         else if (!aboveSma20) exclusionReason = "Below 20d average"
-        else if (!shortTermTrendUp) exclusionReason = "Short-term trend not aligned"
         else if (!breakout20d) exclusionReason = "No fresh 20d breakout"
         else if (!breakout10d) exclusionReason = "Breakout lacks short-term confirmation"
         else if (oneDayReturn < 0) exclusionReason = "Breakout day closed negative"
