@@ -101,11 +101,17 @@ const DEFAULT_BATCH = 200
 const RETENTION_DAYS = 30
 const REQUEST_DELAY_MS = 150
 
+// Board universe threshold: everything 70+ should be persisted.
+const MIN_BOARD_SCORE = 70
+
+// Liquidity / tradeability floor.
 const MIN_PRICE = 5
 const MIN_AVG_VOLUME_20D = 500_000
 const MIN_AVG_DOLLAR_VOLUME_20D = 15_000_000
 const MIN_MARKET_CAP = 500_000_000
 
+// Strong-buy-now thresholds.
+// These now describe a premium subset of the 70+ board universe.
 const MIN_STRONG_BUY_SCORE = 70
 const MIN_STRONG_BUY_VOLUME_RATIO = 1.35
 const MIN_STRONG_BUY_RETURN_10D = 5
@@ -167,8 +173,8 @@ function isProbablyCommonStockTicker(ticker: string) {
     /\//,
 
     // Units / warrants / rights / subscription receipts.
-    // Only treat these as suffixes when separated by "." or "-",
-    // so common single-letter tickers like U, R, and W are not excluded.
+    // Only suffixes separated by "." or "-" are excluded,
+    // so common single-letter tickers like U, R, and W survive.
     /[.-](WS|WT|WTS|WARRANT|WAR)$/i,
     /[.-](RT|RIGHT|RIGHTS)$/i,
     /[.-](U|R|W)$/i,
@@ -196,11 +202,18 @@ function snapshotDateString(date: Date) {
 function buildCandidateReason(params: {
   included: boolean
   strongBuyNow: boolean
+  score: number
   reasons: string[]
   exclusionReason?: string
 }) {
   if (params.included && params.strongBuyNow) {
-    return `Strong buy now: ${params.reasons.join(", ")}`
+    return `Strong buy now (${params.score}): ${params.reasons.join(", ")}`
+  }
+
+  if (params.included) {
+    return params.reasons.length
+      ? `Board candidate ${params.score}: ${params.reasons.join(", ")}`
+      : `Board candidate ${params.score}`
   }
 
   if (params.exclusionReason) {
@@ -209,7 +222,7 @@ function buildCandidateReason(params: {
 
   return params.reasons.length
     ? `Not included: ${params.reasons.join(", ")}`
-    : "No strong-buy-now factors passed"
+    : "No qualifying board factors passed"
 }
 
 function sanitizeYahooErrorMessage(raw: unknown) {
@@ -486,9 +499,7 @@ async function writeHistoryRow(
 }
 
 async function removeFromUniverse(candidateUniverseTable: any, ticker: string) {
-  return candidateUniverseTable
-    .delete({ count: "exact" })
-    .eq("ticker", ticker)
+  return candidateUniverseTable.delete({ count: "exact" }).eq("ticker", ticker)
 }
 
 async function upsertUniverseRow(candidateUniverseTable: any, row: CandidateUniverseRow) {
@@ -605,6 +616,7 @@ export async function GET(request: Request) {
 
     const results: Array<Record<string, any>> = []
     let includedInBatch = 0
+    let strongBuyNowInBatch = 0
     let failedInBatch = 0
     let historyInserted = 0
     let historyWriteErrors = 0
@@ -941,9 +953,12 @@ export async function GET(request: Request) {
           score >= MIN_STRONG_BUY_SCORE &&
           catalystCount >= MIN_CATALYST_COUNT
 
-        const included = strongBuyNowCandidate
+        // Main change:
+        // Persist all names that score 70 or above.
+        const included = score >= MIN_BOARD_SCORE
 
         const reasons: string[] = []
+        if (score >= MIN_BOARD_SCORE) reasons.push(`score >= ${MIN_BOARD_SCORE}`)
         if (passesPrice) reasons.push(`price >= $${MIN_PRICE}`)
         if (passesVolume) reasons.push("20d avg volume")
         if (passesDollarVolume) reasons.push("20d dollar volume")
@@ -964,25 +979,14 @@ export async function GET(request: Request) {
         if (extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT) reasons.push("not too extended from 20d average")
         if (scoreDetails.highConvictionSetup) reasons.push("high-conviction setup")
         if (scoreDetails.eliteSetup) reasons.push("elite setup")
+        if (strongBuyNowCandidate) reasons.push("strong-buy-now qualified")
 
         let exclusionReason = ""
-        if (!passesPrice) exclusionReason = `Below $${MIN_PRICE} minimum price`
+        if (score < MIN_BOARD_SCORE) exclusionReason = `Score below board threshold (${MIN_BOARD_SCORE})`
+        else if (!passesPrice) exclusionReason = `Below $${MIN_PRICE} minimum price`
         else if (!passesVolume) exclusionReason = "Below minimum average volume"
         else if (!passesDollarVolume) exclusionReason = "Below minimum dollar volume"
         else if (!passesMarketCap) exclusionReason = "Below minimum market cap"
-        else if (!aboveSma20) exclusionReason = "Below 20d average"
-        else if (!breakout20d) exclusionReason = "No fresh 20d breakout"
-        else if (!breakout10d) exclusionReason = "Breakout lacks short-term confirmation"
-        else if (oneDayReturn < 0) exclusionReason = "Breakout day closed negative"
-        else if (return10d < MIN_STRONG_BUY_RETURN_10D) exclusionReason = "10d momentum below strong-buy threshold"
-        else if (return20d < MIN_STRONG_BUY_RETURN_20D) exclusionReason = "20d momentum below strong-buy threshold"
-        else if (return20d > MAX_STRONG_BUY_RETURN_20D) exclusionReason = "Move is too extended for fresh entry"
-        else if (volumeRatio < MIN_STRONG_BUY_VOLUME_RATIO) exclusionReason = "Volume expansion below strong-buy threshold"
-        else if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) exclusionReason = "Breakout clearance too small"
-        else if (closeInDayRange < MIN_CLOSE_IN_DAY_RANGE) exclusionReason = "Close too weak within daily range"
-        else if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) exclusionReason = "Too extended from 20d average"
-        else if (score < MIN_STRONG_BUY_SCORE) exclusionReason = "Score below strong-buy threshold"
-        else if (catalystCount < MIN_CATALYST_COUNT) exclusionReason = "Not enough strong-buy catalysts"
 
         const row: CandidateUniverseRow = {
           ticker,
@@ -1013,6 +1017,7 @@ export async function GET(request: Request) {
           screen_reason: buildCandidateReason({
             included,
             strongBuyNow: strongBuyNowCandidate,
+            score,
             reasons,
             exclusionReason,
           }),
@@ -1035,6 +1040,7 @@ export async function GET(request: Request) {
           }
 
           includedInBatch += 1
+          if (strongBuyNowCandidate) strongBuyNowInBatch += 1
         } else {
           const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
 
@@ -1069,9 +1075,14 @@ export async function GET(request: Request) {
           ticker,
           ok: true,
           included,
+          strongBuyNowCandidate,
           score,
           rawScore: round2(scoreDetails.rawScore),
-          tier: included ? "strong_buy_now" : "not_included",
+          tier: strongBuyNowCandidate
+            ? "strong_buy_now"
+            : included
+              ? "board_candidate"
+              : "not_included",
           reason: row.screen_reason,
           price: round2(latestClose),
           oneDayReturn: round2(oneDayReturn),
@@ -1116,11 +1127,20 @@ export async function GET(request: Request) {
 
     const [
       { count: candidateCount, error: includedCountError },
+      { count: boardCount70, error: boardCountError },
+      { count: strongBuyCount, error: strongBuyCountError },
       { count: historyCount, error: historyCountError },
     ] = await Promise.all([
       candidateUniverseTable
         .select("*", { count: "exact", head: true })
         .eq("included", true),
+      candidateUniverseTable
+        .select("*", { count: "exact", head: true })
+        .gte("candidate_score", MIN_BOARD_SCORE),
+      candidateUniverseTable
+        .select("*", { count: "exact", head: true })
+        .gte("candidate_score", MIN_STRONG_BUY_SCORE)
+        .ilike("screen_reason", "Strong buy now:%"),
       candidateHistoryTable.select("*", { count: "exact", head: true }),
     ])
 
@@ -1140,17 +1160,21 @@ export async function GET(request: Request) {
       nextStart,
       onlyActive,
       includedInBatch,
+      strongBuyNowInBatch,
       failedInBatch,
       historyWriteErrors,
       keptUniverseOnTransientError,
       removedFromUniverseInBatch,
       includedCount: includedCountError ? null : candidateCount,
+      boardCount70: boardCountError ? null : boardCount70,
+      strongBuyCount: strongBuyCountError ? null : strongBuyCount,
       historyInserted,
       historyCount: historyCountError ? null : historyCount,
       retentionCleanup: retentionError ? retentionError.message : "ok",
       retainedDays: RETENTION_DAYS,
       screenedOn,
       thresholds: {
+        minBoardScore: MIN_BOARD_SCORE,
         minPrice: MIN_PRICE,
         minAvgVolume20d: MIN_AVG_VOLUME_20D,
         minAvgDollarVolume20d: MIN_AVG_DOLLAR_VOLUME_20D,
