@@ -345,18 +345,18 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
 
   let penaltyScore = 0
 
-  if (!passesPrice) penaltyScore -= 10
-  if (!passesVolume) penaltyScore -= 8
-  if (!passesDollarVolume) penaltyScore -= 12
-  if (!passesMarketCap) penaltyScore -= 8
-  if (!aboveSma20) penaltyScore -= 12
-  if (!shortTermTrendUp) penaltyScore -= 8
-  if (oneDayReturn < 0) penaltyScore -= 4
-  if (return5d < 0) penaltyScore -= 6
-  if (return10d < 3) penaltyScore -= 8
-  if (return20d < 8) penaltyScore -= 12
-  if (volumeRatio < 1.0) penaltyScore -= 10
-  if (!breakout20d) penaltyScore -= 16
+  if (!passesPrice) penaltyScore -= 6
+if (!passesVolume) penaltyScore -= 4
+if (!passesDollarVolume) penaltyScore -= 6
+if (!passesMarketCap) penaltyScore -= 4
+if (!aboveSma20) penaltyScore -= 6
+if (!shortTermTrendUp) penaltyScore -= 4
+if (oneDayReturn < 0) penaltyScore -= 2
+if (return5d < 0) penaltyScore -= 3
+if (return10d < 3) penaltyScore -= 4
+if (return20d < 8) penaltyScore -= 6
+if (volumeRatio < 1.0) penaltyScore -= 5
+if (!breakout20d) penaltyScore -= 8
   if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) penaltyScore -= 5
   if (closeInDayRange < 0.5) penaltyScore -= 6
   if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) penaltyScore -= 10
@@ -372,7 +372,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
 
   // This mapping intentionally opens up the 70-90 zone so real buy-now names show up,
   // while keeping 100 genuinely difficult.
-  const normalized = clamp((rawScore + 12) / 88, 0, 1)
+  const normalized = clamp((rawScore + 25) / 110, 0, 1)
   let candidateScore = Math.round(Math.pow(normalized, 1.16) * 100)
 
   const catalystCount = [
@@ -424,7 +424,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
 
   // Caps keep mediocre names from drifting too high.
   if (!breakout20d || !aboveSma20) {
-    candidateScore = Math.min(candidateScore, 69)
+    candidateScore = Math.min(candidateScore, 60)
   } else if (!highConvictionSetup) {
     candidateScore = Math.min(candidateScore, 84)
   } else if (!eliteSetup) {
