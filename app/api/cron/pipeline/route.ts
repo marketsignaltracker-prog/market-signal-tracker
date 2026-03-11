@@ -122,6 +122,13 @@ function isRecentRun(dateString: string | null | undefined, windowMs: number) {
   return Date.now() - ts < windowMs
 }
 
+function clampScreenBatch(batch: number | null | undefined) {
+  return Math.min(
+    Math.max(1, batch || DEFAULT_SCREEN_BATCH),
+    MAX_SCREEN_BATCH
+  )
+}
+
 async function runStep(baseUrl: string, path: string): Promise<StepResult> {
   const pipelineToken = process.env.PIPELINE_TOKEN
 
@@ -169,8 +176,8 @@ async function getPipelineState(supabase: any): Promise<PipelineStateRow> {
     .maybeSingle()
 
   if (error) {
-  throw new Error(`Failed to load pipeline state: ${JSON.stringify(error)}`)
-}
+    throw new Error(`Failed to load pipeline state: ${JSON.stringify(error)}`)
+  }
 
   if (data) {
     return data as PipelineStateRow
@@ -226,6 +233,61 @@ async function patchPipelineState(
   return data as PipelineStateRow
 }
 
+async function tryAcquireRunLock(
+  supabase: any,
+  currentState: PipelineStateRow,
+  runStartedIso: string
+): Promise<{ acquired: boolean; state: PipelineStateRow }> {
+  const pipelineStateTable = supabase.from("pipeline_state") as any
+
+  if (
+    currentState.status === "running" &&
+    isRecentRun(currentState.last_run_started_at, RUN_LOCK_WINDOW_MS)
+  ) {
+    return { acquired: false, state: currentState }
+  }
+
+  const nextStage: PipelineStage =
+    currentState.stage === "idle" ||
+    currentState.stage === "complete" ||
+    currentState.stage === "error"
+      ? "companies"
+      : currentState.stage
+
+  const { data, error } = await pipelineStateTable
+    .update({
+      status: "running",
+      stage: nextStage,
+      last_run_started_at: runStartedIso,
+      last_run_finished_at: null,
+      last_error: null,
+      last_error_at: null,
+      cycle_started_at: currentState.cycle_started_at ?? runStartedIso,
+      screen_batch: clampScreenBatch(currentState.screen_batch),
+    })
+    .eq("job_name", PIPELINE_JOB_NAME)
+    .or(
+      [
+        "status.neq.running",
+        `last_run_started_at.lt.${new Date(Date.now() - RUN_LOCK_WINDOW_MS).toISOString()}`,
+        "last_run_started_at.is.null",
+      ].join(",")
+    )
+    .select("*")
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Failed to acquire pipeline lock: ${error.message}`)
+  }
+
+  if (!data) {
+    const freshState = await getPipelineState(supabase)
+    return { acquired: false, state: freshState }
+  }
+
+  return { acquired: true, state: data as PipelineStateRow }
+}
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization")
   const cronSecret = process.env.CRON_SECRET
@@ -267,10 +329,10 @@ export async function GET(request: NextRequest) {
 
     let state = await getPipelineState(supabase)
 
-    if (
-      state.status === "running" &&
-      isRecentRun(state.last_run_started_at, RUN_LOCK_WINDOW_MS)
-    ) {
+    const lock = await tryAcquireRunLock(supabase, state, runStartedIso)
+    state = lock.state
+
+    if (!lock.acquired) {
       return NextResponse.json({
         ok: true,
         message: "Skipped because another pipeline run is already in progress.",
@@ -287,23 +349,6 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    state = await patchPipelineState(supabase, {
-      status: "running",
-      last_run_started_at: runStartedIso,
-      last_run_finished_at: null,
-      last_error: null,
-      last_error_at: null,
-      stage:
-        state.stage === "idle" || state.stage === "complete" || state.stage === "error"
-          ? "companies"
-          : state.stage,
-      cycle_started_at: state.cycle_started_at ?? runStartedIso,
-      screen_batch: Math.min(
-        Math.max(1, state.screen_batch || DEFAULT_SCREEN_BATCH),
-        MAX_SCREEN_BATCH
-      ),
-    })
-
     const results: StepResult[] = []
 
     if (
@@ -316,14 +361,16 @@ export async function GET(request: NextRequest) {
       results.push(companiesResult)
 
       if (!companiesResult.ok) {
+        const failedAt = nowIso()
+
         await patchPipelineState(supabase, {
           stage: "error",
           status: "error",
           last_error: `Companies step failed: ${String(
             (companiesResult.data as any)?.error || companiesResult.status
           )}`,
-          last_error_at: nowIso(),
-          last_run_finished_at: nowIso(),
+          last_error_at: failedAt,
+          last_run_finished_at: failedAt,
         })
 
         return NextResponse.json(
@@ -337,26 +384,27 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      const transitionAt = nowIso()
+
       state = await patchPipelineState(supabase, {
         stage: "screening",
         status: "running",
         screen_start: 0,
         screen_next_start: 0,
-        screen_batch: DEFAULT_SCREEN_BATCH,
+        screen_batch: clampScreenBatch(state.screen_batch),
         screen_total: null,
         filings_completed_at: null,
         signals_completed_at: null,
         cycle_completed_at: null,
-        cycle_started_at: state.cycle_started_at ?? runStartedIso,
+        cycle_started_at: state.cycle_started_at ?? transitionAt,
       })
     }
 
     if (state.stage === "screening") {
       let nextStart = state.screen_next_start ?? state.screen_start ?? 0
 
-      const batchSize = Math.min(
-        Math.max(1, parseInteger(String(state.screen_batch), DEFAULT_SCREEN_BATCH)),
-        MAX_SCREEN_BATCH
+      const batchSize = clampScreenBatch(
+        parseInteger(String(state.screen_batch), DEFAULT_SCREEN_BATCH)
       )
 
       let screeningComplete = false
@@ -364,13 +412,15 @@ export async function GET(request: NextRequest) {
 
       while (!screeningComplete) {
         if (shouldStopForRuntime(startedAtMs)) {
+          const checkpointAt = nowIso()
+
           const updated = await patchPipelineState(supabase, {
             stage: "screening",
             status: "running",
             screen_start: nextStart,
             screen_next_start: nextStart,
             screen_batch: batchSize,
-            last_run_finished_at: nowIso(),
+            last_run_finished_at: checkpointAt,
           })
 
           return NextResponse.json({
@@ -387,13 +437,15 @@ export async function GET(request: NextRequest) {
         }
 
         if (batchesThisRun >= MAX_BATCHES_PER_RUN) {
+          const checkpointAt = nowIso()
+
           const updated = await patchPipelineState(supabase, {
             stage: "screening",
             status: "running",
             screen_start: nextStart,
             screen_next_start: nextStart,
             screen_batch: batchSize,
-            last_run_finished_at: nowIso(),
+            last_run_finished_at: checkpointAt,
           })
 
           return NextResponse.json({
@@ -419,6 +471,8 @@ export async function GET(request: NextRequest) {
         batchesThisRun += 1
 
         if (!screenResult.ok) {
+          const failedAt = nowIso()
+
           await patchPipelineState(supabase, {
             stage: "error",
             status: "error",
@@ -428,8 +482,8 @@ export async function GET(request: NextRequest) {
             last_error: `Screening step failed at start=${nextStart}: ${String(
               (screenResult.data as any)?.error || screenResult.status
             )}`,
-            last_error_at: nowIso(),
-            last_run_finished_at: nowIso(),
+            last_error_at: failedAt,
+            last_run_finished_at: failedAt,
           })
 
           return NextResponse.json(
@@ -468,10 +522,12 @@ export async function GET(request: NextRequest) {
 
     if (state.stage === "filings") {
       if (shouldStopForRuntime(startedAtMs)) {
+        const checkpointAt = nowIso()
+
         await patchPipelineState(supabase, {
           stage: "filings",
           status: "running",
-          last_run_finished_at: nowIso(),
+          last_run_finished_at: checkpointAt,
         })
 
         return NextResponse.json({
@@ -494,14 +550,16 @@ export async function GET(request: NextRequest) {
       results.push(filingsResult)
 
       if (!filingsResult.ok) {
+        const failedAt = nowIso()
+
         await patchPipelineState(supabase, {
           stage: "error",
           status: "error",
           last_error: `Filings step failed: ${String(
             (filingsResult.data as any)?.error || filingsResult.status
           )}`,
-          last_error_at: nowIso(),
-          last_run_finished_at: nowIso(),
+          last_error_at: failedAt,
+          last_run_finished_at: failedAt,
         })
 
         return NextResponse.json(
@@ -515,19 +573,23 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      const completedAt = nowIso()
+
       state = await patchPipelineState(supabase, {
         stage: "signals",
         status: "running",
-        filings_completed_at: nowIso(),
+        filings_completed_at: completedAt,
       })
     }
 
     if (state.stage === "signals") {
       if (shouldStopForRuntime(startedAtMs)) {
+        const checkpointAt = nowIso()
+
         await patchPipelineState(supabase, {
           stage: "signals",
           status: "running",
-          last_run_finished_at: nowIso(),
+          last_run_finished_at: checkpointAt,
         })
 
         return NextResponse.json({
@@ -549,14 +611,16 @@ export async function GET(request: NextRequest) {
       results.push(signalsResult)
 
       if (!signalsResult.ok) {
+        const failedAt = nowIso()
+
         await patchPipelineState(supabase, {
           stage: "error",
           status: "error",
           last_error: `Signals step failed: ${String(
             (signalsResult.data as any)?.error || signalsResult.status
           )}`,
-          last_error_at: nowIso(),
-          last_run_finished_at: nowIso(),
+          last_error_at: failedAt,
+          last_run_finished_at: failedAt,
         })
 
         return NextResponse.json(
@@ -570,42 +634,53 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      const completedAt = nowIso()
+
       state = await patchPipelineState(supabase, {
         stage: "complete",
         status: "success",
         screen_start: 0,
         screen_next_start: 0,
-        screen_batch: DEFAULT_SCREEN_BATCH,
-        signals_completed_at: nowIso(),
-        cycle_completed_at: nowIso(),
-        last_success_at: nowIso(),
-        last_run_finished_at: nowIso(),
+        screen_batch: clampScreenBatch(state.screen_batch),
+        signals_completed_at: completedAt,
+        cycle_completed_at: completedAt,
+        last_success_at: completedAt,
+        last_run_finished_at: completedAt,
       })
     }
 
+    const responseState = {
+      stage: state.stage,
+      status: state.status,
+      screenStart: state.screen_start,
+      screenNextStart: state.screen_next_start,
+      screenBatch: state.screen_batch,
+      screenTotal: state.screen_total,
+      lastSuccessAt: state.last_success_at,
+    }
+
     if (state.stage === "complete") {
-      state = await patchPipelineState(supabase, {
+      await patchPipelineState(supabase, {
         stage: "idle",
         status: "idle",
         screen_start: 0,
         screen_next_start: 0,
-        screen_batch: DEFAULT_SCREEN_BATCH,
+        screen_batch: clampScreenBatch(state.screen_batch),
         cycle_started_at: null,
+      })
+
+      return NextResponse.json({
+        ok: true,
+        message: "Pipeline cycle completed successfully",
+        state: responseState,
+        results,
       })
     }
 
     return NextResponse.json({
       ok: true,
-      message: "Pipeline cycle completed successfully",
-      state: {
-        stage: state.stage,
-        status: state.status,
-        screenStart: state.screen_start,
-        screenNextStart: state.screen_next_start,
-        screenBatch: state.screen_batch,
-        screenTotal: state.screen_total,
-        lastSuccessAt: state.last_success_at,
-      },
+      message: "Pipeline run completed",
+      state: responseState,
       results,
     })
   } catch (error) {
@@ -614,14 +689,19 @@ export async function GET(request: NextRequest) {
 
     try {
       const supabase = getSupabaseAdmin()
+      const currentState = await getPipelineState(supabase)
 
-      await patchPipelineState(supabase, {
-        stage: "error",
-        status: "error",
-        last_error: message,
-        last_error_at: nowIso(),
-        last_run_finished_at: nowIso(),
-      })
+      if (currentState.last_error !== message || currentState.status !== "error") {
+        const failedAt = nowIso()
+
+        await patchPipelineState(supabase, {
+          stage: "error",
+          status: "error",
+          last_error: message,
+          last_error_at: failedAt,
+          last_run_finished_at: failedAt,
+        })
+      }
     } catch {
       // ignore secondary failure
     }

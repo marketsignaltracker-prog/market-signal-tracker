@@ -101,14 +101,11 @@ const DEFAULT_BATCH = 200
 const RETENTION_DAYS = 30
 const REQUEST_DELAY_MS = 150
 
-// Strong-buy-now universe should still be liquid and tradable.
 const MIN_PRICE = 5
 const MIN_AVG_VOLUME_20D = 500_000
 const MIN_AVG_DOLLAR_VOLUME_20D = 15_000_000
 const MIN_MARKET_CAP = 500_000_000
 
-// Strong-buy-now thresholds.
-// The live universe should start around 70 and 100 should be genuinely rare.
 const MIN_STRONG_BUY_SCORE = 70
 const MIN_STRONG_BUY_VOLUME_RATIO = 1.35
 const MIN_STRONG_BUY_RETURN_10D = 5
@@ -169,13 +166,15 @@ function isProbablyCommonStockTicker(ticker: string) {
     /\^/,
     /\//,
 
-    // Units / warrants / rights / subscription receipts
-    /(?:^|[-.])(WS|WT|WTS|WARRANT|WAR)$/i,
-    /(?:^|[-.])(W|U|R)$/i,
-    /(?:^|[-.])(RT|RIGHT|RIGHTS)$/i,
+    // Units / warrants / rights / subscription receipts.
+    // Only treat these as suffixes when separated by "." or "-",
+    // so common single-letter tickers like U, R, and W are not excluded.
+    /[.-](WS|WT|WTS|WARRANT|WAR)$/i,
+    /[.-](RT|RIGHT|RIGHTS)$/i,
+    /[.-](U|R|W)$/i,
 
-    // Preferred / preference share classes
-    /(?:^|[-.])P(?:R)?[A-Z]{0,2}$/i,
+    // Preferred / preference share classes.
+    /[.-]P(?:R)?[A-Z]{0,2}$/i,
     /PREFERRED/i,
     /PREF/i,
 
@@ -346,22 +345,21 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   let penaltyScore = 0
 
   if (!passesPrice) penaltyScore -= 6
-if (!passesVolume) penaltyScore -= 4
-if (!passesDollarVolume) penaltyScore -= 6
-if (!passesMarketCap) penaltyScore -= 4
-if (!aboveSma20) penaltyScore -= 6
-if (!shortTermTrendUp) penaltyScore -= 4
-if (oneDayReturn < 0) penaltyScore -= 2
-if (return5d < 0) penaltyScore -= 3
-if (return10d < 3) penaltyScore -= 4
-if (return20d < 8) penaltyScore -= 6
-if (volumeRatio < 1.0) penaltyScore -= 5
-if (!breakout20d) penaltyScore -= 8
+  if (!passesVolume) penaltyScore -= 4
+  if (!passesDollarVolume) penaltyScore -= 6
+  if (!passesMarketCap) penaltyScore -= 4
+  if (!aboveSma20) penaltyScore -= 6
+  if (!shortTermTrendUp) penaltyScore -= 4
+  if (oneDayReturn < 0) penaltyScore -= 2
+  if (return5d < 0) penaltyScore -= 3
+  if (return10d < 3) penaltyScore -= 4
+  if (return20d < 8) penaltyScore -= 6
+  if (volumeRatio < 1.0) penaltyScore -= 5
+  if (!breakout20d) penaltyScore -= 8
   if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) penaltyScore -= 5
   if (closeInDayRange < 0.5) penaltyScore -= 6
   if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) penaltyScore -= 10
 
-  // Strong moves can still be buy-now opportunities, but truly stretched names should come down.
   if (return20d > MAX_STRONG_BUY_RETURN_20D) penaltyScore -= 8
   if (extensionFromSma20Pct > 28) penaltyScore -= 8
   if (extensionFromSma20Pct > 35) penaltyScore -= 10
@@ -370,8 +368,6 @@ if (!breakout20d) penaltyScore -= 8
   const rawScore =
     qualityScore + momentumScore + volumeScore + breakoutScore + trendScore + penaltyScore
 
-  // This mapping intentionally opens up the 70-90 zone so real buy-now names show up,
-  // while keeping 100 genuinely difficult.
   const normalized = clamp((rawScore + 25) / 110, 0, 1)
   let candidateScore = Math.round(Math.pow(normalized, 1.16) * 100)
 
@@ -422,7 +418,6 @@ if (!breakout20d) penaltyScore -= 8
     marketCap >= 1_000_000_000 &&
     catalystCount >= MIN_CATALYST_COUNT + 1
 
-  // Caps keep mediocre names from drifting too high.
   if (!breakout20d || !aboveSma20) {
     candidateScore = Math.min(candidateScore, 60)
   } else if (!highConvictionSetup) {
@@ -491,13 +486,54 @@ async function writeHistoryRow(
 }
 
 async function removeFromUniverse(candidateUniverseTable: any, ticker: string) {
-  return candidateUniverseTable.delete().eq("ticker", ticker)
+  return candidateUniverseTable
+    .delete({ count: "exact" })
+    .eq("ticker", ticker)
 }
 
 async function upsertUniverseRow(candidateUniverseTable: any, row: CandidateUniverseRow) {
   return candidateUniverseTable.upsert(row, {
     onConflict: "ticker",
   })
+}
+
+function buildNullMetricsRow(params: {
+  ticker: string
+  cik: string
+  name: string | null
+  reason: string
+  nowIso: string
+}): CandidateUniverseRow {
+  return {
+    ticker: params.ticker,
+    cik: params.cik,
+    name: params.name,
+    price: null,
+    market_cap: null,
+    avg_volume_20d: null,
+    avg_dollar_volume_20d: null,
+    one_day_return: null,
+    return_5d: null,
+    return_10d: null,
+    return_20d: null,
+    volume_ratio: null,
+    breakout_20d: false,
+    breakout_10d: false,
+    above_sma_20: false,
+    breakout_clearance_pct: null,
+    extension_from_sma20_pct: null,
+    close_in_day_range: null,
+    catalyst_count: 0,
+    passes_price: false,
+    passes_volume: false,
+    passes_dollar_volume: false,
+    passes_market_cap: false,
+    candidate_score: 0,
+    included: false,
+    screen_reason: params.reason,
+    last_screened_at: params.nowIso,
+    updated_at: params.nowIso,
+  }
 }
 
 export async function GET(request: Request) {
@@ -584,7 +620,9 @@ export async function GET(request: Request) {
 
           if (ticker) {
             const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
-            if (!deleteResult.error) removedFromUniverseInBatch += 1
+            if (!deleteResult.error) {
+              removedFromUniverseInBatch += deleteResult.count || 0
+            }
           }
 
           results.push({
@@ -598,36 +636,13 @@ export async function GET(request: Request) {
         }
 
         if (!isProbablyCommonStockTicker(ticker)) {
-          const excludedRow: CandidateUniverseRow = {
+          const excludedRow = buildNullMetricsRow({
             ticker,
             cik: company.cik,
             name: company.name,
-            price: null,
-            market_cap: null,
-            avg_volume_20d: null,
-            avg_dollar_volume_20d: null,
-            one_day_return: null,
-            return_5d: null,
-            return_10d: null,
-            return_20d: null,
-            volume_ratio: null,
-            breakout_20d: false,
-            breakout_10d: false,
-            above_sma_20: false,
-            breakout_clearance_pct: null,
-            extension_from_sma20_pct: null,
-            close_in_day_range: null,
-            catalyst_count: 0,
-            passes_price: false,
-            passes_volume: false,
-            passes_dollar_volume: false,
-            passes_market_cap: false,
-            candidate_score: 0,
-            included: false,
-            screen_reason: "Excluded likely non-common-share ticker",
-            last_screened_at: nowIso,
-            updated_at: nowIso,
-          }
+            reason: "Excluded likely non-common-share ticker",
+            nowIso,
+          })
 
           const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
           if (deleteResult.error) {
@@ -641,7 +656,7 @@ export async function GET(request: Request) {
             continue
           }
 
-          removedFromUniverseInBatch += 1
+          removedFromUniverseInBatch += deleteResult.count || 0
 
           const historyResult = await writeHistoryRow(
             candidateHistoryTable,
@@ -700,8 +715,31 @@ export async function GET(request: Request) {
           const disposition = classifyYahooError(err)
 
           if (disposition.kind === "permanent") {
+            const excludedRow = buildNullMetricsRow({
+              ticker,
+              cik: company.cik,
+              name: company.name,
+              reason: `Permanent Yahoo error: ${disposition.reason}`,
+              nowIso,
+            })
+
             const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
-            if (!deleteResult.error) removedFromUniverseInBatch += 1
+            if (!deleteResult.error) {
+              removedFromUniverseInBatch += deleteResult.count || 0
+            }
+
+            const historyResult = await writeHistoryRow(
+              candidateHistoryTable,
+              excludedRow,
+              screenedOn,
+              nowIso
+            )
+
+            if (historyResult.error) {
+              historyWriteErrors += 1
+            } else {
+              historyInserted += 1
+            }
 
             failedInBatch += 1
             results.push({
@@ -709,7 +747,8 @@ export async function GET(request: Request) {
               ok: false,
               error: disposition.reason,
               errorKind: "permanent_yahoo_error",
-              removedFromUniverse: true,
+              removedFromUniverse: !deleteResult.error,
+              historyWarning: historyResult.error ? historyResult.error.message : null,
             })
 
             await sleep(REQUEST_DELAY_MS)
@@ -741,36 +780,13 @@ export async function GET(request: Request) {
           .sort((a, b) => +new Date(a.date) - +new Date(b.date))
 
         if (clean.length < 22) {
-          const row: CandidateUniverseRow = {
+          const row = buildNullMetricsRow({
             ticker,
             cik: company.cik,
             name: company.name,
-            price: null,
-            market_cap: null,
-            avg_volume_20d: null,
-            avg_dollar_volume_20d: null,
-            one_day_return: null,
-            return_5d: null,
-            return_10d: null,
-            return_20d: null,
-            volume_ratio: null,
-            breakout_20d: false,
-            breakout_10d: false,
-            above_sma_20: false,
-            breakout_clearance_pct: null,
-            extension_from_sma20_pct: null,
-            close_in_day_range: null,
-            catalyst_count: 0,
-            passes_price: false,
-            passes_volume: false,
-            passes_dollar_volume: false,
-            passes_market_cap: false,
-            candidate_score: 0,
-            included: false,
-            screen_reason: "Not enough price history",
-            last_screened_at: nowIso,
-            updated_at: nowIso,
-          }
+            reason: "Not enough price history",
+            nowIso,
+          })
 
           const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
           if (deleteResult.error) {
@@ -784,7 +800,7 @@ export async function GET(request: Request) {
             continue
           }
 
-          removedFromUniverseInBatch += 1
+          removedFromUniverseInBatch += deleteResult.count || 0
 
           const historyResult = await writeHistoryRow(
             candidateHistoryTable,
@@ -906,8 +922,6 @@ export async function GET(request: Request) {
         const score = scoreDetails.candidateScore
         const catalystCount = scoreDetails.catalystCount
 
-        // This is intentionally simpler than before.
-        // The score itself already encodes most of the quality filter.
         const strongBuyNowCandidate =
           passesPrice &&
           passesVolume &&
@@ -1035,7 +1049,7 @@ export async function GET(request: Request) {
             continue
           }
 
-          removedFromUniverseInBatch += 1
+          removedFromUniverseInBatch += deleteResult.count || 0
         }
 
         const historyResult = await writeHistoryRow(
