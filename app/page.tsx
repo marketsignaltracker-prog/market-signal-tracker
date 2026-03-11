@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { supabase } from "../lib/supabase"
 
 type CandidateUniverseRow = {
@@ -625,7 +626,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
       <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
-        <section className="relative overflow-visible rounded-[2rem] border border-emerald-400/15 bg-white/[0.04] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:rounded-[2.5rem] sm:p-8 lg:p-10">
+        <section className="relative overflow-hidden rounded-[2rem] border border-emerald-400/15 bg-white/[0.04] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:rounded-[2.5rem] sm:p-8 lg:p-10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(234,179,8,0.08),_transparent_28%)]" />
           <div className="relative">
             <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300 sm:px-4 sm:text-xs">
@@ -1119,28 +1120,67 @@ function Tooltip({
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+  const [trigger, setTrigger] = useState<HTMLSpanElement | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!open || !trigger) return
+
+    const updatePosition = () => {
+      const rect = trigger.getBoundingClientRect()
+
+      setPosition({
+        top: rect.top + window.scrollY,
+        left: rect.left + window.scrollX + rect.width / 2,
+      })
+    }
+
+    updatePosition()
+
+    window.addEventListener("scroll", updatePosition, true)
+    window.addEventListener("resize", updatePosition)
+
+    return () => {
+      window.removeEventListener("scroll", updatePosition, true)
+      window.removeEventListener("resize", updatePosition)
+    }
+  }, [open, trigger])
 
   return (
-    <span
-      className="relative inline-flex"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onClick={(e) => {
-        e.stopPropagation()
-        setOpen((prev) => !prev)
-      }}
-    >
-      <span className="inline-flex">{children}</span>
-
+    <>
       <span
-        className={[
-          "pointer-events-none absolute bottom-[calc(100%+10px)] left-1/2 z-40 w-max max-w-[260px] -translate-x-1/2 rounded-xl border border-white/10 bg-slate-950/95 px-3 py-2 text-left text-xs leading-5 text-slate-200 shadow-2xl backdrop-blur transition",
-          open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
-        ].join(" ")}
+        ref={setTrigger}
+        className="inline-flex w-full"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen((prev) => !prev)
+        }}
       >
-        {content}
+        {children}
       </span>
-    </span>
+
+      {mounted &&
+        open &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed z-[9999] max-w-[260px] -translate-x-1/2 -translate-y-full rounded-xl border border-white/10 bg-slate-950/95 px-3 py-2 text-xs text-slate-200 shadow-2xl backdrop-blur"
+            style={{
+              top: position.top,
+              left: position.left,
+            }}
+          >
+            {content}
+          </div>,
+          document.body
+        )}
+    </>
   )
 }
 
