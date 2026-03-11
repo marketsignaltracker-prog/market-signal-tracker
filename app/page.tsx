@@ -753,7 +753,7 @@ export default function Home() {
     <span className="text-xs text-slate-400">{filtersOpen ? "▲" : "▼"}</span>
   </button>
 </div>
-            </div>
+   </div>
 
             {filtersOpen ? (
               <div
