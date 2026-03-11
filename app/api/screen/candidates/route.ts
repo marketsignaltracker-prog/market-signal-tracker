@@ -92,14 +92,13 @@ type YahooErrorDisposition = {
 }
 
 const yahooFinance = new YahooFinance({
-  queue: { concurrency: 1 },
+  queue: { concurrency: 3 },
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
 const MAX_BATCH = 350
 const DEFAULT_BATCH = 300
 const RETENTION_DAYS = 30
-const REQUEST_DELAY_MS = 120
 
 // Strong-buy-now universe should still be liquid and tradable.
 const MIN_PRICE = 5
