@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { createPortal } from "react-dom"
 import { supabase } from "../lib/supabase"
 
 type CandidateUniverseRow = {
@@ -1120,67 +1119,28 @@ function Tooltip({
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-  const [position, setPosition] = useState({ top: 0, left: 0 })
-  const [trigger, setTrigger] = useState<HTMLSpanElement | null>(null)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (!open || !trigger) return
-
-    const updatePosition = () => {
-      const rect = trigger.getBoundingClientRect()
-
-      setPosition({
-        top: rect.top + window.scrollY,
-        left: rect.left + window.scrollX + rect.width / 2,
-      })
-    }
-
-    updatePosition()
-
-    window.addEventListener("scroll", updatePosition, true)
-    window.addEventListener("resize", updatePosition)
-
-    return () => {
-      window.removeEventListener("scroll", updatePosition, true)
-      window.removeEventListener("resize", updatePosition)
-    }
-  }, [open, trigger])
 
   return (
-    <>
-      <span
-        ref={setTrigger}
-        className="inline-flex w-full"
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onClick={(e) => {
-          e.stopPropagation()
-          setOpen((prev) => !prev)
-        }}
-      >
-        {children}
-      </span>
+    <span
+      className="relative inline-flex"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      onClick={(e) => {
+        e.stopPropagation()
+        setOpen((prev) => !prev)
+      }}
+    >
+      <span className="inline-flex">{children}</span>
 
-      {mounted &&
-        open &&
-        createPortal(
-          <div
-            className="pointer-events-none fixed z-[9999] max-w-[260px] -translate-x-1/2 -translate-y-full rounded-xl border border-white/10 bg-slate-950/95 px-3 py-2 text-xs text-slate-200 shadow-2xl backdrop-blur"
-            style={{
-              top: position.top,
-              left: position.left,
-            }}
-          >
-            {content}
-          </div>,
-          document.body
-        )}
-    </>
+      <span
+        className={[
+          "pointer-events-none absolute bottom-[calc(100%+10px)] left-1/2 z-40 w-max max-w-[260px] -translate-x-1/2 rounded-xl border border-white/10 bg-slate-950/95 px-3 py-2 text-left text-xs leading-5 text-slate-200 shadow-2xl backdrop-blur transition",
+          open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
+        ].join(" ")}
+      >
+        {content}
+      </span>
+    </span>
   )
 }
 
@@ -1280,7 +1240,7 @@ function FeaturedStrongBuyCard({
 
         {!!reasons.length && (
   <div className="mt-4 sm:mt-5">
-    <div className="mx-auto flex w-full max-w-[360px] flex-wrap justify-center gap-2">
+    <div className="mx-auto flex w-full max-w-[420px] flex-wrap justify-center gap-2">
       {reasons.map((reason) => (
         <ReasonChip key={reason} label={reason} />
       ))}
