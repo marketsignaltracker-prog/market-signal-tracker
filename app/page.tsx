@@ -625,7 +625,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
       <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
-        <section className="relative overflow-hidden rounded-[2rem] border border-emerald-400/15 bg-white/[0.04] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:rounded-[2.5rem] sm:p-8 lg:p-10">
+        <section className="relative overflow-visible rounded-[2rem] border border-emerald-400/15 bg-white/[0.04] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:rounded-[2.5rem] sm:p-8 lg:p-10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(234,179,8,0.08),_transparent_28%)]" />
           <div className="relative">
             <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300 sm:px-4 sm:text-xs">
@@ -1240,7 +1240,7 @@ function FeaturedStrongBuyCard({
 
         {!!reasons.length && (
   <div className="mt-4 sm:mt-5">
-    <div className="mx-auto flex w-full max-w-[420px] flex-wrap justify-center gap-2">
+    <div className="mx-auto flex w-full max-w-[360px] flex-wrap justify-center gap-2">
       {reasons.map((reason) => (
         <ReasonChip key={reason} label={reason} />
       ))}
