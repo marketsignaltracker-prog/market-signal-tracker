@@ -621,58 +621,58 @@ export default function Home() {
   return (
     <main className="min-h-screen w-full overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
       <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
-        <section className="relative w-full min-w-0 overflow-hidden rounded-[2rem] border border-emerald-400/15 bg-white/[0.04] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:rounded-[2.5rem] sm:p-6 lg:p-8">
-  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.16),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.10),_transparent_30%)]" />
+        <section className="relative w-full min-w-0 overflow-hidden rounded-[1.5rem] border border-emerald-400/15 bg-white/[0.04] p-3 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-sm sm:rounded-[2rem] sm:p-5 lg:p-7">
+  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_30%)]" />
 
   <div className="relative min-w-0">
-    <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
       <div className="min-w-0 max-w-3xl">
-        <p className="inline-flex max-w-full rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300 sm:px-4 sm:text-xs">
+        <p className="inline-flex max-w-full rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-emerald-300 sm:px-4 sm:text-xs">
           Daily Strong Buy List
         </p>
 
-        <h1 className="mt-4 max-w-3xl break-words text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
+        <h1 className="mt-3 max-w-3xl break-words text-2xl font-bold leading-tight tracking-tight text-white sm:mt-4 sm:text-4xl lg:text-5xl">
           Find the strongest setups fast.
         </h1>
 
-        <p className="mt-3 max-w-2xl break-words text-sm leading-7 text-slate-300 sm:text-base sm:leading-8">
+        <p className="mt-2 max-w-2xl break-words text-sm leading-6 text-slate-300 sm:mt-3 sm:text-base sm:leading-7">
           Cut through the noise and go straight to the names showing the highest conviction today.
         </p>
 
-        <div className="mt-5 inline-flex max-w-full items-center rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm text-slate-300">
-          Updated <span className="ml-2 font-semibold text-white">{lastUpdated ?? "—"}</span>
+        <div className="mt-3 inline-flex max-w-full items-center rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-slate-300 sm:mt-4 sm:px-4 sm:py-2 sm:text-sm">
+          <span className="shrink-0 text-slate-400">Updated</span>
+          <span className="ml-2 truncate font-semibold text-white">{lastUpdated ?? "—"}</span>
         </div>
       </div>
 
-      <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:w-[380px] lg:grid-cols-2">
-        <div className="min-w-0 rounded-[1.5rem] border border-emerald-400/20 bg-[linear-gradient(145deg,rgba(16,185,129,0.18),rgba(255,255,255,0.03))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
+      <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:gap-3 lg:w-[360px]">
+        <div className="min-w-0 rounded-[1.25rem] border border-emerald-400/20 bg-[linear-gradient(145deg,rgba(16,185,129,0.18),rgba(255,255,255,0.03))] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.24)] sm:rounded-[1.5rem] sm:p-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 sm:text-[11px]">
             Strong Buys
           </p>
-          <p className="mt-3 break-words text-4xl font-bold tracking-tight text-white sm:text-5xl">
+          <p className="mt-2 break-words text-3xl font-bold leading-none tracking-tight text-white sm:mt-3 sm:text-5xl">
             {loading ? "…" : String(strongBuyCount)}
           </p>
-          <p className="mt-2 text-sm text-slate-300">
-            Best ideas on the board right now
+          <p className="mt-1.5 text-xs leading-5 text-slate-300 sm:mt-2 sm:text-sm">
+            Best ideas right now
           </p>
         </div>
 
-        <div className="min-w-0 rounded-[1.5rem] border border-white/10 bg-black/20 p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+        <div className="min-w-0 rounded-[1.25rem] border border-white/10 bg-black/20 p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)] sm:rounded-[1.5rem] sm:p-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300 sm:text-[11px]">
             Elite Buys
           </p>
-          <p className="mt-3 break-words text-4xl font-bold tracking-tight text-white sm:text-5xl">
+          <p className="mt-2 break-words text-3xl font-bold leading-none tracking-tight text-white sm:mt-3 sm:text-5xl">
             {loading ? "…" : String(eliteCount)}
           </p>
-          <p className="mt-2 text-sm text-slate-400">
-            Highest-conviction opportunities today
+          <p className="mt-1.5 text-xs leading-5 text-slate-400 sm:mt-2 sm:text-sm">
+            Highest conviction
           </p>
         </div>
       </div>
     </div>
   </div>
 </section>
-
         <section className="mt-6 w-full min-w-0 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 shadow-xl backdrop-blur-sm sm:mt-8 sm:rounded-[2rem] sm:p-6">
           <div className="mb-5 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
