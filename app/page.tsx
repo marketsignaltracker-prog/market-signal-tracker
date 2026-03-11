@@ -1904,7 +1904,6 @@ function SignalDetailsModal({
                 <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
                 <MetricRow label="Sector" value={row.sector || null} />
                 <MetricRow label="Industry" value={row.industry || null} />
-                <MetricRow label="Model version" value={row.score_version || null} />
               </div>
             </div>
           </div>
