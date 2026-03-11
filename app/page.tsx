@@ -1247,17 +1247,19 @@ function FeaturedStrongBuyCard({
         )}
 
         {!!miniMetrics.length && (
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-5 lg:grid-cols-2 xl:grid-cols-3">
-            {miniMetrics.map((item) => (
-              <MiniMetric
-                key={item.label}
-                label={item.label}
-                value={item.value}
-                tooltip={item.tooltip}
-              />
-            ))}
-          </div>
-        )}
+  <div className="mt-5 flex justify-center">
+    <div className="grid w-full max-w-[420px] grid-cols-2 gap-3">
+      {miniMetrics.map((item) => (
+        <MiniMetric
+          key={item.label}
+          label={item.label}
+          value={item.value}
+          tooltip={item.tooltip}
+        />
+      ))}
+    </div>
+  </div>
+)}
 
         <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:mt-5 sm:gap-4">
           <div className="min-w-0">
@@ -1463,7 +1465,7 @@ function MiniMetric({
   tooltip?: string
 }) {
   const card = (
-    <div className="flex h-full min-h-[78px] flex-col justify-between rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 sm:min-h-[88px] sm:px-4 sm:py-3">
+    <div className="flex h-[92px] flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-center">
       <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400 sm:text-xs">{label}</p>
       <p className="mt-2 text-sm font-semibold text-white sm:text-base">{value}</p>
     </div>
