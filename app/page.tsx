@@ -146,21 +146,8 @@ type TickerScore = {
 }
 
 type CandidateUniverseRow = {
+  [key: string]: any
   ticker: string
-  name?: string | null
-  price?: number | null
-  market_cap?: number | null
-  pe_ratio?: number | null
-  pe_forward?: number | null
-  pe_type?: string | null
-  sector?: string | null
-  industry?: string | null
-  business_description?: string | null
-  candidate_score?: number | null
-  included?: boolean | null
-  screen_reason?: string | null
-  last_screened_at?: string | null
-  updated_at?: string | null
 }
 
 type PriceFilterType =
@@ -189,11 +176,12 @@ type ReasonLine = {
 }
 
 const CARDS_PER_PAGE = 18
+const CANDIDATE_FETCH_CHUNK = 100
 
 function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
   return {
     id: row.id,
-    ticker: (row.ticker || "").trim().toUpperCase(),
+    ticker: normalizeTicker(row.ticker),
     company_name: row.company_name ?? null,
     business_description: row.business_description ?? null,
     price: row.price ?? null,
@@ -262,6 +250,42 @@ function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
   }
 }
 
+function normalizeTicker(value?: string | null) {
+  return (value || "").trim().toUpperCase()
+}
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
+
+function firstNonNull<T>(...values: Array<T | null | undefined>): T | null {
+  for (const value of values) {
+    if (value !== null && value !== undefined) return value
+  }
+  return null
+}
+
+function getCandidateCompanyName(row: CandidateUniverseRow) {
+  return firstNonNull<string>(
+    row.company_name,
+    row.name,
+    row.title,
+    row.company
+  )
+}
+
+function getCandidateBusinessDescription(row: CandidateUniverseRow) {
+  return firstNonNull<string>(
+    row.business_description,
+    row.description,
+    row.company_description
+  )
+}
+
 function mergeTickerWithCandidate(
   row: TickerScore,
   candidate?: CandidateUniverseRow | null
@@ -270,17 +294,58 @@ function mergeTickerWithCandidate(
 
   return {
     ...row,
-    company_name: row.company_name ?? candidate.name ?? null,
-    business_description: row.business_description ?? candidate.business_description ?? null,
-    price: row.price ?? candidate.price ?? null,
-    market_cap: row.market_cap ?? candidate.market_cap ?? null,
-    pe_ratio: row.pe_ratio ?? candidate.pe_ratio ?? null,
-    pe_forward: row.pe_forward ?? candidate.pe_forward ?? null,
-    pe_type: row.pe_type ?? candidate.pe_type ?? null,
-    sector: row.sector ?? candidate.sector ?? null,
-    industry: row.industry ?? candidate.industry ?? null,
-    updated_at: row.updated_at ?? candidate.updated_at ?? null,
+    company_name: firstNonNull(row.company_name, getCandidateCompanyName(candidate)),
+    business_description: firstNonNull(
+      row.business_description,
+      getCandidateBusinessDescription(candidate)
+    ),
+    price: firstNonNull(row.price, candidate.price),
+    market_cap: firstNonNull(row.market_cap, candidate.market_cap),
+    pe_ratio: firstNonNull(row.pe_ratio, candidate.pe_ratio),
+    pe_forward: firstNonNull(row.pe_forward, candidate.pe_forward),
+    pe_type: firstNonNull(row.pe_type, candidate.pe_type),
+    sector: firstNonNull(row.sector, candidate.sector),
+    industry: firstNonNull(row.industry, candidate.industry),
+    updated_at: firstNonNull(row.updated_at, candidate.updated_at),
   }
+}
+
+async function fetchCandidateUniverseMap(
+  tickers: string[]
+): Promise<Map<string, CandidateUniverseRow>> {
+  const normalizedTickers = Array.from(
+    new Set(tickers.map(normalizeTicker).filter(Boolean))
+  )
+
+  const candidateMap = new Map<string, CandidateUniverseRow>()
+
+  if (!normalizedTickers.length) return candidateMap
+
+  const chunks = chunkArray(normalizedTickers, CANDIDATE_FETCH_CHUNK)
+
+  for (const chunk of chunks) {
+    const response = await supabase
+      .from("candidate_universe")
+      .select("*")
+      .in("ticker", chunk)
+
+    if (response.error) {
+      console.error("candidate_universe chunk fetch failed", {
+        chunk,
+        error: response.error,
+      })
+      continue
+    }
+
+    const rows = (response.data as CandidateUniverseRow[]) ?? []
+    for (const row of rows) {
+      const ticker = normalizeTicker(row.ticker)
+      if (!ticker) continue
+      candidateMap.set(ticker, row)
+    }
+  }
+
+  return candidateMap
 }
 
 export default function Home() {
@@ -319,43 +384,19 @@ export default function Home() {
         let currentRows: TickerScore[] = []
 
         if (!tickerScoresResponse.error && (tickerScoresResponse.data?.length ?? 0) > 0) {
-          const tickerRows = ((tickerScoresResponse.data as TickerScore[]) ?? []).filter(
-            (row) => !!row.ticker && getEffectiveScore(row) >= 70
+          const tickerRows = ((tickerScoresResponse.data as TickerScore[]) ?? [])
+            .map((row) => ({
+              ...row,
+              ticker: normalizeTicker(row.ticker),
+            }))
+            .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
+
+          const candidateMap = await fetchCandidateUniverseMap(
+            tickerRows.map((row) => row.ticker)
           )
-
-          const tickers = Array.from(
-            new Set(
-              tickerRows
-                .map((row) => (row.ticker || "").trim().toUpperCase())
-                .filter(Boolean)
-            )
-          )
-
-          let candidateMap = new Map<string, CandidateUniverseRow>()
-
-          if (tickers.length > 0) {
-            const candidateResponse = await supabase
-              .from("candidate_universe")
-              .select(
-                "ticker, name, price, market_cap, pe_ratio, pe_forward, pe_type, sector, industry, business_description, candidate_score, included, screen_reason, last_screened_at, updated_at"
-              )
-              .in("ticker", tickers)
-
-            if (!candidateResponse.error && (candidateResponse.data?.length ?? 0) > 0) {
-              candidateMap = new Map(
-                ((candidateResponse.data as CandidateUniverseRow[]) ?? []).map((row) => [
-                  (row.ticker || "").trim().toUpperCase(),
-                  row,
-                ])
-              )
-            }
-          }
 
           currentRows = tickerRows.map((row) =>
-            mergeTickerWithCandidate(
-              row,
-              candidateMap.get((row.ticker || "").trim().toUpperCase()) ?? null
-            )
+            mergeTickerWithCandidate(row, candidateMap.get(row.ticker) ?? null)
           )
         } else {
           const signalsResponse = await supabase
@@ -383,42 +424,16 @@ export default function Home() {
             .map(mapSignalRowToTickerScore)
             .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
 
-          const tickers = Array.from(
-            new Set(
-              signalRows
-                .map((row) => (row.ticker || "").trim().toUpperCase())
-                .filter(Boolean)
-            )
+          const candidateMap = await fetchCandidateUniverseMap(
+            signalRows.map((row) => row.ticker)
           )
 
-          let candidateMap = new Map<string, CandidateUniverseRow>()
-
-          if (tickers.length > 0) {
-            const candidateResponse = await supabase
-              .from("candidate_universe")
-              .select(
-                "ticker, name, price, market_cap, pe_ratio, pe_forward, pe_type, sector, industry, business_description, candidate_score, included, screen_reason, last_screened_at, updated_at"
-              )
-              .in("ticker", tickers)
-
-            if (!candidateResponse.error && (candidateResponse.data?.length ?? 0) > 0) {
-              candidateMap = new Map(
-                ((candidateResponse.data as CandidateUniverseRow[]) ?? []).map((row) => [
-                  (row.ticker || "").trim().toUpperCase(),
-                  row,
-                ])
-              )
-            }
-          }
-
           currentRows = signalRows.map((row) =>
-            mergeTickerWithCandidate(
-              row,
-              candidateMap.get((row.ticker || "").trim().toUpperCase()) ?? null
-            )
+            mergeTickerWithCandidate(row, candidateMap.get(row.ticker) ?? null)
           )
         }
 
+        if (!isMounted) return
         setRows(bestRowPerTicker(currentRows))
         setLoading(false)
       } catch (err: any) {
@@ -944,18 +959,20 @@ function bestRowPerTicker(items: TickerScore[]) {
   const map = new Map<string, TickerScore>()
 
   for (const item of items) {
-    const ticker = (item.ticker || "").trim().toUpperCase()
+    const ticker = normalizeTicker(item.ticker)
     if (!ticker) continue
 
+    const normalizedItem = { ...item, ticker }
     const existing = map.get(ticker)
+
     if (!existing) {
-      map.set(ticker, item)
+      map.set(ticker, normalizedItem)
       continue
     }
 
-    const comparison = compareRows(item, existing)
+    const comparison = compareRows(normalizedItem, existing)
     if (comparison < 0) {
-      map.set(ticker, item)
+      map.set(ticker, normalizedItem)
     }
   }
 
@@ -1966,6 +1983,7 @@ function SignalDetailsModal({
                 <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
                 <MetricRow label="Sector" value={row.sector || null} />
                 <MetricRow label="Industry" value={row.industry || null} />
+                <MetricRow label="Model version" value={row.score_version || null} />
               </div>
             </div>
           </div>
