@@ -1247,19 +1247,19 @@ function FeaturedStrongBuyCard({
         )}
 
         {!!miniMetrics.length && (
-          <div className="mt-5 flex justify-center">
-            <div className="grid w-[min(100%,22rem)] grid-cols-2 gap-4">
-              {miniMetrics.map((item) => (
-                <MiniMetric
-                  key={item.label}
-                  label={item.label}
-                  value={item.value}
-                  tooltip={item.tooltip}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+  <div className="mt-6 flex justify-center">
+    <div className="grid grid-cols-2 gap-4 w-[280px] sm:w-[320px]">
+      {miniMetrics.map((item) => (
+        <MiniMetric
+          key={item.label}
+          label={item.label}
+          value={item.value}
+          tooltip={item.tooltip}
+        />
+      ))}
+    </div>
+  </div>
+)}
 
         <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:mt-5 sm:gap-4">
           <div className="min-w-0">
@@ -1464,15 +1464,21 @@ function MiniMetric({
   value: string
   tooltip?: string
 }) {
-  const card = (
-    <div className="relative flex h-[112px] w-full flex-col items-center justify-center overflow-hidden rounded-[1.6rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-4 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.08),_transparent_42%)]" />
-      <div className="relative flex w-full flex-col items-center justify-center">
-        <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400 sm:text-xs">{label}</p>
-        <p className="mt-3 text-2xl font-semibold tracking-tight text-white">{value}</p>
+  return (
+    <div
+      title={tooltip}
+      className="h-[92px] w-full rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur flex flex-col items-center justify-center text-center shadow-inner"
+    >
+      <div className="text-[11px] tracking-[0.25em] text-white/50 mb-1">
+        {label}
+      </div>
+
+      <div className="text-xl font-semibold text-white">
+        {value}
       </div>
     </div>
   )
+}
 
   if (!tooltip) return card
   return <Tooltip content={tooltip}>{card}</Tooltip>
