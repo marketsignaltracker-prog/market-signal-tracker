@@ -591,13 +591,16 @@ export default function Home() {
   const pageStart = remainingRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
   const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, remainingRows.length)
 
-  const selectedRow = useMemo(() => {
+    const selectedRow = useMemo(() => {
     if (!selectedTicker) return null
     return rows.find((row) => row.ticker === selectedTicker) ?? null
   }, [rows, selectedTicker])
 
   const lastUpdated = getLastUpdated(rows)
-   const activeFilterCount = useMemo(() => {
+  const strongBuyCount = filteredRows.length
+  const eliteCount = filteredRows.filter((row) => row.display_score >= 90).length
+
+  const activeFilterCount = useMemo(() => {
     let count = 0
     if (priceFilter !== "all") count += 1
     if (peFilter !== "all") count += 1
