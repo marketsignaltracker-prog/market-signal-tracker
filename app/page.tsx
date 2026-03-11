@@ -733,22 +733,26 @@ export default function Home() {
                   Refine the board
                 </p>
                 <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
-                  Narrow today’s list only when you want to
+                  Narrow today’s list
                 </h2>
                 <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
-                  The board starts clean by default. Open filters when you want to focus on price ranges, freshness, sector, or only the highest-rated setups.
+                  Open filters when you want to focus on price ranges, freshness, sector, or only the highest-rated setups.
                 </p>
               </div>
 
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                <div className="flex flex-wrap items-center gap-2">
-                  <BoardChip label="Names showing" value={String(filteredRows.length)} />
-                  {activeFilterCount > 0 ? (
-                    <BoardChip label="Filters active" value={String(activeFilterCount)} />
-                  ) : (
-                    <BoardChip label="View" value="Default" />
-                  )}
-                </div>
+                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+  <button
+    type="button"
+    onClick={() => setFiltersOpen((prev) => !prev)}
+    aria-expanded={filtersOpen}
+    aria-controls="filter-board-panel"
+    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200"
+  >
+    <span>{filtersOpen ? "Hide filters" : "Show filters"}</span>
+    <span className="text-xs text-slate-400">{filtersOpen ? "▲" : "▼"}</span>
+  </button>
+</div>
 
                 <button
   type="button"
