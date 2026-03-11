@@ -146,8 +146,75 @@ type TickerScore = {
 }
 
 type CandidateUniverseRow = {
-  [key: string]: any
+  id?: number
   ticker: string
+  company_name?: string | null
+  business_description?: string | null
+  description?: string | null
+  price?: number | null
+
+  app_score?: number | null
+  score?: number | null
+  raw_score?: number | null
+
+  bias?: string | null
+  board_bucket?: string | null
+  signal_strength_bucket?: string | null
+
+  score_version?: string | null
+  score_updated_at?: string | null
+  stacked_signal_count?: number | null
+  score_breakdown?: Record<string, number> | null
+  signal_reasons?: string[] | null
+  score_caps_applied?: string[] | null
+  signal_tags?: string[] | null
+
+  signal_type?: string | null
+  signal_source?: string | null
+  signal_category?: string | null
+  title?: string | null
+  summary?: string | null
+
+  filed_at?: string | null
+  accession_no?: string | null
+  source_form?: string | null
+
+  pe_ratio?: number | null
+  pe_forward?: number | null
+  pe_type?: string | null
+  market_cap?: number | null
+  sector?: string | null
+  industry?: string | null
+
+  insider_action?: string | null
+  insider_shares?: number | null
+  insider_avg_price?: number | null
+  insider_buy_value?: number | null
+  cluster_buyers?: number | null
+  cluster_shares?: number | null
+
+  price_return_5d?: number | null
+  price_return_20d?: number | null
+  volume_ratio?: number | null
+  breakout_20d?: boolean | null
+  breakout_52w?: boolean | null
+  above_50dma?: boolean | null
+  trend_aligned?: boolean | null
+  price_confirmed?: boolean | null
+  relative_strength_20d?: number | null
+
+  earnings_surprise_pct?: number | null
+  revenue_growth_pct?: number | null
+  guidance_flag?: boolean | null
+
+  age_days?: number | null
+  freshness_bucket?: string | null
+
+  ticker_score_change_1d?: number | null
+  ticker_score_change_7d?: number | null
+
+  updated_at?: string | null
+  created_at?: string | null
 }
 
 type PriceFilterType =
@@ -176,7 +243,17 @@ type ReasonLine = {
 }
 
 const CARDS_PER_PAGE = 18
-const CANDIDATE_FETCH_CHUNK = 100
+
+function normalizeTicker(value?: string | null) {
+  return (value || "").trim().toUpperCase()
+}
+
+function firstNonNull<T>(...values: Array<T | null | undefined>): T | null {
+  for (const value of values) {
+    if (value !== null && value !== undefined) return value
+  }
+  return null
+}
 
 function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
   return {
@@ -250,102 +327,176 @@ function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
   }
 }
 
-function normalizeTicker(value?: string | null) {
-  return (value || "").trim().toUpperCase()
-}
+function mapCandidateUniverseRowToTickerScore(row: CandidateUniverseRow): TickerScore {
+  return {
+    id: row.id,
+    ticker: normalizeTicker(row.ticker),
+    company_name: row.company_name ?? null,
+    business_description: firstNonNull(row.business_description, row.description),
 
-function chunkArray<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
+    price: row.price ?? null,
+
+    app_score: firstNonNull(row.app_score, row.score, row.raw_score),
+    raw_score: firstNonNull(row.raw_score, row.score, row.app_score),
+
+    bias: row.bias ?? null,
+    board_bucket: row.board_bucket ?? null,
+    signal_strength_bucket: row.signal_strength_bucket ?? null,
+
+    score_version: row.score_version ?? "candidate-universe",
+    score_updated_at: row.score_updated_at ?? row.updated_at ?? null,
+    stacked_signal_count: row.stacked_signal_count ?? null,
+
+    score_breakdown: row.score_breakdown ?? null,
+    signal_reasons: row.signal_reasons ?? null,
+    score_caps_applied: row.score_caps_applied ?? null,
+    signal_tags: Array.isArray(row.signal_tags) ? row.signal_tags : [],
+
+    primary_signal_type: row.signal_type ?? null,
+    primary_signal_source: row.signal_source ?? null,
+    primary_signal_category: row.signal_category ?? null,
+    primary_title: row.title ?? null,
+    primary_summary: row.summary ?? null,
+
+    filed_at: row.filed_at ?? null,
+    accession_nos: row.accession_no ? [row.accession_no] : [],
+    source_forms: row.source_form ? [row.source_form] : [],
+
+    pe_ratio: row.pe_ratio ?? null,
+    pe_forward: row.pe_forward ?? null,
+    pe_type: row.pe_type ?? null,
+    market_cap: row.market_cap ?? null,
+    sector: row.sector ?? null,
+    industry: row.industry ?? null,
+
+    insider_action: row.insider_action ?? null,
+    insider_shares: row.insider_shares ?? null,
+    insider_avg_price: row.insider_avg_price ?? null,
+    insider_buy_value: row.insider_buy_value ?? null,
+    cluster_buyers: row.cluster_buyers ?? null,
+    cluster_shares: row.cluster_shares ?? null,
+
+    price_return_5d: row.price_return_5d ?? null,
+    price_return_20d: row.price_return_20d ?? null,
+    volume_ratio: row.volume_ratio ?? null,
+    breakout_20d: row.breakout_20d ?? null,
+    breakout_52w: row.breakout_52w ?? null,
+    above_50dma: row.above_50dma ?? null,
+    trend_aligned: row.trend_aligned ?? null,
+    price_confirmed: row.price_confirmed ?? null,
+    relative_strength_20d: row.relative_strength_20d ?? null,
+
+    earnings_surprise_pct: row.earnings_surprise_pct ?? null,
+    revenue_growth_pct: row.revenue_growth_pct ?? null,
+    guidance_flag: row.guidance_flag ?? null,
+
+    age_days: row.age_days ?? null,
+    freshness_bucket: row.freshness_bucket ?? null,
+
+    ticker_score_change_1d: row.ticker_score_change_1d ?? null,
+    ticker_score_change_7d: row.ticker_score_change_7d ?? null,
+
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
   }
-  return chunks
 }
 
-function firstNonNull<T>(...values: Array<T | null | undefined>): T | null {
-  for (const value of values) {
-    if (value !== null && value !== undefined) return value
-  }
-  return null
-}
-
-function getCandidateCompanyName(row: CandidateUniverseRow) {
-  return firstNonNull<string>(
-    row.company_name,
-    row.name,
-    row.title,
-    row.company
-  )
-}
-
-function getCandidateBusinessDescription(row: CandidateUniverseRow) {
-  return firstNonNull<string>(
-    row.business_description,
-    row.description,
-    row.company_description
-  )
-}
-
-function mergeTickerWithCandidate(
-  row: TickerScore,
-  candidate?: CandidateUniverseRow | null
-): TickerScore {
-  if (!candidate) return row
+function mergeTickerRows(primary: TickerScore, secondary?: TickerScore | null): TickerScore {
+  if (!secondary) return primary
 
   return {
-    ...row,
-    company_name: firstNonNull(row.company_name, getCandidateCompanyName(candidate)),
+    ...secondary,
+    ...primary,
+
+    ticker: normalizeTicker(primary.ticker || secondary.ticker),
+
+    company_name: firstNonNull(primary.company_name, secondary.company_name),
     business_description: firstNonNull(
-      row.business_description,
-      getCandidateBusinessDescription(candidate)
+      primary.business_description,
+      secondary.business_description
     ),
-    price: firstNonNull(row.price, candidate.price),
-    market_cap: firstNonNull(row.market_cap, candidate.market_cap),
-    pe_ratio: firstNonNull(row.pe_ratio, candidate.pe_ratio),
-    pe_forward: firstNonNull(row.pe_forward, candidate.pe_forward),
-    pe_type: firstNonNull(row.pe_type, candidate.pe_type),
-    sector: firstNonNull(row.sector, candidate.sector),
-    industry: firstNonNull(row.industry, candidate.industry),
-    updated_at: firstNonNull(row.updated_at, candidate.updated_at),
+    price: firstNonNull(primary.price, secondary.price),
+
+    app_score: firstNonNull(primary.app_score, secondary.app_score),
+    raw_score: firstNonNull(primary.raw_score, secondary.raw_score),
+    bias: firstNonNull(primary.bias, secondary.bias),
+    board_bucket: firstNonNull(primary.board_bucket, secondary.board_bucket),
+    signal_strength_bucket: firstNonNull(
+      primary.signal_strength_bucket,
+      secondary.signal_strength_bucket
+    ),
+
+    score_version: firstNonNull(primary.score_version, secondary.score_version),
+    score_updated_at: firstNonNull(primary.score_updated_at, secondary.score_updated_at),
+    stacked_signal_count: firstNonNull(primary.stacked_signal_count, secondary.stacked_signal_count),
+
+    score_breakdown: firstNonNull(primary.score_breakdown, secondary.score_breakdown),
+    signal_reasons: firstNonNull(primary.signal_reasons, secondary.signal_reasons),
+    score_caps_applied: firstNonNull(primary.score_caps_applied, secondary.score_caps_applied),
+    signal_tags: firstNonNull(primary.signal_tags, secondary.signal_tags),
+
+    primary_signal_type: firstNonNull(primary.primary_signal_type, secondary.primary_signal_type),
+    primary_signal_source: firstNonNull(primary.primary_signal_source, secondary.primary_signal_source),
+    primary_signal_category: firstNonNull(
+      primary.primary_signal_category,
+      secondary.primary_signal_category
+    ),
+    primary_title: firstNonNull(primary.primary_title, secondary.primary_title),
+    primary_summary: firstNonNull(primary.primary_summary, secondary.primary_summary),
+
+    filed_at: firstNonNull(primary.filed_at, secondary.filed_at),
+    accession_nos: firstNonNull(primary.accession_nos, secondary.accession_nos),
+    source_forms: firstNonNull(primary.source_forms, secondary.source_forms),
+
+    pe_ratio: firstNonNull(primary.pe_ratio, secondary.pe_ratio),
+    pe_forward: firstNonNull(primary.pe_forward, secondary.pe_forward),
+    pe_type: firstNonNull(primary.pe_type, secondary.pe_type),
+    market_cap: firstNonNull(primary.market_cap, secondary.market_cap),
+    sector: firstNonNull(primary.sector, secondary.sector),
+    industry: firstNonNull(primary.industry, secondary.industry),
+
+    insider_action: firstNonNull(primary.insider_action, secondary.insider_action),
+    insider_shares: firstNonNull(primary.insider_shares, secondary.insider_shares),
+    insider_avg_price: firstNonNull(primary.insider_avg_price, secondary.insider_avg_price),
+    insider_buy_value: firstNonNull(primary.insider_buy_value, secondary.insider_buy_value),
+    cluster_buyers: firstNonNull(primary.cluster_buyers, secondary.cluster_buyers),
+    cluster_shares: firstNonNull(primary.cluster_shares, secondary.cluster_shares),
+
+    price_return_5d: firstNonNull(primary.price_return_5d, secondary.price_return_5d),
+    price_return_20d: firstNonNull(primary.price_return_20d, secondary.price_return_20d),
+    volume_ratio: firstNonNull(primary.volume_ratio, secondary.volume_ratio),
+    breakout_20d: firstNonNull(primary.breakout_20d, secondary.breakout_20d),
+    breakout_52w: firstNonNull(primary.breakout_52w, secondary.breakout_52w),
+    above_50dma: firstNonNull(primary.above_50dma, secondary.above_50dma),
+    trend_aligned: firstNonNull(primary.trend_aligned, secondary.trend_aligned),
+    price_confirmed: firstNonNull(primary.price_confirmed, secondary.price_confirmed),
+    relative_strength_20d: firstNonNull(
+      primary.relative_strength_20d,
+      secondary.relative_strength_20d
+    ),
+
+    earnings_surprise_pct: firstNonNull(
+      primary.earnings_surprise_pct,
+      secondary.earnings_surprise_pct
+    ),
+    revenue_growth_pct: firstNonNull(primary.revenue_growth_pct, secondary.revenue_growth_pct),
+    guidance_flag: firstNonNull(primary.guidance_flag, secondary.guidance_flag),
+
+    age_days: firstNonNull(primary.age_days, secondary.age_days),
+    freshness_bucket: firstNonNull(primary.freshness_bucket, secondary.freshness_bucket),
+
+    ticker_score_change_1d: firstNonNull(
+      primary.ticker_score_change_1d,
+      secondary.ticker_score_change_1d
+    ),
+    ticker_score_change_7d: firstNonNull(
+      primary.ticker_score_change_7d,
+      secondary.ticker_score_change_7d
+    ),
+
+    created_at: firstNonNull(primary.created_at, secondary.created_at),
+    updated_at: firstNonNull(primary.updated_at, secondary.updated_at),
   }
-}
-
-async function fetchCandidateUniverseMap(
-  tickers: string[]
-): Promise<Map<string, CandidateUniverseRow>> {
-  const normalizedTickers = Array.from(
-    new Set(tickers.map(normalizeTicker).filter(Boolean))
-  )
-
-  const candidateMap = new Map<string, CandidateUniverseRow>()
-
-  if (!normalizedTickers.length) return candidateMap
-
-  const chunks = chunkArray(normalizedTickers, CANDIDATE_FETCH_CHUNK)
-
-  for (const chunk of chunks) {
-    const response = await supabase
-      .from("candidate_universe")
-      .select("*")
-      .in("ticker", chunk)
-
-    if (response.error) {
-      console.error("candidate_universe chunk fetch failed", {
-        chunk,
-        error: response.error,
-      })
-      continue
-    }
-
-    const rows = (response.data as CandidateUniverseRow[]) ?? []
-    for (const row of rows) {
-      const ticker = normalizeTicker(row.ticker)
-      if (!ticker) continue
-      candidateMap.set(ticker, row)
-    }
-  }
-
-  return candidateMap
 }
 
 export default function Home() {
@@ -371,19 +522,29 @@ export default function Home() {
         setLoading(true)
         setError(null)
 
-        const tickerScoresResponse = await supabase
-          .from("ticker_scores_current")
-          .select("*")
-          .gte("app_score", 70)
-          .order("app_score", { ascending: false })
-          .order("filed_at", { ascending: false })
-          .limit(500)
+        const [tickerScoresResponse, candidateUniverseResponse] = await Promise.all([
+          supabase
+            .from("ticker_scores_current")
+            .select("*")
+            .gte("app_score", 70)
+            .order("app_score", { ascending: false })
+            .order("filed_at", { ascending: false })
+            .limit(1000),
+
+          supabase
+            .from("candidate_universe")
+            .select("*")
+            .gte("app_score", 70)
+            .order("app_score", { ascending: false })
+            .order("filed_at", { ascending: false })
+            .limit(1000),
+        ])
 
         if (!isMounted) return
 
-        let currentRows: TickerScore[] = []
+        const mergedMap = new Map<string, TickerScore>()
 
-        if (!tickerScoresResponse.error && (tickerScoresResponse.data?.length ?? 0) > 0) {
+        if (!tickerScoresResponse.error) {
           const tickerRows = ((tickerScoresResponse.data as TickerScore[]) ?? [])
             .map((row) => ({
               ...row,
@@ -391,27 +552,44 @@ export default function Home() {
             }))
             .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
 
-          const candidateMap = await fetchCandidateUniverseMap(
-            tickerRows.map((row) => row.ticker)
-          )
+          for (const row of tickerRows) {
+            mergedMap.set(row.ticker, row)
+          }
+        }
 
-          currentRows = tickerRows.map((row) =>
-            mergeTickerWithCandidate(row, candidateMap.get(row.ticker) ?? null)
-          )
-        } else {
+        if (!candidateUniverseResponse.error) {
+          const candidateRows = ((candidateUniverseResponse.data as CandidateUniverseRow[]) ?? [])
+            .map(mapCandidateUniverseRowToTickerScore)
+            .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
+
+          for (const candidateRow of candidateRows) {
+            const existing = mergedMap.get(candidateRow.ticker)
+            if (existing) {
+              mergedMap.set(candidateRow.ticker, mergeTickerRows(existing, candidateRow))
+            } else {
+              mergedMap.set(candidateRow.ticker, candidateRow)
+            }
+          }
+        }
+
+        if (
+          tickerScoresResponse.error &&
+          candidateUniverseResponse.error
+        ) {
           const signalsResponse = await supabase
             .from("signals")
             .select("*")
             .gte("app_score", 70)
             .order("app_score", { ascending: false })
             .order("filed_at", { ascending: false })
-            .limit(500)
+            .limit(1000)
 
           if (!isMounted) return
 
           if (signalsResponse.error) {
             setError(
               tickerScoresResponse.error?.message ||
+                candidateUniverseResponse.error?.message ||
                 signalsResponse.error.message ||
                 "Error loading strong buys."
             )
@@ -420,21 +598,18 @@ export default function Home() {
             return
           }
 
-          const signalRows = ((signalsResponse.data as SignalRow[]) ?? [])
+          const fallbackRows = ((signalsResponse.data as SignalRow[]) ?? [])
             .map(mapSignalRowToTickerScore)
             .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
 
-          const candidateMap = await fetchCandidateUniverseMap(
-            signalRows.map((row) => row.ticker)
-          )
-
-          currentRows = signalRows.map((row) =>
-            mergeTickerWithCandidate(row, candidateMap.get(row.ticker) ?? null)
-          )
+          setRows(bestRowPerTicker(fallbackRows))
+          setLoading(false)
+          return
         }
 
-        if (!isMounted) return
-        setRows(bestRowPerTicker(currentRows))
+        const finalRows = bestRowPerTicker(Array.from(mergedMap.values()))
+
+        setRows(finalRows)
         setLoading(false)
       } catch (err: any) {
         if (!isMounted) return
@@ -962,18 +1137,18 @@ function bestRowPerTicker(items: TickerScore[]) {
     const ticker = normalizeTicker(item.ticker)
     if (!ticker) continue
 
-    const normalizedItem = { ...item, ticker }
+    const normalized = { ...item, ticker }
     const existing = map.get(ticker)
 
     if (!existing) {
-      map.set(ticker, normalizedItem)
+      map.set(ticker, normalized)
       continue
     }
 
-    const comparison = compareRows(normalizedItem, existing)
-    if (comparison < 0) {
-      map.set(ticker, normalizedItem)
-    }
+    const merged = mergeTickerRows(existing, normalized)
+    const comparison = compareRows(normalized, existing)
+
+    map.set(ticker, comparison < 0 ? normalized : merged)
   }
 
   return Array.from(map.values()).sort((a, b) => compareRows(a, b))
@@ -1983,7 +2158,6 @@ function SignalDetailsModal({
                 <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
                 <MetricRow label="Sector" value={row.sector || null} />
                 <MetricRow label="Industry" value={row.industry || null} />
-                <MetricRow label="Model version" value={row.score_version || null} />
               </div>
             </div>
           </div>
