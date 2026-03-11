@@ -1248,7 +1248,7 @@ function FeaturedStrongBuyCard({
 
         {!!miniMetrics.length && (
   <div className="mt-6 flex justify-center">
-    <div className="grid w-[280px] grid-cols-2 gap-4 sm:w-[320px]">
+    <div className="grid w-full max-w-[360px] grid-cols-2 gap-4">
       {miniMetrics.map((item) => (
         <MiniMetric
           key={item.label}
@@ -1465,17 +1465,25 @@ function MiniMetric({
   tooltip?: string
 }) {
   const card = (
-    <div className="flex h-[92px] w-full flex-col items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 text-center shadow-inner backdrop-blur">
-      <div className="mb-1 text-[11px] tracking-[0.25em] text-white/50">
+    <div className="flex h-[102px] w-full flex-col items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 px-3 text-center shadow-inner backdrop-blur">
+      <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-white/50">
         {label}
       </div>
-
-      <div className="text-xl font-semibold text-white">{value}</div>
+      <div className="text-2xl font-semibold text-white">{value}</div>
     </div>
   )
 
-  if (!tooltip) return card
-  return <Tooltip content={tooltip}>{card}</Tooltip>
+  if (!tooltip) {
+    return card
+  }
+
+  return (
+    <div className="w-full">
+      <Tooltip content={tooltip}>
+        <div className="w-full">{card}</div>
+      </Tooltip>
+    </div>
+  )
 }
 
 function FeaturedRankBadge({ rank }: { rank: number }) {
