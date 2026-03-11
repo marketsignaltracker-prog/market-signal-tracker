@@ -101,17 +101,15 @@ const DEFAULT_BATCH = 200
 const RETENTION_DAYS = 30
 const REQUEST_DELAY_MS = 150
 
-// Board universe threshold: everything 70+ should be persisted.
+// Main board threshold: persist everything 70+
 const MIN_BOARD_SCORE = 70
 
-// Liquidity / tradeability floor.
+// Strong-buy-now subset thresholds
 const MIN_PRICE = 5
 const MIN_AVG_VOLUME_20D = 500_000
 const MIN_AVG_DOLLAR_VOLUME_20D = 15_000_000
 const MIN_MARKET_CAP = 500_000_000
 
-// Strong-buy-now thresholds.
-// These now describe a premium subset of the 70+ board universe.
 const MIN_STRONG_BUY_SCORE = 70
 const MIN_STRONG_BUY_VOLUME_RATIO = 1.35
 const MIN_STRONG_BUY_RETURN_10D = 5
@@ -171,19 +169,12 @@ function isProbablyCommonStockTicker(ticker: string) {
   const badPatterns = [
     /\^/,
     /\//,
-
-    // Units / warrants / rights / subscription receipts.
-    // Only suffixes separated by "." or "-" are excluded,
-    // so common single-letter tickers like U, R, and W survive.
     /[.-](WS|WT|WTS|WARRANT|WAR)$/i,
     /[.-](RT|RIGHT|RIGHTS)$/i,
     /[.-](U|R|W)$/i,
-
-    // Preferred / preference share classes.
     /[.-]P(?:R)?[A-Z]{0,2}$/i,
     /PREFERRED/i,
     /PREF/i,
-
     /TEST/i,
   ]
 
@@ -202,9 +193,9 @@ function snapshotDateString(date: Date) {
 function buildCandidateReason(params: {
   included: boolean
   strongBuyNow: boolean
-  score: number
   reasons: string[]
   exclusionReason?: string
+  score: number
 }) {
   if (params.included && params.strongBuyNow) {
     return `Strong buy now (${params.score}): ${params.reasons.join(", ")}`
@@ -212,8 +203,8 @@ function buildCandidateReason(params: {
 
   if (params.included) {
     return params.reasons.length
-      ? `Board candidate ${params.score}: ${params.reasons.join(", ")}`
-      : `Board candidate ${params.score}`
+      ? `Board candidate (${params.score}): ${params.reasons.join(", ")}`
+      : `Board candidate (${params.score})`
   }
 
   if (params.exclusionReason) {
@@ -953,8 +944,8 @@ export async function GET(request: Request) {
           score >= MIN_STRONG_BUY_SCORE &&
           catalystCount >= MIN_CATALYST_COUNT
 
-        // Main change:
-        // Persist all names that score 70 or above.
+        // THIS is the key change:
+        // Save every stock that scores 70+, not just strong-buy-now candidates.
         const included = score >= MIN_BOARD_SCORE
 
         const reasons: string[] = []
@@ -1017,9 +1008,9 @@ export async function GET(request: Request) {
           screen_reason: buildCandidateReason({
             included,
             strongBuyNow: strongBuyNowCandidate,
-            score,
             reasons,
             exclusionReason,
+            score,
           }),
           last_screened_at: nowIso,
           updated_at: nowIso,
@@ -1127,20 +1118,11 @@ export async function GET(request: Request) {
 
     const [
       { count: candidateCount, error: includedCountError },
-      { count: boardCount70, error: boardCountError },
-      { count: strongBuyCount, error: strongBuyCountError },
       { count: historyCount, error: historyCountError },
     ] = await Promise.all([
       candidateUniverseTable
         .select("*", { count: "exact", head: true })
         .eq("included", true),
-      candidateUniverseTable
-        .select("*", { count: "exact", head: true })
-        .gte("candidate_score", MIN_BOARD_SCORE),
-      candidateUniverseTable
-        .select("*", { count: "exact", head: true })
-        .gte("candidate_score", MIN_STRONG_BUY_SCORE)
-        .ilike("screen_reason", "Strong buy now:%"),
       candidateHistoryTable.select("*", { count: "exact", head: true }),
     ])
 
@@ -1166,8 +1148,6 @@ export async function GET(request: Request) {
       keptUniverseOnTransientError,
       removedFromUniverseInBatch,
       includedCount: includedCountError ? null : candidateCount,
-      boardCount70: boardCountError ? null : boardCount70,
-      strongBuyCount: strongBuyCountError ? null : strongBuyCount,
       historyInserted,
       historyCount: historyCountError ? null : historyCount,
       retentionCleanup: retentionError ? retentionError.message : "ok",
