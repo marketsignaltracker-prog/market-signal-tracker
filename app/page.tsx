@@ -235,9 +235,7 @@ function makeUnifiedRow(
 
   const candidateScore = getCandidateScore(candidate)
   const signalScore = getSignalScore(signal)
-  const displayScore = Math.round(
-    firstNumber(signalScore, candidateScore, 0)
-  )
+  const displayScore = Math.round(firstNumber(signalScore, candidateScore, 0))
 
   return {
     ticker,
@@ -284,10 +282,10 @@ function makeUnifiedRow(
     bias: signal?.bias ?? null,
     board_bucket: signal?.board_bucket ?? null,
 
-    signal_tags: Array.isArray(signal?.signal_tags) ? signal!.signal_tags! : [],
-    signal_reasons: Array.isArray(signal?.signal_reasons) ? signal!.signal_reasons! : [],
+    signal_tags: Array.isArray(signal?.signal_tags) ? signal.signal_tags : [],
+    signal_reasons: Array.isArray(signal?.signal_reasons) ? signal.signal_reasons : [],
     score_breakdown: signal?.score_breakdown ?? null,
-    score_caps_applied: Array.isArray(signal?.score_caps_applied) ? signal!.score_caps_applied! : [],
+    score_caps_applied: Array.isArray(signal?.score_caps_applied) ? signal.score_caps_applied : [],
 
     primary_signal_type: signal?.primary_signal_type ?? null,
     primary_signal_source: signal?.primary_signal_source ?? null,
@@ -296,8 +294,8 @@ function makeUnifiedRow(
     primary_summary: signal?.primary_summary ?? null,
 
     filed_at: signal?.filed_at ?? null,
-    accession_nos: Array.isArray(signal?.accession_nos) ? signal!.accession_nos! : [],
-    source_forms: Array.isArray(signal?.source_forms) ? signal!.source_forms! : [],
+    accession_nos: Array.isArray(signal?.accession_nos) ? signal.accession_nos : [],
+    source_forms: Array.isArray(signal?.source_forms) ? signal.source_forms : [],
     age_days: signal?.age_days ?? null,
     freshness_bucket: signal?.freshness_bucket ?? null,
 
@@ -1038,7 +1036,6 @@ function matchesFreshnessFilter(row: UnifiedRow, freshnessFilter: FreshnessFilte
 
   const age = row.age_days
   if (age === null || age === undefined) {
-    if (freshnessFilter === "all") return true
     return false
   }
 
