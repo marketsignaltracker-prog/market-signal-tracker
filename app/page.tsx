@@ -1159,22 +1159,26 @@ function FeaturedStrongBuyCard({
         </div>
 
         {!!reasons.length && (
-          <div className="mt-5 flex min-w-0 flex-wrap gap-2">
-            {reasons.map((reason) => (
-              <ReasonChip key={reason} label={reason} />
-            ))}
+          <div className="mt-5 flex justify-center">
+            <div className="flex w-full max-w-[440px] min-w-0 flex-wrap justify-center gap-2">
+              {reasons.map((reason) => (
+                <ReasonChip key={reason} label={reason} />
+              ))}
+            </div>
           </div>
         )}
 
         {!!miniMetrics.length && (
-          <div className="mt-5 grid min-w-0 grid-cols-2 gap-3">
-            {miniMetrics.map((item) => (
-              <MiniMetric
-                key={item.label}
-                label={item.label}
-                value={item.value}
-              />
-            ))}
+          <div className="mt-5 flex justify-center">
+            <div className="grid w-full max-w-[440px] min-w-0 grid-cols-2 gap-3">
+              {miniMetrics.map((item) => (
+                <MiniMetric
+                  key={item.label}
+                  label={item.label}
+                  value={item.value}
+                />
+              ))}
+            </div>
           </div>
         )}
 
@@ -1196,6 +1200,7 @@ function FeaturedStrongBuyCard({
     </button>
   )
 }
+
 
 function TopSignalCard({
   row,
@@ -1385,10 +1390,10 @@ function MiniMetric({
   )
 }
 
-function FeaturedRankBadge({ rank }: { rank: number }) {
+function ReasonChip({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-emerald-400 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-950">
-      Top #{rank}
+    <span className="inline-flex min-h-[36px] max-w-full items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-center text-[11px] font-semibold text-emerald-200 sm:px-4 sm:text-xs">
+      {label}
     </span>
   )
 }
