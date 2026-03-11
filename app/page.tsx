@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { supabase } from "../lib/supabase"
 
 type CandidateUniverseRow = {
@@ -193,7 +193,6 @@ type SourceFilterType = "all" | "technical_only" | "filing_only" | "both"
 type MiniMetricItem = {
   label: string
   value: string
-  tooltip?: string
 }
 
 type ReasonLine = {
@@ -599,9 +598,6 @@ export default function Home() {
   const lastUpdated = getLastUpdated(rows)
   const strongBuyCount = filteredRows.length
   const eliteCount = filteredRows.filter((row) => row.display_score >= 90).length
-  const avgScore = filteredRows.length
-    ? Math.round(filteredRows.reduce((sum, row) => sum + row.display_score, 0) / filteredRows.length)
-    : 0
 
   function openDetails(ticker: string) {
     setSelectedTicker(ticker)
@@ -623,35 +619,37 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
-      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
-        <section className="relative overflow-hidden rounded-[2rem] border border-emerald-400/15 bg-white/[0.04] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:rounded-[2.5rem] sm:p-8 lg:p-10">
+    <main className="min-h-screen w-full overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
+      <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
+        <section className="relative w-full min-w-0 overflow-hidden rounded-[2rem] border border-emerald-400/15 bg-white/[0.04] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:rounded-[2.5rem] sm:p-8 lg:p-10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(234,179,8,0.08),_transparent_28%)]" />
-          <div className="relative">
-            <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300 sm:px-4 sm:text-xs">
+          <div className="relative min-w-0">
+            <p className="inline-flex max-w-full rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300 sm:px-4 sm:text-xs">
               Daily Strong Buy List
             </p>
 
-            <div className="mt-5 grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-end sm:mt-6 sm:gap-8">
-              <div>
-                <h1 className="max-w-4xl text-3xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
+            <div className="mt-5 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-end sm:mt-6 sm:gap-8">
+              <div className="min-w-0">
+                <h1 className="max-w-4xl break-words text-3xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
                   Your cheat sheet for what to buy right now
                 </h1>
 
-                <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-300 sm:mt-4 sm:text-lg sm:leading-8">
+                <p className="mt-3 max-w-3xl break-words text-sm leading-7 text-slate-300 sm:mt-4 sm:text-lg sm:leading-8">
                   This board now shows all technical strong-buy candidates with scores of 70 or higher,
                   while still displaying filing and signal confirmation when available.
                 </p>
 
-                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300 sm:mt-6">
-                  Built from two layers:
-                  <span className="ml-1 font-semibold text-white">candidate_universe</span>
-                  <span className="mx-2 text-slate-500">+</span>
-                  <span className="font-semibold text-white">ticker_scores_current</span>
+                <div className="mt-5 min-w-0 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300 sm:mt-6">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 break-words">
+                    <span>Built from two layers:</span>
+                    <span className="font-semibold text-white break-all sm:break-normal">candidate_universe</span>
+                    <span className="text-slate-500">+</span>
+                    <span className="font-semibold text-white break-all sm:break-normal">ticker_scores_current</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <HeroStat
                   label="Visible Strong Buys"
                   value={loading ? "…" : String(strongBuyCount)}
@@ -665,7 +663,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-3 rounded-[1.5rem] border border-white/10 bg-black/20 p-3 sm:mt-8 sm:rounded-[2rem] sm:p-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-6 grid min-w-0 gap-3 rounded-[1.5rem] border border-white/10 bg-black/20 p-3 sm:mt-8 sm:rounded-[2rem] sm:p-4 sm:grid-cols-2 xl:grid-cols-4">
               <TrustPill title="Technical candidates" text="All 70+ candidate-universe names show up" />
               <TrustPill title="Filing enrichment" text="Signal and filing details appear when present" />
               <TrustPill title="No silent exclusion" text="Ticker-scores rows no longer decide visibility" />
@@ -677,38 +675,33 @@ export default function Home() {
                 Last updated{" "}
                 <span className="font-semibold text-slate-100">{lastUpdated ?? "—"}</span>
               </span>
-              <span className="hidden sm:inline">•</span>
-              <span>
-                Avg score{" "}
-                <span className="font-semibold text-slate-100">{avgScore || "—"}</span>
-              </span>
             </div>
           </div>
         </section>
 
-        <section className="mt-6 rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 shadow-xl backdrop-blur-sm sm:mt-8 sm:rounded-[2rem] sm:p-6">
-          <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
+        <section className="mt-6 w-full min-w-0 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 shadow-xl backdrop-blur-sm sm:mt-8 sm:rounded-[2rem] sm:p-6">
+          <div className="mb-5 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
                 Refine today’s board
               </p>
-              <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
+              <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
                 Filter the strongest names
               </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400 sm:text-base">
+              <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
                 Technical candidates always appear first. Filing-confirmed names carry additional signal detail.
               </p>
             </div>
 
             <button
               onClick={resetFilters}
-              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200"
+              className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200 lg:w-auto"
             >
               Reset filters
             </button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-6">
             <FilterSelect
               label="Price"
               value={priceFilter}
@@ -794,25 +787,24 @@ export default function Home() {
               label="Technical Only"
               value={String(filteredRows.filter((r) => r.has_candidate_data && !r.has_signal_data).length)}
             />
-            <BoardChip label="Avg score" value={filteredRows.length ? String(avgScore) : "—"} />
           </div>
         </section>
 
-        <section className="mt-6 sm:mt-8">
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
+        <section className="mt-6 min-w-0 sm:mt-8">
+          <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
                 Featured today
               </p>
-              <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
+              <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
                 Today’s top strong-buy setups
               </h2>
-              <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
+              <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
                 Ranked by the best available score, while preserving candidate-universe inclusion.
               </p>
             </div>
 
-            <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+            <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
               {loading ? "Loading board…" : `${filteredRows.length} names on the shortlist`}
             </div>
           </div>
@@ -825,7 +817,7 @@ export default function Home() {
             <EmptyPanel />
           ) : (
             <>
-              <div className="grid gap-4 sm:gap-5 lg:grid-cols-3">
+              <div className="grid min-w-0 gap-4 sm:gap-5 lg:grid-cols-3">
                 {featuredRows.map((row, index) => (
                   <FeaturedStrongBuyCard
                     key={`${row.ticker}-${index}`}
@@ -836,28 +828,28 @@ export default function Home() {
                 ))}
               </div>
 
-              <section id="board" className="mt-8">
-                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
+              <section id="board" className="mt-8 min-w-0">
+                <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
                       Full shortlist
                     </p>
-                    <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
+                    <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
                       More high-conviction setups
                     </h2>
-                    <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
+                    <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
                       Technical candidates first, signal enrichment when available.
                     </p>
                   </div>
 
-                  <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+                  <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
                     {remainingRows.length === 0
                       ? "No additional names"
                       : `${pageStart}-${pageEnd} of ${remainingRows.length}`}
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid min-w-0 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {paginatedRows.map((row, i) => (
                     <TopSignalCard
                       key={getRowKey(row, i)}
@@ -904,21 +896,23 @@ function HeroStat({
   subtext: string
 }) {
   return (
-    <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4 sm:rounded-[1.75rem] sm:p-5">
+    <div className="w-full min-w-0 rounded-[1.5rem] border border-white/10 bg-black/20 p-4 sm:rounded-[1.75rem] sm:p-5">
       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400 sm:text-xs">
         {label}
       </p>
-      <p className="mt-2 text-4xl font-bold tracking-tight text-white sm:mt-3 sm:text-5xl">{value}</p>
-      <p className="mt-2 text-sm text-slate-400">{subtext}</p>
+      <p className="mt-2 break-words text-4xl font-bold tracking-tight text-white sm:mt-3 sm:text-5xl">
+        {value}
+      </p>
+      <p className="mt-2 break-words text-sm text-slate-400">{subtext}</p>
     </div>
   )
 }
 
 function TrustPill({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="mt-1 text-sm text-slate-400">{text}</p>
+    <div className="min-w-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+      <p className="break-words text-sm font-semibold text-white">{title}</p>
+      <p className="mt-1 break-words text-sm text-slate-400">{text}</p>
     </div>
   )
 }
@@ -935,14 +929,14 @@ function FilterSelect({
   options: Array<{ value: string; label: string }>
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
         {label}
       </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3.5 text-white outline-none transition focus:border-emerald-400/40 focus:bg-slate-950 sm:py-4"
+        className="w-full min-w-0 max-w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3.5 text-white outline-none transition focus:border-emerald-400/40 focus:bg-slate-950 sm:py-4"
       >
         {options.map((option) => (
           <option key={`${label}-${option.value}`} value={option.value} className="bg-slate-900">
@@ -956,7 +950,7 @@ function FilterSelect({
 
 function BoardChip({ label, value }: { label: string; value: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-sm text-emerald-200">
+    <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-sm text-emerald-200">
       <span className="text-slate-300">{label}:</span>
       <span className="font-semibold text-white">{value}</span>
     </span>
@@ -1090,16 +1084,6 @@ function getDateValue(dateString: string | null | undefined) {
   return Number.isNaN(timestamp) ? 0 : timestamp
 }
 
-function formatDateShort(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "—"
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-  }).format(date)
-}
-
 function getRowKey(row: UnifiedRow, index: number) {
   const accessionKey =
     row.accession_nos?.join("-") ||
@@ -1109,39 +1093,6 @@ function getRowKey(row: UnifiedRow, index: number) {
     String(index)
 
   return `${row.ticker}-${accessionKey}-${index}`
-}
-
-function Tooltip({
-  content,
-  children,
-}: {
-  content: ReactNode
-  children: ReactNode
-}) {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <span
-      className="relative inline-flex"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onClick={(e) => {
-        e.stopPropagation()
-        setOpen((prev) => !prev)
-      }}
-    >
-      <span className="inline-flex">{children}</span>
-
-      <span
-        className={[
-          "pointer-events-none absolute bottom-[calc(100%+10px)] left-1/2 z-40 w-max max-w-[260px] -translate-x-1/2 rounded-xl border border-white/10 bg-slate-950/95 px-3 py-2 text-left text-xs leading-5 text-slate-200 shadow-2xl backdrop-blur transition",
-          open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
-        ].join(" ")}
-      >
-        {content}
-      </span>
-    </span>
-  )
 }
 
 function FeaturedStrongBuyCard({
@@ -1161,32 +1112,26 @@ function FeaturedStrongBuyCard({
     {
       label: "Price",
       value: formatMoney(row.price),
-      tooltip: getMiniMetricTooltip("Price", row),
     },
     {
       label: "5D Move",
       value: formatPercent(row.price_return_5d),
-      tooltip: getMiniMetricTooltip("5D Move", row),
     },
     {
       label: "20D Move",
       value: formatPercent(row.price_return_20d),
-      tooltip: getMiniMetricTooltip("20D Move", row),
     },
     {
       label: "Volume",
       value: formatRatio(row.volume_ratio),
-      tooltip: getMiniMetricTooltip("Volume", row),
     },
     {
       label: "Vs Market",
       value: formatPercent(row.relative_strength_20d),
-      tooltip: getMiniMetricTooltip("Vs Market", row),
     },
     {
       label: "Signals",
       value: formatWholeNumber(row.stacked_signal_count),
-      tooltip: getMiniMetricTooltip("Signals", row),
     },
   ].filter((item) => hasDisplayValue(item.value))
 
@@ -1194,7 +1139,7 @@ function FeaturedStrongBuyCard({
     <button
       type="button"
       onClick={onClick}
-      className="group relative overflow-hidden rounded-[1.75rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.36)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5"
+      className="group relative w-full min-w-0 overflow-hidden rounded-[1.75rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.36)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5"
       style={{
         borderColor: `${palette.end}45`,
         background: `linear-gradient(135deg, ${palette.start}16 0%, rgba(15,23,42,0.92) 35%, rgba(2,6,23,1) 100%)`,
@@ -1202,24 +1147,26 @@ function FeaturedStrongBuyCard({
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.06),_transparent_25%)] opacity-0 transition group-hover:opacity-100" />
 
-      <div className="relative">
-        <div className="flex items-start justify-between gap-4">
+      <div className="relative min-w-0">
+        <div className="flex min-w-0 items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <FeaturedRankBadge rank={rank} />
               <SignalTypeBadge row={row} />
               <FreshnessBadge row={row} />
               <SourceBadge row={row} />
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center gap-2.5 sm:gap-3">
-              <h3 className="text-[2rem] font-bold leading-none tracking-tight sm:text-4xl">{row.ticker}</h3>
+            <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2.5 sm:gap-3">
+              <h3 className="min-w-0 break-words text-[2rem] font-bold leading-none tracking-tight sm:text-4xl">
+                {row.ticker}
+              </h3>
               <ScoreBadge row={row} large />
               <ConfidenceBadge row={row} />
             </div>
 
             {row.company_name ? (
-              <p className="mt-2 text-sm text-slate-300 sm:text-base">{row.company_name}</p>
+              <p className="mt-2 break-words text-sm text-slate-300 sm:text-base">{row.company_name}</p>
             ) : null}
           </div>
         </div>
@@ -1232,38 +1179,37 @@ function FeaturedStrongBuyCard({
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300/80 sm:text-xs">
             Why this one stands out
           </p>
-          <p className="mt-2 text-base font-semibold text-white sm:text-xl">{thesis}</p>
-          <p className="mt-3 text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
+          <p className="mt-2 break-words text-base font-semibold text-white sm:text-xl">{thesis}</p>
+          <p className="mt-3 break-words text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
             {getPlainEnglishSummary(row)}
           </p>
         </div>
 
         {!!reasons.length && (
-  <div className="mt-4 sm:mt-5">
-    <div className="mx-auto flex w-full max-w-[420px] flex-wrap justify-center gap-2">
-      {reasons.map((reason) => (
-        <ReasonChip key={reason} label={reason} />
-      ))}
-    </div>
-  </div>
-)}
+          <div className="mt-4 sm:mt-5">
+            <div className="mx-auto flex w-full max-w-[420px] min-w-0 flex-wrap justify-center gap-2">
+              {reasons.map((reason) => (
+                <ReasonChip key={reason} label={reason} />
+              ))}
+            </div>
+          </div>
+        )}
 
-   {!!miniMetrics.length && (
-  <div className="mt-6">
-    <div className="mx-auto grid w-full max-w-[420px] grid-cols-2 gap-4">
-      {miniMetrics.map((item) => (
-        <MiniMetric
-          key={item.label}
-          label={item.label}
-          value={item.value}
-          tooltip={item.tooltip}
-        />
-      ))}
-    </div>
-  </div>
-)}
+        {!!miniMetrics.length && (
+          <div className="mt-6">
+            <div className="mx-auto grid w-full max-w-[420px] min-w-0 grid-cols-2 gap-4">
+              {miniMetrics.map((item) => (
+                <MiniMetric
+                  key={item.label}
+                  label={item.label}
+                  value={item.value}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:mt-5 sm:gap-4">
+        <div className="mt-4 flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:mt-5 sm:gap-4">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400 sm:text-xs">
               Primary driver
@@ -1299,32 +1245,26 @@ function TopSignalCard({
     {
       label: "Price",
       value: formatMoney(row.price),
-      tooltip: getMiniMetricTooltip("Price", row),
     },
     {
       label: "Vs Market",
       value: formatPercent(row.relative_strength_20d),
-      tooltip: getMiniMetricTooltip("Vs Market", row),
     },
     {
       label: "5D Move",
       value: formatPercent(row.price_return_5d),
-      tooltip: getMiniMetricTooltip("5D Move", row),
     },
     {
       label: "Volume",
       value: formatRatio(row.volume_ratio),
-      tooltip: getMiniMetricTooltip("Volume", row),
     },
     {
       label: "1D Δ",
       value: formatScoreChange(row.ticker_score_change_1d),
-      tooltip: getMiniMetricTooltip("1D Δ", row),
     },
     {
       label: "Cand Score",
       value: formatSimpleNumber(row.candidate_score),
-      tooltip: "Technical candidate score from candidate_universe.",
     },
   ].filter((item) => hasDisplayValue(item.value))
 
@@ -1333,7 +1273,7 @@ function TopSignalCard({
       type="button"
       onClick={onClick}
       className={[
-        "flex h-full min-w-0 flex-col rounded-3xl border p-4 text-left shadow-xl transition duration-200 sm:p-5",
+        "flex h-full w-full min-w-0 flex-col overflow-hidden rounded-3xl border p-4 text-left shadow-xl transition duration-200 sm:p-5",
         isSelected
           ? "ring-2 ring-emerald-300/25"
           : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
@@ -1343,11 +1283,11 @@ function TopSignalCard({
         background: `linear-gradient(135deg, ${palette.start}12 0%, rgba(15,23,42,0.92) 40%, rgba(2,6,23,1) 100%)`,
       }}
     >
-      <div className="mb-4 flex items-start justify-between gap-3">
+      <div className="mb-4 flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <CardRankBadge rank={rank} />
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-300/80">
+            <p className="break-words text-xs uppercase tracking-[0.2em] text-emerald-300/80">
               {formatSource(row.primary_signal_source)}
             </p>
             <SourceBadge row={row} />
@@ -1373,13 +1313,13 @@ function TopSignalCard({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
           Setup thesis
         </p>
-        <p className="mt-2 text-sm font-semibold leading-6 text-white">
+        <p className="mt-2 break-words text-sm font-semibold leading-6 text-white">
           {getCardThesis(row)}
         </p>
       </div>
 
       {!!reasons.length && (
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-4 flex min-w-0 flex-wrap gap-2">
           {reasons.map((reason) => (
             <ReasonChip key={reason} label={reason} />
           ))}
@@ -1387,19 +1327,18 @@ function TopSignalCard({
       )}
 
       {row.business_description ? (
-        <p className="mb-4 text-sm leading-6 text-slate-300">
+        <p className="mb-4 break-words text-sm leading-6 text-slate-300">
           {truncateText(row.business_description, 110)}
         </p>
       ) : null}
 
       {!!metricItems.length && (
-        <div className="mb-4 grid grid-cols-2 gap-3 auto-rows-fr">
+        <div className="mb-4 grid min-w-0 grid-cols-2 gap-3 auto-rows-fr">
           {metricItems.map((item) => (
             <MiniMetric
               key={item.label}
               label={item.label}
               value={item.value}
-              tooltip={item.tooltip}
             />
           ))}
         </div>
@@ -1409,7 +1348,7 @@ function TopSignalCard({
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
           Why traders could notice it
         </p>
-        <p className="text-sm leading-6 text-slate-100">
+        <p className="break-words text-sm leading-6 text-slate-100">
           {truncateText(getPlainEnglishSummary(row), 180)}
         </p>
       </div>
@@ -1428,12 +1367,12 @@ function ScoreBar({
   const palette = getScorePalette(score)
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <div className="w-full min-w-0 rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
           Display Score
         </p>
-        <p className="text-sm font-semibold text-white">{score}/100</p>
+        <p className="shrink-0 text-sm font-semibold text-white">{score}/100</p>
       </div>
 
       <div className="h-3 overflow-hidden rounded-full bg-slate-800">
@@ -1460,42 +1399,35 @@ function ScoreBar({
 function MiniMetric({
   label,
   value,
-  tooltip,
 }: {
   label: string
   value: string
-  tooltip?: string
 }) {
   return (
-    <div
-      title={tooltip}
-      className="flex h-[112px] w-full flex-col items-center justify-center rounded-[1.75rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur"
-    >
-      <p className="mb-3 text-[11px] uppercase tracking-[0.24em] text-slate-400">
+    <div className="flex h-[112px] min-w-0 w-full flex-col items-center justify-center rounded-[1.75rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:px-4">
+      <p className="mb-3 break-words text-[11px] uppercase tracking-[0.24em] text-slate-400">
         {label}
       </p>
-      <p className="text-2xl font-semibold tracking-tight text-white">{value}</p>
+      <p className="break-words text-xl font-semibold tracking-tight text-white sm:text-2xl">
+        {value}
+      </p>
     </div>
   )
 }
 
 function FeaturedRankBadge({ rank }: { rank: number }) {
   return (
-    <Tooltip content={`This setup is ranked #${rank} on today’s strong-buy board.`}>
-      <span className="inline-flex cursor-help items-center rounded-full bg-emerald-400 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-950">
-        Top #{rank}
-      </span>
-    </Tooltip>
+    <span className="inline-flex items-center rounded-full bg-emerald-400 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-950">
+      Top #{rank}
+    </span>
   )
 }
 
 function CardRankBadge({ rank }: { rank: number }) {
   return (
-    <Tooltip content={`This setup is ranked #${rank} on today’s board.`}>
-      <span className="inline-flex cursor-help items-center rounded-full bg-emerald-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200">
-        #{rank}
-      </span>
-    </Tooltip>
+    <span className="inline-flex items-center rounded-full bg-emerald-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200">
+      #{rank}
+    </span>
   )
 }
 
@@ -1510,20 +1442,18 @@ function ScoreBadge({
   const palette = getScorePalette(score)
 
   return (
-    <Tooltip content={getScoreTooltip(row)}>
-      <div
-        className={[
-          "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
-          large ? "px-3.5 py-1.5 text-sm sm:px-4 sm:py-2" : "px-3 py-1 text-sm",
-        ].join(" ")}
-        style={{
-          background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
-          color: palette.text,
-        }}
-      >
-        {score}
-      </div>
-    </Tooltip>
+    <div
+      className={[
+        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
+        large ? "px-3.5 py-1.5 text-sm sm:px-4 sm:py-2" : "px-3 py-1 text-sm",
+      ].join(" ")}
+      style={{
+        background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
+        color: palette.text,
+      }}
+    >
+      {score}
+    </div>
   )
 }
 
@@ -1538,16 +1468,14 @@ function ConfidenceBadge({
   const label = getConfidenceTierLabel(score)
 
   return (
-    <Tooltip content={getConfidenceTooltip(score, label)}>
-      <span
-        className={[
-          "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 font-semibold text-slate-200",
-          small ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
-        ].join(" ")}
-      >
-        {label}
-      </span>
-    </Tooltip>
+    <span
+      className={[
+        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 font-semibold text-slate-200",
+        small ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
+      ].join(" ")}
+    >
+      {label}
+    </span>
   )
 }
 
@@ -1556,11 +1484,9 @@ function FreshnessBadge({ row }: { row: UnifiedRow }) {
   if (!label) return null
 
   return (
-    <Tooltip content={getFreshnessTooltip(row)}>
-      <span className="inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
-        {label}
-      </span>
-    </Tooltip>
+    <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
+      {label}
+    </span>
   )
 }
 
@@ -1573,11 +1499,9 @@ function SourceBadge({ row }: { row: UnifiedRow }) {
         : "border-violet-400/30 bg-violet-400/10 text-violet-300"
 
   return (
-    <Tooltip content={getSourceTooltip(row)}>
-      <span className={`inline-flex cursor-help items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}>
-        {row.data_source_label}
-      </span>
-    </Tooltip>
+    <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}>
+      {row.data_source_label}
+    </span>
   )
 }
 
@@ -1585,26 +1509,22 @@ function SignalTypeBadge({ row }: { row: UnifiedRow }) {
   const config = getSignalBadgeConfig(row)
 
   return (
-    <Tooltip content={getSignalTypeTooltip(row, config.label)}>
-      <span
-        className={[
-          "inline-flex cursor-help items-center rounded-full border px-3 py-1.5 text-xs font-semibold",
-          config.className,
-        ].join(" ")}
-      >
-        {config.label}
-      </span>
-    </Tooltip>
+    <span
+      className={[
+        "inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold",
+        config.className,
+      ].join(" ")}
+    >
+      {config.label}
+    </span>
   )
 }
 
 function ReasonChip({ label }: { label: string }) {
   return (
-    <Tooltip content={getReasonChipTooltip(label)}>
-      <span className="inline-flex min-h-[42px] items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-center text-xs font-semibold text-emerald-200">
-        {label}
-      </span>
-    </Tooltip>
+    <span className="inline-flex min-h-[42px] max-w-full items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-center text-xs font-semibold text-emerald-200">
+      {label}
+    </span>
   )
 }
 
@@ -1841,16 +1761,16 @@ function SignalDetailsModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-t-[2rem] border border-white/10 bg-slate-950 shadow-2xl sm:rounded-[2rem]"
+        className="max-h-[92vh] w-full max-w-6xl overflow-x-hidden overflow-y-auto rounded-t-[2rem] border border-white/10 bg-slate-950 shadow-2xl sm:rounded-[2rem]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-white/10 bg-slate-950/95 px-4 py-4 backdrop-blur sm:px-6">
+        <div className="sticky top-0 z-10 flex min-w-0 items-center justify-between gap-4 border-b border-white/10 bg-slate-950/95 px-4 py-4 backdrop-blur sm:px-6">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
               Strong Buy Detail
             </p>
 
-            <div className="mt-1 flex flex-wrap items-center gap-2">
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
               <h2 className="text-2xl font-bold sm:text-3xl">{row.ticker}</h2>
               <ScoreBadge row={row} large />
               <ConfidenceBadge row={row} />
@@ -1861,33 +1781,33 @@ function SignalDetailsModal({
             </div>
 
             {row.company_name ? (
-              <p className="mt-1 text-sm text-slate-400">{row.company_name}</p>
+              <p className="mt-1 break-words text-sm text-slate-400">{row.company_name}</p>
             ) : null}
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+            className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
           >
             Close
           </button>
         </div>
 
-        <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid min-w-0 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           <div className="min-w-0">
             <div className="mb-5 rounded-[1.75rem] border border-emerald-400/15 bg-[linear-gradient(135deg,rgba(16,185,129,0.10),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
                 Why this made the board
               </p>
-              <p className="mt-2 text-xl font-semibold text-white sm:text-2xl">{thesis}</p>
-              <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
+              <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">{thesis}</p>
+              <p className="mt-3 break-words text-sm leading-7 text-slate-300 sm:text-base">
                 {getConfidenceStatement(row)}
               </p>
             </div>
 
             {row.business_description ? (
-              <p className="mb-5 text-sm leading-7 text-slate-300 sm:text-base">
+              <p className="mb-5 break-words text-sm leading-7 text-slate-300 sm:text-base">
                 {row.business_description}
               </p>
             ) : null}
@@ -1900,7 +1820,7 @@ function SignalDetailsModal({
               <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 Score drivers
               </p>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {reasons.map((reason) => (
                   <ReasonCard key={`${reason.label}-${reason.value}`} reason={reason} />
                 ))}
@@ -1911,7 +1831,7 @@ function SignalDetailsModal({
               <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 Score movement
               </p>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid min-w-0 gap-3 sm:grid-cols-2">
                 <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
                 <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
               </div>
@@ -1921,12 +1841,12 @@ function SignalDetailsModal({
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
                 Plain-English setup summary
               </p>
-              <p className="mt-2 text-sm leading-7 text-slate-200 sm:text-base">
+              <p className="mt-2 break-words text-sm leading-7 text-slate-200 sm:text-base">
                 {row.primary_summary || row.screen_reason || getSignalSummary(row)}
               </p>
 
               {!!tags.length && (
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 flex min-w-0 flex-wrap gap-2">
                   {tags.slice(0, 12).map((tag) => (
                     <TagPill key={tag} tag={tag} />
                   ))}
@@ -1938,7 +1858,7 @@ function SignalDetailsModal({
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 What confirms the setup
               </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
                 <ConfirmationRow
                   label="Price confirmation"
                   value={row.price_confirmed === true ? "Confirmed" : "Not confirmed"}
@@ -2070,8 +1990,8 @@ function MetricRow({
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3 text-sm">
-      <span className="text-slate-400">{label}</span>
+    <div className="flex min-w-0 items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3 text-sm">
+      <span className="min-w-0 break-words text-slate-400">{label}</span>
       <span className="max-w-[58%] truncate text-right font-semibold text-white">
         {value}
       </span>
@@ -2087,9 +2007,9 @@ function ConfirmationRow({
   value: string
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+    <div className="min-w-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
       <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-white">{value}</p>
+      <p className="mt-2 break-words text-sm font-semibold text-white">{value}</p>
     </div>
   )
 }
@@ -2110,9 +2030,9 @@ function ReasonCard({ reason }: { reason: ReasonLine }) {
         : "text-slate-300"
 
   return (
-    <div className={`rounded-2xl border p-4 ${classes}`}>
+    <div className={`min-w-0 rounded-2xl border p-4 ${classes}`}>
       <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{reason.label}</p>
-      <p className={`mt-2 text-sm font-semibold ${textClasses}`}>{reason.value}</p>
+      <p className={`mt-2 break-words text-sm font-semibold ${textClasses}`}>{reason.value}</p>
     </div>
   )
 }
@@ -2141,7 +2061,7 @@ function MovementCard({
   return (
     <div
       className={[
-        "rounded-2xl border p-4",
+        "min-w-0 rounded-2xl border p-4",
         isUp
           ? "border-emerald-400/20 bg-emerald-500/10"
           : isDown
@@ -2152,7 +2072,7 @@ function MovementCard({
       <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
       <p
         className={[
-          "mt-2 text-sm font-semibold",
+          "mt-2 break-words text-sm font-semibold",
           isUp ? "text-emerald-300" : isDown ? "text-rose-300" : "text-slate-300",
         ].join(" ")}
       >
@@ -2166,11 +2086,9 @@ function TagPill({ tag }: { tag: string }) {
   const pretty = prettifyTag(tag)
 
   return (
-    <Tooltip content={getTagTooltip(tag, pretty)}>
-      <span className="cursor-help rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
-        {pretty}
-      </span>
-    </Tooltip>
+    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+      {pretty}
+    </span>
   )
 }
 
@@ -2184,13 +2102,11 @@ function StrengthBadge({ bucket }: { bucket?: string | null }) {
         : "border-yellow-400/30 bg-yellow-400/10 text-yellow-300"
 
   return (
-    <Tooltip content={getStrengthTooltip(value)}>
-      <span
-        className={`inline-flex cursor-help items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}
-      >
-        {value}
-      </span>
-    </Tooltip>
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}
+    >
+      {value}
+    </span>
   )
 }
 
@@ -2560,119 +2476,4 @@ function getFreshnessLabel(row: UnifiedRow) {
   }
 
   return null
-}
-
-function getScoreTooltip(row: UnifiedRow) {
-  const parts = [`Display Score ${row.display_score}`]
-
-  if (row.candidate_score !== null) {
-    parts.push(`candidate ${Math.round(row.candidate_score)}`)
-  }
-
-  if (row.signal_score !== null) {
-    parts.push(`signal ${Math.round(row.signal_score)}`)
-  }
-
-  return `${parts.join(" • ")}. The page shows all 70+ technical candidates and enriches them with signal-side data when available.`
-}
-
-function getConfidenceTooltip(score: number, label: string) {
-  return `${label} is the confidence tier for a score of ${score}. Higher tiers mean the model sees stronger supporting evidence.`
-}
-
-function getFreshnessTooltip(row: UnifiedRow) {
-  const label = getFreshnessLabel(row)
-  return `${label ?? "Freshness unknown"}. This only applies when filing or signal timing exists.`
-}
-
-function getSignalTypeTooltip(row: UnifiedRow, label: string) {
-  return `${label} describes the main kind of setup driving this row. Source: ${formatSource(
-    row.primary_signal_source
-  )}. Category: ${getSignalCategory(row)}.`
-}
-
-function getStrengthTooltip(value: string) {
-  if (value === "Strong Buy") {
-    return "Strong Buy means the model sees unusually strong bullish evidence."
-  }
-  if (value === "Buy") {
-    return "Buy means the setup is constructive and clears the main bullish threshold."
-  }
-  return "Signal strength is a quick label for how the model buckets the setup."
-}
-
-function getSourceTooltip(row: UnifiedRow) {
-  if (row.has_candidate_data && row.has_signal_data) {
-    return "This ticker qualified in candidate_universe and also has a matching ticker_scores_current signal row with filing or signal enrichment."
-  }
-  if (row.has_candidate_data) {
-    return "This ticker appears because it scored 70+ in candidate_universe. No separate filing or signal enrichment row is currently attached."
-  }
-  return "This ticker appears from signal-side data only."
-}
-
-function getReasonChipTooltip(label: string) {
-  return `${label}. This is one of the main reasons the model likes the setup.`
-}
-
-function getTagTooltip(tag: string, pretty: string) {
-  const map: Record<string, string> = {
-    "cluster-buy": "Multiple insiders or participants bought close together.",
-    "cluster-strong": "A stronger version of clustered buying interest.",
-    "insider-buy": "Insiders are buying shares, which can support a bullish case.",
-    "momentum-confirmed": "Price strength is being confirmed by momentum behavior.",
-    "breakout-20d": "The stock is breaking above a recent 20-day range.",
-    "breakout-52w": "The stock is approaching or breaking a 52-week high area.",
-    "volume-confirmed": "Trading activity is elevated enough to support the move.",
-    "heavy-volume": "Trading activity is meaningfully above normal.",
-    "earnings-support": "Recent earnings results are helping the setup.",
-    "reasonable-valuation": "Valuation still looks reasonable compared to growth or quality.",
-    "deep-value": "The setup may also have a value angle.",
-    "guidance-support": "Forward guidance or expectations appear constructive.",
-    "relative-strength": "The stock is outperforming the broader market.",
-    "candidate-screen": "The setup also passed the technical candidate screening layer.",
-    "candidate-included": "The setup made it into the live strong-buy universe.",
-    "candidate-strong-buy": "The technical candidate score is especially strong.",
-    "screen-heavy-volume": "The screening layer also saw elevated volume.",
-    "screen-momentum": "The screening layer also saw strong momentum.",
-  }
-
-  return map[tag] ?? `${pretty} is a model tag used to explain part of the setup.`
-}
-
-function getMiniMetricTooltip(label: string, row: UnifiedRow) {
-  switch (label) {
-    case "Price":
-      return `Current share price. Current value: ${formatMoney(row.price)}.`
-    case "Vs Market":
-      return `Relative strength versus the broader market over the recent period. Current value: ${formatPercent(
-        row.relative_strength_20d
-      )}.`
-    case "5D Move":
-      return `The stock’s move over the last 5 trading days. Current value: ${formatPercent(
-        row.price_return_5d
-      )}.`
-    case "20D Move":
-      return `The stock’s move over the last 20 trading days. Current value: ${formatPercent(
-        row.price_return_20d
-      )}.`
-    case "Volume":
-      return `Trading volume compared with normal. Current value: ${formatRatio(
-        row.volume_ratio
-      )}.`
-    case "1D Δ":
-      return `Change in signal-side score over the last day. Current value: ${formatScoreChange(
-        row.ticker_score_change_1d
-      )}.`
-    case "Signals":
-      return `How many distinct signal-side confirmations are stacked into this setup. Current value: ${formatWholeNumber(
-        row.stacked_signal_count
-      )}.`
-    case "Cand Score":
-      return `Technical candidate score from candidate_universe. Current value: ${formatSimpleNumber(
-        row.candidate_score
-      )}.`
-    default:
-      return ""
-  }
 }
