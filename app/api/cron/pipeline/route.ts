@@ -329,25 +329,42 @@ export async function GET(request: NextRequest) {
 
     let state = await getPipelineState(supabase)
 
-    const lock = await tryAcquireRunLock(supabase, state, runStartedIso)
-    state = lock.state
+if (
+  state.status === "running" &&
+  isRecentRun(state.last_run_started_at, RUN_LOCK_WINDOW_MS)
+) {
+  return NextResponse.json({
+    ok: true,
+    message: "Skipped because another pipeline run is already in progress.",
+    state: {
+      stage: state.stage,
+      status: state.status,
+      screenStart: state.screen_start,
+      screenNextStart: state.screen_next_start,
+      screenBatch: state.screen_batch,
+      screenTotal: state.screen_total,
+      lastRunStartedAt: state.last_run_started_at,
+      lastRunFinishedAt: state.last_run_finished_at,
+    },
+  })
+}
 
-    if (!lock.acquired) {
-      return NextResponse.json({
-        ok: true,
-        message: "Skipped because another pipeline run is already in progress.",
-        state: {
-          stage: state.stage,
-          status: state.status,
-          screenStart: state.screen_start,
-          screenNextStart: state.screen_next_start,
-          screenBatch: state.screen_batch,
-          screenTotal: state.screen_total,
-          lastRunStartedAt: state.last_run_started_at,
-          lastRunFinishedAt: state.last_run_finished_at,
-        },
-      })
-    }
+state = await patchPipelineState(supabase, {
+  status: "running",
+  last_run_started_at: runStartedIso,
+  last_run_finished_at: null,
+  last_error: null,
+  last_error_at: null,
+  stage:
+    state.stage === "idle" || state.stage === "complete" || state.stage === "error"
+      ? "companies"
+      : state.stage,
+  cycle_started_at: state.cycle_started_at ?? runStartedIso,
+  screen_batch: Math.min(
+    Math.max(1, state.screen_batch || DEFAULT_SCREEN_BATCH),
+    MAX_SCREEN_BATCH
+  ),
+})
 
     const results: StepResult[] = []
 
