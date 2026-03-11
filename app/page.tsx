@@ -1248,7 +1248,7 @@ function FeaturedStrongBuyCard({
 
         {!!miniMetrics.length && (
   <div className="mt-6 flex justify-center">
-    <div className="grid grid-cols-2 gap-4 w-[280px] sm:w-[320px]">
+    <div className="grid w-[280px] grid-cols-2 gap-4 sm:w-[320px]">
       {miniMetrics.map((item) => (
         <MiniMetric
           key={item.label}
@@ -1464,21 +1464,15 @@ function MiniMetric({
   value: string
   tooltip?: string
 }) {
-  return (
-    <div
-      title={tooltip}
-      className="h-[92px] w-full rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 backdrop-blur flex flex-col items-center justify-center text-center shadow-inner"
-    >
-      <div className="text-[11px] tracking-[0.25em] text-white/50 mb-1">
+  const card = (
+    <div className="flex h-[92px] w-full flex-col items-center justify-center rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-white/5 text-center shadow-inner backdrop-blur">
+      <div className="mb-1 text-[11px] tracking-[0.25em] text-white/50">
         {label}
       </div>
 
-      <div className="text-xl font-semibold text-white">
-        {value}
-      </div>
+      <div className="text-xl font-semibold text-white">{value}</div>
     </div>
   )
-}
 
   if (!tooltip) return card
   return <Tooltip content={tooltip}>{card}</Tooltip>
