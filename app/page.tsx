@@ -3,124 +3,73 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { supabase } from "../lib/supabase"
 
-type SignalRow = {
-  id?: number
+type CandidateUniverseRow = {
   ticker: string
-  company_name?: string | null
-  business_description?: string | null
+  cik?: string | null
+  name?: string | null
   price?: number | null
-
-  signal_type?: string | null
-  signal_source?: string | null
-  signal_category?: string | null
-  signal_strength_bucket?: string | null
-  signal_tags?: string[] | null
-
-  catalyst_type?: string | null
-  bias?: string | null
-  board_bucket?: string | null
-  source_form?: string | null
-  filed_at?: string | null
-
-  score?: number | null
-  app_score?: number | null
-  title?: string | null
-  summary?: string | null
-  filing_url?: string | null
-  accession_no?: string | null
-
-  insider_action?: string | null
-  insider_shares?: number | null
-  insider_avg_price?: number | null
-  insider_buy_value?: number | null
-  insider_signal_flavor?: string | null
-
-  cluster_buyers?: number | null
-  cluster_shares?: number | null
-
-  price_return_5d?: number | null
-  price_return_20d?: number | null
+  market_cap?: number | null
+  avg_volume_20d?: number | null
+  avg_dollar_volume_20d?: number | null
+  one_day_return?: number | null
+  return_5d?: number | null
+  return_10d?: number | null
+  return_20d?: number | null
   volume_ratio?: number | null
   breakout_20d?: boolean | null
-  breakout_52w?: boolean | null
-  above_50dma?: boolean | null
-  trend_aligned?: boolean | null
-  price_confirmed?: boolean | null
-  relative_strength_20d?: number | null
-
-  earnings_surprise_pct?: number | null
-  revenue_growth_pct?: number | null
-  guidance_flag?: boolean | null
-
-  pe_ratio?: number | null
-  pe_forward?: number | null
-  pe_type?: string | null
-  market_cap?: number | null
-  sector?: string | null
-  industry?: string | null
-
-  age_days?: number | null
-  score_version?: string | null
-  score_updated_at?: string | null
-  stacked_signal_count?: number | null
-  score_breakdown?: Record<string, number> | null
-  signal_reasons?: string[] | null
-  score_caps_applied?: string[] | null
-  freshness_bucket?: string | null
-
-  ticker_score_change_1d?: number | null
-  ticker_score_change_7d?: number | null
-
+  breakout_10d?: boolean | null
+  above_sma_20?: boolean | null
+  breakout_clearance_pct?: number | null
+  extension_from_sma20_pct?: number | null
+  close_in_day_range?: number | null
+  catalyst_count?: number | null
+  passes_price?: boolean | null
+  passes_volume?: boolean | null
+  passes_dollar_volume?: boolean | null
+  passes_market_cap?: boolean | null
+  candidate_score?: number | null
+  included?: boolean | null
+  screen_reason?: string | null
+  last_screened_at?: string | null
   updated_at?: string | null
-  created_at?: string | null
 }
 
-type TickerScore = {
-  id?: number
+type TickerScoreRow = {
   ticker: string
   company_name?: string | null
   business_description?: string | null
-  price?: number | null
-
   app_score?: number | null
   raw_score?: number | null
   bias?: string | null
   board_bucket?: string | null
   signal_strength_bucket?: string | null
-
   score_version?: string | null
   score_updated_at?: string | null
   stacked_signal_count?: number | null
-
   score_breakdown?: Record<string, number> | null
   signal_reasons?: string[] | null
   score_caps_applied?: string[] | null
   signal_tags?: string[] | null
-
   primary_signal_type?: string | null
   primary_signal_source?: string | null
   primary_signal_category?: string | null
   primary_title?: string | null
   primary_summary?: string | null
-
   filed_at?: string | null
   accession_nos?: string[] | null
   source_forms?: string[] | null
-
   pe_ratio?: number | null
   pe_forward?: number | null
   pe_type?: string | null
   market_cap?: number | null
   sector?: string | null
   industry?: string | null
-
   insider_action?: string | null
   insider_shares?: number | null
   insider_avg_price?: number | null
   insider_buy_value?: number | null
   cluster_buyers?: number | null
   cluster_shares?: number | null
-
   price_return_5d?: number | null
   price_return_20d?: number | null
   volume_ratio?: number | null
@@ -130,91 +79,102 @@ type TickerScore = {
   trend_aligned?: boolean | null
   price_confirmed?: boolean | null
   relative_strength_20d?: number | null
-
   earnings_surprise_pct?: number | null
   revenue_growth_pct?: number | null
   guidance_flag?: boolean | null
-
   age_days?: number | null
   freshness_bucket?: string | null
-
   ticker_score_change_1d?: number | null
   ticker_score_change_7d?: number | null
-
-  created_at?: string | null
   updated_at?: string | null
+  created_at?: string | null
 }
 
-type CandidateUniverseRow = {
-  id?: number
+type UnifiedRow = {
   ticker: string
-  company_name?: string | null
-  business_description?: string | null
-  description?: string | null
-  price?: number | null
+  company_name: string | null
+  business_description: string | null
+  price: number | null
 
-  app_score?: number | null
-  score?: number | null
-  raw_score?: number | null
+  candidate_score: number | null
+  signal_score: number | null
+  display_score: number
 
-  bias?: string | null
-  board_bucket?: string | null
-  signal_strength_bucket?: string | null
+  included: boolean
+  screen_reason: string | null
+  last_screened_at: string | null
 
-  score_version?: string | null
-  score_updated_at?: string | null
-  stacked_signal_count?: number | null
-  score_breakdown?: Record<string, number> | null
-  signal_reasons?: string[] | null
-  score_caps_applied?: string[] | null
-  signal_tags?: string[] | null
+  market_cap: number | null
+  sector: string | null
+  industry: string | null
+  pe_ratio: number | null
+  pe_forward: number | null
+  pe_type: string | null
 
-  signal_type?: string | null
-  signal_source?: string | null
-  signal_category?: string | null
-  title?: string | null
-  summary?: string | null
+  one_day_return: number | null
+  price_return_5d: number | null
+  return_10d: number | null
+  price_return_20d: number | null
+  volume_ratio: number | null
+  relative_strength_20d: number | null
 
-  filed_at?: string | null
-  accession_no?: string | null
-  source_form?: string | null
+  breakout_20d: boolean | null
+  breakout_10d: boolean | null
+  breakout_52w: boolean | null
+  above_sma_20: boolean | null
+  above_50dma: boolean | null
+  trend_aligned: boolean | null
+  price_confirmed: boolean | null
 
-  pe_ratio?: number | null
-  pe_forward?: number | null
-  pe_type?: string | null
-  market_cap?: number | null
-  sector?: string | null
-  industry?: string | null
+  breakout_clearance_pct: number | null
+  extension_from_sma20_pct: number | null
+  close_in_day_range: number | null
+  catalyst_count: number | null
 
-  insider_action?: string | null
-  insider_shares?: number | null
-  insider_avg_price?: number | null
-  insider_buy_value?: number | null
-  cluster_buyers?: number | null
-  cluster_shares?: number | null
+  signal_strength_bucket: string | null
+  bias: string | null
+  board_bucket: string | null
 
-  price_return_5d?: number | null
-  price_return_20d?: number | null
-  volume_ratio?: number | null
-  breakout_20d?: boolean | null
-  breakout_52w?: boolean | null
-  above_50dma?: boolean | null
-  trend_aligned?: boolean | null
-  price_confirmed?: boolean | null
-  relative_strength_20d?: number | null
+  signal_tags: string[]
+  signal_reasons: string[]
+  score_breakdown: Record<string, number> | null
+  score_caps_applied: string[]
 
-  earnings_surprise_pct?: number | null
-  revenue_growth_pct?: number | null
-  guidance_flag?: boolean | null
+  primary_signal_type: string | null
+  primary_signal_source: string | null
+  primary_signal_category: string | null
+  primary_title: string | null
+  primary_summary: string | null
 
-  age_days?: number | null
-  freshness_bucket?: string | null
+  filed_at: string | null
+  accession_nos: string[]
+  source_forms: string[]
+  age_days: number | null
+  freshness_bucket: string | null
 
-  ticker_score_change_1d?: number | null
-  ticker_score_change_7d?: number | null
+  insider_action: string | null
+  insider_shares: number | null
+  insider_avg_price: number | null
+  insider_buy_value: number | null
+  cluster_buyers: number | null
+  cluster_shares: number | null
 
-  updated_at?: string | null
-  created_at?: string | null
+  earnings_surprise_pct: number | null
+  revenue_growth_pct: number | null
+  guidance_flag: boolean | null
+
+  ticker_score_change_1d: number | null
+  ticker_score_change_7d: number | null
+
+  score_version: string | null
+  score_updated_at: string | null
+  stacked_signal_count: number | null
+  updated_at: string | null
+  created_at: string | null
+
+  has_candidate_data: boolean
+  has_signal_data: boolean
+  data_source_label: "Technical + Filing" | "Technical Only" | "Filing Only"
 }
 
 type PriceFilterType =
@@ -228,6 +188,7 @@ type PeFilterType = "all" | "20" | "30" | "50"
 type FreshnessFilterType = "all" | "today" | "3d" | "7d" | "14d"
 type ScoreFilterType = "all" | "70" | "75" | "80" | "85" | "90"
 type SectorFilterType = "all" | string
+type SourceFilterType = "all" | "technical_only" | "filing_only" | "both"
 
 type MiniMetricItem = {
   label: string
@@ -244,263 +205,163 @@ type ReasonLine = {
 
 const CARDS_PER_PAGE = 18
 
-function normalizeTicker(value?: string | null) {
+function normalizeTicker(value: string | null | undefined) {
   return (value || "").trim().toUpperCase()
 }
 
-function firstNonNull<T>(...values: Array<T | null | undefined>): T | null {
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function round1(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return null
+  return Math.round(value * 10) / 10
+}
+
+function getCandidateScore(row: CandidateUniverseRow | null | undefined) {
+  return row?.candidate_score ?? null
+}
+
+function getSignalScore(row: TickerScoreRow | null | undefined) {
+  return row?.app_score ?? null
+}
+
+function makeUnifiedRow(
+  candidate: CandidateUniverseRow | null,
+  signal: TickerScoreRow | null
+): UnifiedRow | null {
+  const ticker = normalizeTicker(candidate?.ticker || signal?.ticker)
+  if (!ticker) return null
+
+  const candidateScore = getCandidateScore(candidate)
+  const signalScore = getSignalScore(signal)
+  const displayScore = Math.round(
+    firstNumber(signalScore, candidateScore, 0)
+  )
+
+  return {
+    ticker,
+    company_name: firstString(signal?.company_name, candidate?.name),
+    business_description: firstString(signal?.business_description, null),
+    price: firstNumberOrNull(candidate?.price, null),
+
+    candidate_score: candidateScore,
+    signal_score: signalScore,
+    display_score: clamp(displayScore, 0, 100),
+
+    included: candidate?.included === true,
+    screen_reason: candidate?.screen_reason ?? null,
+    last_screened_at: candidate?.last_screened_at ?? null,
+
+    market_cap: firstNumberOrNull(signal?.market_cap, candidate?.market_cap, null),
+    sector: signal?.sector ?? null,
+    industry: signal?.industry ?? null,
+    pe_ratio: signal?.pe_ratio ?? null,
+    pe_forward: signal?.pe_forward ?? null,
+    pe_type: signal?.pe_type ?? null,
+
+    one_day_return: candidate?.one_day_return ?? null,
+    price_return_5d: firstNumberOrNull(signal?.price_return_5d, candidate?.return_5d, null),
+    return_10d: candidate?.return_10d ?? null,
+    price_return_20d: firstNumberOrNull(signal?.price_return_20d, candidate?.return_20d, null),
+    volume_ratio: firstNumberOrNull(signal?.volume_ratio, candidate?.volume_ratio, null),
+    relative_strength_20d: signal?.relative_strength_20d ?? null,
+
+    breakout_20d: firstBooleanOrNull(signal?.breakout_20d, candidate?.breakout_20d, null),
+    breakout_10d: candidate?.breakout_10d ?? null,
+    breakout_52w: signal?.breakout_52w ?? null,
+    above_sma_20: candidate?.above_sma_20 ?? null,
+    above_50dma: signal?.above_50dma ?? null,
+    trend_aligned: firstBooleanOrNull(signal?.trend_aligned, null),
+    price_confirmed: firstBooleanOrNull(signal?.price_confirmed, null),
+
+    breakout_clearance_pct: candidate?.breakout_clearance_pct ?? null,
+    extension_from_sma20_pct: candidate?.extension_from_sma20_pct ?? null,
+    close_in_day_range: candidate?.close_in_day_range ?? null,
+    catalyst_count: candidate?.catalyst_count ?? null,
+
+    signal_strength_bucket: signal?.signal_strength_bucket ?? null,
+    bias: signal?.bias ?? null,
+    board_bucket: signal?.board_bucket ?? null,
+
+    signal_tags: Array.isArray(signal?.signal_tags) ? signal!.signal_tags! : [],
+    signal_reasons: Array.isArray(signal?.signal_reasons) ? signal!.signal_reasons! : [],
+    score_breakdown: signal?.score_breakdown ?? null,
+    score_caps_applied: Array.isArray(signal?.score_caps_applied) ? signal!.score_caps_applied! : [],
+
+    primary_signal_type: signal?.primary_signal_type ?? null,
+    primary_signal_source: signal?.primary_signal_source ?? null,
+    primary_signal_category: signal?.primary_signal_category ?? null,
+    primary_title: signal?.primary_title ?? null,
+    primary_summary: signal?.primary_summary ?? null,
+
+    filed_at: signal?.filed_at ?? null,
+    accession_nos: Array.isArray(signal?.accession_nos) ? signal!.accession_nos! : [],
+    source_forms: Array.isArray(signal?.source_forms) ? signal!.source_forms! : [],
+    age_days: signal?.age_days ?? null,
+    freshness_bucket: signal?.freshness_bucket ?? null,
+
+    insider_action: signal?.insider_action ?? null,
+    insider_shares: signal?.insider_shares ?? null,
+    insider_avg_price: signal?.insider_avg_price ?? null,
+    insider_buy_value: signal?.insider_buy_value ?? null,
+    cluster_buyers: signal?.cluster_buyers ?? null,
+    cluster_shares: signal?.cluster_shares ?? null,
+
+    earnings_surprise_pct: signal?.earnings_surprise_pct ?? null,
+    revenue_growth_pct: signal?.revenue_growth_pct ?? null,
+    guidance_flag: signal?.guidance_flag ?? null,
+
+    ticker_score_change_1d: signal?.ticker_score_change_1d ?? null,
+    ticker_score_change_7d: signal?.ticker_score_change_7d ?? null,
+
+    score_version: signal?.score_version ?? "candidate-universe",
+    score_updated_at: firstString(signal?.score_updated_at, candidate?.updated_at),
+    stacked_signal_count: signal?.stacked_signal_count ?? null,
+    updated_at: firstString(signal?.updated_at, candidate?.updated_at),
+    created_at: signal?.created_at ?? null,
+
+    has_candidate_data: Boolean(candidate),
+    has_signal_data: Boolean(signal),
+    data_source_label:
+      candidate && signal
+        ? "Technical + Filing"
+        : candidate
+          ? "Technical Only"
+          : "Filing Only",
+  }
+}
+
+function firstString(...values: Array<string | null | undefined>) {
   for (const value of values) {
-    if (value !== null && value !== undefined) return value
+    if (typeof value === "string" && value.trim()) return value
   }
   return null
 }
 
-function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
-  return {
-    id: row.id,
-    ticker: normalizeTicker(row.ticker),
-    company_name: row.company_name ?? null,
-    business_description: row.business_description ?? null,
-    price: row.price ?? null,
-
-    app_score: row.app_score ?? row.score ?? null,
-    raw_score: row.score ?? row.app_score ?? null,
-    bias: row.bias ?? null,
-    board_bucket: row.board_bucket ?? null,
-    signal_strength_bucket: row.signal_strength_bucket ?? null,
-
-    score_version: row.score_version ?? "signals-fallback",
-    score_updated_at: row.score_updated_at ?? row.updated_at ?? null,
-    stacked_signal_count: row.stacked_signal_count ?? 1,
-
-    score_breakdown: row.score_breakdown ?? null,
-    signal_reasons: row.signal_reasons ?? null,
-    score_caps_applied: row.score_caps_applied ?? null,
-    signal_tags: Array.isArray(row.signal_tags) ? row.signal_tags : [],
-
-    primary_signal_type: row.signal_type ?? null,
-    primary_signal_source: row.signal_source ?? null,
-    primary_signal_category: row.signal_category ?? null,
-    primary_title: row.title ?? null,
-    primary_summary: row.summary ?? null,
-
-    filed_at: row.filed_at ?? null,
-    accession_nos: row.accession_no ? [row.accession_no] : [],
-    source_forms: row.source_form ? [row.source_form] : [],
-
-    pe_ratio: row.pe_ratio ?? null,
-    pe_forward: row.pe_forward ?? null,
-    pe_type: row.pe_type ?? null,
-    market_cap: row.market_cap ?? null,
-    sector: row.sector ?? null,
-    industry: row.industry ?? null,
-
-    insider_action: row.insider_action ?? null,
-    insider_shares: row.insider_shares ?? null,
-    insider_avg_price: row.insider_avg_price ?? null,
-    insider_buy_value: row.insider_buy_value ?? null,
-    cluster_buyers: row.cluster_buyers ?? null,
-    cluster_shares: row.cluster_shares ?? null,
-
-    price_return_5d: row.price_return_5d ?? null,
-    price_return_20d: row.price_return_20d ?? null,
-    volume_ratio: row.volume_ratio ?? null,
-    breakout_20d: row.breakout_20d ?? null,
-    breakout_52w: row.breakout_52w ?? null,
-    above_50dma: row.above_50dma ?? null,
-    trend_aligned: row.trend_aligned ?? null,
-    price_confirmed: row.price_confirmed ?? null,
-    relative_strength_20d: row.relative_strength_20d ?? null,
-
-    earnings_surprise_pct: row.earnings_surprise_pct ?? null,
-    revenue_growth_pct: row.revenue_growth_pct ?? null,
-    guidance_flag: row.guidance_flag ?? null,
-
-    age_days: row.age_days ?? null,
-    freshness_bucket: row.freshness_bucket ?? null,
-
-    ticker_score_change_1d: row.ticker_score_change_1d ?? null,
-    ticker_score_change_7d: row.ticker_score_change_7d ?? null,
-
-    created_at: row.created_at ?? null,
-    updated_at: row.updated_at ?? null,
+function firstNumber(...values: Array<number | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value
   }
+  return 0
 }
 
-function mapCandidateUniverseRowToTickerScore(row: CandidateUniverseRow): TickerScore {
-  return {
-    id: row.id,
-    ticker: normalizeTicker(row.ticker),
-    company_name: row.company_name ?? null,
-    business_description: firstNonNull(row.business_description, row.description),
-
-    price: row.price ?? null,
-
-    app_score: firstNonNull(row.app_score, row.score, row.raw_score),
-    raw_score: firstNonNull(row.raw_score, row.score, row.app_score),
-
-    bias: row.bias ?? null,
-    board_bucket: row.board_bucket ?? null,
-    signal_strength_bucket: row.signal_strength_bucket ?? null,
-
-    score_version: row.score_version ?? "candidate-universe",
-    score_updated_at: row.score_updated_at ?? row.updated_at ?? null,
-    stacked_signal_count: row.stacked_signal_count ?? null,
-
-    score_breakdown: row.score_breakdown ?? null,
-    signal_reasons: row.signal_reasons ?? null,
-    score_caps_applied: row.score_caps_applied ?? null,
-    signal_tags: Array.isArray(row.signal_tags) ? row.signal_tags : [],
-
-    primary_signal_type: row.signal_type ?? null,
-    primary_signal_source: row.signal_source ?? null,
-    primary_signal_category: row.signal_category ?? null,
-    primary_title: row.title ?? null,
-    primary_summary: row.summary ?? null,
-
-    filed_at: row.filed_at ?? null,
-    accession_nos: row.accession_no ? [row.accession_no] : [],
-    source_forms: row.source_form ? [row.source_form] : [],
-
-    pe_ratio: row.pe_ratio ?? null,
-    pe_forward: row.pe_forward ?? null,
-    pe_type: row.pe_type ?? null,
-    market_cap: row.market_cap ?? null,
-    sector: row.sector ?? null,
-    industry: row.industry ?? null,
-
-    insider_action: row.insider_action ?? null,
-    insider_shares: row.insider_shares ?? null,
-    insider_avg_price: row.insider_avg_price ?? null,
-    insider_buy_value: row.insider_buy_value ?? null,
-    cluster_buyers: row.cluster_buyers ?? null,
-    cluster_shares: row.cluster_shares ?? null,
-
-    price_return_5d: row.price_return_5d ?? null,
-    price_return_20d: row.price_return_20d ?? null,
-    volume_ratio: row.volume_ratio ?? null,
-    breakout_20d: row.breakout_20d ?? null,
-    breakout_52w: row.breakout_52w ?? null,
-    above_50dma: row.above_50dma ?? null,
-    trend_aligned: row.trend_aligned ?? null,
-    price_confirmed: row.price_confirmed ?? null,
-    relative_strength_20d: row.relative_strength_20d ?? null,
-
-    earnings_surprise_pct: row.earnings_surprise_pct ?? null,
-    revenue_growth_pct: row.revenue_growth_pct ?? null,
-    guidance_flag: row.guidance_flag ?? null,
-
-    age_days: row.age_days ?? null,
-    freshness_bucket: row.freshness_bucket ?? null,
-
-    ticker_score_change_1d: row.ticker_score_change_1d ?? null,
-    ticker_score_change_7d: row.ticker_score_change_7d ?? null,
-
-    created_at: row.created_at ?? null,
-    updated_at: row.updated_at ?? null,
+function firstNumberOrNull(...values: Array<number | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value
   }
+  return null
 }
 
-function mergeTickerRows(primary: TickerScore, secondary?: TickerScore | null): TickerScore {
-  if (!secondary) return primary
-
-  return {
-    ...secondary,
-    ...primary,
-
-    ticker: normalizeTicker(primary.ticker || secondary.ticker),
-
-    company_name: firstNonNull(primary.company_name, secondary.company_name),
-    business_description: firstNonNull(
-      primary.business_description,
-      secondary.business_description
-    ),
-    price: firstNonNull(primary.price, secondary.price),
-
-    app_score: firstNonNull(primary.app_score, secondary.app_score),
-    raw_score: firstNonNull(primary.raw_score, secondary.raw_score),
-    bias: firstNonNull(primary.bias, secondary.bias),
-    board_bucket: firstNonNull(primary.board_bucket, secondary.board_bucket),
-    signal_strength_bucket: firstNonNull(
-      primary.signal_strength_bucket,
-      secondary.signal_strength_bucket
-    ),
-
-    score_version: firstNonNull(primary.score_version, secondary.score_version),
-    score_updated_at: firstNonNull(primary.score_updated_at, secondary.score_updated_at),
-    stacked_signal_count: firstNonNull(primary.stacked_signal_count, secondary.stacked_signal_count),
-
-    score_breakdown: firstNonNull(primary.score_breakdown, secondary.score_breakdown),
-    signal_reasons: firstNonNull(primary.signal_reasons, secondary.signal_reasons),
-    score_caps_applied: firstNonNull(primary.score_caps_applied, secondary.score_caps_applied),
-    signal_tags: firstNonNull(primary.signal_tags, secondary.signal_tags),
-
-    primary_signal_type: firstNonNull(primary.primary_signal_type, secondary.primary_signal_type),
-    primary_signal_source: firstNonNull(primary.primary_signal_source, secondary.primary_signal_source),
-    primary_signal_category: firstNonNull(
-      primary.primary_signal_category,
-      secondary.primary_signal_category
-    ),
-    primary_title: firstNonNull(primary.primary_title, secondary.primary_title),
-    primary_summary: firstNonNull(primary.primary_summary, secondary.primary_summary),
-
-    filed_at: firstNonNull(primary.filed_at, secondary.filed_at),
-    accession_nos: firstNonNull(primary.accession_nos, secondary.accession_nos),
-    source_forms: firstNonNull(primary.source_forms, secondary.source_forms),
-
-    pe_ratio: firstNonNull(primary.pe_ratio, secondary.pe_ratio),
-    pe_forward: firstNonNull(primary.pe_forward, secondary.pe_forward),
-    pe_type: firstNonNull(primary.pe_type, secondary.pe_type),
-    market_cap: firstNonNull(primary.market_cap, secondary.market_cap),
-    sector: firstNonNull(primary.sector, secondary.sector),
-    industry: firstNonNull(primary.industry, secondary.industry),
-
-    insider_action: firstNonNull(primary.insider_action, secondary.insider_action),
-    insider_shares: firstNonNull(primary.insider_shares, secondary.insider_shares),
-    insider_avg_price: firstNonNull(primary.insider_avg_price, secondary.insider_avg_price),
-    insider_buy_value: firstNonNull(primary.insider_buy_value, secondary.insider_buy_value),
-    cluster_buyers: firstNonNull(primary.cluster_buyers, secondary.cluster_buyers),
-    cluster_shares: firstNonNull(primary.cluster_shares, secondary.cluster_shares),
-
-    price_return_5d: firstNonNull(primary.price_return_5d, secondary.price_return_5d),
-    price_return_20d: firstNonNull(primary.price_return_20d, secondary.price_return_20d),
-    volume_ratio: firstNonNull(primary.volume_ratio, secondary.volume_ratio),
-    breakout_20d: firstNonNull(primary.breakout_20d, secondary.breakout_20d),
-    breakout_52w: firstNonNull(primary.breakout_52w, secondary.breakout_52w),
-    above_50dma: firstNonNull(primary.above_50dma, secondary.above_50dma),
-    trend_aligned: firstNonNull(primary.trend_aligned, secondary.trend_aligned),
-    price_confirmed: firstNonNull(primary.price_confirmed, secondary.price_confirmed),
-    relative_strength_20d: firstNonNull(
-      primary.relative_strength_20d,
-      secondary.relative_strength_20d
-    ),
-
-    earnings_surprise_pct: firstNonNull(
-      primary.earnings_surprise_pct,
-      secondary.earnings_surprise_pct
-    ),
-    revenue_growth_pct: firstNonNull(primary.revenue_growth_pct, secondary.revenue_growth_pct),
-    guidance_flag: firstNonNull(primary.guidance_flag, secondary.guidance_flag),
-
-    age_days: firstNonNull(primary.age_days, secondary.age_days),
-    freshness_bucket: firstNonNull(primary.freshness_bucket, secondary.freshness_bucket),
-
-    ticker_score_change_1d: firstNonNull(
-      primary.ticker_score_change_1d,
-      secondary.ticker_score_change_1d
-    ),
-    ticker_score_change_7d: firstNonNull(
-      primary.ticker_score_change_7d,
-      secondary.ticker_score_change_7d
-    ),
-
-    created_at: firstNonNull(primary.created_at, secondary.created_at),
-    updated_at: firstNonNull(primary.updated_at, secondary.updated_at),
+function firstBooleanOrNull(...values: Array<boolean | null | undefined>) {
+  for (const value of values) {
+    if (typeof value === "boolean") return value
   }
+  return null
 }
 
 export default function Home() {
-  const [rows, setRows] = useState<TickerScore[]>([])
+  const [rows, setRows] = useState<UnifiedRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -510,106 +371,175 @@ export default function Home() {
   const [priceFilter, setPriceFilter] = useState<PriceFilterType>("all")
   const [peFilter, setPeFilter] = useState<PeFilterType>("all")
   const [freshnessFilter, setFreshnessFilter] = useState<FreshnessFilterType>("all")
-  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("80")
+  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("70")
   const [sectorFilter, setSectorFilter] = useState<SectorFilterType>("all")
+  const [sourceFilter, setSourceFilter] = useState<SourceFilterType>("all")
 
   useEffect(() => {
     let isMounted = true
 
     async function loadData() {
       try {
-        if (!isMounted) return
         setLoading(true)
         setError(null)
 
-        const [tickerScoresResponse, candidateUniverseResponse] = await Promise.all([
+        const [candidateRes, signalRes] = await Promise.all([
           supabase
-            .from("ticker_scores_current")
-            .select("*")
-            .gte("app_score", 70)
-            .order("app_score", { ascending: false })
-            .order("filed_at", { ascending: false })
+            .from("candidate_universe")
+            .select(`
+              ticker,
+              cik,
+              name,
+              price,
+              market_cap,
+              avg_volume_20d,
+              avg_dollar_volume_20d,
+              one_day_return,
+              return_5d,
+              return_10d,
+              return_20d,
+              volume_ratio,
+              breakout_20d,
+              breakout_10d,
+              above_sma_20,
+              breakout_clearance_pct,
+              extension_from_sma20_pct,
+              close_in_day_range,
+              catalyst_count,
+              passes_price,
+              passes_volume,
+              passes_dollar_volume,
+              passes_market_cap,
+              candidate_score,
+              included,
+              screen_reason,
+              last_screened_at,
+              updated_at
+            `)
+            .gte("candidate_score", 70)
+            .order("candidate_score", { ascending: false })
             .limit(1000),
 
           supabase
-            .from("candidate_universe")
-            .select("*")
-            .gte("app_score", 70)
+            .from("ticker_scores_current")
+            .select(`
+              ticker,
+              company_name,
+              business_description,
+              app_score,
+              raw_score,
+              bias,
+              board_bucket,
+              signal_strength_bucket,
+              score_version,
+              score_updated_at,
+              stacked_signal_count,
+              score_breakdown,
+              signal_reasons,
+              score_caps_applied,
+              signal_tags,
+              primary_signal_type,
+              primary_signal_source,
+              primary_signal_category,
+              primary_title,
+              primary_summary,
+              filed_at,
+              accession_nos,
+              source_forms,
+              pe_ratio,
+              pe_forward,
+              pe_type,
+              market_cap,
+              sector,
+              industry,
+              insider_action,
+              insider_shares,
+              insider_avg_price,
+              insider_buy_value,
+              cluster_buyers,
+              cluster_shares,
+              price_return_5d,
+              price_return_20d,
+              volume_ratio,
+              breakout_20d,
+              breakout_52w,
+              above_50dma,
+              trend_aligned,
+              price_confirmed,
+              relative_strength_20d,
+              earnings_surprise_pct,
+              revenue_growth_pct,
+              guidance_flag,
+              age_days,
+              freshness_bucket,
+              ticker_score_change_1d,
+              ticker_score_change_7d,
+              updated_at,
+              created_at
+            `)
             .order("app_score", { ascending: false })
-            .order("filed_at", { ascending: false })
             .limit(1000),
         ])
 
         if (!isMounted) return
 
-        const mergedMap = new Map<string, TickerScore>()
-
-        if (!tickerScoresResponse.error) {
-          const tickerRows = ((tickerScoresResponse.data as TickerScore[]) ?? [])
-            .map((row) => ({
-              ...row,
-              ticker: normalizeTicker(row.ticker),
-            }))
-            .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
-
-          for (const row of tickerRows) {
-            mergedMap.set(row.ticker, row)
-          }
-        }
-
-        if (!candidateUniverseResponse.error) {
-          const candidateRows = ((candidateUniverseResponse.data as CandidateUniverseRow[]) ?? [])
-            .map(mapCandidateUniverseRowToTickerScore)
-            .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
-
-          for (const candidateRow of candidateRows) {
-            const existing = mergedMap.get(candidateRow.ticker)
-            if (existing) {
-              mergedMap.set(candidateRow.ticker, mergeTickerRows(existing, candidateRow))
-            } else {
-              mergedMap.set(candidateRow.ticker, candidateRow)
-            }
-          }
-        }
-
-        if (
-          tickerScoresResponse.error &&
-          candidateUniverseResponse.error
-        ) {
-          const signalsResponse = await supabase
-            .from("signals")
-            .select("*")
-            .gte("app_score", 70)
-            .order("app_score", { ascending: false })
-            .order("filed_at", { ascending: false })
-            .limit(1000)
-
-          if (!isMounted) return
-
-          if (signalsResponse.error) {
-            setError(
-              tickerScoresResponse.error?.message ||
-                candidateUniverseResponse.error?.message ||
-                signalsResponse.error.message ||
-                "Error loading strong buys."
-            )
-            setRows([])
-            setLoading(false)
-            return
-          }
-
-          const fallbackRows = ((signalsResponse.data as SignalRow[]) ?? [])
-            .map(mapSignalRowToTickerScore)
-            .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
-
-          setRows(bestRowPerTicker(fallbackRows))
+        if (candidateRes.error) {
+          setError(candidateRes.error.message)
+          setRows([])
           setLoading(false)
           return
         }
 
-        const finalRows = bestRowPerTicker(Array.from(mergedMap.values()))
+        if (signalRes.error) {
+          setError(signalRes.error.message)
+          setRows([])
+          setLoading(false)
+          return
+        }
 
-        setRows(finalRows)
+        const candidateRows = (candidateRes.data || []) as CandidateUniverseRow[]
+        const signalRows = (signalRes.data || []) as TickerScoreRow[]
+
+        const candidateMap = new Map<string, CandidateUniverseRow>()
+        const signalMap = new Map<string, TickerScoreRow>()
+
+        for (const row of candidateRows) {
+          const ticker = normalizeTicker(row.ticker)
+          if (!ticker) continue
+          candidateMap.set(ticker, row)
+        }
+
+        for (const row of signalRows) {
+          const ticker = normalizeTicker(row.ticker)
+          if (!ticker) continue
+          signalMap.set(ticker, row)
+        }
+
+        const allTickers = new Set<string>([
+          ...candidateMap.keys(),
+          ...signalMap.keys(),
+        ])
+
+        const merged: UnifiedRow[] = []
+
+        for (const ticker of allTickers) {
+          const unified = makeUnifiedRow(
+            candidateMap.get(ticker) ?? null,
+            signalMap.get(ticker) ?? null
+          )
+          if (!unified) continue
+
+          const include =
+            (unified.candidate_score ?? -1) >= 70 || (unified.signal_score ?? -1) >= 70
+
+          if (include) {
+            merged.push(unified)
+          }
+        }
+
+        merged.sort(compareRows)
+
+        setRows(merged)
         setLoading(false)
       } catch (err: any) {
         if (!isMounted) return
@@ -628,7 +558,7 @@ export default function Home() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter])
+  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
 
   const sectorOptions = useMemo(() => {
     const sectors = Array.from(
@@ -645,11 +575,11 @@ export default function Home() {
       .filter((row) => matchesFreshnessFilter(row, freshnessFilter))
       .filter((row) => matchesScoreFilter(row, scoreFilter))
       .filter((row) => matchesSectorFilter(row, sectorFilter))
-      .sort((a, b) => compareRows(a, b))
-  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter])
+      .filter((row) => matchesSourceFilter(row, sourceFilter))
+      .sort(compareRows)
+  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
 
   const featuredRows = useMemo(() => filteredRows.slice(0, 3), [filteredRows])
-
   const remainingRows = useMemo(() => filteredRows.slice(3), [filteredRows])
 
   const totalPages = Math.max(1, Math.ceil(remainingRows.length / CARDS_PER_PAGE))
@@ -670,11 +600,9 @@ export default function Home() {
 
   const lastUpdated = getLastUpdated(rows)
   const strongBuyCount = filteredRows.length
-  const eliteCount = filteredRows.filter((row) => getEffectiveScore(row) >= 90).length
+  const eliteCount = filteredRows.filter((row) => row.display_score >= 90).length
   const avgScore = filteredRows.length
-    ? Math.round(
-        filteredRows.reduce((sum, row) => sum + getEffectiveScore(row), 0) / filteredRows.length
-      )
+    ? Math.round(filteredRows.reduce((sum, row) => sum + row.display_score, 0) / filteredRows.length)
     : 0
 
   function openDetails(ticker: string) {
@@ -689,8 +617,9 @@ export default function Home() {
     setPriceFilter("all")
     setPeFilter("all")
     setFreshnessFilter("all")
-    setScoreFilter("80")
+    setScoreFilter("70")
     setSectorFilter("all")
+    setSourceFilter("all")
     setSelectedTicker(null)
     setCurrentPage(1)
   }
@@ -712,35 +641,37 @@ export default function Home() {
                 </h1>
 
                 <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300 sm:text-lg">
-                  We give you a simple daily shortlist of the strongest stocks right now.
-                  No huge watchlists. No confusing clutter. Just the clearest strong-buy names that deserve a Strong Buy rating today.
+                  This board now shows all technical strong-buy candidates with scores of 70 or higher,
+                  while still displaying filing and signal confirmation when available.
                 </p>
 
                 <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-slate-300">
-                  Updated daily and built to answer one question:
-                  <span className="ml-1 font-semibold text-white">What should I buy right now?</span>
+                  Built from two layers:
+                  <span className="ml-1 font-semibold text-white">candidate_universe</span>
+                  <span className="mx-2 text-slate-500">+</span>
+                  <span className="font-semibold text-white">ticker_scores_current</span>
                 </div>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                 <HeroStat
-                  label="Buy Now Stocks"
+                  label="Visible Strong Buys"
                   value={loading ? "…" : String(strongBuyCount)}
-                  subtext="Current daily shortlist"
+                  subtext="70+ names on the board"
                 />
                 <HeroStat
-                  label="Best of the Best"
+                  label="Elite Setups"
                   value={loading ? "…" : String(eliteCount)}
-                  subtext="Top-rated names today"
+                  subtext="90+ conviction today"
                 />
               </div>
             </div>
 
             <div className="mt-8 grid gap-3 rounded-[2rem] border border-white/10 bg-black/20 p-4 sm:grid-cols-2 xl:grid-cols-4">
-              <TrustPill title="Updated daily" text="Fresh names, not last months hype" />
-              <TrustPill title="Only strong buys" text="Weak names don't make the cut" />
-              <TrustPill title="Easy to understand" text="Built like a cheat sheet" />
-              <TrustPill title="Made for action" text="Focused on what to buy right now" />
+              <TrustPill title="Technical candidates" text="All 70+ candidate-universe names show up" />
+              <TrustPill title="Filing enrichment" text="Signal and filing details appear when present" />
+              <TrustPill title="No silent exclusion" text="Ticker-scores rows no longer decide visibility" />
+              <TrustPill title="Made for action" text="Focused on what actually qualifies today" />
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-400">
@@ -750,58 +681,9 @@ export default function Home() {
               </span>
               <span className="hidden sm:inline">•</span>
               <span>
-                Showing only{" "}
-                <span className="font-semibold text-slate-100">strong buy</span> names
+                Avg score{" "}
+                <span className="font-semibold text-slate-100">{avgScore || "—"}</span>
               </span>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-8 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 shadow-xl backdrop-blur-sm sm:p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-              We Do All The Research
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
-              What and when to buy made simple...
-            </h2>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <WhySubscribeCard
-                title="No need to learn stock screening"
-                text="Most people don't know how to screen for the best stocks to buy right now."
-              />
-              <WhySubscribeCard
-                title="You don't need a giant watchlist"
-                text="We narrow things down fast so you can focus on the strongest buy-right-now stocks."
-              />
-              <WhySubscribeCard
-                title="No need to speak market jargon"
-                text="The goal is clarity. We uncover the names that are strongest right now in plain English."
-              />
-              <WhySubscribeCard
-                title="You just need a daily shortlist"
-                text="Think of this like your daily cheat sheet for the stocks most worth buying right now."
-              />
-            </div>
-            <div className="mt-6 text-center text-sm text-slate-400">
-              Unlike some analysts or fund managers, we are not paid to promote stocks.
-              The names shown here come from our screening and ranking system, not sponsorships.
-            </div>
-          </div>
-
-          <div className="rounded-[2rem] border border-emerald-400/15 bg-emerald-400/[0.06] p-5 shadow-xl backdrop-blur-sm sm:p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-              What makes the list
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
-              Not every stock makes it here
-            </h2>
-            <div className="mt-5 space-y-3">
-              <MethodBullet text="The stock needs to look strong right now" />
-              <MethodBullet text="It needs real buying interest, not random noise" />
-              <MethodBullet text="It needs enough support to qualify as a strong buy" />
-              <MethodBullet text="Weak or stale names are left off the page" />
-              <MethodBullet text="The goal is a short list you can actually use today" />
             </div>
           </div>
         </section>
@@ -810,14 +692,13 @@ export default function Home() {
           <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                Refine today’s setups
+                Refine today’s board
               </p>
               <h2 className="mt-1 text-2xl font-semibold text-white sm:text-3xl">
-                The board is already curated for you
+                Filter the strongest names
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400 sm:text-base">
-                Use filters to tighten the shortlist even further without turning the page into a
-                complicated terminal.
+                Technical candidates always appear first. Filing-confirmed names carry additional signal detail.
               </p>
             </div>
 
@@ -829,7 +710,7 @@ export default function Home() {
             </button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <FilterSelect
               label="Price"
               value={priceFilter}
@@ -891,20 +772,31 @@ export default function Home() {
                 label: sector === "all" ? "All sectors" : sector,
               }))}
             />
+
+            <FilterSelect
+              label="Source"
+              value={sourceFilter}
+              onChange={(value) => setSourceFilter(value as SourceFilterType)}
+              options={[
+                { value: "all", label: "All sources" },
+                { value: "both", label: "Technical + Filing" },
+                { value: "technical_only", label: "Technical only" },
+                { value: "filing_only", label: "Filing only" },
+              ]}
+            />
           </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-2 text-sm text-slate-300">
-            <BoardChip label="Visible strong buys" value={String(filteredRows.length)} />
-            <BoardChip label="Elite" value={String(filteredRows.filter((r) => getEffectiveScore(r) >= 90).length)} />
-            <BoardChip label="Avg score" value={filteredRows.length ? String(avgScore) : "—"} />
+            <BoardChip label="Visible" value={String(filteredRows.length)} />
             <BoardChip
-              label="Freshest"
-              value={
-                filteredRows[0]?.filed_at
-                  ? formatDateShort(filteredRows[0].filed_at)
-                  : "—"
-              }
+              label="Technical + Filing"
+              value={String(filteredRows.filter((r) => r.has_candidate_data && r.has_signal_data).length)}
             />
+            <BoardChip
+              label="Technical Only"
+              value={String(filteredRows.filter((r) => r.has_candidate_data && !r.has_signal_data).length)}
+            />
+            <BoardChip label="Avg score" value={filteredRows.length ? String(avgScore) : "—"} />
           </div>
         </section>
 
@@ -918,7 +810,7 @@ export default function Home() {
                 Today’s top strong-buy setups
               </h2>
               <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-                These are the strongest names on the board right now, ranked by conviction.
+                Ranked by the best available score, while preserving candidate-universe inclusion.
               </p>
             </div>
 
@@ -956,8 +848,7 @@ export default function Home() {
                       More high-conviction setups
                     </h2>
                     <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-                      Ranked automatically by conviction so the strongest current opportunities rise
-                      to the top.
+                      Technical candidates first, signal enrichment when available.
                     </p>
                   </div>
 
@@ -996,8 +887,7 @@ export default function Home() {
         </section>
 
         <footer className="mt-10 border-t border-white/10 pt-8 text-sm text-slate-500">
-          Strong-buy rankings are model-based and meant for idea generation, not guaranteed
-          outcomes.
+          Strong-buy rankings are model-based and meant for idea generation, not guaranteed outcomes.
         </footer>
       </div>
 
@@ -1029,33 +919,6 @@ function HeroStat({
 function TrustPill({ title, text }: { title: string; text: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="mt-1 text-sm text-slate-400">{text}</p>
-    </div>
-  )
-}
-
-function WhySubscribeCard({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <p className="text-base font-semibold text-white">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-400">{text}</p>
-    </div>
-  )
-}
-
-function MethodBullet({ text }: { text: string }) {
-  return (
-    <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-      <span className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" />
-      <p className="text-sm leading-6 text-slate-300">{text}</p>
-    </div>
-  )
-}
-
-function UnlockCard({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
       <p className="text-sm font-semibold text-white">{title}</p>
       <p className="mt-1 text-sm text-slate-400">{text}</p>
     </div>
@@ -1130,41 +993,23 @@ function EmptyPanel() {
   )
 }
 
-function bestRowPerTicker(items: TickerScore[]) {
-  const map = new Map<string, TickerScore>()
+function compareRows(a: UnifiedRow, b: UnifiedRow) {
+  if (a.display_score !== b.display_score) return b.display_score - a.display_score
 
-  for (const item of items) {
-    const ticker = normalizeTicker(item.ticker)
-    if (!ticker) continue
+  const aSignal = a.signal_score ?? -1
+  const bSignal = b.signal_score ?? -1
+  if (aSignal !== bSignal) return bSignal - aSignal
 
-    const normalized = { ...item, ticker }
-    const existing = map.get(ticker)
+  const aCandidate = a.candidate_score ?? -1
+  const bCandidate = b.candidate_score ?? -1
+  if (aCandidate !== bCandidate) return bCandidate - aCandidate
 
-    if (!existing) {
-      map.set(ticker, normalized)
-      continue
-    }
-
-    const merged = mergeTickerRows(existing, normalized)
-    const comparison = compareRows(normalized, existing)
-
-    map.set(ticker, comparison < 0 ? normalized : merged)
-  }
-
-  return Array.from(map.values()).sort((a, b) => compareRows(a, b))
-}
-
-function compareRows(a: TickerScore, b: TickerScore) {
-  const aScore = getEffectiveScore(a)
-  const bScore = getEffectiveScore(b)
-  const aDate = getDateValue(a.filed_at ?? a.updated_at)
-  const bDate = getDateValue(b.filed_at ?? b.updated_at)
-
-  if (aScore !== bScore) return bScore - aScore
+  const aDate = getDateValue(a.filed_at ?? a.last_screened_at ?? a.updated_at)
+  const bDate = getDateValue(b.filed_at ?? b.last_screened_at ?? b.updated_at)
   return bDate - aDate
 }
 
-function matchesPriceFilter(row: TickerScore, priceFilter: PriceFilterType) {
+function matchesPriceFilter(row: UnifiedRow, priceFilter: PriceFilterType) {
   if (priceFilter === "all") return true
 
   const price = row.price
@@ -1178,7 +1023,7 @@ function matchesPriceFilter(row: TickerScore, priceFilter: PriceFilterType) {
   return true
 }
 
-function matchesPeFilter(row: TickerScore, peFilter: PeFilterType) {
+function matchesPeFilter(row: UnifiedRow, peFilter: PeFilterType) {
   if (peFilter === "all") return true
 
   const pe = row.pe_ratio ?? row.pe_forward ?? null
@@ -1188,11 +1033,14 @@ function matchesPeFilter(row: TickerScore, peFilter: PeFilterType) {
   return pe <= maxPe
 }
 
-function matchesFreshnessFilter(row: TickerScore, freshnessFilter: FreshnessFilterType) {
+function matchesFreshnessFilter(row: UnifiedRow, freshnessFilter: FreshnessFilterType) {
   if (freshnessFilter === "all") return true
 
   const age = row.age_days
-  if (age === null || age === undefined) return false
+  if (age === null || age === undefined) {
+    if (freshnessFilter === "all") return true
+    return false
+  }
 
   if (freshnessFilter === "today") return age <= 0
   if (freshnessFilter === "3d") return age <= 3
@@ -1202,28 +1050,27 @@ function matchesFreshnessFilter(row: TickerScore, freshnessFilter: FreshnessFilt
   return true
 }
 
-function matchesScoreFilter(row: TickerScore, scoreFilter: ScoreFilterType) {
+function matchesScoreFilter(row: UnifiedRow, scoreFilter: ScoreFilterType) {
   if (scoreFilter === "all") return true
-  return getEffectiveScore(row) >= Number(scoreFilter)
+  return row.display_score >= Number(scoreFilter)
 }
 
-function matchesSectorFilter(row: TickerScore, sectorFilter: SectorFilterType) {
+function matchesSectorFilter(row: UnifiedRow, sectorFilter: SectorFilterType) {
   if (sectorFilter === "all") return true
   return (row.sector || "").trim() === sectorFilter
 }
 
-function getEffectiveScore(row: TickerScore) {
-  if (row.app_score !== null && row.app_score !== undefined) {
-    return Math.max(0, Math.min(100, Math.round(row.app_score)))
-  }
-
-  const rawScore = row.raw_score ?? 0
-  return Math.max(0, Math.min(100, Math.round(rawScore)))
+function matchesSourceFilter(row: UnifiedRow, sourceFilter: SourceFilterType) {
+  if (sourceFilter === "all") return true
+  if (sourceFilter === "both") return row.has_candidate_data && row.has_signal_data
+  if (sourceFilter === "technical_only") return row.has_candidate_data && !row.has_signal_data
+  if (sourceFilter === "filing_only") return !row.has_candidate_data && row.has_signal_data
+  return true
 }
 
-function getLastUpdated(rows: TickerScore[]) {
+function getLastUpdated(rows: UnifiedRow[]) {
   const dates = rows
-    .map((row) => row.score_updated_at || row.updated_at)
+    .map((row) => row.score_updated_at || row.updated_at || row.last_screened_at)
     .filter((v): v is string => Boolean(v))
     .map((v) => new Date(v))
     .filter((d) => !Number.isNaN(d.getTime()))
@@ -1256,10 +1103,11 @@ function formatDateShort(value: string) {
   }).format(date)
 }
 
-function getRowKey(row: TickerScore, index: number) {
+function getRowKey(row: UnifiedRow, index: number) {
   const accessionKey =
     row.accession_nos?.join("-") ||
     row.filed_at ||
+    row.last_screened_at ||
     row.updated_at ||
     String(index)
 
@@ -1304,11 +1152,11 @@ function FeaturedStrongBuyCard({
   rank,
   onClick,
 }: {
-  row: TickerScore
+  row: UnifiedRow
   rank: number
   onClick: () => void
 }) {
-  const score = getEffectiveScore(row)
+  const score = row.display_score
   const palette = getScorePalette(score)
   const reasons = getTopReasonChips(row)
   const thesis = getFeaturedThesis(row)
@@ -1339,9 +1187,9 @@ function FeaturedStrongBuyCard({
       tooltip: getMiniMetricTooltip("Vs Market", row),
     },
     {
-      label: "Stacked",
+      label: "Signals",
       value: formatWholeNumber(row.stacked_signal_count),
-      tooltip: getMiniMetricTooltip("Stacked", row),
+      tooltip: getMiniMetricTooltip("Signals", row),
     },
   ].filter((item) => hasDisplayValue(item.value))
 
@@ -1364,6 +1212,7 @@ function FeaturedStrongBuyCard({
               <FeaturedRankBadge rank={rank} />
               <SignalTypeBadge row={row} />
               <FreshnessBadge row={row} />
+              <SourceBadge row={row} />
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -1419,7 +1268,7 @@ function FeaturedStrongBuyCard({
               Primary driver
             </p>
             <p className="mt-1 truncate text-sm font-semibold text-white">
-              {row.primary_title || "High-conviction strong buy"}
+              {row.primary_title || row.screen_reason || "High-conviction strong buy"}
             </p>
           </div>
           <span className="shrink-0 rounded-full bg-emerald-400 px-3 py-1 text-xs font-bold text-slate-950">
@@ -1437,12 +1286,12 @@ function TopSignalCard({
   isSelected,
   rank,
 }: {
-  row: TickerScore
+  row: UnifiedRow
   onClick: () => void
   isSelected: boolean
   rank: number
 }) {
-  const score = getEffectiveScore(row)
+  const score = row.display_score
   const palette = getScorePalette(score)
   const reasons = getTopReasonChips(row)
   const metricItems: MiniMetricItem[] = [
@@ -1472,9 +1321,9 @@ function TopSignalCard({
       tooltip: getMiniMetricTooltip("1D Δ", row),
     },
     {
-      label: "Stacked",
-      value: formatWholeNumber(row.stacked_signal_count),
-      tooltip: getMiniMetricTooltip("Stacked", row),
+      label: "Cand Score",
+      value: formatSimpleNumber(row.candidate_score),
+      tooltip: "Technical candidate score from candidate_universe.",
     },
   ].filter((item) => hasDisplayValue(item.value))
 
@@ -1500,6 +1349,7 @@ function TopSignalCard({
             <p className="text-xs uppercase tracking-[0.2em] text-emerald-300/80">
               {formatSource(row.primary_signal_source)}
             </p>
+            <SourceBadge row={row} />
           </div>
 
           <h3 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{row.ticker}</h3>
@@ -1570,17 +1420,17 @@ function ScoreBar({
   row,
   compact = false,
 }: {
-  row: TickerScore
+  row: UnifiedRow
   compact?: boolean
 }) {
-  const score = getEffectiveScore(row)
+  const score = row.display_score
   const palette = getScorePalette(score)
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-          Conviction Score
+          Display Score
         </p>
         <p className="text-sm font-semibold text-white">{score}/100</p>
       </div>
@@ -1650,14 +1500,14 @@ function ScoreBadge({
   row,
   large = false,
 }: {
-  row: TickerScore
+  row: UnifiedRow
   large?: boolean
 }) {
-  const score = getEffectiveScore(row)
+  const score = row.display_score
   const palette = getScorePalette(score)
 
   return (
-    <Tooltip content={getScoreTooltip(score)}>
+    <Tooltip content={getScoreTooltip(row)}>
       <div
         className={[
           "inline-flex shrink-0 cursor-help items-center whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
@@ -1678,10 +1528,10 @@ function ConfidenceBadge({
   row,
   small = false,
 }: {
-  row: TickerScore
+  row: UnifiedRow
   small?: boolean
 }) {
-  const score = getEffectiveScore(row)
+  const score = row.display_score
   const label = getConfidenceTierLabel(score)
 
   return (
@@ -1698,7 +1548,7 @@ function ConfidenceBadge({
   )
 }
 
-function FreshnessBadge({ row }: { row: TickerScore }) {
+function FreshnessBadge({ row }: { row: UnifiedRow }) {
   const label = getFreshnessLabel(row)
   if (!label) return null
 
@@ -1711,7 +1561,24 @@ function FreshnessBadge({ row }: { row: TickerScore }) {
   )
 }
 
-function SignalTypeBadge({ row }: { row: TickerScore }) {
+function SourceBadge({ row }: { row: UnifiedRow }) {
+  const classes =
+    row.data_source_label === "Technical + Filing"
+      ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-300"
+      : row.data_source_label === "Technical Only"
+        ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+        : "border-violet-400/30 bg-violet-400/10 text-violet-300"
+
+  return (
+    <Tooltip content={getSourceTooltip(row)}>
+      <span className={`inline-flex cursor-help items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}>
+        {row.data_source_label}
+      </span>
+    </Tooltip>
+  )
+}
+
+function SignalTypeBadge({ row }: { row: UnifiedRow }) {
   const config = getSignalBadgeConfig(row)
 
   return (
@@ -1851,7 +1718,7 @@ function buildPaginationPages(currentPage: number, totalPages: number): Array<nu
   ]
 }
 
-function getSignalBadgeConfig(row: TickerScore) {
+function getSignalBadgeConfig(row: UnifiedRow) {
   const source = row.primary_signal_source
   const category = getSignalCategory(row)
 
@@ -1898,18 +1765,20 @@ function getSignalBadgeConfig(row: TickerScore) {
   }
 
   return {
-    label: "Strong Buy",
-    className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+    label: row.has_signal_data ? "Signal Confirmed" : "Technical Candidate",
+    className: row.has_signal_data
+      ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-300"
+      : "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
   }
 }
 
-function getSignalCategory(row: TickerScore) {
+function getSignalCategory(row: UnifiedRow) {
   const storedCategory = (row.primary_signal_category ?? "").trim()
   if (storedCategory) return storedCategory
-  return "Strong Buy"
+  return row.has_signal_data ? "Strong Buy" : "Technical"
 }
 
-function getFeaturedThesis(row: TickerScore) {
+function getFeaturedThesis(row: UnifiedRow) {
   if (row.primary_signal_source === "breakout" && (row.volume_ratio ?? 0) >= 2) {
     return "Fresh breakout with strong participation"
   }
@@ -1926,11 +1795,16 @@ function getFeaturedThesis(row: TickerScore) {
     return "This name is outperforming while conviction stays high"
   }
 
+  if ((row.candidate_score ?? 0) >= 85 && !row.has_signal_data) {
+    return "High-scoring technical candidate with clean setup quality"
+  }
+
   return "A high-conviction setup with strong current support"
 }
 
-function getCardThesis(row: TickerScore) {
+function getCardThesis(row: UnifiedRow) {
   if (row.primary_title) return row.primary_title
+  if (row.screen_reason) return row.screen_reason
 
   if (row.primary_signal_source === "breakout") {
     return "Fresh technical setup with confirmed momentum"
@@ -1951,7 +1825,7 @@ function SignalDetailsModal({
   row,
   onClose,
 }: {
-  row: TickerScore
+  row: UnifiedRow
   onClose: () => void
 }) {
   const reasons = getTopReasonLines(row)
@@ -1979,6 +1853,7 @@ function SignalDetailsModal({
               <ConfidenceBadge row={row} />
               <FreshnessBadge row={row} />
               <SignalTypeBadge row={row} />
+              <SourceBadge row={row} />
               <StrengthBadge bucket={row.signal_strength_bucket} />
             </div>
 
@@ -2044,7 +1919,7 @@ function SignalDetailsModal({
                 Plain-English setup summary
               </p>
               <p className="mt-2 text-sm leading-7 text-slate-200 sm:text-base">
-                {row.primary_summary || getSignalSummary(row)}
+                {row.primary_summary || row.screen_reason || getSignalSummary(row)}
               </p>
 
               {!!tags.length && (
@@ -2077,7 +1952,7 @@ function SignalDetailsModal({
                 />
                 <ConfirmationRow
                   label="Trend alignment"
-                  value={row.trend_aligned === true ? "Aligned" : "Mixed"}
+                  value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"}
                 />
                 <ConfirmationRow
                   label="Relative strength"
@@ -2101,14 +1976,18 @@ function SignalDetailsModal({
             </p>
 
             <div className="mt-4 space-y-3">
-              <MetricRow label="Board score" value={formatScore(row)} />
-              <MetricRow label="Confidence tier" value={getConfidenceTierLabel(getEffectiveScore(row))} />
+              <MetricRow label="Display score" value={`${row.display_score}`} />
+              <MetricRow label="Candidate score" value={formatSimpleNumber(row.candidate_score)} />
+              <MetricRow label="Signal score" value={formatSimpleNumber(row.signal_score)} />
+              <MetricRow label="Source" value={row.data_source_label} />
+              <MetricRow label="Confidence tier" value={getConfidenceTierLabel(row.display_score)} />
               <MetricRow label="Price" value={formatMoney(row.price)} />
-              <MetricRow label="Primary signal" value={row.primary_title || "Strong buy setup"} />
+              <MetricRow label="Primary signal" value={row.primary_title || "Technical setup"} />
               <MetricRow label="Signal source" value={formatSource(row.primary_signal_source)} />
               <MetricRow label="Signal category" value={getSignalCategory(row)} />
               <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
               <MetricRow label="Filed at" value={row.filed_at ? formatDateLong(row.filed_at) : null} />
+              <MetricRow label="Last screened" value={row.last_screened_at ? formatDateLong(row.last_screened_at) : null} />
               <MetricRow label="Signals stacked" value={formatWholeNumber(row.stacked_signal_count)} />
               <MetricRow label="1D score change" value={formatScoreChange(row.ticker_score_change_1d)} />
               <MetricRow label="7D score change" value={formatScoreChange(row.ticker_score_change_7d)} />
@@ -2120,11 +1999,17 @@ function SignalDetailsModal({
               </p>
 
               <div className="mt-4 space-y-3">
+                <MetricRow label="1D move" value={formatPercent(row.one_day_return)} />
                 <MetricRow label="5D move" value={formatPercent(row.price_return_5d)} />
+                <MetricRow label="10D move" value={formatPercent(row.return_10d)} />
                 <MetricRow label="20D move" value={formatPercent(row.price_return_20d)} />
                 <MetricRow label="Volume ratio" value={formatRatio(row.volume_ratio)} />
                 <MetricRow label="Vs market 20D" value={formatPercent(row.relative_strength_20d)} />
+                <MetricRow label="Breakout clearance" value={formatPercent(row.breakout_clearance_pct)} />
+                <MetricRow label="From 20D average" value={formatPercent(row.extension_from_sma20_pct)} />
+                <MetricRow label="Close in range" value={formatSimpleNumber(row.close_in_day_range)} />
                 <MetricRow label="Above 50DMA" value={formatBooleanLabel(row.above_50dma)} />
+                <MetricRow label="Above 20D avg" value={formatBooleanLabel(row.above_sma_20)} />
                 <MetricRow label="Trend aligned" value={formatBooleanLabel(row.trend_aligned)} />
                 <MetricRow label="Price confirmed" value={formatBooleanLabel(row.price_confirmed)} />
               </div>
@@ -2132,10 +2017,12 @@ function SignalDetailsModal({
 
             <div className="mt-6 border-t border-white/10 pt-6">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Supporting evidence
+                Filing and signal detail
               </p>
 
               <div className="mt-4 space-y-3">
+                <MetricRow label="Source forms" value={row.source_forms.length ? row.source_forms.join(", ") : null} />
+                <MetricRow label="Accession nos" value={row.accession_nos.length ? row.accession_nos.slice(0, 3).join(", ") : null} />
                 <MetricRow label="Insider action" value={row.insider_action || null} />
                 <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
                 <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
@@ -2158,6 +2045,8 @@ function SignalDetailsModal({
                 <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
                 <MetricRow label="Sector" value={row.sector || null} />
                 <MetricRow label="Industry" value={row.industry || null} />
+                <MetricRow label="Catalyst count" value={formatWholeNumber(row.catalyst_count)} />
+                <MetricRow label="Model version" value={row.score_version || null} />
               </div>
             </div>
           </div>
@@ -2303,10 +2192,12 @@ function StrengthBadge({ bucket }: { bucket?: string | null }) {
   )
 }
 
-function getTopReasonChips(row: TickerScore) {
+function getTopReasonChips(row: UnifiedRow) {
   const tags = normalizeTags(row.signal_tags)
   const chips: string[] = []
 
+  if (row.has_candidate_data) chips.push("Technical Candidate")
+  if (row.has_signal_data) chips.push("Signal Confirmed")
   if (row.primary_signal_source === "breakout") chips.push("Technical Setup")
   if (tags.includes("cluster-buy") || (row.cluster_buyers ?? 0) >= 2) chips.push("Buying Wave")
   if (tags.includes("insider-buy") || row.insider_action === "Buy") chips.push("Insider Buying")
@@ -2326,14 +2217,16 @@ function getTopReasonChips(row: TickerScore) {
   }
 
   if ((row.volume_ratio ?? 0) >= 1.5) chips.push("Heavy Demand")
-  if ((row.pe_ratio ?? row.pe_forward ?? 999) <= 25) chips.push("Reasonable Valuation")
-  if (getSignalCategory(row) === "Institutional") chips.push("Big Investor Interest")
-  if ((row.stacked_signal_count ?? 0) >= 3) chips.push("Multi-Signal Stack")
+  if ((row.pe_ratio ?? row.pe_forward ?? 999) <= 25 && (row.pe_ratio ?? row.pe_forward) != null) {
+    chips.push("Reasonable Valuation")
+  }
+
+  if ((row.candidate_score ?? 0) >= 90) chips.push("High Candidate Score")
 
   return Array.from(new Set(chips)).slice(0, 4)
 }
 
-function getTopReasonLines(row: TickerScore): ReasonLine[] {
+function getTopReasonLines(row: UnifiedRow): ReasonLine[] {
   const items: ReasonLine[] = []
   const breakdown = row.score_breakdown || {}
 
@@ -2347,7 +2240,6 @@ function getTopReasonLines(row: TickerScore): ReasonLine[] {
     valuation: { label: "Valuation", tone: "neutral" },
     catalyst: { label: "Catalyst", tone: "good" },
     freshness: { label: "Freshness", tone: "neutral" },
-    time_decay: { label: "Time Decay", tone: "bad" },
     candidate_screen: { label: "Technical Screen", tone: "good" },
     candidate_tier_bonus: { label: "Tier Bonus", tone: "good" },
     candidate_volume: { label: "Screen Volume", tone: "good" },
@@ -2373,6 +2265,15 @@ function getTopReasonLines(row: TickerScore): ReasonLine[] {
     })
   }
 
+  if ((row.candidate_score ?? 0) > 0) {
+    items.push({
+      label: "Candidate Score",
+      value: String(Math.round(row.candidate_score ?? 0)),
+      tone: "good",
+      weight: Math.abs(row.candidate_score ?? 0),
+    })
+  }
+
   if (!items.length) {
     items.push({
       label: "Model",
@@ -2385,8 +2286,16 @@ function getTopReasonLines(row: TickerScore): ReasonLine[] {
   return items.sort((a, b) => b.weight - a.weight).slice(0, 4)
 }
 
-function getPlainEnglishSummary(row: TickerScore) {
+function getPlainEnglishSummary(row: UnifiedRow) {
   const reasons = getTopReasonChips(row)
+
+  if (row.has_candidate_data && row.has_signal_data) {
+    return `This name passed the technical candidate screen and also has filing or signal confirmation. ${reasons.join(", ")} are helping keep it on the board.`
+  }
+
+  if (row.has_candidate_data && !row.has_signal_data) {
+    return `This is a technical board candidate with a score of ${formatSimpleNumber(row.candidate_score)}. It qualifies even without separate filing confirmation right now.`
+  }
 
   if (!reasons.length) {
     return "Several bullish signals are stacking up here, which keeps the setup on the strong-buy board."
@@ -2395,8 +2304,8 @@ function getPlainEnglishSummary(row: TickerScore) {
   return `This name is showing ${reasons.join(", ").toLowerCase()}, which keeps it near the top of the strong-buy board.`
 }
 
-function getConfidenceStatement(row: TickerScore) {
-  const score = getEffectiveScore(row)
+function getConfidenceStatement(row: UnifiedRow) {
+  const score = row.display_score
   const tags = normalizeTags(row.signal_tags)
 
   const hasCluster = (row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")
@@ -2406,7 +2315,8 @@ function getConfidenceStatement(row: TickerScore) {
     tags.includes("momentum-confirmed") ||
     tags.includes("breakout-20d") ||
     tags.includes("breakout-52w") ||
-    row.primary_signal_source === "breakout"
+    row.primary_signal_source === "breakout" ||
+    row.breakout_20d === true
 
   const hasVolume = (row.volume_ratio ?? 0) >= 1.5 || tags.includes("volume-confirmed")
   const hasEarnings =
@@ -2415,12 +2325,11 @@ function getConfidenceStatement(row: TickerScore) {
     row.guidance_flag === true ||
     tags.includes("earnings-support")
 
-  const hasValue =
-    (row.pe_ratio ?? row.pe_forward ?? 999) <= 25 ||
-    tags.includes("reasonable-valuation") ||
-    tags.includes("deep-value")
-
   const source = formatSource(row.primary_signal_source)
+
+  if (row.has_candidate_data && !row.has_signal_data) {
+    return "This made the board because the technical screening layer alone scored it highly enough. It may not have separate filing confirmation yet, but the underlying screen still sees a strong setup."
+  }
 
   if (heavyCluster && hasMomentum) {
     return "Multiple bullish signals are stacking together, and the stock is still acting well. That combination is much more interesting than a one-off headline."
@@ -2438,31 +2347,16 @@ function getConfidenceStatement(row: TickerScore) {
     return "Recent earnings support, stronger price action, and elevated trading activity are all pointing in the same direction."
   }
 
-  if (hasCluster && hasValue) {
-    return "Buying interest looks meaningful, and valuation still appears reasonable enough to keep the setup attractive."
-  }
-
-  if (hasMomentum && hasValue) {
-    return "The chart is acting well, and valuation still looks disciplined instead of obviously stretched."
-  }
-
-  if (hasVolume && hasMomentum) {
-    return "This move is being supported by both price and participation, which usually matters more than a headline alone."
-  }
-
-  if (score >= 85) {
-    return "This name ranks highly because several independent signals are still leaning bullish at the same time."
-  }
-
   return `This remains a constructive setup overall, with ${source} providing the original signal and the broader evaluation still holding up.`
 }
 
-function getSignalSummary(row: TickerScore) {
+function getSignalSummary(row: UnifiedRow) {
   if (row.primary_summary) return row.primary_summary
-  return `${row.ticker} is showing a strong-buy setup based on stacked signals, price action, and broader confirmation.`
+  if (row.screen_reason) return row.screen_reason
+  return `${row.ticker} is showing a strong-buy setup based on technical screening and broader confirmation.`
 }
 
-function normalizeTags(tags: TickerScore["signal_tags"]) {
+function normalizeTags(tags: string[] | null | undefined) {
   if (!tags) return []
   if (Array.isArray(tags)) return tags.filter(Boolean)
   return []
@@ -2478,7 +2372,7 @@ function prettifyTag(tag: string) {
 }
 
 function formatSource(source?: string | null) {
-  if (!source) return "Model"
+  if (!source) return "Technical Screen"
   if (source === "form4") return "Form 4"
   if (source === "13d") return "13D"
   if (source === "13g") return "13G"
@@ -2488,23 +2382,14 @@ function formatSource(source?: string | null) {
   return source
 }
 
-function formatScore(row: TickerScore) {
-  return `${getEffectiveScore(row)}`
-}
-
 function formatPercent(value: number | null | undefined) {
   if (value === null || value === undefined) return "—"
-  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`
+  return `${value >= 0 ? "+" : ""}${round1(value)?.toFixed(1)}%`
 }
 
 function formatRatio(value: number | null | undefined) {
   if (value === null || value === undefined) return "—"
-  return `${value.toFixed(2)}x`
-}
-
-function formatAge(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—"
-  return `${value}d`
+  return `${round1(value)?.toFixed(2)}x`
 }
 
 function formatMoney(value: number | null | undefined) {
@@ -2520,6 +2405,11 @@ function formatMoney(value: number | null | undefined) {
 function formatWholeNumber(value: number | null | undefined) {
   if (value === null || value === undefined) return "—"
   return Math.round(value).toLocaleString()
+}
+
+function formatSimpleNumber(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—"
+  return String(Math.round(value))
 }
 
 function formatShares(value: number | null | undefined) {
@@ -2548,7 +2438,7 @@ function formatBooleanLabel(value: boolean | null | undefined) {
   return value ? "Yes" : "No"
 }
 
-function formatInsiderValue(row: TickerScore) {
+function formatInsiderValue(row: UnifiedRow) {
   if (row.insider_buy_value !== null && row.insider_buy_value !== undefined) {
     return formatMoney(row.insider_buy_value)
   }
@@ -2615,7 +2505,6 @@ function getScorePalette(score: number) {
     return {
       start: "#facc15",
       end: "#eab308",
-      glow: "rgba(250,204,21,0.30)",
       text: "#1f2937",
     }
   }
@@ -2624,7 +2513,6 @@ function getScorePalette(score: number) {
     return {
       start: "#a3e635",
       end: "#84cc16",
-      glow: "rgba(163,230,53,0.30)",
       text: "#15210b",
     }
   }
@@ -2633,7 +2521,6 @@ function getScorePalette(score: number) {
     return {
       start: "#4ade80",
       end: "#22c55e",
-      glow: "rgba(74,222,128,0.32)",
       text: "#0b1a10",
     }
   }
@@ -2641,7 +2528,6 @@ function getScorePalette(score: number) {
   return {
     start: "#22c55e",
     end: "#16a34a",
-    glow: "rgba(34,197,94,0.36)",
     text: "#08110a",
   }
 }
@@ -2653,7 +2539,7 @@ function getConfidenceTierLabel(score: number) {
   return "Building"
 }
 
-function getFreshnessLabel(row: TickerScore) {
+function getFreshnessLabel(row: UnifiedRow) {
   const bucket = (row.freshness_bucket ?? "").trim()
   const age = row.age_days
 
@@ -2674,30 +2560,31 @@ function getFreshnessLabel(row: TickerScore) {
   return null
 }
 
-function getScoreTooltip(score: number) {
-  if (score >= 90) {
-    return `Conviction Score ${score}: elite setup quality. This is one of the strongest readings on the board.`
+function getScoreTooltip(row: UnifiedRow) {
+  const parts = [`Display Score ${row.display_score}`]
+
+  if (row.candidate_score !== null) {
+    parts.push(`candidate ${Math.round(row.candidate_score)}`)
   }
-  if (score >= 80) {
-    return `Conviction Score ${score}: strong setup quality with multiple positives lining up.`
+
+  if (row.signal_score !== null) {
+    parts.push(`signal ${Math.round(row.signal_score)}`)
   }
-  if (score >= 70) {
-    return `Conviction Score ${score}: solid setup quality and strong enough for the main strong-buy board.`
-  }
-  return `Conviction Score ${score}: below the normal strong-buy threshold.`
+
+  return `${parts.join(" • ")}. The page shows all 70+ technical candidates and enriches them with signal-side data when available.`
 }
 
 function getConfidenceTooltip(score: number, label: string) {
   return `${label} is the confidence tier for a score of ${score}. Higher tiers mean the model sees stronger supporting evidence.`
 }
 
-function getFreshnessTooltip(row: TickerScore) {
+function getFreshnessTooltip(row: UnifiedRow) {
   const label = getFreshnessLabel(row)
-  return `${label ?? "Freshness unknown"}. Fresher signals usually matter more than older ones.`
+  return `${label ?? "Freshness unknown"}. This only applies when filing or signal timing exists.`
 }
 
-function getSignalTypeTooltip(row: TickerScore, label: string) {
-  return `${label} describes the main kind of signal driving this setup. Source: ${formatSource(
+function getSignalTypeTooltip(row: UnifiedRow, label: string) {
+  return `${label} describes the main kind of setup driving this row. Source: ${formatSource(
     row.primary_signal_source
   )}. Category: ${getSignalCategory(row)}.`
 }
@@ -2710,6 +2597,16 @@ function getStrengthTooltip(value: string) {
     return "Buy means the setup is constructive and clears the main bullish threshold."
   }
   return "Signal strength is a quick label for how the model buckets the setup."
+}
+
+function getSourceTooltip(row: UnifiedRow) {
+  if (row.has_candidate_data && row.has_signal_data) {
+    return "This ticker qualified in candidate_universe and also has a matching ticker_scores_current signal row with filing or signal enrichment."
+  }
+  if (row.has_candidate_data) {
+    return "This ticker appears because it scored 70+ in candidate_universe. No separate filing or signal enrichment row is currently attached."
+  }
+  return "This ticker appears from signal-side data only."
 }
 
 function getReasonChipTooltip(label: string) {
@@ -2741,39 +2638,37 @@ function getTagTooltip(tag: string, pretty: string) {
   return map[tag] ?? `${pretty} is a model tag used to explain part of the setup.`
 }
 
-function getMiniMetricTooltip(label: string, row: TickerScore) {
+function getMiniMetricTooltip(label: string, row: UnifiedRow) {
   switch (label) {
     case "Price":
-      return `Current share price. Useful for filtering by stock size and trading style. Current value: ${formatMoney(
-        row.price
-      )}.`
+      return `Current share price. Current value: ${formatMoney(row.price)}.`
     case "Vs Market":
-      return `Relative strength versus the broader market over the recent period. Positive means it is outperforming. Current value: ${formatPercent(
+      return `Relative strength versus the broader market over the recent period. Current value: ${formatPercent(
         row.relative_strength_20d
       )}.`
     case "5D Move":
-      return `The stock’s move over the last 5 trading days. Helps show short-term momentum. Current value: ${formatPercent(
+      return `The stock’s move over the last 5 trading days. Current value: ${formatPercent(
         row.price_return_5d
       )}.`
     case "20D Move":
-      return `The stock’s move over the last 20 trading days. Helps show the bigger recent move. Current value: ${formatPercent(
+      return `The stock’s move over the last 20 trading days. Current value: ${formatPercent(
         row.price_return_20d
       )}.`
     case "Volume":
-      return `Trading volume compared with normal. Around 1.00x is normal, above that suggests heavier activity. Current value: ${formatRatio(
+      return `Trading volume compared with normal. Current value: ${formatRatio(
         row.volume_ratio
       )}.`
     case "1D Δ":
-      return `Change in the model score over the last day. Positive means the setup improved. Current value: ${formatScoreChange(
+      return `Change in signal-side score over the last day. Current value: ${formatScoreChange(
         row.ticker_score_change_1d
       )}.`
-    case "7D Δ":
-      return `Change in the model score over the last 7 days. Good for spotting improving setups. Current value: ${formatScoreChange(
-        row.ticker_score_change_7d
-      )}.`
-    case "Stacked":
-      return `How many distinct supporting signals are stacked into this setup. More stacked signals usually means more evidence. Current value: ${formatWholeNumber(
+    case "Signals":
+      return `How many distinct signal-side confirmations are stacked into this setup. Current value: ${formatWholeNumber(
         row.stacked_signal_count
+      )}.`
+    case "Cand Score":
+      return `Technical candidate score from candidate_universe. Current value: ${formatSimpleNumber(
+        row.candidate_score
       )}.`
     default:
       return ""
