@@ -3,78 +3,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { supabase } from "../lib/supabase"
 
-type SignalRow = {
-  id?: number
-  ticker: string
-  company_name?: string | null
-  business_description?: string | null
-  price?: number | null
-
-  signal_type?: string | null
-  signal_source?: string | null
-  signal_category?: string | null
-  signal_strength_bucket?: string | null
-  signal_tags?: string[] | null
-
-  catalyst_type?: string | null
-  bias?: string | null
-  board_bucket?: string | null
-  source_form?: string | null
-  filed_at?: string | null
-
-  score?: number | null
-  app_score?: number | null
-  title?: string | null
-  summary?: string | null
-  filing_url?: string | null
-  accession_no?: string | null
-
-  insider_action?: string | null
-  insider_shares?: number | null
-  insider_avg_price?: number | null
-  insider_buy_value?: number | null
-  insider_signal_flavor?: string | null
-
-  cluster_buyers?: number | null
-  cluster_shares?: number | null
-
-  price_return_5d?: number | null
-  price_return_20d?: number | null
-  volume_ratio?: number | null
-  breakout_20d?: boolean | null
-  breakout_52w?: boolean | null
-  above_50dma?: boolean | null
-  trend_aligned?: boolean | null
-  price_confirmed?: boolean | null
-  relative_strength_20d?: number | null
-
-  earnings_surprise_pct?: number | null
-  revenue_growth_pct?: number | null
-  guidance_flag?: boolean | null
-
-  pe_ratio?: number | null
-  pe_forward?: number | null
-  pe_type?: string | null
-  market_cap?: number | null
-  sector?: string | null
-  industry?: string | null
-
-  age_days?: number | null
-  score_version?: string | null
-  score_updated_at?: string | null
-  stacked_signal_count?: number | null
-  score_breakdown?: Record<string, number> | null
-  signal_reasons?: string[] | null
-  score_caps_applied?: string[] | null
-  freshness_bucket?: string | null
-
-  ticker_score_change_1d?: number | null
-  ticker_score_change_7d?: number | null
-
-  updated_at?: string | null
-  created_at?: string | null
-}
-
 type CandidateUniverseRow = {
   ticker: string
   cik?: string | null
@@ -87,6 +15,7 @@ type CandidateUniverseRow = {
   return_5d?: number | null
   return_10d?: number | null
   return_20d?: number | null
+  relative_strength_20d?: number | null
   volume_ratio?: number | null
   breakout_20d?: boolean | null
   breakout_10d?: boolean | null
@@ -104,10 +33,17 @@ type CandidateUniverseRow = {
   screen_reason?: string | null
   last_screened_at?: string | null
   updated_at?: string | null
+  sector?: string | null
+  industry?: string | null
+  business_description?: string | null
+  pe_ratio?: number | null
+  pe_forward?: number | null
+  pe_type?: string | null
+  ticker_score_change_1d?: number | null
+  ticker_score_change_7d?: number | null
 }
 
 type TickerScore = {
-  id?: number
   ticker: string
   company_name?: string | null
   business_description?: string | null
@@ -203,38 +139,73 @@ type ReasonLine = {
 
 const CARDS_PER_PAGE = 18
 
-function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
+function mapCandidateUniverseRowToTickerScore(row: CandidateUniverseRow): TickerScore {
+  const score = row.candidate_score ?? null
+  const relativeStrength = row.relative_strength_20d ?? null
+  const return10d = row.return_10d ?? null
+  const breakout20d = row.breakout_20d ?? false
+  const breakout10d = row.breakout_10d ?? false
+  const aboveSma20 = row.above_sma_20 ?? false
+  const volumeRatio = row.volume_ratio ?? null
+  const closeInDayRange = row.close_in_day_range ?? null
+  const extension = row.extension_from_sma20_pct ?? null
+  const breakoutClearance = row.breakout_clearance_pct ?? null
+
+  const signalReasons = buildCandidateSignalReasons(row)
+  const signalTags = buildCandidateSignalTags(row)
+  const scoreBreakdown = buildCandidateScoreBreakdown(row)
+
   return {
-    id: row.id,
     ticker: (row.ticker || "").trim().toUpperCase(),
-    company_name: row.company_name ?? null,
+    company_name: row.name ?? null,
     business_description: row.business_description ?? null,
     price: row.price ?? null,
 
-    app_score: row.app_score ?? row.score ?? null,
-    raw_score: row.score ?? row.app_score ?? null,
-    bias: row.bias ?? null,
-    board_bucket: row.board_bucket ?? null,
-    signal_strength_bucket: row.signal_strength_bucket ?? null,
+    app_score: score,
+    raw_score: score,
+    bias: "Bullish",
+    board_bucket: row.included ? "Buy" : null,
+    signal_strength_bucket:
+      score !== null
+        ? score >= 90
+          ? "Elite Buy"
+          : score >= 80
+            ? "Strong Buy"
+            : "Buy"
+        : null,
 
-    score_version: row.score_version ?? "signals-fallback",
-    score_updated_at: row.score_updated_at ?? row.updated_at ?? null,
-    stacked_signal_count: row.stacked_signal_count ?? 1,
+    score_version: "candidate-universe-board",
+    score_updated_at: row.last_screened_at ?? row.updated_at ?? null,
+    stacked_signal_count: Math.max(
+      1,
+      [
+        breakout20d,
+        breakout10d,
+        aboveSma20,
+        (volumeRatio ?? 0) >= 1.35,
+        (relativeStrength ?? 0) >= 2,
+        (row.return_20d ?? 0) >= 12,
+      ].filter(Boolean).length
+    ),
 
-    score_breakdown: row.score_breakdown ?? null,
-    signal_reasons: row.signal_reasons ?? null,
-    score_caps_applied: row.score_caps_applied ?? null,
-    signal_tags: Array.isArray(row.signal_tags) ? row.signal_tags : [],
+    score_breakdown: scoreBreakdown,
+    signal_reasons: signalReasons,
+    score_caps_applied: [],
+    signal_tags: signalTags,
 
-    primary_signal_type: row.signal_type ?? null,
-    primary_signal_source: row.signal_source ?? null,
-    primary_signal_category: row.signal_category ?? null,
-    primary_title: row.title ?? null,
-    primary_summary: row.summary ?? null,
+    primary_signal_type: "Board Candidate",
+    primary_signal_source: "breakout",
+    primary_signal_category: "Momentum",
+    primary_title: row.included
+      ? "Board-qualified momentum setup"
+      : "Candidate setup",
+    primary_summary:
+      row.screen_reason ??
+      "This stock qualified for the board based on current momentum, trend, and breakout conditions.",
 
-    filed_at: row.filed_at ?? null,
-    accession_nos: row.accession_no ? [row.accession_no] : [],
-    source_forms: row.source_form ? [row.source_form] : [],
+    filed_at: row.last_screened_at ?? null,
+    accession_nos: row.ticker ? [`CANDIDATE_${row.ticker}`] : [],
+    source_forms: ["candidate_universe"],
 
     pe_ratio: row.pe_ratio ?? null,
     pe_forward: row.pe_forward ?? null,
@@ -242,119 +213,6 @@ function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
     market_cap: row.market_cap ?? null,
     sector: row.sector ?? null,
     industry: row.industry ?? null,
-
-    insider_action: row.insider_action ?? null,
-    insider_shares: row.insider_shares ?? null,
-    insider_avg_price: row.insider_avg_price ?? null,
-    insider_buy_value: row.insider_buy_value ?? null,
-    cluster_buyers: row.cluster_buyers ?? null,
-    cluster_shares: row.cluster_shares ?? null,
-
-    price_return_5d: row.price_return_5d ?? null,
-    price_return_20d: row.price_return_20d ?? null,
-    volume_ratio: row.volume_ratio ?? null,
-    breakout_20d: row.breakout_20d ?? null,
-    breakout_52w: row.breakout_52w ?? null,
-    above_50dma: row.above_50dma ?? null,
-    trend_aligned: row.trend_aligned ?? null,
-    price_confirmed: row.price_confirmed ?? null,
-    relative_strength_20d: row.relative_strength_20d ?? null,
-
-    earnings_surprise_pct: row.earnings_surprise_pct ?? null,
-    revenue_growth_pct: row.revenue_growth_pct ?? null,
-    guidance_flag: row.guidance_flag ?? null,
-
-    age_days: row.age_days ?? null,
-    freshness_bucket: row.freshness_bucket ?? null,
-
-    ticker_score_change_1d: row.ticker_score_change_1d ?? null,
-    ticker_score_change_7d: row.ticker_score_change_7d ?? null,
-
-    created_at: row.created_at ?? null,
-    updated_at: row.updated_at ?? null,
-  }
-}
-
-function mapCandidateUniverseRowToTickerScore(row: CandidateUniverseRow): TickerScore {
-  const score = row.candidate_score ?? null
-  const reasons = row.screen_reason ? [row.screen_reason] : []
-
-  const tags: string[] = []
-  if (row.breakout_20d) tags.push("breakout-20d")
-  if (row.breakout_10d) tags.push("breakout-10d")
-  if (row.above_sma_20) tags.push("above-20dma")
-  if ((row.volume_ratio ?? 0) >= 1.5) tags.push("volume-confirmed")
-  if ((row.volume_ratio ?? 0) >= 2) tags.push("heavy-volume")
-  if ((row.return_5d ?? 0) >= 5) tags.push("momentum-confirmed")
-  if ((row.return_20d ?? 0) >= 12) tags.push("screen-momentum")
-  if ((row.candidate_score ?? 0) >= 90) tags.push("candidate-strong-buy")
-  if (row.included) tags.push("candidate-included")
-  tags.push("candidate-screen")
-  tags.push("source:breakout")
-
-  const ageDays = row.last_screened_at
-    ? Math.max(
-        0,
-        Math.floor((Date.now() - new Date(row.last_screened_at).getTime()) / (24 * 60 * 60 * 1000))
-      )
-    : null
-
-  const freshnessBucket =
-    ageDays === null
-      ? null
-      : ageDays <= 0
-        ? "today"
-        : ageDays <= 3
-          ? "fresh"
-          : ageDays <= 7
-            ? "recent"
-            : ageDays <= 14
-              ? "aging"
-              : "stale"
-
-  return {
-    ticker: (row.ticker || "").trim().toUpperCase(),
-    company_name: row.name ?? null,
-    business_description: row.screen_reason ?? null,
-    price: row.price ?? null,
-
-    app_score: score,
-    raw_score: score,
-    bias: "Bullish",
-    board_bucket: "Buy",
-    signal_strength_bucket:
-      score !== null ? (score >= 90 ? "Elite Buy" : score >= 80 ? "Strong Buy" : "Buy") : "Buy",
-
-    score_version: "candidate-universe",
-    score_updated_at: row.last_screened_at ?? row.updated_at ?? null,
-    stacked_signal_count: row.catalyst_count ?? null,
-
-    score_breakdown: null,
-    signal_reasons: reasons,
-    score_caps_applied: [],
-    signal_tags: tags,
-
-    primary_signal_type: "Technical Strong Buy",
-    primary_signal_source: "breakout",
-    primary_signal_category: "Breakout",
-    primary_title:
-      score !== null && score >= 90
-        ? "High-conviction technical strong-buy setup"
-        : "Technical strong-buy setup",
-    primary_summary:
-      row.screen_reason ??
-      "This stock passed the technical board screen and is currently rated as a strong buy.",
-
-    filed_at: row.last_screened_at ?? null,
-    accession_nos: [],
-    source_forms: [],
-
-    pe_ratio: null,
-    pe_forward: null,
-    pe_type: null,
-    market_cap: row.market_cap ?? null,
-    sector: null,
-    industry: null,
 
     insider_action: null,
     insider_shares: null,
@@ -365,27 +223,111 @@ function mapCandidateUniverseRowToTickerScore(row: CandidateUniverseRow): Ticker
 
     price_return_5d: row.return_5d ?? null,
     price_return_20d: row.return_20d ?? null,
-    volume_ratio: row.volume_ratio ?? null,
-    breakout_20d: row.breakout_20d ?? null,
+    volume_ratio: volumeRatio,
+    breakout_20d: breakout20d,
     breakout_52w: null,
-    above_50dma: row.above_sma_20 ?? null,
-    trend_aligned: row.above_sma_20 ?? null,
-    price_confirmed: row.included ?? ((row.candidate_score ?? 0) >= 70),
-    relative_strength_20d: null,
+    above_50dma: aboveSma20,
+    trend_aligned: breakout10d && aboveSma20,
+    price_confirmed:
+      breakout20d &&
+      (volumeRatio ?? 0) >= 1.35 &&
+      (relativeStrength ?? 0) >= 2,
+    relative_strength_20d: relativeStrength,
 
     earnings_surprise_pct: null,
     revenue_growth_pct: null,
     guidance_flag: null,
 
-    age_days: ageDays,
-    freshness_bucket: freshnessBucket,
+    age_days: computeAgeDays(row.last_screened_at ?? row.updated_at ?? null),
+    freshness_bucket: computeFreshnessBucket(row.last_screened_at ?? row.updated_at ?? null),
 
-    ticker_score_change_1d: null,
-    ticker_score_change_7d: null,
+    ticker_score_change_1d: row.ticker_score_change_1d ?? null,
+    ticker_score_change_7d: row.ticker_score_change_7d ?? null,
 
-    created_at: row.updated_at ?? null,
+    created_at: row.last_screened_at ?? null,
     updated_at: row.updated_at ?? null,
   }
+}
+
+function buildCandidateSignalReasons(row: CandidateUniverseRow) {
+  const reasons: string[] = []
+
+  if ((row.candidate_score ?? 0) >= 90) reasons.push("Elite board score")
+  else if ((row.candidate_score ?? 0) >= 80) reasons.push("High board score")
+  else if ((row.candidate_score ?? 0) >= 70) reasons.push("Board-qualified score")
+
+  if (row.breakout_20d) reasons.push("20-day breakout")
+  if (row.breakout_10d) reasons.push("10-day breakout")
+  if (row.above_sma_20) reasons.push("Above 20-day trend")
+  if ((row.relative_strength_20d ?? 0) >= 5) reasons.push("Clear market outperformance")
+  else if ((row.relative_strength_20d ?? 0) >= 2) reasons.push("Outperforming SPY")
+  if ((row.volume_ratio ?? 0) >= 2) reasons.push("Heavy volume")
+  else if ((row.volume_ratio ?? 0) >= 1.35) reasons.push("Volume expansion")
+  if ((row.return_10d ?? 0) >= 5) reasons.push("10-day momentum")
+  if ((row.return_20d ?? 0) >= 12) reasons.push("20-day momentum")
+  if ((row.close_in_day_range ?? 0) >= 0.55) reasons.push("Strong close")
+  if ((row.extension_from_sma20_pct ?? 999) <= 22) reasons.push("Not overextended")
+
+  return Array.from(new Set(reasons)).slice(0, 10)
+}
+
+function buildCandidateSignalTags(row: CandidateUniverseRow) {
+  const tags: string[] = ["candidate-screen", "board-candidate", "bullish"]
+
+  if (row.included) tags.push("candidate-included")
+  if ((row.candidate_score ?? 0) >= 90) tags.push("candidate-strong-buy")
+  if ((row.candidate_score ?? 0) >= 95) tags.push("candidate-elite")
+  if (row.breakout_20d) tags.push("breakout-20d")
+  if (row.breakout_10d) tags.push("short-term-breakout")
+  if (row.above_sma_20) tags.push("above-20dma")
+  if ((row.relative_strength_20d ?? 0) >= 2) tags.push("relative-strength")
+  if ((row.relative_strength_20d ?? 0) >= 5) tags.push("strong-relative-strength")
+  if ((row.volume_ratio ?? 0) >= 1.35) tags.push("volume-confirmed")
+  if ((row.volume_ratio ?? 0) >= 2) tags.push("heavy-volume")
+  if ((row.return_5d ?? 0) >= 5) tags.push("momentum-confirmed")
+  if ((row.return_20d ?? 0) >= 12) tags.push("screen-momentum")
+  if ((row.breakout_clearance_pct ?? 0) >= 0.1) tags.push("clean-breakout")
+  if ((row.close_in_day_range ?? 0) >= 0.55) tags.push("strong-close")
+
+  return Array.from(new Set(tags))
+}
+
+function buildCandidateScoreBreakdown(row: CandidateUniverseRow): Record<string, number> {
+  const score = row.candidate_score ?? 0
+  const breakout = row.breakout_20d ? Math.min(20, Math.round(score * 0.24)) : 0
+  const momentum = Math.round(
+    Math.max(0, ((row.return_10d ?? 0) + (row.return_20d ?? 0)) * 0.35)
+  )
+  const relativeStrength = Math.round(Math.max(0, (row.relative_strength_20d ?? 0) * 1.2))
+  const volume = Math.round(Math.max(0, ((row.volume_ratio ?? 0) - 1) * 8))
+  const trend = row.above_sma_20 ? 12 : 0
+  const quality = Math.max(0, score - breakout - momentum - relativeStrength - volume - trend)
+
+  return {
+    quality,
+    breakout,
+    momentum,
+    relative_strength: relativeStrength,
+    volume,
+    trend,
+  }
+}
+
+function computeAgeDays(dateString: string | null) {
+  if (!dateString) return null
+  const ts = new Date(dateString).getTime()
+  if (Number.isNaN(ts)) return null
+  return Math.max(0, Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000)))
+}
+
+function computeFreshnessBucket(dateString: string | null) {
+  const age = computeAgeDays(dateString)
+  if (age === null) return null
+  if (age <= 0) return "today"
+  if (age <= 3) return "fresh"
+  if (age <= 7) return "recent"
+  if (age <= 14) return "aging"
+  return "stale"
 }
 
 export default function Home() {
@@ -411,62 +353,33 @@ export default function Home() {
         setLoading(true)
         setError(null)
 
-        const candidateResponse = await supabase
+        const response = await supabase
           .from("candidate_universe")
-          .select(`
-            ticker,
-            cik,
-            name,
-            price,
-            market_cap,
-            avg_volume_20d,
-            avg_dollar_volume_20d,
-            one_day_return,
-            return_5d,
-            return_10d,
-            return_20d,
-            volume_ratio,
-            breakout_20d,
-            breakout_10d,
-            above_sma_20,
-            breakout_clearance_pct,
-            extension_from_sma20_pct,
-            close_in_day_range,
-            catalyst_count,
-            passes_price,
-            passes_volume,
-            passes_dollar_volume,
-            passes_market_cap,
-            candidate_score,
-            included,
-            screen_reason,
-            last_screened_at,
-            updated_at
-          `)
+          .select("*")
+          .eq("included", true)
           .gte("candidate_score", 70)
           .order("candidate_score", { ascending: false })
           .order("last_screened_at", { ascending: false })
-          .order("ticker", { ascending: true })
           .limit(1000)
 
         if (!isMounted) return
 
-        if (candidateResponse.error) {
-          setError(candidateResponse.error.message || "Error loading strong buys.")
+        if (response.error) {
+          setError(response.error.message || "Error loading board candidates.")
           setRows([])
           setLoading(false)
           return
         }
 
-        const currentRows = ((candidateResponse.data as CandidateUniverseRow[]) ?? [])
+        const mapped = ((response.data as CandidateUniverseRow[]) ?? [])
           .map(mapCandidateUniverseRowToTickerScore)
           .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
 
-        setRows(bestRowPerTicker(currentRows))
+        setRows(bestRowPerTicker(mapped))
         setLoading(false)
       } catch (err: any) {
         if (!isMounted) return
-        setError(err?.message || "Error loading strong buys.")
+        setError(err?.message || "Error loading board candidates.")
         setRows([])
         setLoading(false)
       }
@@ -604,7 +517,7 @@ export default function Home() {
               <span className="hidden sm:inline">•</span>
               <span>
                 Showing only{" "}
-                <span className="font-semibold text-slate-100">strong buy</span> names
+                <span className="font-semibold text-slate-100">70+</span> board-qualified names
               </span>
             </div>
           </div>
@@ -748,15 +661,14 @@ export default function Home() {
 
           <div className="mt-5 flex flex-wrap items-center gap-2 text-sm text-slate-300">
             <BoardChip label="Visible strong buys" value={String(filteredRows.length)} />
-            <BoardChip label="Elite" value={String(filteredRows.filter((r) => getEffectiveScore(r) >= 90).length)} />
+            <BoardChip
+              label="Elite"
+              value={String(filteredRows.filter((r) => getEffectiveScore(r) >= 90).length)}
+            />
             <BoardChip label="Avg score" value={filteredRows.length ? String(avgScore) : "—"} />
             <BoardChip
               label="Freshest"
-              value={
-                filteredRows[0]?.filed_at
-                  ? formatDateShort(filteredRows[0].filed_at)
-                  : "—"
-              }
+              value={filteredRows[0]?.filed_at ? formatDateShort(filteredRows[0].filed_at) : "—"}
             />
           </div>
         </section>
@@ -902,15 +814,6 @@ function MethodBullet({ text }: { text: string }) {
     <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
       <span className="mt-1 inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" />
       <p className="text-sm leading-6 text-slate-300">{text}</p>
-    </div>
-  )
-}
-
-function UnlockCard({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="mt-1 text-sm text-slate-400">{text}</p>
     </div>
   )
 }
@@ -1765,15 +1668,15 @@ function getFeaturedThesis(row: TickerScore) {
     return "Fresh breakout with strong participation"
   }
 
-  if ((row.cluster_buyers ?? 0) >= 2) {
-    return "Multiple bullish signals are stacking together"
+  if ((row.relative_strength_20d ?? 0) >= 8 && (row.price_return_20d ?? 0) >= 12) {
+    return "Strong trend with clear market outperformance"
   }
 
-  if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
-    return "Momentum is being reinforced by earnings support"
+  if ((row.price_return_20d ?? 0) >= 12 && row.breakout_20d) {
+    return "Momentum and breakout behavior are lining up"
   }
 
-  if ((row.relative_strength_20d ?? 0) >= 8) {
+  if ((row.relative_strength_20d ?? 0) >= 5) {
     return "This name is outperforming while conviction stays high"
   }
 
@@ -1785,10 +1688,6 @@ function getCardThesis(row: TickerScore) {
 
   if (row.primary_signal_source === "breakout") {
     return "Fresh technical setup with confirmed momentum"
-  }
-
-  if ((row.cluster_buyers ?? 0) >= 2) {
-    return "Buying interest is showing up in a meaningful way"
   }
 
   if ((row.volume_ratio ?? 0) >= 2 && (row.price_return_5d ?? 0) >= 5) {
@@ -1975,7 +1874,7 @@ function SignalDetailsModal({
                 <MetricRow label="20D move" value={formatPercent(row.price_return_20d)} />
                 <MetricRow label="Volume ratio" value={formatRatio(row.volume_ratio)} />
                 <MetricRow label="Vs market 20D" value={formatPercent(row.relative_strength_20d)} />
-                <MetricRow label="Above 50DMA" value={formatBooleanLabel(row.above_50dma)} />
+                <MetricRow label="Above 20DMA" value={formatBooleanLabel(row.above_50dma)} />
                 <MetricRow label="Trend aligned" value={formatBooleanLabel(row.trend_aligned)} />
                 <MetricRow label="Price confirmed" value={formatBooleanLabel(row.price_confirmed)} />
               </div>
@@ -1983,19 +1882,15 @@ function SignalDetailsModal({
 
             <div className="mt-6 border-t border-white/10 pt-6">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Supporting evidence
+                Technical evidence
               </p>
 
               <div className="mt-4 space-y-3">
-                <MetricRow label="Insider action" value={row.insider_action || null} />
-                <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
-                <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
-                <MetricRow label="Insider value" value={formatInsiderValue(row)} />
-                <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
-                <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
-                <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
-                <MetricRow label="Revenue growth" value={formatPercent(row.revenue_growth_pct)} />
-                <MetricRow label="Guidance support" value={formatBooleanLabel(row.guidance_flag)} />
+                <MetricRow label="20D breakout" value={formatBooleanLabel(row.breakout_20d)} />
+                <MetricRow label="20D breakout clearance" value={formatPercent(row.score_breakdown?.breakout ?? null)} />
+                <MetricRow label="Relative strength" value={formatPercent(row.relative_strength_20d)} />
+                <MetricRow label="Volume expansion" value={formatRatio(row.volume_ratio)} />
+                <MetricRow label="Signal stack" value={formatWholeNumber(row.stacked_signal_count)} />
               </div>
             </div>
 
@@ -2160,8 +2055,6 @@ function getTopReasonChips(row: TickerScore) {
   const chips: string[] = []
 
   if (row.primary_signal_source === "breakout") chips.push("Technical Setup")
-  if (tags.includes("cluster-buy") || (row.cluster_buyers ?? 0) >= 2) chips.push("Buying Wave")
-  if (tags.includes("insider-buy") || row.insider_action === "Buy") chips.push("Insider Buying")
   if ((row.relative_strength_20d ?? 0) > 0) chips.push("Stronger Than Market")
 
   if (
@@ -2173,14 +2066,11 @@ function getTopReasonChips(row: TickerScore) {
     chips.push("Strong Momentum")
   }
 
-  if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
-    chips.push("Strong Earnings")
-  }
-
   if ((row.volume_ratio ?? 0) >= 1.5) chips.push("Heavy Demand")
   if ((row.pe_ratio ?? row.pe_forward ?? 999) <= 25) chips.push("Reasonable Valuation")
-  if (getSignalCategory(row) === "Institutional") chips.push("Big Investor Interest")
   if ((row.stacked_signal_count ?? 0) >= 3) chips.push("Multi-Signal Stack")
+  if ((row.price_confirmed ?? false) === true) chips.push("Confirmed Move")
+  if ((row.breakout_20d ?? false) === true) chips.push("Fresh Breakout")
 
   return Array.from(new Set(chips)).slice(0, 4)
 }
@@ -2190,22 +2080,12 @@ function getTopReasonLines(row: TickerScore): ReasonLine[] {
   const breakdown = row.score_breakdown || {}
 
   const labelMap: Record<string, { label: string; tone: "good" | "bad" | "neutral" }> = {
-    insider_buying: { label: "Insiders", tone: "good" },
-    repeat_buying: { label: "Repeat Buying", tone: "good" },
-    senior_executive_buy: { label: "Executive Buy", tone: "good" },
+    quality: { label: "Quality", tone: "neutral" },
+    breakout: { label: "Breakout", tone: "good" },
     momentum: { label: "Momentum", tone: "good" },
     relative_strength: { label: "Vs Market", tone: "good" },
-    earnings: { label: "Earnings", tone: "good" },
-    valuation: { label: "Valuation", tone: "neutral" },
-    catalyst: { label: "Catalyst", tone: "good" },
-    freshness: { label: "Freshness", tone: "neutral" },
-    time_decay: { label: "Time Decay", tone: "bad" },
-    candidate_screen: { label: "Technical Screen", tone: "good" },
-    candidate_tier_bonus: { label: "Tier Bonus", tone: "good" },
-    candidate_volume: { label: "Screen Volume", tone: "good" },
-    candidate_momentum: { label: "Screen Momentum", tone: "good" },
-    candidate_breakout: { label: "Screen Breakout", tone: "good" },
-    base: { label: "Base Signal", tone: "neutral" },
+    volume: { label: "Volume", tone: "good" },
+    trend: { label: "Trend", tone: "good" },
   }
 
   for (const [key, rawValue] of Object.entries(breakdown)) {
@@ -2226,48 +2106,6 @@ function getTopReasonLines(row: TickerScore): ReasonLine[] {
   }
 
   if (!items.length) {
-    const fallback: ReasonLine[] = []
-
-    if ((row.volume_ratio ?? 0) >= 1.5) {
-      fallback.push({
-        label: "Participation",
-        value: `Volume ${formatRatio(row.volume_ratio)}`,
-        tone: "good",
-        weight: Math.abs(row.volume_ratio ?? 0),
-      })
-    }
-
-    if ((row.price_return_20d ?? 0) > 0) {
-      fallback.push({
-        label: "20D Move",
-        value: formatPercent(row.price_return_20d),
-        tone: "good",
-        weight: Math.abs(row.price_return_20d ?? 0),
-      })
-    }
-
-    if (row.breakout_20d) {
-      fallback.push({
-        label: "Breakout",
-        value: "20-day breakout",
-        tone: "good",
-        weight: 10,
-      })
-    }
-
-    if ((row.stacked_signal_count ?? 0) > 0) {
-      fallback.push({
-        label: "Catalysts",
-        value: `${formatWholeNumber(row.stacked_signal_count)} technical signals`,
-        tone: "good",
-        weight: row.stacked_signal_count ?? 0,
-      })
-    }
-
-    if (fallback.length) {
-      return fallback.sort((a, b) => b.weight - a.weight).slice(0, 4)
-    }
-
     items.push({
       label: "Model",
       value: "Bullish signals outweigh negatives",
@@ -2293,62 +2131,44 @@ function getConfidenceStatement(row: TickerScore) {
   const score = getEffectiveScore(row)
   const tags = normalizeTags(row.signal_tags)
 
-  const hasCluster = (row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")
-  const heavyCluster = (row.cluster_buyers ?? 0) >= 3 || tags.includes("cluster-strong")
   const hasMomentum =
     (row.price_return_5d ?? 0) >= 5 ||
     tags.includes("momentum-confirmed") ||
     tags.includes("breakout-20d") ||
-    tags.includes("breakout-52w") ||
     row.primary_signal_source === "breakout"
 
   const hasVolume = (row.volume_ratio ?? 0) >= 1.5 || tags.includes("volume-confirmed")
-  const hasEarnings =
-    (row.earnings_surprise_pct ?? 0) >= 10 ||
-    (row.revenue_growth_pct ?? 0) >= 15 ||
-    row.guidance_flag === true ||
-    tags.includes("earnings-support")
-
   const hasValue =
     (row.pe_ratio ?? row.pe_forward ?? 999) <= 25 ||
-    tags.includes("reasonable-valuation") ||
-    tags.includes("deep-value")
+    tags.includes("reasonable-valuation")
 
-  const source = formatSource(row.primary_signal_source)
+  const hasRelativeStrength = (row.relative_strength_20d ?? 0) >= 2
 
-  if (heavyCluster && hasMomentum) {
-    return "Multiple bullish signals are stacking together, and the stock is still acting well. That combination is much more interesting than a one-off headline."
+  if (score >= 90 && hasMomentum && hasVolume && hasRelativeStrength) {
+    return "This stands out because momentum, participation, and market outperformance are all lining up at the same time."
   }
 
   if (row.primary_signal_source === "breakout" && hasMomentum && hasVolume) {
-    return "This is not just a filing-driven idea. Technical strength, participation, and broader momentum are all reinforcing the setup."
+    return "This is a technically strong setup where price action and participation are moving together."
   }
 
-  if (score >= 90 && hasCluster && hasMomentum) {
-    return "This stands out because several bullish signals are lining up at once, including buying interest and strong price action."
+  if (hasMomentum && hasRelativeStrength) {
+    return "The chart is acting well, and the stock is outperforming the broader market at the same time."
   }
 
-  if (hasEarnings && hasMomentum && hasVolume) {
-    return "Recent earnings support, stronger price action, and elevated trading activity are all pointing in the same direction."
-  }
-
-  if (hasCluster && hasValue) {
-    return "Buying interest looks meaningful, and valuation still appears reasonable enough to keep the setup attractive."
+  if (hasVolume && hasRelativeStrength) {
+    return "The move is being supported by both better-than-market action and stronger-than-normal participation."
   }
 
   if (hasMomentum && hasValue) {
-    return "The chart is acting well, and valuation still looks disciplined instead of obviously stretched."
-  }
-
-  if (hasVolume && hasMomentum) {
-    return "This move is being supported by both price and participation, which usually matters more than a headline alone."
+    return "The setup combines constructive price action with valuation that still looks reasonable."
   }
 
   if (score >= 85) {
-    return "This name ranks highly because several independent signals are still leaning bullish at the same time."
+    return "This name ranks highly because several independent technical signals are still leaning bullish at the same time."
   }
 
-  return `This remains a constructive setup overall, with ${source} providing the original signal and the broader evaluation still holding up.`
+  return "This remains a constructive setup overall, with trend, breakout behavior, and market-relative strength supporting the case."
 }
 
 function getSignalSummary(row: TickerScore) {
@@ -2396,11 +2216,6 @@ function formatRatio(value: number | null | undefined) {
   return `${value.toFixed(2)}x`
 }
 
-function formatAge(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—"
-  return `${value}d`
-}
-
 function formatMoney(value: number | null | undefined) {
   if (value === null || value === undefined) return "—"
 
@@ -2414,11 +2229,6 @@ function formatMoney(value: number | null | undefined) {
 function formatWholeNumber(value: number | null | undefined) {
   if (value === null || value === undefined) return "—"
   return Math.round(value).toLocaleString()
-}
-
-function formatShares(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—"
-  return `${Math.round(value).toLocaleString()}`
 }
 
 function formatMarketCap(value: number | null | undefined) {
@@ -2440,23 +2250,6 @@ function formatMarketCap(value: number | null | undefined) {
 function formatBooleanLabel(value: boolean | null | undefined) {
   if (value === null || value === undefined) return "—"
   return value ? "Yes" : "No"
-}
-
-function formatInsiderValue(row: TickerScore) {
-  if (row.insider_buy_value !== null && row.insider_buy_value !== undefined) {
-    return formatMoney(row.insider_buy_value)
-  }
-
-  if (
-    row.insider_shares !== null &&
-    row.insider_shares !== undefined &&
-    row.insider_avg_price !== null &&
-    row.insider_avg_price !== undefined
-  ) {
-    return formatMoney(row.insider_shares * row.insider_avg_price)
-  }
-
-  return "—"
 }
 
 function formatPe(
@@ -2612,26 +2405,24 @@ function getReasonChipTooltip(label: string) {
 
 function getTagTooltip(tag: string, pretty: string) {
   const map: Record<string, string> = {
-    "cluster-buy": "Multiple insiders or participants bought close together.",
-    "cluster-strong": "A stronger version of clustered buying interest.",
-    "insider-buy": "Insiders are buying shares, which can support a bullish case.",
-    "momentum-confirmed": "Price strength is being confirmed by momentum behavior.",
+    "candidate-screen": "This stock passed the candidate screening layer.",
+    "board-candidate": "This stock qualified for the live board.",
+    "candidate-included": "The stock is currently included in the board universe.",
+    "candidate-strong-buy": "The candidate score is especially strong.",
+    "candidate-elite": "The setup ranks near the very top of the board.",
     "breakout-20d": "The stock is breaking above a recent 20-day range.",
-    "breakout-52w": "The stock is approaching or breaking a 52-week high area.",
+    "short-term-breakout": "Shorter-term breakout behavior is also present.",
+    "above-20dma": "The stock is trading above its 20-day average.",
+    "relative-strength": "The stock is outperforming the broader market.",
+    "strong-relative-strength": "The stock is meaningfully outperforming the broader market.",
     "volume-confirmed": "Trading activity is elevated enough to support the move.",
     "heavy-volume": "Trading activity is meaningfully above normal.",
-    "earnings-support": "Recent earnings results are helping the setup.",
+    "momentum-confirmed": "Price strength is being confirmed by momentum behavior.",
+    "screen-momentum": "The screening layer also sees strong momentum.",
+    "clean-breakout": "The breakout has decent clearance above the prior range.",
+    "strong-close": "The stock closed strong within the daily range.",
     "reasonable-valuation": "Valuation still looks reasonable compared to growth or quality.",
     "deep-value": "The setup may also have a value angle.",
-    "guidance-support": "Forward guidance or expectations appear constructive.",
-    "relative-strength": "The stock is outperforming the broader market.",
-    "candidate-screen": "The setup also passed the technical candidate screening layer.",
-    "candidate-included": "The setup made it into the live strong-buy universe.",
-    "candidate-strong-buy": "The technical candidate score is especially strong.",
-    "screen-heavy-volume": "The screening layer also saw elevated volume.",
-    "screen-momentum": "The screening layer also saw strong momentum.",
-    "above-20dma": "The stock is trading above its 20-day average.",
-    "breakout-10d": "The stock cleared its shorter-term 10-day range.",
   }
 
   return map[tag] ?? `${pretty} is a model tag used to explain part of the setup.`
@@ -2644,7 +2435,7 @@ function getMiniMetricTooltip(label: string, row: TickerScore) {
         row.price
       )}.`
     case "Vs Market":
-      return `Relative strength versus the broader market over the recent period. Positive means it is outperforming. Current value: ${formatPercent(
+      return `Relative strength versus SPY over the recent 20-day period. Positive means it is outperforming the market. Current value: ${formatPercent(
         row.relative_strength_20d
       )}.`
     case "5D Move":
