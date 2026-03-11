@@ -591,9 +591,6 @@ export async function GET(request: Request) {
             ok: false,
             error: "Missing ticker or cik",
           })
-
-          await sleep(REQUEST_DELAY_MS)
-          continue
         }
 
         if (!isProbablyCommonStockTicker(ticker)) {
@@ -636,8 +633,6 @@ export async function GET(request: Request) {
               ok: false,
               error: deleteResult.error.message,
             })
-            await sleep(REQUEST_DELAY_MS)
-            continue
           }
 
           removedFromUniverseInBatch += 1
@@ -660,8 +655,6 @@ export async function GET(request: Request) {
               reason: excludedRow.screen_reason,
               historyWarning: historyResult.error.message,
             })
-            await sleep(REQUEST_DELAY_MS)
-            continue
           }
 
           historyInserted += 1
@@ -674,9 +667,6 @@ export async function GET(request: Request) {
             tier: "excluded",
             reason: excludedRow.screen_reason,
           })
-
-          await sleep(REQUEST_DELAY_MS)
-          continue
         }
 
         const endDate = new Date()
@@ -710,9 +700,6 @@ export async function GET(request: Request) {
               errorKind: "permanent_yahoo_error",
               removedFromUniverse: true,
             })
-
-            await sleep(REQUEST_DELAY_MS)
-            continue
           }
 
           keptUniverseOnTransientError += 1
@@ -724,9 +711,6 @@ export async function GET(request: Request) {
             errorKind: "transient_yahoo_error",
             removedFromUniverse: false,
           })
-
-          await sleep(REQUEST_DELAY_MS)
-          continue
         }
 
         const clean = (candles || [])
@@ -779,8 +763,6 @@ export async function GET(request: Request) {
               ok: false,
               error: deleteResult.error.message,
             })
-            await sleep(REQUEST_DELAY_MS)
-            continue
           }
 
           removedFromUniverseInBatch += 1
@@ -803,8 +785,6 @@ export async function GET(request: Request) {
               reason: row.screen_reason,
               historyWarning: historyResult.error.message,
             })
-            await sleep(REQUEST_DELAY_MS)
-            continue
           }
 
           historyInserted += 1
@@ -817,9 +797,6 @@ export async function GET(request: Request) {
             tier: "not_included",
             reason: row.screen_reason,
           })
-
-          await sleep(REQUEST_DELAY_MS)
-          continue
         }
 
         const latest = clean[clean.length - 1]
@@ -1015,8 +992,6 @@ export async function GET(request: Request) {
               ok: false,
               error: universeResult.error.message,
             })
-            await sleep(REQUEST_DELAY_MS)
-            continue
           }
 
           includedInBatch += 1
@@ -1030,8 +1005,6 @@ export async function GET(request: Request) {
               ok: false,
               error: deleteResult.error.message,
             })
-            await sleep(REQUEST_DELAY_MS)
-            continue
           }
 
           removedFromUniverseInBatch += 1
@@ -1087,8 +1060,6 @@ export async function GET(request: Request) {
           error: err?.message || "Unknown screening error",
         })
       }
-
-      await sleep(REQUEST_DELAY_MS)
     }
 
     const cutoffDate = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000)
