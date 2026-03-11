@@ -1201,33 +1201,6 @@ function FeaturedStrongBuyCard({
   )
 }
 
-function MiniMetric({
-  label,
-  value,
-}: {
-  label: string
-  value: string
-}) {
-  return (
-    <div className="flex min-h-[92px] min-w-0 w-full flex-col items-center justify-center rounded-[1.25rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[100px] sm:px-4">
-      <p className="mb-2 break-words text-[10px] uppercase tracking-[0.22em] text-slate-400 sm:text-[11px]">
-        {label}
-      </p>
-      <p className="break-words text-lg font-semibold tracking-tight text-white sm:text-xl">
-        {value}
-      </p>
-    </div>
-  )
-}
-
-function ReasonChip({ label }: { label: string }) {
-  return (
-    <span className="inline-flex min-h-[36px] max-w-full items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-center text-[11px] font-semibold text-emerald-200 sm:px-4 sm:text-xs">
-      {label}
-    </span>
-  )
-}
-
 function TopSignalCard({
   row,
   onClick,
