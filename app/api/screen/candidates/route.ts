@@ -91,39 +91,15 @@ type YahooErrorDisposition = {
   reason: string
 }
 
-type ProcessedCompanyResult =
-  | {
-      ticker: string
-      ok: true
-      row: CandidateUniverseRow
-      historyRow: CandidateHistoryRow
-      includeInUniverse: boolean
-      removeFromUniverse: boolean
-      result: Record<string, any>
-    }
-  | {
-      ticker: string | null
-      ok: false
-      error: string
-      errorKind?: string
-      removeFromUniverse: boolean
-      historyRow?: CandidateHistoryRow
-      result: Record<string, any>
-    }
-
 const yahooFinance = new YahooFinance({
-  queue: { concurrency: 4 },
+  queue: { concurrency: 3 },
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
-const MAX_BATCH = 350
+const MAX_BATCH = 250
 const DEFAULT_BATCH = 200
 const RETENTION_DAYS = 30
-
-const WORKER_CONCURRENCY = 8
-const UPSERT_CHUNK_SIZE = 100
-const DELETE_CHUNK_SIZE = 200
-const HISTORY_CHUNK_SIZE = 200
+const REQUEST_DELAY_MS = 150
 
 // Strong-buy-now universe should still be liquid and tradable.
 const MIN_PRICE = 5
@@ -132,8 +108,7 @@ const MIN_AVG_DOLLAR_VOLUME_20D = 15_000_000
 const MIN_MARKET_CAP = 500_000_000
 
 // Strong-buy-now thresholds.
-// 70+ should be buy-now territory.
-// 100 should be genuinely rare.
+// The live universe should start around 70 and 100 should be genuinely rare.
 const MIN_STRONG_BUY_SCORE = 70
 const MIN_STRONG_BUY_VOLUME_RATIO = 1.35
 const MIN_STRONG_BUY_RETURN_10D = 5
@@ -143,6 +118,10 @@ const MAX_EXTENSION_FROM_SMA20_PCT = 22
 const MIN_BREAKOUT_CLEARANCE_PCT = 0.1
 const MIN_CLOSE_IN_DAY_RANGE = 0.55
 const MIN_CATALYST_COUNT = 6
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 function avg(nums: number[]) {
   if (!nums.length) return 0
@@ -189,12 +168,17 @@ function isProbablyCommonStockTicker(ticker: string) {
   const badPatterns = [
     /\^/,
     /\//,
+
+    // Units / warrants / rights / subscription receipts
     /(?:^|[-.])(WS|WT|WTS|WARRANT|WAR)$/i,
     /(?:^|[-.])(W|U|R)$/i,
     /(?:^|[-.])(RT|RIGHT|RIGHTS)$/i,
+
+    // Preferred / preference share classes
     /(?:^|[-.])P(?:R)?[A-Z]{0,2}$/i,
     /PREFERRED/i,
     /PREF/i,
+
     /TEST/i,
   ]
 
@@ -362,29 +346,32 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   let penaltyScore = 0
 
   if (!passesPrice) penaltyScore -= 6
-  if (!passesVolume) penaltyScore -= 4
-  if (!passesDollarVolume) penaltyScore -= 6
-  if (!passesMarketCap) penaltyScore -= 4
-  if (!aboveSma20) penaltyScore -= 6
-  if (!shortTermTrendUp) penaltyScore -= 4
-  if (oneDayReturn < 0) penaltyScore -= 2
-  if (return5d < 0) penaltyScore -= 3
-  if (return10d < 3) penaltyScore -= 4
-  if (return20d < 8) penaltyScore -= 6
-  if (volumeRatio < 1.0) penaltyScore -= 5
-  if (!breakout20d) penaltyScore -= 8
-  if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) penaltyScore -= 3
-  if (closeInDayRange < 0.5) penaltyScore -= 4
-  if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) penaltyScore -= 6
+if (!passesVolume) penaltyScore -= 4
+if (!passesDollarVolume) penaltyScore -= 6
+if (!passesMarketCap) penaltyScore -= 4
+if (!aboveSma20) penaltyScore -= 6
+if (!shortTermTrendUp) penaltyScore -= 4
+if (oneDayReturn < 0) penaltyScore -= 2
+if (return5d < 0) penaltyScore -= 3
+if (return10d < 3) penaltyScore -= 4
+if (return20d < 8) penaltyScore -= 6
+if (volumeRatio < 1.0) penaltyScore -= 5
+if (!breakout20d) penaltyScore -= 8
+  if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) penaltyScore -= 5
+  if (closeInDayRange < 0.5) penaltyScore -= 6
+  if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) penaltyScore -= 10
 
-  if (return20d > MAX_STRONG_BUY_RETURN_20D) penaltyScore -= 6
-  if (extensionFromSma20Pct > 28) penaltyScore -= 6
-  if (extensionFromSma20Pct > 35) penaltyScore -= 8
-  if (return20d > 55) penaltyScore -= 8
+  // Strong moves can still be buy-now opportunities, but truly stretched names should come down.
+  if (return20d > MAX_STRONG_BUY_RETURN_20D) penaltyScore -= 8
+  if (extensionFromSma20Pct > 28) penaltyScore -= 8
+  if (extensionFromSma20Pct > 35) penaltyScore -= 10
+  if (return20d > 55) penaltyScore -= 10
 
   const rawScore =
     qualityScore + momentumScore + volumeScore + breakoutScore + trendScore + penaltyScore
 
+  // This mapping intentionally opens up the 70-90 zone so real buy-now names show up,
+  // while keeping 100 genuinely difficult.
   const normalized = clamp((rawScore + 25) / 110, 0, 1)
   let candidateScore = Math.round(Math.pow(normalized, 1.16) * 100)
 
@@ -435,8 +422,9 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     marketCap >= 1_000_000_000 &&
     catalystCount >= MIN_CATALYST_COUNT + 1
 
+  // Caps keep mediocre names from drifting too high.
   if (!breakout20d || !aboveSma20) {
-    candidateScore = Math.min(candidateScore, 65)
+    candidateScore = Math.min(candidateScore, 60)
   } else if (!highConvictionSetup) {
     candidateScore = Math.min(candidateScore, 84)
   } else if (!eliteSetup) {
@@ -484,469 +472,32 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   }
 }
 
-function buildHistoryRow(
+async function writeHistoryRow(
+  candidateHistoryTable: any,
   row: CandidateUniverseRow,
   screenedOn: string,
   nowIso: string
-): CandidateHistoryRow {
-  return {
+) {
+  const historyRow: CandidateHistoryRow = {
     ...row,
     screened_on: screenedOn,
     snapshot_key: `${screenedOn}_${row.ticker}`,
     created_at: nowIso,
   }
-}
 
-function chunkArray<T>(items: T[], size: number) {
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
-  }
-  return chunks
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T, index: number) => Promise<R>
-): Promise<R[]> {
-  const results = new Array<R>(items.length)
-  let index = 0
-
-  async function run() {
-    while (true) {
-      const currentIndex = index
-      index += 1
-      if (currentIndex >= items.length) break
-      results[currentIndex] = await worker(items[currentIndex], currentIndex)
-    }
-  }
-
-  const runners = Array.from({ length: Math.min(concurrency, items.length) }, () => run())
-  await Promise.all(runners)
-  return results
-}
-
-async function upsertUniverseRows(candidateUniverseTable: any, rows: CandidateUniverseRow[]) {
-  for (const chunk of chunkArray(rows, UPSERT_CHUNK_SIZE)) {
-    const { error } = await candidateUniverseTable.upsert(chunk, { onConflict: "ticker" })
-    if (error) throw new Error(`Universe upsert failed: ${error.message}`)
-  }
-}
-
-async function deleteUniverseTickers(candidateUniverseTable: any, tickers: string[]) {
-  for (const chunk of chunkArray(tickers, DELETE_CHUNK_SIZE)) {
-    const { error } = await candidateUniverseTable.delete().in("ticker", chunk)
-    if (error) throw new Error(`Universe delete failed: ${error.message}`)
-  }
-}
-
-async function upsertHistoryRows(candidateHistoryTable: any, rows: CandidateHistoryRow[]) {
-  for (const chunk of chunkArray(rows, HISTORY_CHUNK_SIZE)) {
-    const { error } = await candidateHistoryTable.upsert(chunk, { onConflict: "snapshot_key" })
-    if (error) throw new Error(`History upsert failed: ${error.message}`)
-  }
-}
-
-async function processCompany(
-  company: CompanyRow,
-  nowIso: string,
-  screenedOn: string
-): Promise<ProcessedCompanyResult> {
-  const ticker = normalizeTicker(company.ticker)
-
-  if (!ticker || !company.cik) {
-    return {
-      ticker: ticker || null,
-      ok: false,
-      error: "Missing ticker or cik",
-      removeFromUniverse: !!ticker,
-      result: {
-        ticker: ticker || null,
-        ok: false,
-        error: "Missing ticker or cik",
-      },
-    }
-  }
-
-  if (!isProbablyCommonStockTicker(ticker)) {
-    const row: CandidateUniverseRow = {
-      ticker,
-      cik: company.cik,
-      name: company.name,
-      price: null,
-      market_cap: null,
-      avg_volume_20d: null,
-      avg_dollar_volume_20d: null,
-      one_day_return: null,
-      return_5d: null,
-      return_10d: null,
-      return_20d: null,
-      volume_ratio: null,
-      breakout_20d: false,
-      breakout_10d: false,
-      above_sma_20: false,
-      breakout_clearance_pct: null,
-      extension_from_sma20_pct: null,
-      close_in_day_range: null,
-      catalyst_count: 0,
-      passes_price: false,
-      passes_volume: false,
-      passes_dollar_volume: false,
-      passes_market_cap: false,
-      candidate_score: 0,
-      included: false,
-      screen_reason: "Excluded likely non-common-share ticker",
-      last_screened_at: nowIso,
-      updated_at: nowIso,
-    }
-
-    return {
-      ticker,
-      ok: true,
-      row,
-      historyRow: buildHistoryRow(row, screenedOn, nowIso),
-      includeInUniverse: false,
-      removeFromUniverse: true,
-      result: {
-        ticker,
-        ok: true,
-        included: false,
-        score: 0,
-        tier: "excluded",
-        reason: row.screen_reason,
-      },
-    }
-  }
-
-  const endDate = new Date()
-  const startDate = new Date()
-  startDate.setDate(startDate.getDate() - 60)
-
-  let candles: any[] | null = null
-  let quote: any = null
-
-  try {
-    ;[candles, quote] = await Promise.all([
-      yahooFinance.historical(ticker, {
-        period1: toIsoDateString(startDate),
-        period2: toIsoDateString(endDate),
-        interval: "1d",
-      }),
-      yahooFinance.quote(ticker),
-    ])
-  } catch (err: any) {
-    const disposition = classifyYahooError(err)
-
-    if (disposition.kind === "permanent") {
-      return {
-        ticker,
-        ok: false,
-        error: disposition.reason,
-        errorKind: "permanent_yahoo_error",
-        removeFromUniverse: true,
-        result: {
-          ticker,
-          ok: false,
-          error: disposition.reason,
-          errorKind: "permanent_yahoo_error",
-          removedFromUniverse: true,
-        },
-      }
-    }
-
-    return {
-      ticker,
-      ok: false,
-      error: disposition.reason,
-      errorKind: "transient_yahoo_error",
-      removeFromUniverse: false,
-      result: {
-        ticker,
-        ok: false,
-        error: disposition.reason,
-        errorKind: "transient_yahoo_error",
-        removedFromUniverse: false,
-      },
-    }
-  }
-
-  const clean = (candles || [])
-    .filter(
-      (c) =>
-        c.close !== null &&
-        c.close !== undefined &&
-        c.volume !== null &&
-        c.volume !== undefined
-    )
-    .sort((a, b) => +new Date(a.date) - +new Date(b.date))
-
-  if (clean.length < 22) {
-    const row: CandidateUniverseRow = {
-      ticker,
-      cik: company.cik,
-      name: company.name,
-      price: null,
-      market_cap: null,
-      avg_volume_20d: null,
-      avg_dollar_volume_20d: null,
-      one_day_return: null,
-      return_5d: null,
-      return_10d: null,
-      return_20d: null,
-      volume_ratio: null,
-      breakout_20d: false,
-      breakout_10d: false,
-      above_sma_20: false,
-      breakout_clearance_pct: null,
-      extension_from_sma20_pct: null,
-      close_in_day_range: null,
-      catalyst_count: 0,
-      passes_price: false,
-      passes_volume: false,
-      passes_dollar_volume: false,
-      passes_market_cap: false,
-      candidate_score: 0,
-      included: false,
-      screen_reason: "Not enough price history",
-      last_screened_at: nowIso,
-      updated_at: nowIso,
-    }
-
-    return {
-      ticker,
-      ok: true,
-      row,
-      historyRow: buildHistoryRow(row, screenedOn, nowIso),
-      includeInUniverse: false,
-      removeFromUniverse: true,
-      result: {
-        ticker,
-        ok: true,
-        included: false,
-        score: 0,
-        tier: "not_included",
-        reason: row.screen_reason,
-      },
-    }
-  }
-
-  const latest = clean[clean.length - 1]
-  const previous = clean[clean.length - 2]
-  const fiveAgo = clean[clean.length - 6]
-  const tenAgo = clean[clean.length - 11]
-  const twentyAgo = clean[clean.length - 21]
-  const prior20 = clean.slice(-21, -1)
-  const prior10 = clean.slice(-11, -1)
-
-  const latestClose = Number(latest.close || 0)
-  const latestOpen = Number(latest.open || latestClose)
-  const latestHigh = Number(latest.high || latestClose)
-  const latestLow = Number(latest.low || latestClose)
-  const latestVolume = Number(latest.volume || 0)
-  const previousClose = Number(previous?.close || latestClose)
-
-  const avgVolume20d = avg(prior20.map((c) => Number(c.volume || 0)))
-  const avgDollarVolume20d = avg(
-    prior20.map((c) => Number(c.close || 0) * Number(c.volume || 0))
-  )
-  const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
-  const high10 = Math.max(...prior10.map((c) => Number(c.high || 0)))
-  const sma20 = avg(prior20.map((c) => Number(c.close || 0)))
-  const sma10 = avg(prior10.map((c) => Number(c.close || 0)))
-  const return5d = calcPercentChange(latestClose, Number(fiveAgo?.close || 0))
-  const return10d = calcPercentChange(latestClose, Number(tenAgo?.close || 0))
-  const return20d = calcPercentChange(latestClose, Number(twentyAgo?.close || 0))
-  const oneDayReturn = calcPercentChange(latestClose, previousClose)
-  const volumeRatio = avgVolume20d > 0 ? latestVolume / avgVolume20d : 0
-  const breakout20d = latestClose > high20
-  const breakout10d = latestClose > high10
-  const nearHigh20 = high20 > 0 ? latestClose >= high20 * 0.99 : false
-  const aboveSma20 = latestClose > sma20
-  const shortTermTrendUp = sma10 > sma20
-  const marketCap = Number((quote as any)?.marketCap || 0)
-
-  const breakoutClearancePct =
-    high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
-
-  const extensionFromSma20Pct =
-    sma20 > 0 ? ((latestClose - sma20) / sma20) * 100 : 0
-
-  const closeInDayRange =
-    latestHigh > latestLow
-      ? (latestClose - latestLow) / (latestHigh - latestLow)
-      : latestClose >= latestOpen
-        ? 1
-        : 0
-
-  const passesPrice = latestClose >= MIN_PRICE
-  const passesVolume = avgVolume20d >= MIN_AVG_VOLUME_20D
-  const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
-  const passesMarketCap = marketCap >= MIN_MARKET_CAP
-
-  const scoreDetails = calculateCandidateScore({
-    latestClose,
-    marketCap,
-    avgVolume20d,
-    avgDollarVolume20d,
-    return5d,
-    return10d,
-    return20d,
-    oneDayReturn,
-    volumeRatio,
-    breakout20d,
-    breakout10d,
-    nearHigh20,
-    aboveSma20,
-    shortTermTrendUp,
-    sma10,
-    sma20,
-    high20,
-    breakoutClearancePct,
-    extensionFromSma20Pct,
-    closeInDayRange,
-    passesPrice,
-    passesVolume,
-    passesDollarVolume,
-    passesMarketCap,
+  return candidateHistoryTable.upsert(historyRow, {
+    onConflict: "snapshot_key",
   })
+}
 
-  const score = scoreDetails.candidateScore
-  const catalystCount = scoreDetails.catalystCount
+async function removeFromUniverse(candidateUniverseTable: any, ticker: string) {
+  return candidateUniverseTable.delete().eq("ticker", ticker)
+}
 
-  const strongBuyNowCandidate =
-    passesPrice &&
-    passesVolume &&
-    passesDollarVolume &&
-    passesMarketCap &&
-    breakout20d &&
-    breakout10d &&
-    aboveSma20 &&
-    oneDayReturn >= 0 &&
-    return10d >= MIN_STRONG_BUY_RETURN_10D &&
-    return20d >= MIN_STRONG_BUY_RETURN_20D &&
-    return20d <= MAX_STRONG_BUY_RETURN_20D &&
-    volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO &&
-    breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT &&
-    closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE &&
-    extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT &&
-    score >= MIN_STRONG_BUY_SCORE &&
-    catalystCount >= MIN_CATALYST_COUNT
-
-  const included = strongBuyNowCandidate
-
-  const reasons: string[] = []
-  if (passesPrice) reasons.push(`price >= $${MIN_PRICE}`)
-  if (passesVolume) reasons.push("20d avg volume")
-  if (passesDollarVolume) reasons.push("20d dollar volume")
-  if (passesMarketCap) reasons.push("market cap")
-  if (oneDayReturn > 0) reasons.push("positive day")
-  if (return5d >= 2) reasons.push("5d momentum")
-  if (return10d >= MIN_STRONG_BUY_RETURN_10D) reasons.push("10d momentum")
-  if (return20d >= MIN_STRONG_BUY_RETURN_20D) reasons.push("20d momentum")
-  if (return20d <= MAX_STRONG_BUY_RETURN_20D) reasons.push("not overextended on 20d move")
-  if (volumeRatio >= 1.25) reasons.push("volume expansion")
-  if (volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO) reasons.push("strong volume expansion")
-  if (breakout10d) reasons.push("10d breakout")
-  if (breakout20d) reasons.push("20d breakout")
-  if (breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT) reasons.push("clean breakout clearance")
-  if (aboveSma20) reasons.push("above 20d average")
-  if (shortTermTrendUp) reasons.push("short-term trend acceleration")
-  if (closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE) reasons.push("strong close in daily range")
-  if (extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT) reasons.push("not too extended from 20d average")
-  if (scoreDetails.highConvictionSetup) reasons.push("high-conviction setup")
-  if (scoreDetails.eliteSetup) reasons.push("elite setup")
-
-  let exclusionReason = ""
-  if (!passesPrice) exclusionReason = `Below $${MIN_PRICE} minimum price`
-  else if (!passesVolume) exclusionReason = "Below minimum average volume"
-  else if (!passesDollarVolume) exclusionReason = "Below minimum dollar volume"
-  else if (!passesMarketCap) exclusionReason = "Below minimum market cap"
-  else if (!aboveSma20) exclusionReason = "Below 20d average"
-  else if (!breakout20d) exclusionReason = "No fresh 20d breakout"
-  else if (!breakout10d) exclusionReason = "Breakout lacks short-term confirmation"
-  else if (oneDayReturn < 0) exclusionReason = "Breakout day closed negative"
-  else if (return10d < MIN_STRONG_BUY_RETURN_10D) exclusionReason = "10d momentum below strong-buy threshold"
-  else if (return20d < MIN_STRONG_BUY_RETURN_20D) exclusionReason = "20d momentum below strong-buy threshold"
-  else if (return20d > MAX_STRONG_BUY_RETURN_20D) exclusionReason = "Move is too extended for fresh entry"
-  else if (volumeRatio < MIN_STRONG_BUY_VOLUME_RATIO) exclusionReason = "Volume expansion below strong-buy threshold"
-  else if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) exclusionReason = "Breakout clearance too small"
-  else if (closeInDayRange < MIN_CLOSE_IN_DAY_RANGE) exclusionReason = "Close too weak within daily range"
-  else if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) exclusionReason = "Too extended from 20d average"
-  else if (score < MIN_STRONG_BUY_SCORE) exclusionReason = "Score below strong-buy threshold"
-  else if (catalystCount < MIN_CATALYST_COUNT) exclusionReason = "Not enough strong-buy catalysts"
-
-  const row: CandidateUniverseRow = {
-    ticker,
-    cik: company.cik,
-    name: company.name,
-    price: round2(latestClose),
-    market_cap: marketCap || null,
-    avg_volume_20d: round2(avgVolume20d),
-    avg_dollar_volume_20d: round2(avgDollarVolume20d),
-    one_day_return: round2(oneDayReturn),
-    return_5d: round2(return5d),
-    return_10d: round2(return10d),
-    return_20d: round2(return20d),
-    volume_ratio: round2(volumeRatio),
-    breakout_20d: breakout20d,
-    breakout_10d: breakout10d,
-    above_sma_20: aboveSma20,
-    breakout_clearance_pct: round2(breakoutClearancePct),
-    extension_from_sma20_pct: round2(extensionFromSma20Pct),
-    close_in_day_range: round2(closeInDayRange),
-    catalyst_count: catalystCount,
-    passes_price: passesPrice,
-    passes_volume: passesVolume,
-    passes_dollar_volume: passesDollarVolume,
-    passes_market_cap: passesMarketCap,
-    candidate_score: score,
-    included,
-    screen_reason: buildCandidateReason({
-      included,
-      strongBuyNow: strongBuyNowCandidate,
-      reasons,
-      exclusionReason,
-    }),
-    last_screened_at: nowIso,
-    updated_at: nowIso,
-  }
-
-  return {
-    ticker,
-    ok: true,
-    row,
-    historyRow: buildHistoryRow(row, screenedOn, nowIso),
-    includeInUniverse: included,
-    removeFromUniverse: !included,
-    result: {
-      ticker,
-      ok: true,
-      included,
-      score,
-      rawScore: round2(scoreDetails.rawScore),
-      tier: included ? "strong_buy_now" : "not_included",
-      reason: row.screen_reason,
-      price: round2(latestClose),
-      oneDayReturn: round2(oneDayReturn),
-      return5d: round2(return5d),
-      return10d: round2(return10d),
-      return20d: round2(return20d),
-      volumeRatio: round2(volumeRatio),
-      breakoutClearancePct: round2(breakoutClearancePct),
-      extensionFromSma20Pct: round2(extensionFromSma20Pct),
-      closeInDayRange: round2(closeInDayRange),
-      catalystCount,
-      scoreBreakdown: {
-        quality: round2(scoreDetails.qualityScore),
-        momentum: round2(scoreDetails.momentumScore),
-        volume: round2(scoreDetails.volumeScore),
-        breakout: round2(scoreDetails.breakoutScore),
-        trend: round2(scoreDetails.trendScore),
-        penalty: round2(scoreDetails.penaltyScore),
-      },
-    },
-  }
+async function upsertUniverseRow(candidateUniverseTable: any, row: CandidateUniverseRow) {
+  return candidateUniverseTable.upsert(row, {
+    onConflict: "ticker",
+  })
 }
 
 export async function GET(request: Request) {
@@ -1016,17 +567,7 @@ export async function GET(request: Request) {
       )
     }
 
-    const processed = await mapWithConcurrency(
-      (companies || []) as CompanyRow[],
-      WORKER_CONCURRENCY,
-      (company) => processCompany(company, nowIso, screenedOn)
-    )
-
     const results: Array<Record<string, any>> = []
-    const universeRowsToUpsert: CandidateUniverseRow[] = []
-    const historyRowsToUpsert: CandidateHistoryRow[] = []
-    const tickersToDelete = new Set<string>()
-
     let includedInBatch = 0
     let failedInBatch = 0
     let historyInserted = 0
@@ -1034,54 +575,521 @@ export async function GET(request: Request) {
     let removedFromUniverseInBatch = 0
     let keptUniverseOnTransientError = 0
 
-    for (const item of processed) {
-      results.push(item.result)
+    for (const company of (companies || []) as CompanyRow[]) {
+      const ticker = normalizeTicker(company.ticker)
 
-      if (!item.ok) {
+      try {
+        if (!ticker || !company.cik) {
+          failedInBatch += 1
+
+          if (ticker) {
+            const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+            if (!deleteResult.error) removedFromUniverseInBatch += 1
+          }
+
+          results.push({
+            ticker: ticker || null,
+            ok: false,
+            error: "Missing ticker or cik",
+          })
+
+          await sleep(REQUEST_DELAY_MS)
+          continue
+        }
+
+        if (!isProbablyCommonStockTicker(ticker)) {
+          const excludedRow: CandidateUniverseRow = {
+            ticker,
+            cik: company.cik,
+            name: company.name,
+            price: null,
+            market_cap: null,
+            avg_volume_20d: null,
+            avg_dollar_volume_20d: null,
+            one_day_return: null,
+            return_5d: null,
+            return_10d: null,
+            return_20d: null,
+            volume_ratio: null,
+            breakout_20d: false,
+            breakout_10d: false,
+            above_sma_20: false,
+            breakout_clearance_pct: null,
+            extension_from_sma20_pct: null,
+            close_in_day_range: null,
+            catalyst_count: 0,
+            passes_price: false,
+            passes_volume: false,
+            passes_dollar_volume: false,
+            passes_market_cap: false,
+            candidate_score: 0,
+            included: false,
+            screen_reason: "Excluded likely non-common-share ticker",
+            last_screened_at: nowIso,
+            updated_at: nowIso,
+          }
+
+          const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+          if (deleteResult.error) {
+            failedInBatch += 1
+            results.push({
+              ticker,
+              ok: false,
+              error: deleteResult.error.message,
+            })
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          removedFromUniverseInBatch += 1
+
+          const historyResult = await writeHistoryRow(
+            candidateHistoryTable,
+            excludedRow,
+            screenedOn,
+            nowIso
+          )
+
+          if (historyResult.error) {
+            historyWriteErrors += 1
+            results.push({
+              ticker,
+              ok: true,
+              included: false,
+              score: 0,
+              tier: "excluded",
+              reason: excludedRow.screen_reason,
+              historyWarning: historyResult.error.message,
+            })
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          historyInserted += 1
+
+          results.push({
+            ticker,
+            ok: true,
+            included: false,
+            score: 0,
+            tier: "excluded",
+            reason: excludedRow.screen_reason,
+          })
+
+          await sleep(REQUEST_DELAY_MS)
+          continue
+        }
+
+        const endDate = new Date()
+        const startDate = new Date()
+        startDate.setDate(startDate.getDate() - 60)
+
+        let candles: any[] | null = null
+        let quote: any = null
+
+        try {
+          ;[candles, quote] = await Promise.all([
+            yahooFinance.historical(ticker, {
+              period1: toIsoDateString(startDate),
+              period2: toIsoDateString(endDate),
+              interval: "1d",
+            }),
+            yahooFinance.quote(ticker),
+          ])
+        } catch (err: any) {
+          const disposition = classifyYahooError(err)
+
+          if (disposition.kind === "permanent") {
+            const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+            if (!deleteResult.error) removedFromUniverseInBatch += 1
+
+            failedInBatch += 1
+            results.push({
+              ticker,
+              ok: false,
+              error: disposition.reason,
+              errorKind: "permanent_yahoo_error",
+              removedFromUniverse: true,
+            })
+
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          keptUniverseOnTransientError += 1
+          failedInBatch += 1
+          results.push({
+            ticker,
+            ok: false,
+            error: disposition.reason,
+            errorKind: "transient_yahoo_error",
+            removedFromUniverse: false,
+          })
+
+          await sleep(REQUEST_DELAY_MS)
+          continue
+        }
+
+        const clean = (candles || [])
+          .filter(
+            (c) =>
+              c.close !== null &&
+              c.close !== undefined &&
+              c.volume !== null &&
+              c.volume !== undefined
+          )
+          .sort((a, b) => +new Date(a.date) - +new Date(b.date))
+
+        if (clean.length < 22) {
+          const row: CandidateUniverseRow = {
+            ticker,
+            cik: company.cik,
+            name: company.name,
+            price: null,
+            market_cap: null,
+            avg_volume_20d: null,
+            avg_dollar_volume_20d: null,
+            one_day_return: null,
+            return_5d: null,
+            return_10d: null,
+            return_20d: null,
+            volume_ratio: null,
+            breakout_20d: false,
+            breakout_10d: false,
+            above_sma_20: false,
+            breakout_clearance_pct: null,
+            extension_from_sma20_pct: null,
+            close_in_day_range: null,
+            catalyst_count: 0,
+            passes_price: false,
+            passes_volume: false,
+            passes_dollar_volume: false,
+            passes_market_cap: false,
+            candidate_score: 0,
+            included: false,
+            screen_reason: "Not enough price history",
+            last_screened_at: nowIso,
+            updated_at: nowIso,
+          }
+
+          const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+          if (deleteResult.error) {
+            failedInBatch += 1
+            results.push({
+              ticker,
+              ok: false,
+              error: deleteResult.error.message,
+            })
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          removedFromUniverseInBatch += 1
+
+          const historyResult = await writeHistoryRow(
+            candidateHistoryTable,
+            row,
+            screenedOn,
+            nowIso
+          )
+
+          if (historyResult.error) {
+            historyWriteErrors += 1
+            results.push({
+              ticker,
+              ok: true,
+              included: false,
+              score: 0,
+              tier: "not_included",
+              reason: row.screen_reason,
+              historyWarning: historyResult.error.message,
+            })
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          historyInserted += 1
+
+          results.push({
+            ticker,
+            ok: true,
+            included: false,
+            score: 0,
+            tier: "not_included",
+            reason: row.screen_reason,
+          })
+
+          await sleep(REQUEST_DELAY_MS)
+          continue
+        }
+
+        const latest = clean[clean.length - 1]
+        const previous = clean[clean.length - 2]
+        const fiveAgo = clean[clean.length - 6]
+        const tenAgo = clean[clean.length - 11]
+        const twentyAgo = clean[clean.length - 21]
+        const prior20 = clean.slice(-21, -1)
+        const prior10 = clean.slice(-11, -1)
+
+        const latestClose = Number(latest.close || 0)
+        const latestOpen = Number(latest.open || latestClose)
+        const latestHigh = Number(latest.high || latestClose)
+        const latestLow = Number(latest.low || latestClose)
+        const latestVolume = Number(latest.volume || 0)
+        const previousClose = Number(previous?.close || latestClose)
+
+        const avgVolume20d = avg(prior20.map((c) => Number(c.volume || 0)))
+        const avgDollarVolume20d = avg(
+          prior20.map((c) => Number(c.close || 0) * Number(c.volume || 0))
+        )
+        const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
+        const high10 = Math.max(...prior10.map((c) => Number(c.high || 0)))
+        const sma20 = avg(prior20.map((c) => Number(c.close || 0)))
+        const sma10 = avg(prior10.map((c) => Number(c.close || 0)))
+        const return5d = calcPercentChange(latestClose, Number(fiveAgo?.close || 0))
+        const return10d = calcPercentChange(latestClose, Number(tenAgo?.close || 0))
+        const return20d = calcPercentChange(latestClose, Number(twentyAgo?.close || 0))
+        const oneDayReturn = calcPercentChange(latestClose, previousClose)
+        const volumeRatio = avgVolume20d > 0 ? latestVolume / avgVolume20d : 0
+        const breakout20d = latestClose > high20
+        const breakout10d = latestClose > high10
+        const nearHigh20 = high20 > 0 ? latestClose >= high20 * 0.99 : false
+        const aboveSma20 = latestClose > sma20
+        const shortTermTrendUp = sma10 > sma20
+        const marketCap = Number((quote as any)?.marketCap || 0)
+
+        const breakoutClearancePct =
+          high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
+
+        const extensionFromSma20Pct =
+          sma20 > 0 ? ((latestClose - sma20) / sma20) * 100 : 0
+
+        const closeInDayRange =
+          latestHigh > latestLow
+            ? (latestClose - latestLow) / (latestHigh - latestLow)
+            : latestClose >= latestOpen
+              ? 1
+              : 0
+
+        const passesPrice = latestClose >= MIN_PRICE
+        const passesVolume = avgVolume20d >= MIN_AVG_VOLUME_20D
+        const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
+        const passesMarketCap = marketCap >= MIN_MARKET_CAP
+
+        const scoreDetails = calculateCandidateScore({
+          latestClose,
+          marketCap,
+          avgVolume20d,
+          avgDollarVolume20d,
+          return5d,
+          return10d,
+          return20d,
+          oneDayReturn,
+          volumeRatio,
+          breakout20d,
+          breakout10d,
+          nearHigh20,
+          aboveSma20,
+          shortTermTrendUp,
+          sma10,
+          sma20,
+          high20,
+          breakoutClearancePct,
+          extensionFromSma20Pct,
+          closeInDayRange,
+          passesPrice,
+          passesVolume,
+          passesDollarVolume,
+          passesMarketCap,
+        })
+
+        const score = scoreDetails.candidateScore
+        const catalystCount = scoreDetails.catalystCount
+
+        // This is intentionally simpler than before.
+        // The score itself already encodes most of the quality filter.
+        const strongBuyNowCandidate =
+          passesPrice &&
+          passesVolume &&
+          passesDollarVolume &&
+          passesMarketCap &&
+          breakout20d &&
+          breakout10d &&
+          aboveSma20 &&
+          oneDayReturn >= 0 &&
+          return10d >= MIN_STRONG_BUY_RETURN_10D &&
+          return20d >= MIN_STRONG_BUY_RETURN_20D &&
+          return20d <= MAX_STRONG_BUY_RETURN_20D &&
+          volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO &&
+          breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT &&
+          closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE &&
+          extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT &&
+          score >= MIN_STRONG_BUY_SCORE &&
+          catalystCount >= MIN_CATALYST_COUNT
+
+        const included = strongBuyNowCandidate
+
+        const reasons: string[] = []
+        if (passesPrice) reasons.push(`price >= $${MIN_PRICE}`)
+        if (passesVolume) reasons.push("20d avg volume")
+        if (passesDollarVolume) reasons.push("20d dollar volume")
+        if (passesMarketCap) reasons.push("market cap")
+        if (oneDayReturn > 0) reasons.push("positive day")
+        if (return5d >= 2) reasons.push("5d momentum")
+        if (return10d >= MIN_STRONG_BUY_RETURN_10D) reasons.push("10d momentum")
+        if (return20d >= MIN_STRONG_BUY_RETURN_20D) reasons.push("20d momentum")
+        if (return20d <= MAX_STRONG_BUY_RETURN_20D) reasons.push("not overextended on 20d move")
+        if (volumeRatio >= 1.25) reasons.push("volume expansion")
+        if (volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO) reasons.push("strong volume expansion")
+        if (breakout10d) reasons.push("10d breakout")
+        if (breakout20d) reasons.push("20d breakout")
+        if (breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT) reasons.push("clean breakout clearance")
+        if (aboveSma20) reasons.push("above 20d average")
+        if (shortTermTrendUp) reasons.push("short-term trend acceleration")
+        if (closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE) reasons.push("strong close in daily range")
+        if (extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT) reasons.push("not too extended from 20d average")
+        if (scoreDetails.highConvictionSetup) reasons.push("high-conviction setup")
+        if (scoreDetails.eliteSetup) reasons.push("elite setup")
+
+        let exclusionReason = ""
+        if (!passesPrice) exclusionReason = `Below $${MIN_PRICE} minimum price`
+        else if (!passesVolume) exclusionReason = "Below minimum average volume"
+        else if (!passesDollarVolume) exclusionReason = "Below minimum dollar volume"
+        else if (!passesMarketCap) exclusionReason = "Below minimum market cap"
+        else if (!aboveSma20) exclusionReason = "Below 20d average"
+        else if (!breakout20d) exclusionReason = "No fresh 20d breakout"
+        else if (!breakout10d) exclusionReason = "Breakout lacks short-term confirmation"
+        else if (oneDayReturn < 0) exclusionReason = "Breakout day closed negative"
+        else if (return10d < MIN_STRONG_BUY_RETURN_10D) exclusionReason = "10d momentum below strong-buy threshold"
+        else if (return20d < MIN_STRONG_BUY_RETURN_20D) exclusionReason = "20d momentum below strong-buy threshold"
+        else if (return20d > MAX_STRONG_BUY_RETURN_20D) exclusionReason = "Move is too extended for fresh entry"
+        else if (volumeRatio < MIN_STRONG_BUY_VOLUME_RATIO) exclusionReason = "Volume expansion below strong-buy threshold"
+        else if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) exclusionReason = "Breakout clearance too small"
+        else if (closeInDayRange < MIN_CLOSE_IN_DAY_RANGE) exclusionReason = "Close too weak within daily range"
+        else if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) exclusionReason = "Too extended from 20d average"
+        else if (score < MIN_STRONG_BUY_SCORE) exclusionReason = "Score below strong-buy threshold"
+        else if (catalystCount < MIN_CATALYST_COUNT) exclusionReason = "Not enough strong-buy catalysts"
+
+        const row: CandidateUniverseRow = {
+          ticker,
+          cik: company.cik,
+          name: company.name,
+          price: round2(latestClose),
+          market_cap: marketCap || null,
+          avg_volume_20d: round2(avgVolume20d),
+          avg_dollar_volume_20d: round2(avgDollarVolume20d),
+          one_day_return: round2(oneDayReturn),
+          return_5d: round2(return5d),
+          return_10d: round2(return10d),
+          return_20d: round2(return20d),
+          volume_ratio: round2(volumeRatio),
+          breakout_20d: breakout20d,
+          breakout_10d: breakout10d,
+          above_sma_20: aboveSma20,
+          breakout_clearance_pct: round2(breakoutClearancePct),
+          extension_from_sma20_pct: round2(extensionFromSma20Pct),
+          close_in_day_range: round2(closeInDayRange),
+          catalyst_count: catalystCount,
+          passes_price: passesPrice,
+          passes_volume: passesVolume,
+          passes_dollar_volume: passesDollarVolume,
+          passes_market_cap: passesMarketCap,
+          candidate_score: score,
+          included,
+          screen_reason: buildCandidateReason({
+            included,
+            strongBuyNow: strongBuyNowCandidate,
+            reasons,
+            exclusionReason,
+          }),
+          last_screened_at: nowIso,
+          updated_at: nowIso,
+        }
+
+        if (included) {
+          const universeResult = await upsertUniverseRow(candidateUniverseTable, row)
+
+          if (universeResult.error) {
+            failedInBatch += 1
+            results.push({
+              ticker,
+              ok: false,
+              error: universeResult.error.message,
+            })
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          includedInBatch += 1
+        } else {
+          const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
+
+          if (deleteResult.error) {
+            failedInBatch += 1
+            results.push({
+              ticker,
+              ok: false,
+              error: deleteResult.error.message,
+            })
+            await sleep(REQUEST_DELAY_MS)
+            continue
+          }
+
+          removedFromUniverseInBatch += 1
+        }
+
+        const historyResult = await writeHistoryRow(
+          candidateHistoryTable,
+          row,
+          screenedOn,
+          nowIso
+        )
+
+        if (historyResult.error) {
+          historyWriteErrors += 1
+        } else {
+          historyInserted += 1
+        }
+
+        results.push({
+          ticker,
+          ok: true,
+          included,
+          score,
+          rawScore: round2(scoreDetails.rawScore),
+          tier: included ? "strong_buy_now" : "not_included",
+          reason: row.screen_reason,
+          price: round2(latestClose),
+          oneDayReturn: round2(oneDayReturn),
+          return5d: round2(return5d),
+          return10d: round2(return10d),
+          return20d: round2(return20d),
+          volumeRatio: round2(volumeRatio),
+          breakoutClearancePct: round2(breakoutClearancePct),
+          extensionFromSma20Pct: round2(extensionFromSma20Pct),
+          closeInDayRange: round2(closeInDayRange),
+          catalystCount,
+          historyWarning: historyResult.error ? historyResult.error.message : null,
+          scoreBreakdown: {
+            quality: round2(scoreDetails.qualityScore),
+            momentum: round2(scoreDetails.momentumScore),
+            volume: round2(scoreDetails.volumeScore),
+            breakout: round2(scoreDetails.breakoutScore),
+            trend: round2(scoreDetails.trendScore),
+            penalty: round2(scoreDetails.penaltyScore),
+          },
+        })
+      } catch (err: any) {
         failedInBatch += 1
 
-        if (item.errorKind === "transient_yahoo_error") {
-          keptUniverseOnTransientError += 1
-        }
-
-        if (item.removeFromUniverse && item.ticker) {
-          tickersToDelete.add(item.ticker)
-        }
-
-        if (item.historyRow) {
-          historyRowsToUpsert.push(item.historyRow)
-        }
-
-        continue
+        results.push({
+          ticker,
+          ok: false,
+          error: err?.message || "Unknown screening error",
+        })
       }
 
-      historyRowsToUpsert.push(item.historyRow)
-
-      if (item.includeInUniverse) {
-        universeRowsToUpsert.push(item.row)
-        includedInBatch += 1
-      } else if (item.removeFromUniverse) {
-        tickersToDelete.add(item.ticker)
-      }
-    }
-
-    if (universeRowsToUpsert.length > 0) {
-      await upsertUniverseRows(candidateUniverseTable, universeRowsToUpsert)
-    }
-
-    const deleteList = Array.from(tickersToDelete)
-    if (deleteList.length > 0) {
-      await deleteUniverseTickers(candidateUniverseTable, deleteList)
-      removedFromUniverseInBatch = deleteList.length
-    }
-
-    if (historyRowsToUpsert.length > 0) {
-      try {
-        await upsertHistoryRows(candidateHistoryTable, historyRowsToUpsert)
-        historyInserted = historyRowsToUpsert.length
-      } catch {
-        historyWriteErrors = historyRowsToUpsert.length
-      }
+      await sleep(REQUEST_DELAY_MS)
     }
 
     const cutoffDate = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000)
@@ -1142,8 +1150,6 @@ export async function GET(request: Request) {
         minBreakoutClearancePct: MIN_BREAKOUT_CLEARANCE_PCT,
         minCloseInDayRange: MIN_CLOSE_IN_DAY_RANGE,
         minCatalystCount: MIN_CATALYST_COUNT,
-        workerConcurrency: WORKER_CONCURRENCY,
-        yahooQueueConcurrency: 4,
       },
       results,
     })
