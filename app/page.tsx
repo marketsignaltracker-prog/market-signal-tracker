@@ -753,18 +753,6 @@ export default function Home() {
     <span className="text-xs text-slate-400">{filtersOpen ? "▲" : "▼"}</span>
   </button>
 </div>
-
-                <button
-  type="button"
-  onClick={() => setFiltersOpen((prev) => !prev)}
-  aria-expanded={filtersOpen}
-  aria-controls="filter-board-panel"
-  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200"
->
-  <span>{filtersOpen ? "Hide filters" : "Show filters"}</span>
-  <span className="text-xs text-slate-400">{filtersOpen ? "▲" : "▼"}</span>
-</button>
-              </div>
             </div>
 
             {filtersOpen ? (
