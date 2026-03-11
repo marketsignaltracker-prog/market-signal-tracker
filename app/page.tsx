@@ -1239,12 +1239,14 @@ function FeaturedStrongBuyCard({
         </div>
 
         {!!reasons.length && (
-          <div className="mt-4 flex flex-wrap gap-2 sm:mt-5">
-            {reasons.map((reason) => (
-              <ReasonChip key={reason} label={reason} />
-            ))}
-          </div>
-        )}
+  <div className="mt-4 sm:mt-5">
+    <div className="mx-auto flex w-full max-w-[420px] flex-wrap justify-center gap-2">
+      {reasons.map((reason) => (
+        <ReasonChip key={reason} label={reason} />
+      ))}
+    </div>
+  </div>
+)}
 
    {!!miniMetrics.length && (
   <div className="mt-6">
@@ -1599,7 +1601,7 @@ function SignalTypeBadge({ row }: { row: UnifiedRow }) {
 function ReasonChip({ label }: { label: string }) {
   return (
     <Tooltip content={getReasonChipTooltip(label)}>
-      <span className="cursor-help rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-200">
+      <span className="inline-flex min-h-[42px] items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-center text-xs font-semibold text-emerald-200">
         {label}
       </span>
     </Tooltip>
