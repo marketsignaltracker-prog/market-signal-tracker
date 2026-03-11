@@ -1071,6 +1071,7 @@ function FeaturedStrongBuyCard({
   const palette = getScorePalette(score)
   const reasons = getTopReasonChips(row)
   const thesis = getFeaturedThesis(row)
+
   const miniMetrics: MiniMetricItem[] = [
     {
       label: "Price",
@@ -1102,87 +1103,93 @@ function FeaturedStrongBuyCard({
     <button
       type="button"
       onClick={onClick}
-      className="group relative w-full min-w-0 overflow-hidden rounded-[1.75rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.36)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5"
+      className="group relative w-full min-w-0 overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.34)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5 lg:p-6"
       style={{
         borderColor: `${palette.end}45`,
-        background: `linear-gradient(135deg, ${palette.start}16 0%, rgba(15,23,42,0.92) 35%, rgba(2,6,23,1) 100%)`,
+        background: `linear-gradient(135deg, ${palette.start}14 0%, rgba(15,23,42,0.94) 34%, rgba(2,6,23,1) 100%)`,
       }}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.06),_transparent_25%)] opacity-0 transition group-hover:opacity-100" />
 
       <div className="relative min-w-0">
-        <div className="flex min-w-0 items-start justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <FeaturedRankBadge rank={rank} />
-              <SignalTypeBadge row={row} />
-              <FreshnessBadge row={row} />
-              <SourceBadge row={row} />
-            </div>
-
-            <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2.5 sm:gap-3">
-              <h3 className="min-w-0 break-words text-[2rem] font-bold leading-none tracking-tight sm:text-4xl">
-                {row.ticker}
-              </h3>
-              <ScoreBadge row={row} large />
-              <ConfidenceBadge row={row} />
-            </div>
-
-            {row.company_name ? (
-              <p className="mt-2 break-words text-sm text-slate-300 sm:text-base">{row.company_name}</p>
-            ) : null}
+        <div className="flex items-start justify-between gap-3">
+          <FeaturedRankBadge rank={rank} />
+          <div className="shrink-0">
+            <ScoreBadge row={row} large />
           </div>
         </div>
 
-        <div className="mt-4 sm:mt-5">
+        <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+          <SignalTypeBadge row={row} />
+          <FreshnessBadge row={row} />
+          <SourceBadge row={row} />
+          <ConfidenceBadge row={row} />
+        </div>
+
+        <div className="mt-5 min-w-0">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <h3 className="break-words text-4xl font-bold leading-none tracking-tight text-white sm:text-[2.75rem]">
+                {row.ticker}
+              </h3>
+
+              {row.company_name ? (
+                <p className="mt-2 break-words text-base text-slate-300 sm:text-lg">
+                  {row.company_name}
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5">
           <ScoreBar row={row} />
         </div>
 
-        <div className="mt-4 rounded-[1.25rem] border border-white/10 bg-black/20 p-4 sm:mt-5 sm:rounded-[1.5rem]">
+        <div className="mt-5 rounded-[1.25rem] border border-white/10 bg-black/20 p-4 sm:rounded-[1.5rem] sm:p-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300/80 sm:text-xs">
             Why this one stands out
           </p>
-          <p className="mt-2 break-words text-base font-semibold text-white sm:text-xl">{thesis}</p>
+          <p className="mt-2 break-words text-lg font-semibold leading-7 text-white sm:text-xl">
+            {thesis}
+          </p>
           <p className="mt-3 break-words text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
             {getPlainEnglishSummary(row)}
           </p>
         </div>
 
         {!!reasons.length && (
-          <div className="mt-4 sm:mt-5">
-            <div className="mx-auto flex w-full max-w-[420px] min-w-0 flex-wrap justify-center gap-2">
-              {reasons.map((reason) => (
-                <ReasonChip key={reason} label={reason} />
-              ))}
-            </div>
+          <div className="mt-5 flex min-w-0 flex-wrap gap-2">
+            {reasons.map((reason) => (
+              <ReasonChip key={reason} label={reason} />
+            ))}
           </div>
         )}
 
         {!!miniMetrics.length && (
-          <div className="mt-6">
-            <div className="mx-auto grid w-full max-w-[420px] min-w-0 grid-cols-2 gap-4">
-              {miniMetrics.map((item) => (
-                <MiniMetric
-                  key={item.label}
-                  label={item.label}
-                  value={item.value}
-                />
-              ))}
-            </div>
+          <div className="mt-5 grid min-w-0 grid-cols-2 gap-3">
+            {miniMetrics.map((item) => (
+              <MiniMetric
+                key={item.label}
+                label={item.label}
+                value={item.value}
+              />
+            ))}
           </div>
         )}
 
-        <div className="mt-4 flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:mt-5 sm:gap-4">
+        <div className="mt-5 flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400 sm:text-xs">
               Primary driver
             </p>
-            <p className="mt-1 truncate text-sm font-semibold text-white">
+            <p className="mt-1 truncate text-sm font-semibold text-white sm:text-base">
               {row.primary_title || row.screen_reason || "High-conviction strong buy"}
             </p>
           </div>
+
           <span className="shrink-0 rounded-full bg-emerald-400 px-3 py-1 text-xs font-bold text-slate-950">
-            Open setup
+            Open
           </span>
         </div>
       </div>
@@ -1367,11 +1374,11 @@ function MiniMetric({
   value: string
 }) {
   return (
-    <div className="flex h-[112px] min-w-0 w-full flex-col items-center justify-center rounded-[1.75rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:px-4">
-      <p className="mb-3 break-words text-[11px] uppercase tracking-[0.24em] text-slate-400">
+    <div className="flex min-h-[92px] min-w-0 w-full flex-col items-center justify-center rounded-[1.25rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[100px] sm:px-4">
+      <p className="mb-2 break-words text-[10px] uppercase tracking-[0.22em] text-slate-400 sm:text-[11px]">
         {label}
       </p>
-      <p className="break-words text-xl font-semibold tracking-tight text-white sm:text-2xl">
+      <p className="break-words text-lg font-semibold tracking-tight text-white sm:text-xl">
         {value}
       </p>
     </div>
@@ -1485,7 +1492,7 @@ function SignalTypeBadge({ row }: { row: UnifiedRow }) {
 
 function ReasonChip({ label }: { label: string }) {
   return (
-    <span className="inline-flex min-h-[42px] max-w-full items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-center text-xs font-semibold text-emerald-200">
+    <span className="inline-flex min-h-[36px] max-w-full items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-center text-[11px] font-semibold text-emerald-200 sm:px-4 sm:text-xs">
       {label}
     </span>
   )
