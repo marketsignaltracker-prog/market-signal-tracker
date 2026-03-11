@@ -340,6 +340,12 @@ function normalizeTransactionDate(value: unknown): string | null {
   return null
 }
 
+function addDays(isoDate: string, days: number) {
+  const d = new Date(`${isoDate}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
 async function withTimeout<T>(
   promiseFactory: () => Promise<T>,
   ms: number,
@@ -363,6 +369,11 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
   } finally {
     clearTimeout(timeout)
   }
+}
+
+function buildSignalKey(filing: RawFiling, source: SignalSource) {
+  const ticker = normalizeTicker(filing.ticker)
+  return `${source}:${filing.accession_no}:${ticker}`
 }
 
 function transactionCodeToAction(
@@ -672,7 +683,7 @@ async function fetchAndParseOwnershipXml(url: string): Promise<InsiderParseResul
       const parsed = xmlParser.parse(body)
       const doc = parsed?.ownershipDocument
       const xmlResult = parseOwnershipDocument(doc)
-      if (xmlResult && xmlResult.action === "Buy") return xmlResult
+      if (xmlResult) return xmlResult
     } catch {
       // fall through
     }
@@ -720,18 +731,22 @@ function buildPossibleForm4Urls(filing: RawFiling) {
 
 async function parseForm4(filing: RawFiling): Promise<InsiderParseResult> {
   const urls = buildPossibleForm4Urls(filing)
+  let fallbackResult: InsiderParseResult | null = null
 
   for (const url of urls) {
     const parsed = await fetchAndParseOwnershipXml(url)
-    if (parsed && parsed.action === "Buy") return parsed
+    if (!parsed) continue
+    if (parsed.action === "Buy") return parsed
+    if (!fallbackResult) fallbackResult = parsed
   }
 
-  for (const url of urls) {
-    const parsed = await fetchAndParseOwnershipXml(url)
-    if (parsed) return parsed
+  return fallbackResult ?? {
+    action: "Other",
+    shares: null,
+    avgPrice: null,
+    role: null,
+    insiderName: null,
   }
-
-  return { action: "Other", shares: null, avgPrice: null, role: null, insiderName: null }
 }
 
 async function fetchFilingText(url: string | null) {
@@ -1159,11 +1174,6 @@ async function getEarningsSignal(ticker: string): Promise<EarningsSignal> {
       summary: null,
     }
   )
-}
-
-function getInsiderTradeValue(insider: InsiderParseResult) {
-  if (insider.shares === null || insider.avgPrice === null) return null
-  return insider.shares * insider.avgPrice
 }
 
 function getInsiderBuyValue(insider: InsiderParseResult) {
@@ -2104,12 +2114,13 @@ function buildClusterMap(items: PreparedSignal[]) {
   return result
 }
 
-function buildHistoryKey(runDate: string, accessionNo: string) {
-  return `${runDate}_${accessionNo}`
+function buildHistoryKey(runDate: string, signalKey: string) {
+  return `${runDate}_${signalKey}`
 }
 
 function buildSignalHistoryRow(signalRow: any, runDate: string, runTimestamp: string) {
   return {
+    signal_key: signalRow.signal_key,
     ticker: signalRow.ticker,
     company_name: signalRow.company_name,
     business_description: signalRow.business_description,
@@ -2163,13 +2174,13 @@ function buildSignalHistoryRow(signalRow: any, runDate: string, runTimestamp: st
     score_caps_applied: signalRow.score_caps_applied,
     ticker_score_change_1d: signalRow.ticker_score_change_1d,
     ticker_score_change_7d: signalRow.ticker_score_change_7d,
-    signal_history_key: buildHistoryKey(runDate, signalRow.accession_no),
+    signal_history_key: buildHistoryKey(runDate, signalRow.signal_key),
     scored_on: runDate,
     created_at: runTimestamp,
   }
 }
 
-function buildTickerScoresCurrentRows(signalRows: any[]) {
+function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
   const byTicker = new Map<string, any[]>()
 
   for (const row of signalRows) {
@@ -2195,9 +2206,11 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
     const scoreCapsApplied = new Set<string>()
     const signalTags = new Set<string>()
     const accessionNos: string[] = []
+    const signalKeys: string[] = []
     const sourceForms: string[] = []
 
     for (const row of sorted) {
+      signalKeys.push(row.signal_key)
       accessionNos.push(row.accession_no)
       if (row.source_form) sourceForms.push(row.source_form)
 
@@ -2269,18 +2282,20 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
       board_bucket: "Buy",
       signal_strength_bucket: getStrengthBucket(finalScore),
       score_version: SCORE_VERSION,
-      score_updated_at: new Date().toISOString(),
+      score_updated_at: runTimestamp,
       stacked_signal_count: sorted.length,
       score_breakdown: scoreBreakdown,
       signal_reasons: Array.from(signalReasons).slice(0, 12),
       score_caps_applied: Array.from(scoreCapsApplied),
       signal_tags: Array.from(signalTags),
+      primary_signal_key: primary.signal_key,
       primary_signal_type: primary.signal_type,
       primary_signal_source: primary.signal_source,
       primary_signal_category: primary.signal_category,
       primary_title: primary.title,
       primary_summary: primary.summary,
       filed_at: primary.filed_at,
+      signal_keys: signalKeys,
       accession_nos: accessionNos,
       source_forms: uniqueStrings(sourceForms),
       pe_ratio: primary.pe_ratio,
@@ -2311,41 +2326,52 @@ function buildTickerScoresCurrentRows(signalRows: any[]) {
       freshness_bucket: primary.freshness_bucket,
       ticker_score_change_1d: null,
       ticker_score_change_7d: null,
-      updated_at: new Date().toISOString(),
+      updated_at: runTimestamp,
     })
   }
 
   return rows
 }
 
-async function attachTickerScoreChangesToCurrentRows(supabase: any, currentRows: any[]) {
+async function attachTickerScoreChangesToCurrentRows(
+  supabase: any,
+  currentRows: any[],
+  runDate: string
+) {
   const tickers = uniqueStrings(currentRows.map((row) => row.ticker))
   if (!tickers.length) return currentRows
+
+  const earliestNeededDate = addDays(runDate, -14)
 
   const { data: historyRows } = await supabase
     .from("ticker_score_history")
     .select("ticker, score_date, app_score")
     .in("ticker", tickers)
+    .gte("score_date", earliestNeededDate)
+    .lt("score_date", runDate)
     .order("score_date", { ascending: false })
 
-  const byTicker = new Map<string, { score_date: string; app_score: number }[]>()
+  const byTicker = new Map<string, Map<string, number>>()
 
   for (const row of historyRows || []) {
     const ticker = normalizeTicker((row as any).ticker)
-    if (!byTicker.has(ticker)) byTicker.set(ticker, [])
-    byTicker.get(ticker)!.push({
-      score_date: (row as any).score_date,
-      app_score: Number((row as any).app_score || 0),
-    })
+    if (!byTicker.has(ticker)) byTicker.set(ticker, new Map<string, number>())
+    byTicker.get(ticker)!.set(
+      String((row as any).score_date),
+      Number((row as any).app_score || 0)
+    )
   }
 
   return currentRows.map((row) => {
     const ticker = normalizeTicker(row.ticker)
-    const series = byTicker.get(ticker) || []
+    const series = byTicker.get(ticker) || new Map<string, number>()
     const currentScore = Number(row.app_score || 0)
 
-    const prev1d = series[0]?.app_score ?? null
-    const prev7d = series[6]?.app_score ?? null
+    const oneDayDate = addDays(runDate, -1)
+    const sevenDayDate = addDays(runDate, -7)
+
+    const prev1d = series.has(oneDayDate) ? series.get(oneDayDate)! : null
+    const prev7d = series.has(sevenDayDate) ? series.get(sevenDayDate)! : null
 
     return {
       ...row,
@@ -2355,10 +2381,7 @@ async function attachTickerScoreChangesToCurrentRows(supabase: any, currentRows:
   })
 }
 
-function buildTickerScoreHistoryRows(currentRows: any[]) {
-  const runDate = toIsoDateString(new Date())
-  const runTimestamp = new Date().toISOString()
-
+function buildTickerScoreHistoryRows(currentRows: any[], runDate: string, runTimestamp: string) {
   return currentRows.map((row) => ({
     ticker: row.ticker,
     company_name: row.company_name,
@@ -2374,6 +2397,7 @@ function buildTickerScoreHistoryRows(currentRows: any[]) {
     signal_reasons: row.signal_reasons,
     score_caps_applied: row.score_caps_applied,
     source_accession_nos: row.accession_nos,
+    source_signal_keys: row.signal_keys,
     created_at: runTimestamp,
   }))
 }
@@ -2409,16 +2433,17 @@ export async function GET(request: Request) {
       MAX_LOOKBACK_DAYS
     )
 
-    const cutoffDate = new Date()
+    const now = new Date()
+    const runDate = toIsoDateString(now)
+    const runTimestamp = now.toISOString()
+
+    const cutoffDate = new Date(now)
     cutoffDate.setDate(cutoffDate.getDate() - lookbackDays)
     const cutoffDateString = toIsoDateString(cutoffDate)
 
-    const candidateCutoffDate = new Date()
+    const candidateCutoffDate = new Date(now)
     candidateCutoffDate.setDate(candidateCutoffDate.getDate() - CANDIDATE_SIGNAL_LOOKBACK_DAYS)
     const candidateCutoffDateString = candidateCutoffDate.toISOString()
-
-    const runDate = toIsoDateString(new Date())
-    const runTimestamp = new Date().toISOString()
 
     const diagnostics: Diagnostics = {
       scanned: 0,
@@ -2549,10 +2574,7 @@ export async function GET(request: Request) {
         }
       }
 
-      if (
-        (form === "4" || form === "4/A") &&
-        insider.action !== "Buy"
-      ) {
+      if ((form === "4" || form === "4/A") && insider.action !== "Buy") {
         diagnostics.skippedNotBullishEnough += 1
         continue
       }
@@ -2674,7 +2696,10 @@ export async function GET(request: Request) {
         continue
       }
 
+      const signalKey = buildSignalKey(item.filing, enhanced.signal_source)
+
       const signalRow = {
+        signal_key: signalKey,
         ticker: item.filing.ticker,
         company_name:
           item.filing.company_name || item.snapshot.companyName || item.candidate?.name || null,
@@ -2748,7 +2773,7 @@ export async function GET(request: Request) {
     if (signalRows.length > 0) {
       const { error: upsertError } = await supabase
         .from("signals")
-        .upsert(signalRows, { onConflict: "accession_no" })
+        .upsert(signalRows, { onConflict: "signal_key" })
 
       if (upsertError) {
         return Response.json(
@@ -2782,6 +2807,11 @@ export async function GET(request: Request) {
       }
     }
 
+    const { error: staleSignalsCleanupError } = await supabase
+      .from("signals")
+      .delete()
+      .lt("filed_at", cutoffDateString)
+
     const { data: allSignalRows, error: allSignalsError } = await supabase
       .from("signals")
       .select("*")
@@ -2803,10 +2833,10 @@ export async function GET(request: Request) {
 
     diagnostics.tickerCurrentBuiltFromSignalsTable = (allSignalRows || []).length
 
-    let tickerCurrentRows = buildTickerScoresCurrentRows((allSignalRows || []) as any[])
+    let tickerCurrentRows = buildTickerScoresCurrentRows((allSignalRows || []) as any[], runTimestamp)
     diagnostics.tickerCurrentBuilt = tickerCurrentRows.length
 
-    tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(supabase, tickerCurrentRows)
+    tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(supabase, tickerCurrentRows, runDate)
 
     if (tickerCurrentRows.length > 0) {
       const { error: tickerCurrentError } = await supabase
@@ -2825,9 +2855,49 @@ export async function GET(request: Request) {
       }
     }
 
+    const currentTickerSet = new Set(tickerCurrentRows.map((row) => normalizeTicker(row.ticker)))
+    const { data: existingTickerRows, error: existingTickerRowsError } = await supabase
+      .from("ticker_scores_current")
+      .select("ticker")
+
+    if (existingTickerRowsError) {
+      return Response.json(
+        {
+          ok: false,
+          error: existingTickerRowsError.message,
+          diagnostics,
+        },
+        { status: 500 }
+      )
+    }
+
+    const staleTickerList = uniqueStrings(
+      (existingTickerRows || [])
+        .map((row: any) => normalizeTicker(row.ticker))
+        .filter((ticker) => !currentTickerSet.has(ticker))
+    )
+
+    if (staleTickerList.length > 0) {
+      const { error: staleTickerCleanupError } = await supabase
+        .from("ticker_scores_current")
+        .delete()
+        .in("ticker", staleTickerList)
+
+      if (staleTickerCleanupError) {
+        return Response.json(
+          {
+            ok: false,
+            error: staleTickerCleanupError.message,
+            diagnostics,
+          },
+          { status: 500 }
+        )
+      }
+    }
+
     diagnostics.tickerCurrentInserted = tickerCurrentRows.length
 
-    const tickerHistoryRows = buildTickerScoreHistoryRows(tickerCurrentRows)
+    const tickerHistoryRows = buildTickerScoreHistoryRows(tickerCurrentRows, runDate, runTimestamp)
 
     if (tickerHistoryRows.length > 0) {
       const { error: tickerHistoryError } = await supabase
@@ -2848,7 +2918,7 @@ export async function GET(request: Request) {
 
     diagnostics.tickerHistoryInserted = tickerHistoryRows.length
 
-    const retentionCutoff = new Date()
+    const retentionCutoff = new Date(now)
     retentionCutoff.setDate(retentionCutoff.getDate() - RETENTION_DAYS)
     const retentionCutoffString = toIsoDateString(retentionCutoff)
 
@@ -2890,6 +2960,7 @@ export async function GET(request: Request) {
       minTickerAppScore: MIN_TICKER_APP_SCORE,
       retentionCleanup: retentionError ? retentionError.message : "ok",
       tickerRetentionCleanup: tickerRetentionError ? tickerRetentionError.message : "ok",
+      staleSignalsCleanup: staleSignalsCleanupError ? staleSignalsCleanupError.message : "ok",
       strongBuyCount: strongBuyCount ?? 0,
       eliteBuyCount: eliteBuyCount ?? 0,
       diagnostics,
