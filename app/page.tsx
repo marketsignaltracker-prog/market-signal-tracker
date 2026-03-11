@@ -75,6 +75,37 @@ type SignalRow = {
   created_at?: string | null
 }
 
+type CandidateUniverseRow = {
+  ticker: string
+  cik?: string | null
+  name?: string | null
+  price?: number | null
+  market_cap?: number | null
+  avg_volume_20d?: number | null
+  avg_dollar_volume_20d?: number | null
+  one_day_return?: number | null
+  return_5d?: number | null
+  return_10d?: number | null
+  return_20d?: number | null
+  volume_ratio?: number | null
+  breakout_20d?: boolean | null
+  breakout_10d?: boolean | null
+  above_sma_20?: boolean | null
+  breakout_clearance_pct?: number | null
+  extension_from_sma20_pct?: number | null
+  close_in_day_range?: number | null
+  catalyst_count?: number | null
+  passes_price?: boolean | null
+  passes_volume?: boolean | null
+  passes_dollar_volume?: boolean | null
+  passes_market_cap?: boolean | null
+  candidate_score?: number | null
+  included?: boolean | null
+  screen_reason?: string | null
+  last_screened_at?: string | null
+  updated_at?: string | null
+}
+
 type TickerScore = {
   id?: number
   ticker: string
@@ -244,6 +275,119 @@ function mapSignalRowToTickerScore(row: SignalRow): TickerScore {
   }
 }
 
+function mapCandidateUniverseRowToTickerScore(row: CandidateUniverseRow): TickerScore {
+  const score = row.candidate_score ?? null
+  const reasons = row.screen_reason ? [row.screen_reason] : []
+
+  const tags: string[] = []
+  if (row.breakout_20d) tags.push("breakout-20d")
+  if (row.breakout_10d) tags.push("breakout-10d")
+  if (row.above_sma_20) tags.push("above-20dma")
+  if ((row.volume_ratio ?? 0) >= 1.5) tags.push("volume-confirmed")
+  if ((row.volume_ratio ?? 0) >= 2) tags.push("heavy-volume")
+  if ((row.return_5d ?? 0) >= 5) tags.push("momentum-confirmed")
+  if ((row.return_20d ?? 0) >= 12) tags.push("screen-momentum")
+  if ((row.candidate_score ?? 0) >= 90) tags.push("candidate-strong-buy")
+  if (row.included) tags.push("candidate-included")
+  tags.push("candidate-screen")
+  tags.push("source:breakout")
+
+  const ageDays = row.last_screened_at
+    ? Math.max(
+        0,
+        Math.floor((Date.now() - new Date(row.last_screened_at).getTime()) / (24 * 60 * 60 * 1000))
+      )
+    : null
+
+  const freshnessBucket =
+    ageDays === null
+      ? null
+      : ageDays <= 0
+        ? "today"
+        : ageDays <= 3
+          ? "fresh"
+          : ageDays <= 7
+            ? "recent"
+            : ageDays <= 14
+              ? "aging"
+              : "stale"
+
+  return {
+    ticker: (row.ticker || "").trim().toUpperCase(),
+    company_name: row.name ?? null,
+    business_description: row.screen_reason ?? null,
+    price: row.price ?? null,
+
+    app_score: score,
+    raw_score: score,
+    bias: "Bullish",
+    board_bucket: "Buy",
+    signal_strength_bucket:
+      score !== null ? (score >= 90 ? "Elite Buy" : score >= 80 ? "Strong Buy" : "Buy") : "Buy",
+
+    score_version: "candidate-universe",
+    score_updated_at: row.last_screened_at ?? row.updated_at ?? null,
+    stacked_signal_count: row.catalyst_count ?? null,
+
+    score_breakdown: null,
+    signal_reasons: reasons,
+    score_caps_applied: [],
+    signal_tags: tags,
+
+    primary_signal_type: "Technical Strong Buy",
+    primary_signal_source: "breakout",
+    primary_signal_category: "Breakout",
+    primary_title:
+      score !== null && score >= 90
+        ? "High-conviction technical strong-buy setup"
+        : "Technical strong-buy setup",
+    primary_summary:
+      row.screen_reason ??
+      "This stock passed the technical board screen and is currently rated as a strong buy.",
+
+    filed_at: row.last_screened_at ?? null,
+    accession_nos: [],
+    source_forms: [],
+
+    pe_ratio: null,
+    pe_forward: null,
+    pe_type: null,
+    market_cap: row.market_cap ?? null,
+    sector: null,
+    industry: null,
+
+    insider_action: null,
+    insider_shares: null,
+    insider_avg_price: null,
+    insider_buy_value: null,
+    cluster_buyers: null,
+    cluster_shares: null,
+
+    price_return_5d: row.return_5d ?? null,
+    price_return_20d: row.return_20d ?? null,
+    volume_ratio: row.volume_ratio ?? null,
+    breakout_20d: row.breakout_20d ?? null,
+    breakout_52w: null,
+    above_50dma: row.above_sma_20 ?? null,
+    trend_aligned: row.above_sma_20 ?? null,
+    price_confirmed: row.included ?? ((row.candidate_score ?? 0) >= 70),
+    relative_strength_20d: null,
+
+    earnings_surprise_pct: null,
+    revenue_growth_pct: null,
+    guidance_flag: null,
+
+    age_days: ageDays,
+    freshness_bucket: freshnessBucket,
+
+    ticker_score_change_1d: null,
+    ticker_score_change_7d: null,
+
+    created_at: row.updated_at ?? null,
+    updated_at: row.updated_at ?? null,
+  }
+}
+
 export default function Home() {
   const [rows, setRows] = useState<TickerScore[]>([])
   const [loading, setLoading] = useState(true)
@@ -255,7 +399,7 @@ export default function Home() {
   const [priceFilter, setPriceFilter] = useState<PriceFilterType>("all")
   const [peFilter, setPeFilter] = useState<PeFilterType>("all")
   const [freshnessFilter, setFreshnessFilter] = useState<FreshnessFilterType>("all")
-  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("80")
+  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("70")
   const [sectorFilter, setSectorFilter] = useState<SectorFilterType>("all")
 
   useEffect(() => {
@@ -267,48 +411,56 @@ export default function Home() {
         setLoading(true)
         setError(null)
 
-        const tickerScoresResponse = await supabase
-          .from("ticker_scores_current")
-          .select("*")
-          .gte("app_score", 70)
-          .order("app_score", { ascending: false })
-          .order("filed_at", { ascending: false })
-          .limit(500)
+        const candidateResponse = await supabase
+          .from("candidate_universe")
+          .select(`
+            ticker,
+            cik,
+            name,
+            price,
+            market_cap,
+            avg_volume_20d,
+            avg_dollar_volume_20d,
+            one_day_return,
+            return_5d,
+            return_10d,
+            return_20d,
+            volume_ratio,
+            breakout_20d,
+            breakout_10d,
+            above_sma_20,
+            breakout_clearance_pct,
+            extension_from_sma20_pct,
+            close_in_day_range,
+            catalyst_count,
+            passes_price,
+            passes_volume,
+            passes_dollar_volume,
+            passes_market_cap,
+            candidate_score,
+            included,
+            screen_reason,
+            last_screened_at,
+            updated_at
+          `)
+          .gte("candidate_score", 70)
+          .order("candidate_score", { ascending: false })
+          .order("last_screened_at", { ascending: false })
+          .order("ticker", { ascending: true })
+          .limit(1000)
 
         if (!isMounted) return
 
-        let currentRows: TickerScore[] = []
-
-        if (!tickerScoresResponse.error && (tickerScoresResponse.data?.length ?? 0) > 0) {
-          currentRows = ((tickerScoresResponse.data as TickerScore[]) ?? []).filter(
-            (row) => !!row.ticker && getEffectiveScore(row) >= 70
-          )
-        } else {
-          const signalsResponse = await supabase
-            .from("signals")
-            .select("*")
-            .gte("app_score", 70)
-            .order("app_score", { ascending: false })
-            .order("filed_at", { ascending: false })
-            .limit(500)
-
-          if (!isMounted) return
-
-          if (signalsResponse.error) {
-            setError(
-              tickerScoresResponse.error?.message ||
-                signalsResponse.error.message ||
-                "Error loading strong buys."
-            )
-            setRows([])
-            setLoading(false)
-            return
-          }
-
-          currentRows = ((signalsResponse.data as SignalRow[]) ?? [])
-            .map(mapSignalRowToTickerScore)
-            .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
+        if (candidateResponse.error) {
+          setError(candidateResponse.error.message || "Error loading strong buys.")
+          setRows([])
+          setLoading(false)
+          return
         }
+
+        const currentRows = ((candidateResponse.data as CandidateUniverseRow[]) ?? [])
+          .map(mapCandidateUniverseRowToTickerScore)
+          .filter((row) => !!row.ticker && getEffectiveScore(row) >= 70)
 
         setRows(bestRowPerTicker(currentRows))
         setLoading(false)
@@ -390,7 +542,7 @@ export default function Home() {
     setPriceFilter("all")
     setPeFilter("all")
     setFreshnessFilter("all")
-    setScoreFilter("80")
+    setScoreFilter("70")
     setSectorFilter("all")
     setSelectedTicker(null)
     setCurrentPage(1)
@@ -399,7 +551,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-                        <section className="relative overflow-hidden rounded-[2.5rem] border border-emerald-400/15 bg-white/[0.04] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:p-8 lg:p-10">
+        <section className="relative overflow-hidden rounded-[2.5rem] border border-emerald-400/15 bg-white/[0.04] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm sm:p-8 lg:p-10">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(234,179,8,0.08),_transparent_28%)]" />
           <div className="relative">
             <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">
@@ -485,9 +637,9 @@ export default function Home() {
               />
             </div>
             <div className="mt-6 text-center text-sm text-slate-400">
-  Unlike some analysts or fund managers, we are not paid to promote stocks.  
-  The names shown here come from our screening and ranking system, not sponsorships.
-</div>
+              Unlike some analysts or fund managers, we are not paid to promote stocks.
+              The names shown here come from our screening and ranking system, not sponsorships.
+            </div>
           </div>
 
           <div className="rounded-[2rem] border border-emerald-400/15 bg-emerald-400/[0.06] p-5 shadow-xl backdrop-blur-sm sm:p-6">
@@ -2074,6 +2226,48 @@ function getTopReasonLines(row: TickerScore): ReasonLine[] {
   }
 
   if (!items.length) {
+    const fallback: ReasonLine[] = []
+
+    if ((row.volume_ratio ?? 0) >= 1.5) {
+      fallback.push({
+        label: "Participation",
+        value: `Volume ${formatRatio(row.volume_ratio)}`,
+        tone: "good",
+        weight: Math.abs(row.volume_ratio ?? 0),
+      })
+    }
+
+    if ((row.price_return_20d ?? 0) > 0) {
+      fallback.push({
+        label: "20D Move",
+        value: formatPercent(row.price_return_20d),
+        tone: "good",
+        weight: Math.abs(row.price_return_20d ?? 0),
+      })
+    }
+
+    if (row.breakout_20d) {
+      fallback.push({
+        label: "Breakout",
+        value: "20-day breakout",
+        tone: "good",
+        weight: 10,
+      })
+    }
+
+    if ((row.stacked_signal_count ?? 0) > 0) {
+      fallback.push({
+        label: "Catalysts",
+        value: `${formatWholeNumber(row.stacked_signal_count)} technical signals`,
+        tone: "good",
+        weight: row.stacked_signal_count ?? 0,
+      })
+    }
+
+    if (fallback.length) {
+      return fallback.sort((a, b) => b.weight - a.weight).slice(0, 4)
+    }
+
     items.push({
       label: "Model",
       value: "Bullish signals outweigh negatives",
@@ -2436,6 +2630,8 @@ function getTagTooltip(tag: string, pretty: string) {
     "candidate-strong-buy": "The technical candidate score is especially strong.",
     "screen-heavy-volume": "The screening layer also saw elevated volume.",
     "screen-momentum": "The screening layer also saw strong momentum.",
+    "above-20dma": "The stock is trading above its 20-day average.",
+    "breakout-10d": "The stock cleared its shorter-term 10-day range.",
   }
 
   return map[tag] ?? `${pretty} is a model tag used to explain part of the setup.`
