@@ -1477,19 +1477,6 @@ function MiniMetric({
   )
 }
 
-  if (!tooltip) {
-    return card
-  }
-
-  return (
-    <div className="w-full">
-      <Tooltip content={tooltip}>
-        <div className="w-full">{card}</div>
-      </Tooltip>
-    </div>
-  )
-}
-
 function FeaturedRankBadge({ rank }: { rank: number }) {
   return (
     <Tooltip content={`This setup is ranked #${rank} on today’s strong-buy board.`}>
