@@ -621,31 +621,61 @@ export default function Home() {
   return (
     <main className="min-h-screen w-full overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
       <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
-        <section className="relative w-full min-w-0 overflow-hidden rounded-[1.5rem] border border-emerald-400/15 bg-white/[0.04] p-3 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-sm sm:rounded-[2rem] sm:p-5 lg:p-7">
+     <section className="relative w-full min-w-0 overflow-hidden rounded-[1.5rem] border border-emerald-400/15 bg-white/[0.04] p-3 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-sm sm:rounded-[2rem] sm:p-5 lg:p-7">
   <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_30%)]" />
 
   <div className="relative min-w-0">
-    <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+    <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
       <div className="min-w-0 max-w-3xl">
-        <p className="inline-flex max-w-full rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-emerald-300 sm:px-4 sm:text-xs">
-          Daily Strong Buy List
-        </p>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="inline-flex max-w-full rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-emerald-300 sm:px-4 sm:text-xs">
+            Member Market Dashboard
+          </p>
+
+          <span className="inline-flex max-w-full rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-cyan-200 sm:px-4 sm:text-xs">
+            Updated Daily
+          </span>
+        </div>
 
         <h1 className="mt-3 max-w-3xl break-words text-2xl font-bold leading-tight tracking-tight text-white sm:mt-4 sm:text-4xl lg:text-5xl">
-          Find the strongest setups fast.
+          Today’s strongest stock ideas, already narrowed down for you.
         </h1>
 
-        <p className="mt-2 max-w-2xl break-words text-sm leading-6 text-slate-300 sm:mt-3 sm:text-base sm:leading-7">
-          Cut through the noise and go straight to the names showing the highest conviction today.
+        <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
+          Instead of sorting through hundreds of tickers, focus on the names showing the strongest combination of momentum, participation, and higher-quality signal support right now.
         </p>
 
-        <div className="mt-3 inline-flex max-w-full items-center rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] text-slate-300 sm:mt-4 sm:px-4 sm:py-2 sm:text-sm">
-          <span className="shrink-0 text-slate-400">Updated</span>
-          <span className="ml-2 truncate font-semibold text-white">{lastUpdated ?? "—"}</span>
+        <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+              What you’re seeing
+            </p>
+            <p className="mt-1 text-sm font-semibold text-white">
+              The highest-priority names on today’s board
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+              Best for
+            </p>
+            <p className="mt-1 text-sm font-semibold text-white">
+              Members who want faster, simpler stock ideas
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+              Last refresh
+            </p>
+            <p className="mt-1 truncate text-sm font-semibold text-white">
+              {lastUpdated ?? "—"}
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:gap-3 lg:w-[360px]">
+      <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:gap-3 lg:w-[390px]">
         <div className="min-w-0 rounded-[1.25rem] border border-emerald-400/20 bg-[linear-gradient(145deg,rgba(16,185,129,0.18),rgba(255,255,255,0.03))] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.24)] sm:rounded-[1.5rem] sm:p-5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 sm:text-[11px]">
             Strong Buys
@@ -654,19 +684,28 @@ export default function Home() {
             {loading ? "…" : String(strongBuyCount)}
           </p>
           <p className="mt-1.5 text-xs leading-5 text-slate-300 sm:mt-2 sm:text-sm">
-            Best ideas right now
+            Curated names worth attention today
           </p>
         </div>
 
-        <div className="min-w-0 rounded-[1.25rem] border border-white/10 bg-black/20 p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)] sm:rounded-[1.5rem] sm:p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-300 sm:text-[11px]">
-            Elite Buys
+        <div className="min-w-0 rounded-[1.25rem] border border-cyan-400/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.12),rgba(255,255,255,0.03))] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)] sm:rounded-[1.5rem] sm:p-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200 sm:text-[11px]">
+            Elite Setups
           </p>
           <p className="mt-2 break-words text-3xl font-bold leading-none tracking-tight text-white sm:mt-3 sm:text-5xl">
             {loading ? "…" : String(eliteCount)}
           </p>
-          <p className="mt-1.5 text-xs leading-5 text-slate-400 sm:mt-2 sm:text-sm">
-            Highest conviction
+          <p className="mt-1.5 text-xs leading-5 text-slate-300 sm:mt-2 sm:text-sm">
+            Highest-rated names on the board
+          </p>
+        </div>
+
+        <div className="col-span-2 min-w-0 rounded-[1.25rem] border border-white/10 bg-black/25 p-4 sm:rounded-[1.5rem] sm:p-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 sm:text-[11px]">
+            Why this matters
+          </p>
+          <p className="mt-2 break-words text-sm leading-6 text-slate-200 sm:text-base sm:leading-7">
+            These names have already been filtered down so you can spend less time digging and more time focusing on the stocks most likely to be getting attention right now.
           </p>
         </div>
       </div>
@@ -675,25 +714,25 @@ export default function Home() {
 </section>
         <section className="mt-6 w-full min-w-0 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 shadow-xl backdrop-blur-sm sm:mt-8 sm:rounded-[2rem] sm:p-6">
           <div className="mb-5 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                Refine today’s board
-              </p>
-              <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
-                Filter the strongest names
-              </h2>
-              <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
-                Technical candidates always appear first. Filing-confirmed names carry additional signal detail.
-              </p>
-            </div>
+  <div className="min-w-0">
+    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+      Refine the board
+    </p>
+    <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
+      Narrow today’s list to the names that fit you best
+    </h2>
+    <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
+      Start with the featured ideas below, then use these filters if you want to focus on cheaper stocks, recent signals, certain sectors, or only the highest-rated setups.
+    </p>
+  </div>
 
-            <button
-              onClick={resetFilters}
-              className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200 lg:w-auto"
-            >
-              Reset filters
-            </button>
-          </div>
+  <button
+    onClick={resetFilters}
+    className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200 lg:w-auto"
+  >
+    Reset filters
+  </button>
+</div>
 
           <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-6">
             <FilterSelect
@@ -772,36 +811,36 @@ export default function Home() {
           </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-2 text-sm text-slate-300">
-            <BoardChip label="Visible" value={String(filteredRows.length)} />
-            <BoardChip
-              label="Technical + Filing"
-              value={String(filteredRows.filter((r) => r.has_candidate_data && r.has_signal_data).length)}
-            />
-            <BoardChip
-              label="Technical Only"
-              value={String(filteredRows.filter((r) => r.has_candidate_data && !r.has_signal_data).length)}
-            />
-          </div>
+  <BoardChip label="Names showing" value={String(filteredRows.length)} />
+  <BoardChip
+    label="Extra-confirmed setups"
+    value={String(filteredRows.filter((r) => r.has_candidate_data && r.has_signal_data).length)}
+  />
+  <BoardChip
+    label="Pure technical setups"
+    value={String(filteredRows.filter((r) => r.has_candidate_data && !r.has_signal_data).length)}
+  />
+</div>
         </section>
 
         <section className="mt-6 min-w-0 sm:mt-8">
           <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                Featured today
-              </p>
-              <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
-                Today’s top strong-buy setups
-              </h2>
-              <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
-                Ranked by the best available score, while preserving candidate-universe inclusion.
-              </p>
-            </div>
+  <div className="min-w-0">
+    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+      Start here
+    </p>
+    <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
+      The 3 names most likely to stand out today
+    </h2>
+    <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
+      These are the first setups to review if you want the strongest mix of quality, strength, and current attention without digging through the full board yourself.
+    </p>
+  </div>
 
-            <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-              {loading ? "Loading board…" : `${filteredRows.length} names on the shortlist`}
-            </div>
-          </div>
+  <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+    {loading ? "Loading board…" : `${filteredRows.length} names on today’s board`}
+  </div>
+</div>
 
           {loading ? (
             <LoadingPanel />
@@ -824,24 +863,24 @@ export default function Home() {
 
               <section id="board" className="mt-8 min-w-0">
                 <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                      Full shortlist
-                    </p>
-                    <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
-                      More high-conviction setups
-                    </h2>
-                    <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
-                      Technical candidates first, signal enrichment when available.
-                    </p>
-                  </div>
+  <div className="min-w-0">
+    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+      Extended board
+    </p>
+    <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
+      More names worth a closer look
+    </h2>
+    <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
+      After the featured picks, this is the rest of today’s ranked board — useful when you want more options without starting from scratch.
+    </p>
+  </div>
 
-                  <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-                    {remainingRows.length === 0
-                      ? "No additional names"
-                      : `${pageStart}-${pageEnd} of ${remainingRows.length}`}
-                  </div>
-                </div>
+  <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+    {remainingRows.length === 0
+      ? "No additional names"
+      : `${pageStart}-${pageEnd} of ${remainingRows.length}`}
+  </div>
+</div>
 
                 <div className="grid min-w-0 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {paginatedRows.map((row, i) => (
@@ -870,9 +909,9 @@ export default function Home() {
           )}
         </section>
 
-        <footer className="mt-10 border-t border-white/10 pt-8 text-sm text-slate-500">
-          Strong-buy rankings are model-based and meant for idea generation, not guaranteed outcomes.
-        </footer>
+      <footer className="mt-10 border-t border-white/10 pt-8 text-sm leading-6 text-slate-500">
+  Rankings are model-based and designed to help members surface promising stock ideas faster. They are not guarantees, and they should be used as part of a broader decision process.
+</footer>
       </div>
 
       {selectedRow ? <SignalDetailsModal row={selectedRow} onClose={closeDetails} /> : null}
@@ -1148,13 +1187,13 @@ function FeaturedStrongBuyCard({
 
         <div className="mt-5 rounded-[1.25rem] border border-white/10 bg-black/20 p-4 sm:rounded-[1.5rem] sm:p-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300/80 sm:text-xs">
-            Why this one stands out
+            Why this is on today’s short list
           </p>
           <p className="mt-2 break-words text-lg font-semibold leading-7 text-white sm:text-xl">
             {thesis}
           </p>
           <p className="mt-3 break-words text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-            {getPlainEnglishSummary(row)}
+            {getPremiumSummary(row)}
           </p>
         </div>
 
@@ -1185,15 +1224,15 @@ function FeaturedStrongBuyCard({
         <div className="mt-5 flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
           <div className="min-w-0">
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400 sm:text-xs">
-              Primary driver
+              First thing to review
             </p>
             <p className="mt-1 truncate text-sm font-semibold text-white sm:text-base">
-              {row.primary_title || row.screen_reason || "High-conviction strong buy"}
+              {row.primary_title || row.screen_reason || "Why this setup is attracting attention"}
             </p>
           </div>
 
           <span className="shrink-0 rounded-full bg-emerald-400 px-3 py-1 text-xs font-bold text-slate-950">
-            Open
+            Review
           </span>
         </div>
       </div>
@@ -1215,6 +1254,7 @@ function TopSignalCard({
   const score = row.display_score
   const palette = getScorePalette(score)
   const reasons = getTopReasonChips(row)
+
   const metricItems: MiniMetricItem[] = [
     {
       label: "Price",
@@ -1237,7 +1277,7 @@ function TopSignalCard({
       value: formatScoreChange(row.ticker_score_change_1d),
     },
     {
-      label: "Cand Score",
+      label: "Tech Score",
       value: formatSimpleNumber(row.candidate_score),
     },
   ].filter((item) => hasDisplayValue(item.value))
@@ -1285,7 +1325,7 @@ function TopSignalCard({
 
       <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-          Setup thesis
+          Why it could matter today
         </p>
         <p className="mt-2 break-words text-sm font-semibold leading-6 text-white">
           {getCardThesis(row)}
@@ -1320,10 +1360,10 @@ function TopSignalCard({
 
       <div className="mt-auto rounded-2xl bg-black/20 p-4">
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-          Why traders could notice it
+          Member takeaway
         </p>
         <p className="break-words text-sm leading-6 text-slate-100">
-          {truncateText(getPlainEnglishSummary(row), 180)}
+          {truncateText(getPremiumSummary(row), 180)}
         </p>
       </div>
     </button>
@@ -1472,9 +1512,16 @@ function SourceBadge({ row }: { row: UnifiedRow }) {
         ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
         : "border-violet-400/30 bg-violet-400/10 text-violet-300"
 
+  const label =
+    row.data_source_label === "Technical + Filing"
+      ? "Multi-Signal"
+      : row.data_source_label === "Technical Only"
+        ? "Technical Setup"
+        : "Signal Discovery"
+
   return (
     <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}>
-      {row.data_source_label}
+      {label}
     </span>
   )
 }
@@ -1771,14 +1818,14 @@ function SignalDetailsModal({
         <div className="grid min-w-0 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           <div className="min-w-0">
             <div className="mb-5 rounded-[1.75rem] border border-emerald-400/15 bg-[linear-gradient(135deg,rgba(16,185,129,0.10),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                Why this made the board
-              </p>
-              <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">{thesis}</p>
-              <p className="mt-3 break-words text-sm leading-7 text-slate-300 sm:text-base">
-                {getConfidenceStatement(row)}
-              </p>
-            </div>
+  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+    Why members are seeing this today
+  </p>
+  <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">{thesis}</p>
+  <p className="mt-3 break-words text-sm leading-7 text-slate-300 sm:text-base">
+    {getConfidenceStatement(row)}
+  </p>
+</div>
 
             {row.business_description ? (
               <p className="mb-5 break-words text-sm leading-7 text-slate-300 sm:text-base">
@@ -1812,21 +1859,21 @@ function SignalDetailsModal({
             </div>
 
             <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                Plain-English setup summary
-              </p>
-              <p className="mt-2 break-words text-sm leading-7 text-slate-200 sm:text-base">
-                {row.primary_summary || row.screen_reason || getSignalSummary(row)}
-              </p>
+  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+    What stands out here
+  </p>
+  <p className="mt-2 break-words text-sm leading-7 text-slate-200 sm:text-base">
+    {row.primary_summary || row.screen_reason || getPremiumSummary(row)}
+  </p>
 
-              {!!tags.length && (
-                <div className="mt-4 flex min-w-0 flex-wrap gap-2">
-                  {tags.slice(0, 12).map((tag) => (
-                    <TagPill key={tag} tag={tag} />
-                  ))}
-                </div>
-              )}
-            </div>
+  {!!tags.length && (
+    <div className="mt-4 flex min-w-0 flex-wrap gap-2">
+      {tags.slice(0, 12).map((tag) => (
+        <TagPill key={tag} tag={tag} />
+      ))}
+    </div>
+  )}
+</div>
 
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -2196,6 +2243,24 @@ function getPlainEnglishSummary(row: UnifiedRow) {
   return `This name is showing ${reasons.join(", ").toLowerCase()}, which keeps it near the top of the strong-buy board.`
 }
 
+function getPremiumSummary(row: UnifiedRow) {
+  const reasons = getTopReasonChips(row)
+
+  if (row.has_candidate_data && row.has_signal_data) {
+    return `This name cleared the technical screen and also picked up additional confirmation signals, which makes it more interesting than a basic watchlist candidate. ${reasons.length ? `${reasons.join(", ")} are helping it stay near the top of today’s board.` : "It is holding up well across multiple parts of the model."}`
+  }
+
+  if (row.has_candidate_data && !row.has_signal_data) {
+    return `This is one of the cleaner technical setups on the board right now. Even without extra filing confirmation, its price action and screen quality were strong enough to keep it ranked here today.`
+  }
+
+  if (row.has_signal_data && !row.has_candidate_data) {
+    return `This name is standing out because the signal layer is strong enough on its own to put it on the board. It may not be the most obvious stock at first glance, which is exactly why it can be worth a closer look.`
+  }
+
+  return `This setup is still standing out after the board was narrowed down. It has enough strength, support, or unusual signal activity to deserve attention today.`
+}
+
 function getConfidenceStatement(row: UnifiedRow) {
   const score = row.display_score
   const tags = normalizeTags(row.signal_tags)
@@ -2425,10 +2490,10 @@ function getScorePalette(score: number) {
 }
 
 function getConfidenceTierLabel(score: number) {
-  if (score >= 90) return "Elite"
+  if (score >= 90) return "Top Tier"
   if (score >= 80) return "High Conviction"
-  if (score >= 70) return "Strong"
-  return "Building"
+  if (score >= 70) return "Strong Setup"
+  return "Developing"
 }
 
 function getFreshnessLabel(row: UnifiedRow) {
