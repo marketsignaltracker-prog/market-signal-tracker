@@ -1202,9 +1202,6 @@ function FeaturedStrongBuyCard({
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.06),_transparent_25%)] opacity-0 transition group-hover:opacity-100" />
 
-      <div className="absolute inset-x-10 top-[44%] h-px bg-gradient-to-r from-transparent via-emerald-300/10 to-transparent" />
-      <div className="absolute inset-y-[38%] left-1/2 hidden w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-emerald-300/10 to-transparent md:hidden" />
-
       <div className="relative">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -1251,7 +1248,7 @@ function FeaturedStrongBuyCard({
 
         {!!miniMetrics.length && (
           <div className="mt-5 flex justify-center">
-            <div className="grid w-full max-w-[420px] grid-cols-2 gap-4">
+            <div className="grid w-[min(100%,22rem)] grid-cols-2 gap-4">
               {miniMetrics.map((item) => (
                 <MiniMetric
                   key={item.label}
@@ -1470,7 +1467,7 @@ function MiniMetric({
   const card = (
     <div className="relative flex h-[112px] w-full flex-col items-center justify-center overflow-hidden rounded-[1.6rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-4 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.08),_transparent_42%)]" />
-      <div className="relative">
+      <div className="relative flex w-full flex-col items-center justify-center">
         <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400 sm:text-xs">{label}</p>
         <p className="mt-3 text-2xl font-semibold tracking-tight text-white">{value}</p>
       </div>
