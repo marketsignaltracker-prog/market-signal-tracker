@@ -1495,14 +1495,6 @@ function SignalTypeBadge({ row }: { row: UnifiedRow }) {
   )
 }
 
-function ReasonChip({ label }: { label: string }) {
-  return (
-    <span className="inline-flex min-h-[36px] max-w-full items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-center text-[11px] font-semibold text-emerald-200 sm:px-4 sm:text-xs">
-      {label}
-    </span>
-  )
-}
-
 function PaginationControls({
   currentPage,
   totalPages,
