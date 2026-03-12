@@ -1895,7 +1895,7 @@ function SignalDetailsModal({
     What stands out here
   </p>
   <p className="mt-2 break-words text-sm leading-7 text-slate-200 sm:text-base">
-    {row.primary_summary || row.screen_reason || getPremiumSummary(row)}
+    {getSimpleSetupExplanation(row)}
   </p>
 
   {!!tags.length && (
@@ -2088,6 +2088,46 @@ function ReasonCard({ reason }: { reason: ReasonLine }) {
       <p className={`mt-2 break-words text-sm font-semibold ${textClasses}`}>{reason.value}</p>
     </div>
   )
+}
+
+function getSimpleSetupExplanation(row: UnifiedRow) {
+  const parts: string[] = []
+
+  if (row.breakout_20d) {
+    parts.push(
+      "The stock just broke above recent price levels, which often signals new buying interest."
+    )
+  }
+
+  if (row.relative_strength_20d && row.relative_strength_20d > 0) {
+    parts.push(
+      "It has been outperforming the overall market recently."
+    )
+  }
+
+  if (row.volume_ratio && row.volume_ratio > 1.3) {
+    parts.push(
+      "Trading volume is higher than usual, which suggests stronger participation from investors."
+    )
+  }
+
+  if (row.earnings_surprise_pct && row.earnings_surprise_pct > 0) {
+    parts.push(
+      "Recent earnings came in stronger than expected, which can attract new buyers."
+    )
+  }
+
+  if (row.revenue_growth_pct && row.revenue_growth_pct > 10) {
+    parts.push(
+      "The company is also showing solid revenue growth."
+    )
+  }
+
+  if (parts.length === 0) {
+    return "This stock is showing multiple signs of strength compared with the rest of the market, which is why it appears on today’s shortlist."
+  }
+
+  return parts.slice(0, 3).join(" ")
 }
 
 function MovementCard({
