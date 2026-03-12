@@ -2691,6 +2691,32 @@ function truncateText(value: string | null | undefined, maxLength: number) {
   return `${value.slice(0, maxLength).trim()}…`
 }
 
+function getCompanyInfoText(row: UnifiedRow) {
+  const description = (row.business_description || row.primary_summary || "").trim()
+
+  if (description) {
+    return description
+  }
+
+  if (row.company_name && row.industry && row.sector) {
+    return `${row.company_name} operates in the ${row.industry} industry within the ${row.sector} sector.`
+  }
+
+  if (row.company_name && row.sector) {
+    return `${row.company_name} operates in the ${row.sector} sector.`
+  }
+
+  if (row.company_name && row.industry) {
+    return `${row.company_name} operates in the ${row.industry} industry.`
+  }
+
+  if (row.company_name) {
+    return `${row.company_name} is currently on today’s ranked board.`
+  }
+
+  return "Company information not available."
+}
+
 function getScorePalette(score: number) {
   const s = Math.max(0, Math.min(100, score))
 
