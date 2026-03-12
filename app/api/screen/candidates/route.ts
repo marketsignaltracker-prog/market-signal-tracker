@@ -296,26 +296,26 @@ function calculatePercentile(sortedValues: number[], value: number) {
   return Math.round((countLessThanOrEqual / sortedValues.length) * 100)
 }
 
-function buildReturnPercentileMap(
+function buildRelativeStrengthPercentileMap(
   rows: Array<{
     ticker: string
-    return5d: number
-    return10d: number
-    return20d: number
+    relativeReturn5d: number
+    relativeReturn10d: number
+    relativeReturn20d: number
   }>
 ) {
   const valid5d = rows
-    .map((row) => row.return5d)
+    .map((row) => row.relativeReturn5d)
     .filter((v) => Number.isFinite(v))
     .sort((a, b) => a - b)
 
   const valid10d = rows
-    .map((row) => row.return10d)
+    .map((row) => row.relativeReturn10d)
     .filter((v) => Number.isFinite(v))
     .sort((a, b) => a - b)
 
   const valid20d = rows
-    .map((row) => row.return20d)
+    .map((row) => row.relativeReturn20d)
     .filter((v) => Number.isFinite(v))
     .sort((a, b) => a - b)
 
@@ -330,9 +330,9 @@ function buildReturnPercentileMap(
 
   for (const row of rows) {
     byTicker.set(row.ticker, {
-      rsPercentile5d: calculatePercentile(valid5d, row.return5d),
-      rsPercentile10d: calculatePercentile(valid10d, row.return10d),
-      rsPercentile20d: calculatePercentile(valid20d, row.return20d),
+      rsPercentile5d: calculatePercentile(valid5d, row.relativeReturn5d),
+      rsPercentile10d: calculatePercentile(valid10d, row.relativeReturn10d),
+      rsPercentile20d: calculatePercentile(valid20d, row.relativeReturn20d),
     })
   }
 
@@ -546,7 +546,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     )
 
   const momentumScore =
-    17 *
+    16 *
     (
       0.12 * scaleBetween(oneDayReturn, 0, 6) +
       0.18 * scaleBetween(return5d, 1, 12) +
@@ -555,7 +555,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     )
 
   const relativeStrengthScore =
-    16 *
+    18 *
     (
       0.2 * scaleBetween(relativeReturn5d, 0, 8) +
       0.35 * scaleBetween(relativeReturn10d, MIN_RELATIVE_RETURN_10D, 12) +
@@ -563,7 +563,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     )
 
   const leadershipScore =
-    10 *
+    12 *
     (
       0.15 * scaleBetween(rsPercentile5d, 50, 100) +
       0.3 * scaleBetween(rsPercentile10d, LEADERSHIP_PERCENTILE_MIN, 100) +
@@ -571,7 +571,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     )
 
   const volumeScore =
-    15 *
+    14 *
     (
       0.75 * scaleBetween(volumeRatio, 1.1, 3.25) +
       0.25 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 40_000_000)
@@ -588,12 +588,12 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   breakoutQuality += 0.16 * scaleBetween(closeInDayRange, 0.55, 1)
   breakoutQuality += 0.1 * scaleBetween(distanceFrom20dHighPct, 0, 4)
 
-  const breakoutScore = 15 * clamp(breakoutQuality, 0, 1)
+  const breakoutScore = 14 * clamp(breakoutQuality, 0, 1)
 
   const smaSpreadPct = sma20 > 0 ? ((sma10 - sma20) / sma20) * 100 : 0
 
   const trendScore =
-    14 *
+    13 *
     (
       0.32 * (aboveSma20 ? 1 : 0) +
       0.24 * (shortTermTrendUp ? 1 : 0) +
@@ -637,7 +637,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     trendScore +
     penaltyScore
 
-  const normalized = clamp((rawScore + 25) / 112, 0, 1)
+  const normalized = clamp((rawScore + 25) / 113, 0, 1)
   let candidateScore = Math.round(Math.pow(normalized, 1.16) * 100)
 
   const catalystCount = [
@@ -660,6 +660,8 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT,
     avgDollarVolume20d >= 20_000_000,
     marketCap >= 1_000_000_000,
+    rsPercentile10d >= LEADERSHIP_PERCENTILE_MIN,
+    rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN,
   ].filter(Boolean).length
 
   const highConvictionSetup =
@@ -690,6 +692,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     return20d >= 18 &&
     relativeReturn10d >= 4 &&
     relativeReturn20d >= 8 &&
+    rsPercentile20d >= LEADERSHIP_PERCENTILE_STRONG &&
     avgDollarVolume20d >= 25_000_000 &&
     marketCap >= 1_000_000_000 &&
     catalystCount >= MIN_CATALYST_COUNT + 1
@@ -707,6 +710,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
       return20d >= 20 &&
       relativeReturn10d >= 5 &&
       relativeReturn20d >= 10 &&
+      rsPercentile20d >= LEADERSHIP_PERCENTILE_STRONG &&
       avgDollarVolume20d >= 35_000_000 &&
       marketCap >= 2_000_000_000
     )
@@ -875,7 +879,7 @@ export async function GET(request: Request) {
     let removedFromUniverseInBatch = 0
     let keptUniverseOnTransientError = 0
 
-    for (const company of (companies || []) as CompanyRow[]) {
+        for (const company of (companies || []) as CompanyRow[]) {
       const ticker = normalizeTicker(company.ticker)
 
       try {
@@ -916,6 +920,7 @@ export async function GET(request: Request) {
             return_5d: null,
             return_10d: null,
             return_20d: null,
+            relative_strength_20d: null,
             volume_ratio: null,
             breakout_20d: false,
             breakout_10d: false,
@@ -1074,6 +1079,7 @@ export async function GET(request: Request) {
             return_5d: null,
             return_10d: null,
             return_20d: null,
+            relative_strength_20d: null,
             volume_ratio: null,
             breakout_20d: false,
             breakout_10d: false,
@@ -1202,7 +1208,7 @@ export async function GET(request: Request) {
         const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
         const passesMarketCap = marketCap >= MIN_MARKET_CAP
 
-          metricRows.push({
+        metricRows.push({
           company,
           ticker,
           latestClose,
@@ -1247,16 +1253,16 @@ export async function GET(request: Request) {
       await sleep(REQUEST_DELAY_MS)
     }
 
-    const percentileMap = buildReturnPercentileMap(
+    const percentileMap = buildRelativeStrengthPercentileMap(
       metricRows.map((row) => ({
         ticker: row.ticker,
-        return5d: row.return5d,
-        return10d: row.return10d,
-        return20d: row.return20d,
+        relativeReturn5d: row.relativeReturn5d,
+        relativeReturn10d: row.relativeReturn10d,
+        relativeReturn20d: row.relativeReturn20d,
       }))
     )
 
-        for (const metric of metricRows) {
+    for (const metric of metricRows) {
       const pct = percentileMap.get(metric.ticker) ?? {
         rsPercentile5d: 0,
         rsPercentile10d: 0,
@@ -1335,8 +1341,8 @@ export async function GET(request: Request) {
       if (metric.relativeReturn5d > 0) reasons.push("beats SPY over 5d")
       if (metric.relativeReturn10d >= MIN_RELATIVE_RETURN_10D) reasons.push("beats SPY over 10d")
       if (metric.relativeReturn20d >= MIN_RELATIVE_RETURN_20D) reasons.push("beats SPY over 20d")
-      if (pct.rsPercentile10d >= LEADERSHIP_PERCENTILE_MIN) reasons.push("top-market leadership over 10d")
-      if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN) reasons.push("top-market leadership over 20d")
+      if (pct.rsPercentile10d >= LEADERSHIP_PERCENTILE_MIN) reasons.push("top relative leader over 10d")
+      if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN) reasons.push("top relative leader over 20d")
       if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_STRONG) reasons.push("strong market leader")
       if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_ELITE) reasons.push("elite market leader")
       if (metric.return20d <= MAX_STRONG_BUY_RETURN_20D) reasons.push("not overextended on 20d move")
@@ -1360,7 +1366,7 @@ export async function GET(request: Request) {
       else if (!metric.passesMarketCap) exclusionReason = "Below minimum market cap"
       else exclusionReason = "Did not qualify for board"
 
-            const row: CandidateUniverseRow = {
+      const row: CandidateUniverseRow = {
         ticker: metric.ticker,
         cik: metric.company.cik,
         name: metric.company.name,
@@ -1401,9 +1407,6 @@ export async function GET(request: Request) {
           exclusionReason,
           score,
         }),
-        last_screened_at: nowIso,
-        updated_at: nowIso,
-      }
         last_screened_at: nowIso,
         updated_at: nowIso,
       }
