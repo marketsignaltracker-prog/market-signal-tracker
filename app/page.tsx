@@ -2260,8 +2260,16 @@ function TagPill({ tag }: { tag: string }) {
 }
 
 function getCompanyOneLiner(row: UnifiedRow) {
-  if (row.business_description && row.business_description.trim()) {
-    return row.business_description.trim()
+  const description =
+    row.business_description ||
+    row.company_description ||
+    row.description ||
+    row.long_description ||
+    row.about_company ||
+    ""
+
+  if (description && description.trim()) {
+    return description.trim()
   }
 
   if (row.company_name && row.industry && row.sector) {
@@ -2273,10 +2281,10 @@ function getCompanyOneLiner(row: UnifiedRow) {
   }
 
   if (row.company_name) {
-    return `${row.company_name} is currently appearing on today's ranked board based on strong signals.`
+    return `${row.company_name} appears on today's ranked board based on strong signals.`
   }
 
-  return "Company description not available."
+  return "Company information not available."
 }
 
 function getFeaturedThesis(row: UnifiedRow) {
