@@ -1162,7 +1162,7 @@ function FeaturedStrongBuyCard({
   const thesis = getFeaturedThesis(row)
   const bullets = getFeaturedBullets(row)
 
-  const miniMetrics: MiniMetricItem[] = [
+    const miniMetrics: MiniMetricItem[] = [
     {
       label: "Price",
       value: formatMoney(row.price),
@@ -1180,12 +1180,12 @@ function FeaturedStrongBuyCard({
       value: formatRatio(row.volume_ratio),
     },
     {
-      label: "Vs Market",
-      value={formatRelativeStrengthForDisplay(row)}
+      label: "Relative Strength",
+      value: formatRelativeStrengthForDisplay(row),
     },
     {
       label: "Signals",
-      value={formatSignalStack(row.stacked_signal_count, row)}
+      value: formatSignalStack(row.stacked_signal_count, row),
     },
   ].filter((item) => hasDisplayValue(item.value))
 
@@ -1298,14 +1298,14 @@ function TopSignalCard({
   const whyBullets = getSimpleCardBullets(row)
   const takeawayBullets = getPremiumSummaryBullets(row)
 
-  const metricItems: MiniMetricItem[] = [
+    const metricItems: MiniMetricItem[] = [
     {
       label: "Price",
       value: formatMoney(row.price),
     },
     {
-      label: "Vs Market",
-      value={formatRelativeStrengthForDisplay(row)}
+      label: "Relative Strength",
+      value: formatRelativeStrengthForDisplay(row),
     },
     {
       label: "5D Move",
