@@ -1306,7 +1306,7 @@ function TopSignalCard({
               }}
               className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
             >
-              {showCompanyInfo ? "Hide company info" : "About company"}
+              {showCompanyInfo ? "Hide company info" : "About the company"}
             </button>
           </div>
 
@@ -2261,18 +2261,22 @@ function TagPill({ tag }: { tag: string }) {
 
 function getCompanyOneLiner(row: UnifiedRow) {
   if (row.business_description && row.business_description.trim()) {
-    return truncateText(row.business_description, 140)
+    return row.business_description.trim()
   }
 
-  if (row.sector && row.industry) {
-    return `${row.company_name || row.ticker} operates in ${row.industry} within the ${row.sector} sector.`
+  if (row.company_name && row.industry && row.sector) {
+    return `${row.company_name} operates in the ${row.industry} industry within the ${row.sector} sector.`
   }
 
-  if (row.sector) {
-    return `${row.company_name || row.ticker} operates in the ${row.sector} sector.`
+  if (row.company_name && row.sector) {
+    return `${row.company_name} operates in the ${row.sector} sector.`
   }
 
-  return `${row.company_name || row.ticker} is on today’s ranked board based on current signal strength.`
+  if (row.company_name) {
+    return `${row.company_name} is currently appearing on today's ranked board based on strong signals.`
+  }
+
+  return "Company description not available."
 }
 
 function getFeaturedThesis(row: UnifiedRow) {
