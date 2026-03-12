@@ -561,7 +561,6 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     return20d >= MIN_STRONG_BUY_RETURN_20D &&
     return20d <= MAX_STRONG_BUY_RETURN_20D &&
     relativeReturn10d >= MIN_RELATIVE_RETURN_10D &&
-    relativeReturn20d >= MIN_RELATIVE_RETURN_20D &&
     volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO &&
     breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT &&
     closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE &&
