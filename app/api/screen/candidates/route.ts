@@ -26,6 +26,7 @@ type CandidateUniverseRow = {
   return_5d: number | null
   return_10d: number | null
   return_20d: number | null
+  relative_strength_20d: number | null
   volume_ratio: number | null
   breakout_20d: boolean
   breakout_10d: boolean
@@ -133,6 +134,7 @@ type CandidateMetricRow = {
   relativeReturn5d: number
   relativeReturn10d: number
   relativeReturn20d: number
+  relative_strength_20d: number
   oneDayReturn: number
   volumeRatio: number
   breakout20d: boolean
@@ -1200,7 +1202,7 @@ export async function GET(request: Request) {
         const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
         const passesMarketCap = marketCap >= MIN_MARKET_CAP
 
-        metricRows.push({
+          metricRows.push({
           company,
           ticker,
           latestClose,
@@ -1213,7 +1215,7 @@ export async function GET(request: Request) {
           relativeReturn5d,
           relativeReturn10d,
           relativeReturn20d,
-          relative_strength_20d: relativeStrength20d,
+          relative_strength_20d: relativeReturn20d,
           oneDayReturn,
           volumeRatio,
           breakout20d,
@@ -1358,7 +1360,7 @@ export async function GET(request: Request) {
       else if (!metric.passesMarketCap) exclusionReason = "Below minimum market cap"
       else exclusionReason = "Did not qualify for board"
 
-      const row: CandidateUniverseRow = {
+            const row: CandidateUniverseRow = {
         ticker: metric.ticker,
         cik: metric.company.cik,
         name: metric.company.name,
@@ -1376,6 +1378,7 @@ export async function GET(request: Request) {
         return_5d: round2(metric.return5d),
         return_10d: round2(metric.return10d),
         return_20d: round2(metric.return20d),
+        relative_strength_20d: round2(metric.relative_strength_20d),
         volume_ratio: round2(metric.volumeRatio),
         breakout_20d: metric.breakout20d,
         breakout_10d: metric.breakout10d,
@@ -1398,6 +1401,9 @@ export async function GET(request: Request) {
           exclusionReason,
           score,
         }),
+        last_screened_at: nowIso,
+        updated_at: nowIso,
+      }
         last_screened_at: nowIso,
         updated_at: nowIso,
       }
