@@ -888,12 +888,26 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-              {filteredRows.length === 0
-                ? "No names"
-                : `${pageStart}-${pageEnd} of ${filteredRows.length}`}
-            </div>
-          </div>
+            <div className="flex items-center gap-3">
+  {safeCurrentPage > 1 && (
+    <button
+      type="button"
+      onClick={() => {
+        setCurrentPage(1)
+        window.scrollTo({ top: 0, behavior: "smooth" })
+      }}
+      className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/40 hover:bg-cyan-400/15"
+    >
+      Best
+    </button>
+  )}
+
+  <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+    {filteredRows.length === 0
+      ? "No names"
+      : `${pageStart}-${pageEnd} of ${filteredRows.length}`}
+  </div>
+</div>
 
           {loading ? (
             <LoadingPanel />
