@@ -59,6 +59,9 @@ type CandidateScoreInput = {
   return5d: number
   return10d: number
   return20d: number
+  relativeReturn5d: number
+  relativeReturn10d: number
+  relativeReturn20d: number
   oneDayReturn: number
   volumeRatio: number
   breakout20d: boolean
@@ -83,6 +86,7 @@ type CandidateScoreOutput = {
   rawScore: number
   qualityScore: number
   momentumScore: number
+  relativeStrengthScore: number
   volumeScore: number
   breakoutScore: number
   trendScore: number
@@ -116,6 +120,8 @@ const DEFAULT_BATCH = 200
 const RETENTION_DAYS = 30
 const REQUEST_DELAY_MS = 150
 
+const BENCHMARK_TICKER = "SPY"
+
 const MIN_PRICE = 5
 const MIN_AVG_VOLUME_20D = 500_000
 const MIN_AVG_DOLLAR_VOLUME_20D = 15_000_000
@@ -126,6 +132,8 @@ const MIN_STRONG_BUY_SCORE = 70
 const MIN_STRONG_BUY_VOLUME_RATIO = 1.35
 const MIN_STRONG_BUY_RETURN_10D = 5
 const MIN_STRONG_BUY_RETURN_20D = 12
+const MIN_RELATIVE_RETURN_10D = 2
+const MIN_RELATIVE_RETURN_20D = 4
 const MAX_STRONG_BUY_RETURN_20D = 40
 const MAX_EXTENSION_FROM_SMA20_PCT = 22
 const MIN_BREAKOUT_CLEARANCE_PCT = 0.1
@@ -196,6 +204,36 @@ function isProbablyCommonStockTicker(ticker: string) {
 function calcPercentChange(current: number, prior: number) {
   if (!prior || prior <= 0) return 0
   return ((current - prior) / prior) * 100
+}
+
+function getBenchmarkReturns(candles: any[]) {
+  const clean = (candles || [])
+    .filter(
+      (c) =>
+        c.close !== null &&
+        c.close !== undefined &&
+        Number.isFinite(Number(c.close))
+    )
+    .sort((a, b) => +new Date(a.date) - +new Date(b.date))
+
+  if (clean.length < 22) {
+    return {
+      return5d: 0,
+      return10d: 0,
+      return20d: 0,
+    }
+  }
+
+  const latest = clean[clean.length - 1]
+  const fiveAgo = clean[clean.length - 6]
+  const tenAgo = clean[clean.length - 11]
+  const twentyAgo = clean[clean.length - 21]
+
+  return {
+    return5d: calcPercentChange(Number(latest.close || 0), Number(fiveAgo?.close || 0)),
+    return10d: calcPercentChange(Number(latest.close || 0), Number(tenAgo?.close || 0)),
+    return20d: calcPercentChange(Number(latest.close || 0), Number(twentyAgo?.close || 0)),
+  }
 }
 
 function snapshotDateString(date: Date) {
@@ -370,6 +408,9 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     return5d,
     return10d,
     return20d,
+    relativeReturn5d,
+    relativeReturn10d,
+    relativeReturn20d,
     oneDayReturn,
     volumeRatio,
     breakout20d,
@@ -390,7 +431,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   } = input
 
   const qualityScore =
-    20 *
+    18 *
     (
       0.1 * (passesPrice ? 1 : 0) +
       0.2 * (passesVolume ? 1 : 0) +
@@ -399,16 +440,24 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     )
 
   const momentumScore =
-    22 *
+    18 *
     (
-      0.15 * scaleBetween(oneDayReturn, 0, 6) +
-      0.2 * scaleBetween(return5d, 1, 12) +
+      0.12 * scaleBetween(oneDayReturn, 0, 6) +
+      0.18 * scaleBetween(return5d, 1, 12) +
       0.3 * scaleBetween(return10d, 4, 20) +
-      0.35 * scaleBetween(return20d, 8, 30)
+      0.4 * scaleBetween(return20d, 8, 30)
+    )
+
+  const relativeStrengthScore =
+    16 *
+    (
+      0.2 * scaleBetween(relativeReturn5d, 0, 8) +
+      0.35 * scaleBetween(relativeReturn10d, MIN_RELATIVE_RETURN_10D, 12) +
+      0.45 * scaleBetween(relativeReturn20d, MIN_RELATIVE_RETURN_20D, 18)
     )
 
   const volumeScore =
-    18 *
+    16 *
     (
       0.75 * scaleBetween(volumeRatio, 1.1, 3.25) +
       0.25 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 40_000_000)
@@ -425,12 +474,12 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   breakoutQuality += 0.16 * scaleBetween(closeInDayRange, 0.55, 1)
   breakoutQuality += 0.1 * scaleBetween(distanceFrom20dHighPct, 0, 4)
 
-  const breakoutScore = 22 * clamp(breakoutQuality, 0, 1)
+  const breakoutScore = 18 * clamp(breakoutQuality, 0, 1)
 
   const smaSpreadPct = sma20 > 0 ? ((sma10 - sma20) / sma20) * 100 : 0
 
   const trendScore =
-    18 *
+    16 *
     (
       0.32 * (aboveSma20 ? 1 : 0) +
       0.24 * (shortTermTrendUp ? 1 : 0) +
@@ -450,6 +499,9 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   if (return5d < 0) penaltyScore -= 3
   if (return10d < 3) penaltyScore -= 4
   if (return20d < 8) penaltyScore -= 6
+  if (relativeReturn5d < 0) penaltyScore -= 2
+  if (relativeReturn10d < MIN_RELATIVE_RETURN_10D) penaltyScore -= 5
+  if (relativeReturn20d < MIN_RELATIVE_RETURN_20D) penaltyScore -= 7
   if (volumeRatio < 1.0) penaltyScore -= 5
   if (!breakout20d) penaltyScore -= 8
   if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) penaltyScore -= 5
@@ -462,9 +514,15 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   if (return20d > 55) penaltyScore -= 10
 
   const rawScore =
-    qualityScore + momentumScore + volumeScore + breakoutScore + trendScore + penaltyScore
+    qualityScore +
+    momentumScore +
+    relativeStrengthScore +
+    volumeScore +
+    breakoutScore +
+    trendScore +
+    penaltyScore
 
-  const normalized = clamp((rawScore + 25) / 110, 0, 1)
+  const normalized = clamp((rawScore + 25) / 105, 0, 1)
   let candidateScore = Math.round(Math.pow(normalized, 1.16) * 100)
 
   const catalystCount = [
@@ -473,6 +531,9 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     return10d >= MIN_STRONG_BUY_RETURN_10D,
     return20d >= MIN_STRONG_BUY_RETURN_20D,
     return20d <= MAX_STRONG_BUY_RETURN_20D,
+    relativeReturn5d > 0,
+    relativeReturn10d >= MIN_RELATIVE_RETURN_10D,
+    relativeReturn20d >= MIN_RELATIVE_RETURN_20D,
     volumeRatio >= 1.25,
     volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO,
     breakout20d,
@@ -499,6 +560,8 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     return10d >= MIN_STRONG_BUY_RETURN_10D &&
     return20d >= MIN_STRONG_BUY_RETURN_20D &&
     return20d <= MAX_STRONG_BUY_RETURN_20D &&
+    relativeReturn10d >= MIN_RELATIVE_RETURN_10D &&
+    relativeReturn20d >= MIN_RELATIVE_RETURN_20D &&
     volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO &&
     breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT &&
     closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE &&
@@ -510,6 +573,8 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     return5d >= 4 &&
     return10d >= 10 &&
     return20d >= 18 &&
+    relativeReturn10d >= 4 &&
+    relativeReturn20d >= 8 &&
     avgDollarVolume20d >= 25_000_000 &&
     marketCap >= 1_000_000_000 &&
     catalystCount >= MIN_CATALYST_COUNT + 1
@@ -525,6 +590,8 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
       volumeRatio >= 2.4 &&
       return10d >= 12 &&
       return20d >= 20 &&
+      relativeReturn10d >= 5 &&
+      relativeReturn20d >= 10 &&
       avgDollarVolume20d >= 35_000_000 &&
       marketCap >= 2_000_000_000
     )
@@ -539,6 +606,9 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     return10d >= 14 &&
     return20d >= 22 &&
     return20d <= 30 &&
+    relativeReturn5d >= 3 &&
+    relativeReturn10d >= 6 &&
+    relativeReturn20d >= 12 &&
     avgDollarVolume20d >= 40_000_000 &&
     marketCap >= 2_500_000_000 &&
     catalystCount >= 10 &&
@@ -553,6 +623,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     rawScore: round2(rawScore) ?? 0,
     qualityScore: round2(qualityScore) ?? 0,
     momentumScore: round2(momentumScore) ?? 0,
+    relativeStrengthScore: round2(relativeStrengthScore) ?? 0,
     volumeScore: round2(volumeScore) ?? 0,
     breakoutScore: round2(breakoutScore) ?? 0,
     trendScore: round2(trendScore) ?? 0,
@@ -626,6 +697,24 @@ export async function GET(request: Request) {
     const now = new Date()
     const nowIso = now.toISOString()
     const screenedOn = snapshotDateString(now)
+
+    const benchmarkEndDate = new Date()
+    const benchmarkStartDate = new Date()
+    benchmarkStartDate.setDate(benchmarkStartDate.getDate() - 60)
+
+    let benchmarkCandles: any[] = []
+
+    try {
+      benchmarkCandles = await yahooFinance.historical(BENCHMARK_TICKER, {
+        period1: toIsoDateString(benchmarkStartDate),
+        period2: toIsoDateString(benchmarkEndDate),
+        interval: "1d",
+      })
+    } catch {
+      benchmarkCandles = []
+    }
+
+    const benchmarkReturns = getBenchmarkReturns(benchmarkCandles)
 
     const companiesTable = supabase.from("companies") as any
     const candidateUniverseTable = supabase.from("candidate_universe") as any
@@ -963,6 +1052,11 @@ export async function GET(request: Request) {
         const return10d = calcPercentChange(latestClose, Number(tenAgo?.close || 0))
         const return20d = calcPercentChange(latestClose, Number(twentyAgo?.close || 0))
         const oneDayReturn = calcPercentChange(latestClose, previousClose)
+
+        const relativeReturn5d = return5d - benchmarkReturns.return5d
+        const relativeReturn10d = return10d - benchmarkReturns.return10d
+        const relativeReturn20d = return20d - benchmarkReturns.return20d
+
         const volumeRatio = avgVolume20d > 0 ? latestVolume / avgVolume20d : 0
         const breakout20d = latestClose > high20
         const breakout10d = latestClose > high10
@@ -997,6 +1091,9 @@ export async function GET(request: Request) {
           return5d,
           return10d,
           return20d,
+          relativeReturn5d,
+          relativeReturn10d,
+          relativeReturn20d,
           oneDayReturn,
           volumeRatio,
           breakout20d,
@@ -1031,6 +1128,8 @@ export async function GET(request: Request) {
           return10d >= MIN_STRONG_BUY_RETURN_10D &&
           return20d >= MIN_STRONG_BUY_RETURN_20D &&
           return20d <= MAX_STRONG_BUY_RETURN_20D &&
+          relativeReturn10d >= MIN_RELATIVE_RETURN_10D &&
+          relativeReturn20d >= MIN_RELATIVE_RETURN_20D &&
           volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO &&
           breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT &&
           closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE &&
@@ -1050,6 +1149,9 @@ export async function GET(request: Request) {
         if (return5d >= 2) reasons.push("5d momentum")
         if (return10d >= MIN_STRONG_BUY_RETURN_10D) reasons.push("10d momentum")
         if (return20d >= MIN_STRONG_BUY_RETURN_20D) reasons.push("20d momentum")
+        if (relativeReturn5d > 0) reasons.push("beats SPY over 5d")
+        if (relativeReturn10d >= MIN_RELATIVE_RETURN_10D) reasons.push("beats SPY over 10d")
+        if (relativeReturn20d >= MIN_RELATIVE_RETURN_20D) reasons.push("beats SPY over 20d")
         if (return20d <= MAX_STRONG_BUY_RETURN_20D) reasons.push("not overextended on 20d move")
         if (volumeRatio >= 1.25) reasons.push("volume expansion")
         if (volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO) reasons.push("strong volume expansion")
@@ -1179,6 +1281,12 @@ export async function GET(request: Request) {
           return5d: round2(return5d),
           return10d: round2(return10d),
           return20d: round2(return20d),
+          relativeReturn5d: round2(relativeReturn5d),
+          relativeReturn10d: round2(relativeReturn10d),
+          relativeReturn20d: round2(relativeReturn20d),
+          benchmarkReturn5d: round2(benchmarkReturns.return5d),
+          benchmarkReturn10d: round2(benchmarkReturns.return10d),
+          benchmarkReturn20d: round2(benchmarkReturns.return20d),
           volumeRatio: round2(volumeRatio),
           breakoutClearancePct: round2(breakoutClearancePct),
           extensionFromSma20Pct: round2(extensionFromSma20Pct),
@@ -1188,6 +1296,7 @@ export async function GET(request: Request) {
           scoreBreakdown: {
             quality: round2(scoreDetails.qualityScore),
             momentum: round2(scoreDetails.momentumScore),
+            relativeStrength: round2(scoreDetails.relativeStrengthScore),
             volume: round2(scoreDetails.volumeScore),
             breakout: round2(scoreDetails.breakoutScore),
             trend: round2(scoreDetails.trendScore),
@@ -1253,6 +1362,7 @@ export async function GET(request: Request) {
       retainedDays: RETENTION_DAYS,
       screenedOn,
       thresholds: {
+        benchmarkTicker: BENCHMARK_TICKER,
         minBoardScore: MIN_BOARD_SCORE,
         minPrice: MIN_PRICE,
         minAvgVolume20d: MIN_AVG_VOLUME_20D,
@@ -1262,6 +1372,8 @@ export async function GET(request: Request) {
         minStrongBuyVolumeRatio: MIN_STRONG_BUY_VOLUME_RATIO,
         minStrongBuyReturn10d: MIN_STRONG_BUY_RETURN_10D,
         minStrongBuyReturn20d: MIN_STRONG_BUY_RETURN_20D,
+        minRelativeReturn10d: MIN_RELATIVE_RETURN_10D,
+        minRelativeReturn20d: MIN_RELATIVE_RETURN_20D,
         maxStrongBuyReturn20d: MAX_STRONG_BUY_RETURN_20D,
         maxExtensionFromSma20Pct: MAX_EXTENSION_FROM_SMA20_PCT,
         minBreakoutClearancePct: MIN_BREAKOUT_CLEARANCE_PCT,
