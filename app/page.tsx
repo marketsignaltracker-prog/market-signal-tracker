@@ -1356,13 +1356,13 @@ function TopSignalCard({
       </div>
 
       <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-          Why it could matter today
-        </p>
-        <p className="mt-2 break-words text-sm font-semibold leading-6 text-white">
-          {getCardThesis(row)}
-        </p>
-      </div>
+  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+    Why it could matter today
+  </p>
+  <p className="mt-2 break-words text-sm font-semibold leading-6 text-white">
+    {getSimpleCardExplanation(row)}
+  </p>
+</div>
 
       {!!reasons.length && (
         <div className="mb-4 flex min-w-0 flex-wrap gap-2">
@@ -1797,6 +1797,52 @@ function getCardThesis(row: UnifiedRow) {
   return "Strong buy conditions are lining up"
 }
 
+function getSimpleCardExplanation(row: UnifiedRow) {
+  const points: string[] = []
+
+  if (row.primary_signal_source === "breakout" || row.breakout_20d || row.breakout_52w) {
+    points.push("The stock is pushing above recent price levels")
+  }
+
+  if ((row.volume_ratio ?? 0) >= 1.5) {
+    points.push("trading activity is stronger than normal")
+  }
+
+  if ((row.relative_strength_20d ?? 0) >= 5) {
+    points.push("it has been outperforming much of the market")
+  }
+
+  if ((row.cluster_buyers ?? 0) >= 2) {
+    points.push("multiple bullish signals are showing up at once")
+  }
+
+  if ((row.earnings_surprise_pct ?? 0) >= 10) {
+    points.push("recent earnings were stronger than expected")
+  }
+
+  if ((row.revenue_growth_pct ?? 0) >= 15) {
+    points.push("the business is still showing solid growth")
+  }
+
+  if (row.guidance_flag === true) {
+    points.push("management outlook appears supportive")
+  }
+
+  if (points.length === 0) {
+    return "This stock is showing enough strength right now to stay on today’s ranked board."
+  }
+
+  if (points.length === 1) {
+    return `${capitalizeFirst(points[0])}.`
+  }
+
+  if (points.length === 2) {
+    return `${capitalizeFirst(points[0])}, and ${points[1]}.`
+  }
+
+  return `${capitalizeFirst(points[0])}, ${points[1]}, and ${points[2]}.`
+}
+
 function SignalDetailsModal({
   row,
   onClose,
@@ -2050,6 +2096,11 @@ function MetricRow({
       </span>
     </div>
   )
+}
+
+function capitalizeFirst(value: string) {
+  if (!value) return value
+  return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
 function ConfirmationRow({
