@@ -261,7 +261,7 @@ function makeUnifiedRow(
     price_return_5d: firstNumberOrNull(signal?.price_return_5d, candidate?.return_5d, null),
     return_10d: candidate?.return_10d ?? null,
     price_return_20d: firstNumberOrNull(signal?.price_return_20d, candidate?.return_20d, null),
-    volume_ratio: firstNumberOrNull(signal?.volume_ratio, candidate?.volume_ratio, null),
+       volume_ratio: firstNumberOrNull(signal?.volume_ratio, candidate?.volume_ratio, null),
     relative_strength_20d: signal?.relative_strength_20d ?? null,
 
     breakout_20d: firstBooleanOrNull(signal?.breakout_20d, candidate?.breakout_20d, null),
@@ -314,7 +314,9 @@ function makeUnifiedRow(
 
     score_version: signal?.score_version ?? "candidate-universe",
     score_updated_at: firstString(signal?.score_updated_at, candidate?.updated_at),
-    stacked_signal_count: signal?.stacked_signal_count ?? null,
+        stacked_signal_count:
+      signal?.stacked_signal_count ??
+      (candidate ? 1 : null),
     updated_at: firstString(signal?.updated_at, candidate?.updated_at),
     created_at: signal?.created_at ?? null,
 
@@ -1179,11 +1181,11 @@ function FeaturedStrongBuyCard({
     },
     {
       label: "Vs Market",
-      value: formatPercent(row.relative_strength_20d),
+      value={formatRelativeStrengthForDisplay(row)}
     },
     {
       label: "Signals",
-      value: formatWholeNumber(row.stacked_signal_count),
+      value={formatSignalStack(row.stacked_signal_count, row)}
     },
   ].filter((item) => hasDisplayValue(item.value))
 
@@ -1303,7 +1305,7 @@ function TopSignalCard({
     },
     {
       label: "Vs Market",
-      value: formatPercent(row.relative_strength_20d),
+      value={formatRelativeStrengthForDisplay(row)}
     },
     {
       label: "5D Move",
@@ -2050,7 +2052,7 @@ function SignalDetailsModal({
                 />
                 <ConfirmationRow
                   label="Relative strength"
-                  value={formatPercent(row.relative_strength_20d)}
+                  value={formatRelativeStrengthForDisplay(row)}
                 />
                 <ConfirmationRow
                   label="Participation"
@@ -2058,7 +2060,7 @@ function SignalDetailsModal({
                 />
                 <ConfirmationRow
                   label="Signal stack"
-                  value={formatWholeNumber(row.stacked_signal_count)}
+                  value={formatSignalStack(row.stacked_signal_count, row)}
                 />
               </div>
             </div>
@@ -2503,6 +2505,30 @@ function formatMoney(value: number | null | undefined) {
 function formatWholeNumber(value: number | null | undefined) {
   if (value === null || value === undefined) return "—"
   return Math.round(value).toLocaleString()
+}
+
+function formatSignalStack(value: number | null | undefined, row?: UnifiedRow) {
+  if (value !== null && value !== undefined) {
+    return `${Math.round(value)}`
+  }
+
+  if (row?.has_candidate_data && !row?.has_signal_data) {
+    return "1"
+  }
+
+  return "—"
+}
+
+function formatRelativeStrengthForDisplay(row: UnifiedRow) {
+  if (row.relative_strength_20d !== null && row.relative_strength_20d !== undefined) {
+    return formatPercent(row.relative_strength_20d)
+  }
+
+  if (row.has_candidate_data && !row.has_signal_data) {
+    return "Technical only"
+  }
+
+  return "—"
 }
 
 function formatSimpleNumber(value: number | null | undefined) {
