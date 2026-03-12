@@ -651,106 +651,95 @@ export default function Home() {
     setFiltersOpen(false)
   }
 
+  function scrollToSection(id: string) {
+    const element = document.getElementById(id)
+    if (!element) return
+    element.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
   return (
-    <main className="min-h-screen w-full overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.12),_transparent_22%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.10),_transparent_28%),linear-gradient(to_bottom,_#020617,_#071126_45%,_#020617)] text-white">
-      <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
-        <section className="relative overflow-hidden rounded-[2rem] border border-cyan-400/10 bg-white/[0.04] p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-md sm:p-6 lg:p-8">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,211,238,0.12),_transparent_26%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.10),_transparent_30%)]" />
-          <div className="pointer-events-none absolute -right-20 top-10 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
-          <div className="pointer-events-none absolute -left-16 bottom-0 h-52 w-52 rounded-full bg-emerald-400/10 blur-3xl" />
+    <main className="min-h-screen w-full overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.10),_transparent_20%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_24%),linear-gradient(to_bottom,_#020617,_#081122_45%,_#020617)] text-white">
+      <style jsx global>{`
+        @keyframes cardFadeUp {
+          from {
+            opacity: 0;
+            transform: translateY(16px) scale(0.985);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
 
-          <div className="relative">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div className="max-w-3xl min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300 sm:px-4 sm:text-xs">
-                    Market Signal Tracker
-                  </p>
-                  <span className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200 sm:px-4 sm:text-xs">
-                    Beginner Friendly
-                  </span>
-                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300 sm:px-4 sm:text-xs">
-                    Updated Daily
-                  </span>
-                </div>
+        @keyframes scoreGlow {
+          0%, 100% {
+            box-shadow: 0 0 0 rgba(34, 197, 94, 0);
+          }
+          50% {
+            box-shadow: 0 0 24px rgba(34, 197, 94, 0.18);
+          }
+        }
 
-                <h1 className="mt-4 max-w-4xl text-3xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-                  Stocks worth a closer look, explained in a way that actually feels usable.
-                </h1>
+        @keyframes scoreGlowCyan {
+          0%, 100% {
+            box-shadow: 0 0 0 rgba(34, 211, 238, 0);
+          }
+          50% {
+            box-shadow: 0 0 24px rgba(34, 211, 238, 0.18);
+          }
+        }
+      `}</style>
 
-                <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-                  Instead of digging through endless tickers, start with the names showing the strongest mix of price strength, market attention, and signal support right now.
+      <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-3 py-4 pb-28 sm:px-6 sm:py-8 sm:pb-8 lg:px-8">
+        <section
+          id="hero"
+          className="relative overflow-hidden rounded-[1.75rem] border border-cyan-400/10 bg-white/[0.04] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.42)] backdrop-blur-md sm:p-5 lg:p-6"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,211,238,0.10),_transparent_24%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_28%)]" />
+          <div className="pointer-events-none absolute -right-16 top-6 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="pointer-events-none absolute -left-12 bottom-0 h-36 w-36 rounded-full bg-emerald-400/10 blur-3xl" />
+
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300 sm:text-xs">
+                  Market Signal Tracker
                 </p>
-
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      Easy start
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-white">
-                      Tap any card to see the story behind it
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      Smart ranking
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-white">
-                      Higher scores mean stronger overall setup
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      Last refresh
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-white">
-                      {lastUpdated ?? "—"}
-                    </p>
-                  </div>
-                </div>
+                <span className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200 sm:text-xs">
+                  Beginner Friendly
+                </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 lg:w-[420px]">
-                <GlassStatCard
-                  label="Strong Buys"
-                  value={loading ? "…" : String(strongBuyCount)}
-                  helper="Names worth attention today"
-                  tone="emerald"
-                />
-                <GlassStatCard
-                  label="Elite Setups"
-                  value={loading ? "…" : String(eliteCount)}
-                  helper="Highest-rated ideas on the board"
-                  tone="cyan"
-                />
-                <div className="col-span-2 rounded-[1.5rem] border border-white/10 bg-black/25 p-5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    Why this helps
-                  </p>
-                  <p className="mt-2 text-sm leading-7 text-slate-200 sm:text-base">
-                    You are not looking at random stocks. You are looking at a filtered board that already prioritizes names showing stronger behavior than most of the market.
-                  </p>
-                </div>
-              </div>
+              <h1 className="mt-3 max-w-3xl text-2xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-[2.85rem]">
+                Strong stock ideas, ranked and simplified.
+              </h1>
+
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
+                Start with the names showing the strongest mix of price strength, interest, and signal support right now.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:w-[380px]">
+              <CompactStatCard label="Strong Buys" value={loading ? "…" : String(strongBuyCount)} tone="emerald" />
+              <CompactStatCard label="Elite" value={loading ? "…" : String(eliteCount)} tone="cyan" />
+              <CompactStatCard label="Updated" value={lastUpdated ? "Live" : "—"} tone="slate" />
             </div>
           </div>
         </section>
 
-                <section className="mt-6 overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-xl backdrop-blur-md sm:mt-8">
-          <div className="p-4 sm:p-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <section
+          id="filters"
+          className="mt-5 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] shadow-xl backdrop-blur-md sm:mt-7"
+        >
+          <div className="p-4 sm:p-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
                   Refine the board
                 </p>
-                <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
-                  Narrow today’s list
+                <h2 className="mt-1 text-lg font-semibold text-white sm:text-2xl">
+                  Filters
                 </h2>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400 sm:text-base">
-                  Use filters when you want more control. Otherwise, the app is already showing the strongest ideas first.
-                </p>
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -787,16 +776,10 @@ export default function Home() {
             >
               <div className="overflow-hidden">
                 <div className="border-t border-white/10 pt-5">
-                  <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                        Filter options
-                      </p>
-                      <h3 className="mt-1 text-lg font-semibold text-white sm:text-2xl">
-                        Adjust the board to match what you want to review
-                      </h3>
-                      <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400 sm:text-base">
-                        Price, freshness, score, sector, and source can all be narrowed down here.
+                      <p className="text-sm text-slate-400">
+                        Use filters when you want tighter control over what shows up on the board.
                       </p>
                     </div>
 
@@ -890,22 +873,22 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mt-6 sm:mt-8">
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <section id="featured" className="mt-6 sm:mt-8">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
                 Featured picks
               </p>
               <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
-                Start with these highest-priority names
+                Start here
               </h2>
               <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-                These are the first names to review when you want the strongest blend of momentum, confirmation, and market leadership.
+                The strongest names on the board right now.
               </p>
             </div>
 
             <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-              {loading ? "Loading board…" : `${filteredRows.length} names on today’s board`}
+              {loading ? "Loading board…" : `${filteredRows.length} names`}
             </div>
           </div>
 
@@ -917,13 +900,14 @@ export default function Home() {
             <EmptyPanel />
           ) : (
             <>
-              <div className="hidden gap-5 md:grid md:grid-cols-2 xl:grid-cols-3">
+              <div className="hidden items-start gap-5 md:grid md:grid-cols-2 xl:grid-cols-3">
                 {featuredRows.slice(0, 3).map((row, index) => (
                   <FeaturedStrongBuyCard
                     key={`${row.ticker}-${index}`}
                     row={row}
                     rank={index + 1}
                     onClick={() => openDetails(row.ticker)}
+                    animationIndex={index}
                   />
                 ))}
               </div>
@@ -936,16 +920,16 @@ export default function Home() {
               </div>
 
               <section id="board" className="mt-8">
-                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
                       Ranked board
                     </p>
                     <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
-                      More names worth a closer look
+                      More ideas
                     </h2>
                     <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-                      After the featured cards, the rest of the board continues in rank order so you can keep exploring without starting from scratch.
+                      Keep exploring the rest of today’s ranked list.
                     </p>
                   </div>
 
@@ -956,7 +940,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid items-start gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {paginatedRows.map((row, i) => (
                     <TopSignalCard
                       key={getRowKey(row, i)}
@@ -964,6 +948,7 @@ export default function Home() {
                       isSelected={row.ticker === selectedTicker}
                       onClick={() => openDetails(row.ticker)}
                       rank={featuredRows.length + (safeCurrentPage - 1) * CARDS_PER_PAGE + i + 1}
+                      animationIndex={i}
                     />
                   ))}
                 </div>
@@ -983,10 +968,19 @@ export default function Home() {
           )}
         </section>
 
-        <footer className="mt-10 border-t border-white/10 pt-8 pb-8 text-sm leading-6 text-slate-500">
+        <footer className="mt-10 border-t border-white/10 pt-8 text-sm leading-6 text-slate-500">
           Rankings are model-based and designed to help members surface promising stock ideas faster. They are not guarantees, and they should be used as part of a broader decision process.
         </footer>
       </div>
+
+      {!selectedRow ? (
+        <MobileAppNav
+          onGoTop={() => scrollToSection("hero")}
+          onGoFeatured={() => scrollToSection("featured")}
+          onGoBoard={() => scrollToSection("board")}
+          onGoFilters={() => scrollToSection("filters")}
+        />
+      ) : null}
 
       {selectedRow ? (
         <SignalDetailsModal
@@ -1003,33 +997,77 @@ export default function Home() {
   )
 }
 
-function GlassStatCard({
+function CompactStatCard({
   label,
   value,
-  helper,
   tone,
 }: {
   label: string
   value: string
-  helper: string
-  tone: "emerald" | "cyan"
+  tone: "emerald" | "cyan" | "slate"
 }) {
   const styles =
     tone === "emerald"
-      ? "border-emerald-400/20 bg-[linear-gradient(145deg,rgba(16,185,129,0.16),rgba(255,255,255,0.03))]"
-      : "border-cyan-400/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.14),rgba(255,255,255,0.03))]"
-
-  const labelColor = tone === "emerald" ? "text-emerald-200" : "text-cyan-200"
+      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+      : tone === "cyan"
+        ? "border-cyan-400/20 bg-cyan-400/10 text-cyan-200"
+        : "border-white/10 bg-white/5 text-slate-200"
 
   return (
-    <div className={`rounded-[1.5rem] border p-4 shadow-[0_14px_36px_rgba(0,0,0,0.24)] ${styles}`}>
-      <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] sm:text-[11px] ${labelColor}`}>
+    <div className={`rounded-[1.25rem] border px-3 py-3 sm:px-4 ${styles}`}>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] opacity-80">
         {label}
       </p>
-      <p className="mt-3 text-4xl font-bold leading-none tracking-tight text-white sm:text-5xl">
+      <p className="mt-2 text-xl font-bold leading-none tracking-tight text-white sm:text-2xl">
         {value}
       </p>
-      <p className="mt-2 text-xs leading-5 text-slate-300 sm:text-sm">{helper}</p>
+    </div>
+  )
+}
+
+function MobileAppNav({
+  onGoTop,
+  onGoFeatured,
+  onGoBoard,
+  onGoFilters,
+}: {
+  onGoTop: () => void
+  onGoFeatured: () => void
+  onGoBoard: () => void
+  onGoFilters: () => void
+}) {
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/90 px-3 py-3 backdrop-blur-md sm:hidden">
+      <div className="mx-auto grid max-w-xl grid-cols-4 gap-2">
+        <button
+          type="button"
+          onClick={onGoTop}
+          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
+        >
+          Home
+        </button>
+        <button
+          type="button"
+          onClick={onGoFeatured}
+          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
+        >
+          Picks
+        </button>
+        <button
+          type="button"
+          onClick={onGoBoard}
+          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
+        >
+          Board
+        </button>
+        <button
+          type="button"
+          onClick={onGoFilters}
+          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
+        >
+          Filters
+        </button>
+      </div>
     </div>
   )
 }
@@ -1045,7 +1083,7 @@ function MobileFeaturedCarousel({
     <div className="-mx-3 px-3">
       <div className="mb-3 flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-          Swipe through top picks
+          Swipe top picks
         </p>
         <p className="text-xs text-slate-500">{rows.length} cards</p>
       </div>
@@ -1057,6 +1095,7 @@ function MobileFeaturedCarousel({
               row={row}
               rank={index + 1}
               onClick={() => onCardClick(row.ticker)}
+              animationIndex={index}
             />
           </div>
         ))}
@@ -1246,10 +1285,12 @@ function FeaturedStrongBuyCard({
   row,
   rank,
   onClick,
+  animationIndex = 0,
 }: {
   row: UnifiedRow
   rank: number
   onClick: () => void
+  animationIndex?: number
 }) {
   const score = row.display_score
   const palette = getScorePalette(score)
@@ -1262,7 +1303,7 @@ function FeaturedStrongBuyCard({
     { label: "5D Move", value: formatPercent(row.price_return_5d) },
     { label: "20D Move", value: formatPercent(row.price_return_20d) },
     { label: "Volume", value: formatRatio(row.volume_ratio) },
-    { label: "Relative Strength", value: formatRelativeStrengthForDisplay(row) },
+    { label: "Strength", value: formatRelativeStrengthForDisplay(row) },
     { label: "Signals", value: formatSignalStack(row.stacked_signal_count, row) },
   ].filter((item) => hasDisplayValue(item.value))
 
@@ -1270,14 +1311,15 @@ function FeaturedStrongBuyCard({
     <button
       type="button"
       onClick={onClick}
-      className="group relative w-full overflow-hidden rounded-[1.75rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.36)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5 lg:p-6"
+      className="group relative w-full self-start overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.36)] transition duration-300 hover:-translate-y-1 hover:scale-[1.01] sm:rounded-[1.75rem] sm:p-5"
       style={{
         borderColor: `${palette.end}45`,
         background: `linear-gradient(135deg, ${palette.start}14 0%, rgba(10,15,30,0.95) 34%, rgba(2,6,23,1) 100%)`,
+        animation: `cardFadeUp 480ms ease-out both`,
+        animationDelay: `${animationIndex * 70}ms`,
       }}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.08),_transparent_28%)] opacity-0 transition group-hover:opacity-100" />
-      <div className="pointer-events-none absolute -right-10 top-6 h-28 w-28 rounded-full bg-white/5 blur-2xl" />
 
       <div className="relative">
         <div className="flex items-start justify-between gap-3">
@@ -1295,7 +1337,7 @@ function FeaturedStrongBuyCard({
         </div>
 
         <div className="mt-5">
-          <h3 className="text-4xl font-bold leading-none tracking-tight text-white sm:text-[2.8rem]">
+          <h3 className="text-4xl font-bold leading-none tracking-tight text-white sm:text-[2.65rem]">
             {row.ticker}
           </h3>
 
@@ -1308,9 +1350,9 @@ function FeaturedStrongBuyCard({
           <ScoreBar row={row} />
         </div>
 
-        <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-black/20 p-4 sm:p-5">
+        <div className="mt-5 rounded-[1.35rem] border border-white/10 bg-black/20 p-4 sm:p-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/80 sm:text-xs">
-            Why this is on the short list
+            Why this stands out
           </p>
           <p className="mt-2 text-lg font-semibold leading-7 text-white sm:text-xl">
             {thesis}
@@ -1363,11 +1405,13 @@ function TopSignalCard({
   onClick,
   isSelected,
   rank,
+  animationIndex = 0,
 }: {
   row: UnifiedRow
   onClick: () => void
   isSelected: boolean
   rank: number
+  animationIndex?: number
 }) {
   const score = row.display_score
   const palette = getScorePalette(score)
@@ -1377,7 +1421,7 @@ function TopSignalCard({
 
   const metricItems: MiniMetricItem[] = [
     { label: "Price", value: formatMoney(row.price) },
-    { label: "Relative Strength", value: formatRelativeStrengthForDisplay(row) },
+    { label: "Strength", value: formatRelativeStrengthForDisplay(row) },
     { label: "5D Move", value: formatPercent(row.price_return_5d) },
     { label: "Volume", value: formatRatio(row.volume_ratio) },
     { label: "1D Δ", value: formatScoreChange(row.ticker_score_change_1d) },
@@ -1389,14 +1433,16 @@ function TopSignalCard({
       type="button"
       onClick={onClick}
       className={[
-        "flex w-full flex-col overflow-hidden rounded-[1.75rem] border p-4 text-left shadow-xl transition duration-200 sm:p-5",
+        "flex w-full self-start flex-col overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-xl transition duration-300 hover:-translate-y-1 hover:scale-[1.01] sm:p-5",
         isSelected
           ? "ring-2 ring-cyan-300/25"
-          : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
+          : "hover:ring-1 hover:ring-white/10",
       ].join(" ")}
       style={{
         borderColor: isSelected ? `${palette.end}80` : `${palette.end}33`,
         background: `linear-gradient(135deg, ${palette.start}12 0%, rgba(15,23,42,0.92) 40%, rgba(2,6,23,1) 100%)`,
+        animation: `cardFadeUp 480ms ease-out both`,
+        animationDelay: `${animationIndex * 45}ms`,
       }}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -1494,9 +1540,18 @@ function ScoreBar({
 }) {
   const score = row.display_score
   const palette = getScorePalette(score)
+  const glowAnimation =
+    score >= 90
+      ? "scoreGlow 3.2s ease-in-out infinite"
+      : score >= 80
+        ? "scoreGlowCyan 3.6s ease-in-out infinite"
+        : undefined
 
   return (
-    <div className="w-full rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div
+      className="w-full rounded-2xl border border-white/10 bg-white/5 p-4"
+      style={glowAnimation ? { animation: glowAnimation } : undefined}
+    >
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
           Setup Score
@@ -1506,7 +1561,7 @@ function ScoreBar({
 
       <div className="h-3 overflow-hidden rounded-full bg-slate-800">
         <div
-          className="h-full rounded-full transition-all duration-300"
+          className="h-full rounded-full transition-all duration-500"
           style={{
             width: `${score}%`,
             background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
@@ -1533,7 +1588,7 @@ function MiniMetric({
   value: string
 }) {
   return (
-    <div className="flex min-h-[92px] w-full flex-col items-center justify-center rounded-[1.25rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[100px] sm:px-4">
+    <div className="flex min-h-[92px] w-full flex-col items-center justify-center rounded-[1.2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[100px] sm:px-4">
       <p className="mb-2 break-words text-[10px] uppercase tracking-[0.22em] text-slate-400 sm:text-[11px]">
         {label}
       </p>
@@ -1569,19 +1624,29 @@ function ScoreBadge({
 }) {
   const score = row.display_score
   const palette = getScorePalette(score)
+  const tier = getConfidenceTierLabel(score)
+
+  const glowAnimation =
+    score >= 90
+      ? "scoreGlow 3.2s ease-in-out infinite"
+      : score >= 80
+        ? "scoreGlowCyan 3.6s ease-in-out infinite"
+        : undefined
 
   return (
     <div
       className={[
-        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
+        "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
         large ? "px-3.5 py-1.5 text-sm sm:px-4 sm:py-2" : "px-3 py-1 text-sm",
       ].join(" ")}
       style={{
         background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
         color: palette.text,
+        ...(glowAnimation ? { animation: glowAnimation } : {}),
       }}
     >
-      {score}
+      <span>{score}</span>
+      {large ? <span className="opacity-80">• {tier}</span> : null}
     </div>
   )
 }
@@ -1968,7 +2033,7 @@ function SignalDetailsModal({
   const mobileSlides = ["Overview", "Drivers", "Metrics"] as const
   const [activeSlide, setActiveSlide] = useState(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  const touchStartX = useRef<number | null>(null)
+  const scrollFrame = useRef<number | null>(null)
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -1988,40 +2053,30 @@ function SignalDetailsModal({
     }
   }, [onClose, onPrev, onNext])
 
-  useEffect(() => {
+  function scrollToSlide(index: number) {
     const container = scrollRef.current
     if (!container) return
     const width = container.clientWidth
     container.scrollTo({
-      left: width * activeSlide,
+      left: width * index,
       behavior: "smooth",
     })
-  }, [activeSlide])
-
-  function handleScroll() {
-    const container = scrollRef.current
-    if (!container) return
-    const width = container.clientWidth
-    if (!width) return
-    const index = Math.round(container.scrollLeft / width)
     setActiveSlide(index)
   }
 
-  function handleTouchStart(e: React.TouchEvent<HTMLDivElement>) {
-    touchStartX.current = e.touches[0]?.clientX ?? null
-  }
+  function handleMobileScroll() {
+    if (scrollFrame.current) cancelAnimationFrame(scrollFrame.current)
 
-  function handleTouchEnd(e: React.TouchEvent<HTMLDivElement>) {
-    if (touchStartX.current === null) return
-    const delta = (e.changedTouches[0]?.clientX ?? 0) - touchStartX.current
+    scrollFrame.current = requestAnimationFrame(() => {
+      const container = scrollRef.current
+      if (!container) return
+      const width = container.clientWidth
+      if (!width) return
 
-    if (delta > 50 && activeSlide > 0) {
-      setActiveSlide((prev) => prev - 1)
-    } else if (delta < -50 && activeSlide < mobileSlides.length - 1) {
-      setActiveSlide((prev) => prev + 1)
-    }
-
-    touchStartX.current = null
+      const progress = container.scrollLeft / width
+      const index = Math.round(progress)
+      if (index !== activeSlide) setActiveSlide(index)
+    })
   }
 
   return (
@@ -2095,7 +2150,7 @@ function SignalDetailsModal({
                   <button
                     key={slide}
                     type="button"
-                    onClick={() => setActiveSlide(index)}
+                    onClick={() => scrollToSlide(index)}
                     className={[
                       "rounded-full px-3 py-1.5 text-xs font-semibold transition",
                       index === activeSlide
@@ -2109,7 +2164,7 @@ function SignalDetailsModal({
               </div>
 
               <p className="text-center text-xs text-slate-500">
-                Swipe left or right to move through sections
+                Swipe gently left or right
               </p>
             </div>
           </div>
@@ -2297,10 +2352,9 @@ function SignalDetailsModal({
 
             <div
               ref={scrollRef}
-              onScroll={handleScroll}
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-              className="flex h-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden lg:hidden"
+              onScroll={handleMobileScroll}
+              className="flex h-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scroll-smooth lg:hidden"
+              style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}
             >
               <div className="h-full min-w-full snap-center overflow-y-auto p-4 pb-28">
                 <div className="space-y-5">
@@ -2969,7 +3023,7 @@ function getScorePalette(score: number) {
   }
 
   if (s <= 89) {
-    return { start: "#4ade80", end: "#22c55e", text: "#0b1a10" }
+    return { start: "#22d3ee", end: "#06b6d4", text: "#06222a" }
   }
 
   return { start: "#22c55e", end: "#16a34a", text: "#08110a" }
