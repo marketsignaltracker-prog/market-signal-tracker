@@ -1,16 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-export const metadata = {
-  title: "Market Signal Tracker",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-    viewportFit: "cover"
-  }
-}
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,11 +12,18 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Market Signal Tracker | Insider Buying & High-Signal Stocks",
   description:
     "Find high-signal stock opportunities using insider buying, SEC filings, earnings surprises, and momentum signals.",
-}
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+};
 
 export default function RootLayout({
   children,
