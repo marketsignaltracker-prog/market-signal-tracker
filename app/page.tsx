@@ -269,8 +269,8 @@ function makeUnifiedRow(
   return {
     ticker,
     company_name: firstString(signal?.company_name, candidate?.name),
-    business_description: firstString(signal?.business_description, signal?.primary_summary, null),
-    price: firstNumberOrNull(candidate?.price, null),
+business_description: firstString(signal?.business_description, null), 
+price: firstNumberOrNull(candidate?.price, null),
 
     candidate_score: candidateScore,
     signal_score: signalScore,
@@ -1257,7 +1257,8 @@ function TopSignalCard({
   const takeawayBullets = getPremiumSummaryBullets(row)
   const [showCompanyInfo, setShowCompanyInfo] = useState(false)
 
-  const companyInfo = getCompanyInfoText(row)
+  const companyInfo = (row.business_description || "").trim()
+  const summaryPreview = (row.business_description || row.primary_summary || "").trim()
 
   const metricItems: MiniMetricItem[] = [
     { label: "Price", value: formatMoney(row.price) },
@@ -1299,36 +1300,44 @@ function TopSignalCard({
             </p>
           ) : null}
 
-          <div className="mt-2">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                setShowCompanyInfo((prev) => !prev)
-              }}
-              className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
-            >
-              {showCompanyInfo ? "Hide company info" : "About the company"}
-            </button>
+          {summaryPreview ? (
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              {truncateText(summaryPreview, 120)}
+            </p>
+          ) : null}
 
-            <div
-              className={[
-                "grid transition-all duration-300 ease-out",
-                showCompanyInfo ? "mt-2 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-              ].join(" ")}
-            >
-              <div className="overflow-hidden">
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300/80">
-                    About the company
-                  </p>
-                  <p className="text-sm leading-6 text-slate-300">
-                    {companyInfo}
-                  </p>
+          {companyInfo ? (
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowCompanyInfo((prev) => !prev)
+                }}
+                className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
+              >
+                {showCompanyInfo ? "Hide company info" : "About the company"}
+              </button>
+
+              <div
+                className={[
+                  "grid transition-all duration-300 ease-out",
+                  showCompanyInfo ? "mt-2 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+                ].join(" ")}
+              >
+                <div className="overflow-hidden">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300/80">
+                      About the company
+                    </p>
+                    <p className="text-sm leading-6 text-slate-300">
+                      {companyInfo}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-2">
