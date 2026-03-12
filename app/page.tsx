@@ -2260,16 +2260,8 @@ function TagPill({ tag }: { tag: string }) {
 }
 
 function getCompanyOneLiner(row: UnifiedRow) {
-  const description =
-    row.business_description ||
-    row.company_description ||
-    row.description ||
-    row.long_description ||
-    row.about_company ||
-    ""
-
-  if (description && description.trim()) {
-    return description.trim()
+  if (row.business_description && row.business_description.trim()) {
+    return row.business_description.trim()
   }
 
   if (row.company_name && row.industry && row.sector) {
@@ -2280,8 +2272,8 @@ function getCompanyOneLiner(row: UnifiedRow) {
     return `${row.company_name} operates in the ${row.sector} sector.`
   }
 
-  if (row.company_name) {
-    return `${row.company_name} appears on today's ranked board based on strong signals.`
+  if (row.company_name && row.industry) {
+    return `${row.company_name} operates in the ${row.industry} industry.`
   }
 
   return "Company information not available."
