@@ -2617,6 +2617,12 @@ function getConfidenceTierLabel(score: number) {
   return "Developing"
 }
 
+function getSignalCategory(row: UnifiedRow) {
+  const storedCategory = (row.primary_signal_category ?? "").trim()
+  if (storedCategory) return storedCategory
+  return row.has_signal_data ? "Strong Buy" : "Technical"
+}
+
 function getFreshnessLabel(row: UnifiedRow) {
   const bucket = (row.freshness_bucket ?? "").trim()
   let age = row.age_days
