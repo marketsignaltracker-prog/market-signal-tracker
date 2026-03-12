@@ -654,9 +654,9 @@ export default function Home() {
           Today’s strongest stock ideas, already narrowed down for you.
         </h1>
 
-        <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-          Instead of sorting through hundreds of tickers, focus on the names showing the strongest combination of momentum, participation, and higher-quality signal support right now.
-        </p>
+       <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
+  Instead of sorting through hundreds of tickers, focus on the names showing the strongest mix of market outperformance, participation, and higher-quality signal support right now.
+</p>
 
         <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
@@ -1177,9 +1177,9 @@ function FeaturedStrongBuyCard({
       value: formatRatio(row.volume_ratio),
     },
     {
-      label: "Vs Market",
-      value: formatPercent(row.relative_strength_20d),
-    },
+  label: "Vs Market",
+  value: formatPercent(row.relative_strength_20d),
+},
     {
       label: "Signals",
       value: formatWholeNumber(row.stacked_signal_count),
@@ -2662,7 +2662,14 @@ function getConfidenceTierLabel(score: number) {
 
 function getFreshnessLabel(row: UnifiedRow) {
   const bucket = (row.freshness_bucket ?? "").trim()
-  const age = row.age_days
+  let age = row.age_days
+
+  if ((age === null || age === undefined) && row.last_screened_at) {
+    const timestamp = new Date(row.last_screened_at).getTime()
+    if (!Number.isNaN(timestamp)) {
+      age = Math.max(0, Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000)))
+    }
+  }
 
   if (bucket === "today") return "Today"
   if (bucket === "fresh") return "1-3D"
