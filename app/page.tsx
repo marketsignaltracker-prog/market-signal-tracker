@@ -692,7 +692,7 @@ export default function Home() {
         }
       `}</style>
 
-      <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-3 py-4 pb-28 sm:px-6 sm:py-8 sm:pb-8 lg:px-8">
+      <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-3 py-4 pb-40 sm:px-6 sm:py-8 sm:pb-8 lg:px-8">
         <section
           id="hero"
           className="relative overflow-hidden rounded-[1.75rem] border border-cyan-400/10 bg-white/[0.04] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.42)] backdrop-blur-md sm:p-5 lg:p-6"
@@ -995,7 +995,10 @@ function MobileAppNav({
   onGoFilters: () => void
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/90 px-3 py-3 backdrop-blur-md sm:hidden">
+    <div
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/90 px-3 pt-3 backdrop-blur-md sm:hidden"
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
+    >
       <div className="mx-auto grid max-w-xl grid-cols-3 gap-2">
         <button
           type="button"
