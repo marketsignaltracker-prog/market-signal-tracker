@@ -582,8 +582,8 @@ export default function Home() {
       .sort(compareRows)
   }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
 
-  const featuredRows = useMemo(() => filteredRows.slice(0, 3), [filteredRows])
-  const remainingRows = useMemo(() => filteredRows.slice(3), [filteredRows])
+  const featuredRows = useMemo(() => filteredRows.slice(0, 6), [filteredRows])
+  const remainingRows = useMemo(() => filteredRows.slice(6), [filteredRows])
 
   const totalPages = Math.max(1, Math.ceil(remainingRows.length / CARDS_PER_PAGE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
@@ -598,8 +598,8 @@ export default function Home() {
 
   const selectedRow = useMemo(() => {
     if (!selectedTicker) return null
-    return rows.find((row) => row.ticker === selectedTicker) ?? null
-  }, [rows, selectedTicker])
+    return filteredRows.find((row) => row.ticker === selectedTicker) ?? null
+  }, [filteredRows, selectedTicker])
 
   const selectedIndex = useMemo(() => {
     if (!selectedTicker) return -1
@@ -652,48 +652,52 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen w-full overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
+    <main className="min-h-screen w-full overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.12),_transparent_22%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.10),_transparent_28%),linear-gradient(to_bottom,_#020617,_#071126_45%,_#020617)] text-white">
       <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
-        <section className="relative w-full min-w-0 overflow-hidden rounded-[1.5rem] border border-emerald-400/15 bg-white/[0.04] p-3 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-sm sm:rounded-[2rem] sm:p-5 lg:p-7">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_30%)]" />
+        <section className="relative overflow-hidden rounded-[2rem] border border-cyan-400/10 bg-white/[0.04] p-4 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-md sm:p-6 lg:p-8">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,211,238,0.12),_transparent_26%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.10),_transparent_30%)]" />
+          <div className="pointer-events-none absolute -right-20 top-10 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
+          <div className="pointer-events-none absolute -left-16 bottom-0 h-52 w-52 rounded-full bg-emerald-400/10 blur-3xl" />
 
-          <div className="relative min-w-0">
-            <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0 max-w-3xl">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <p className="inline-flex max-w-full rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-emerald-300 sm:px-4 sm:text-xs">
-                    Member Market Dashboard
+          <div className="relative">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-3xl min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300 sm:px-4 sm:text-xs">
+                    Market Signal Tracker
                   </p>
-
-                  <span className="inline-flex max-w-full rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-cyan-200 sm:px-4 sm:text-xs">
+                  <span className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200 sm:px-4 sm:text-xs">
+                    Beginner Friendly
+                  </span>
+                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300 sm:px-4 sm:text-xs">
                     Updated Daily
                   </span>
                 </div>
 
-                <h1 className="mt-3 max-w-3xl break-words text-2xl font-bold leading-tight tracking-tight text-white sm:mt-4 sm:text-4xl lg:text-5xl">
-                  Today’s strongest stock ideas, already narrowed down for you.
+                <h1 className="mt-4 max-w-4xl text-3xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
+                  Stocks worth a closer look, explained in a way that actually feels usable.
                 </h1>
 
-                <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-                  Instead of sorting through hundreds of tickers, focus on the names showing the strongest mix of market outperformance, participation, and higher-quality signal support right now.
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                  Instead of digging through endless tickers, start with the names showing the strongest mix of price strength, market attention, and signal support right now.
                 </p>
 
-                <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3">
+                <div className="mt-5 flex flex-wrap gap-3">
                   <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      What you’re seeing
+                      Easy start
                     </p>
                     <p className="mt-1 text-sm font-semibold text-white">
-                      The highest-priority names on today’s board
+                      Tap any card to see the story behind it
                     </p>
                   </div>
 
                   <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                      Best for
+                      Smart ranking
                     </p>
                     <p className="mt-1 text-sm font-semibold text-white">
-                      Members who want faster, simpler stock ideas
+                      Higher scores mean stronger overall setup
                     </p>
                   </div>
 
@@ -701,44 +705,32 @@ export default function Home() {
                     <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
                       Last refresh
                     </p>
-                    <p className="mt-1 truncate text-sm font-semibold text-white">
+                    <p className="mt-1 text-sm font-semibold text-white">
                       {lastUpdated ?? "—"}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:gap-3 lg:w-[390px]">
-                <div className="min-w-0 rounded-[1.25rem] border border-emerald-400/20 bg-[linear-gradient(145deg,rgba(16,185,129,0.18),rgba(255,255,255,0.03))] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.24)] sm:rounded-[1.5rem] sm:p-5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 sm:text-[11px]">
-                    Strong Buys
+              <div className="grid grid-cols-2 gap-3 lg:w-[420px]">
+                <GlassStatCard
+                  label="Strong Buys"
+                  value={loading ? "…" : String(strongBuyCount)}
+                  helper="Names worth attention today"
+                  tone="emerald"
+                />
+                <GlassStatCard
+                  label="Elite Setups"
+                  value={loading ? "…" : String(eliteCount)}
+                  helper="Highest-rated ideas on the board"
+                  tone="cyan"
+                />
+                <div className="col-span-2 rounded-[1.5rem] border border-white/10 bg-black/25 p-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Why this helps
                   </p>
-                  <p className="mt-2 break-words text-3xl font-bold leading-none tracking-tight text-white sm:mt-3 sm:text-5xl">
-                    {loading ? "…" : String(strongBuyCount)}
-                  </p>
-                  <p className="mt-1.5 text-xs leading-5 text-slate-300 sm:mt-2 sm:text-sm">
-                    Curated names worth attention today
-                  </p>
-                </div>
-
-                <div className="min-w-0 rounded-[1.25rem] border border-cyan-400/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.12),rgba(255,255,255,0.03))] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)] sm:rounded-[1.5rem] sm:p-5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200 sm:text-[11px]">
-                    Elite Setups
-                  </p>
-                  <p className="mt-2 break-words text-3xl font-bold leading-none tracking-tight text-white sm:mt-3 sm:text-5xl">
-                    {loading ? "…" : String(eliteCount)}
-                  </p>
-                  <p className="mt-1.5 text-xs leading-5 text-slate-300 sm:mt-2 sm:text-sm">
-                    Highest-rated names on the board
-                  </p>
-                </div>
-
-                <div className="col-span-2 min-w-0 rounded-[1.25rem] border border-white/10 bg-black/25 p-4 sm:rounded-[1.5rem] sm:p-5">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 sm:text-[11px]">
-                    Why this matters
-                  </p>
-                  <p className="mt-2 break-words text-sm leading-6 text-slate-200 sm:text-base sm:leading-7">
-                    These names have already been filtered down so you can spend less time digging and more time focusing on stocks that are standing out versus the market right now.
+                  <p className="mt-2 text-sm leading-7 text-slate-200 sm:text-base">
+                    You are not looking at random stocks. You are looking at a filtered board that already prioritizes names showing stronger behavior than most of the market.
                   </p>
                 </div>
               </div>
@@ -746,28 +738,28 @@ export default function Home() {
           </div>
         </section>
 
-                <section className="mt-6 w-full min-w-0 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] shadow-xl backdrop-blur-sm sm:mt-8 sm:rounded-[2rem]">
+                <section className="mt-6 overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.04] shadow-xl backdrop-blur-md sm:mt-8">
           <div className="p-4 sm:p-6">
-            <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="min-w-0">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
                   Refine the board
                 </p>
-                <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
+                <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
                   Narrow today’s list
                 </h2>
-                <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
-                  Open filters when you want to focus on price ranges, freshness, sector, and more.
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400 sm:text-base">
+                  Use filters when you want more control. Otherwise, the app is already showing the strongest ideas first.
                 </p>
               </div>
 
-              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <button
                   type="button"
                   onClick={() => setFiltersOpen((prev) => !prev)}
                   aria-expanded={filtersOpen}
                   aria-controls="filter-board-panel"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200"
                 >
                   <span>{filtersOpen ? "Hide filters" : "Show filters"}</span>
                   <span
@@ -795,16 +787,16 @@ export default function Home() {
             >
               <div className="overflow-hidden">
                 <div className="border-t border-white/10 pt-5">
-                  <div className="mb-5 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                  <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
                         Filter options
                       </p>
-                      <h3 className="mt-1 break-words text-lg font-semibold text-white sm:text-2xl">
+                      <h3 className="mt-1 text-lg font-semibold text-white sm:text-2xl">
                         Adjust the board to match what you want to review
                       </h3>
-                      <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
-                        Use these only when you want to get more specific. Otherwise, the featured names and ranked board are already ready to review.
+                      <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-400 sm:text-base">
+                        Price, freshness, score, sector, and source can all be narrowed down here.
                       </p>
                     </div>
 
@@ -817,7 +809,7 @@ export default function Home() {
                     </button>
                   </div>
 
-                  <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-6">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                     <FilterSelect
                       label="Price"
                       value={priceFilter}
@@ -898,21 +890,21 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="mt-6 min-w-0 sm:mt-8">
-          <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                Start here
+        <section className="mt-6 sm:mt-8">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                Featured picks
               </p>
-              <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
-                The 3 names most likely to stand out today
+              <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
+                Start with these highest-priority names
               </h2>
-              <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
-                These are the first setups to review if you want the strongest mix of leadership, strength, and current attention without digging through the full board yourself.
+              <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
+                These are the first names to review when you want the strongest blend of momentum, confirmation, and market leadership.
               </p>
             </div>
 
-            <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+            <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
               {loading ? "Loading board…" : `${filteredRows.length} names on today’s board`}
             </div>
           </div>
@@ -925,8 +917,8 @@ export default function Home() {
             <EmptyPanel />
           ) : (
             <>
-              <div className="grid min-w-0 items-start gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {featuredRows.map((row, index) => (
+              <div className="hidden gap-5 md:grid md:grid-cols-2 xl:grid-cols-3">
+                {featuredRows.slice(0, 3).map((row, index) => (
                   <FeaturedStrongBuyCard
                     key={`${row.ticker}-${index}`}
                     row={row}
@@ -936,28 +928,35 @@ export default function Home() {
                 ))}
               </div>
 
-              <section id="board" className="mt-8 min-w-0">
-                <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div className="min-w-0">
+              <div className="md:hidden">
+                <MobileFeaturedCarousel
+                  rows={featuredRows}
+                  onCardClick={openDetails}
+                />
+              </div>
+
+              <section id="board" className="mt-8">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                      Extended board
+                      Ranked board
                     </p>
-                    <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
+                    <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
                       More names worth a closer look
                     </h2>
-                    <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
-                      After the featured picks, this is the rest of today’s ranked board — useful when you want more market leaders and high-strength setups without starting from scratch.
+                    <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
+                      After the featured cards, the rest of the board continues in rank order so you can keep exploring without starting from scratch.
                     </p>
                   </div>
 
-                  <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+                  <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
                     {remainingRows.length === 0
                       ? "No additional names"
                       : `${pageStart}-${pageEnd} of ${remainingRows.length}`}
                   </div>
                 </div>
 
-                <div className="grid min-w-0 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {paginatedRows.map((row, i) => (
                     <TopSignalCard
                       key={getRowKey(row, i)}
@@ -1004,6 +1003,68 @@ export default function Home() {
   )
 }
 
+function GlassStatCard({
+  label,
+  value,
+  helper,
+  tone,
+}: {
+  label: string
+  value: string
+  helper: string
+  tone: "emerald" | "cyan"
+}) {
+  const styles =
+    tone === "emerald"
+      ? "border-emerald-400/20 bg-[linear-gradient(145deg,rgba(16,185,129,0.16),rgba(255,255,255,0.03))]"
+      : "border-cyan-400/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.14),rgba(255,255,255,0.03))]"
+
+  const labelColor = tone === "emerald" ? "text-emerald-200" : "text-cyan-200"
+
+  return (
+    <div className={`rounded-[1.5rem] border p-4 shadow-[0_14px_36px_rgba(0,0,0,0.24)] ${styles}`}>
+      <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] sm:text-[11px] ${labelColor}`}>
+        {label}
+      </p>
+      <p className="mt-3 text-4xl font-bold leading-none tracking-tight text-white sm:text-5xl">
+        {value}
+      </p>
+      <p className="mt-2 text-xs leading-5 text-slate-300 sm:text-sm">{helper}</p>
+    </div>
+  )
+}
+
+function MobileFeaturedCarousel({
+  rows,
+  onCardClick,
+}: {
+  rows: UnifiedRow[]
+  onCardClick: (ticker: string) => void
+}) {
+  return (
+    <div className="-mx-3 px-3">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+          Swipe through top picks
+        </p>
+        <p className="text-xs text-slate-500">{rows.length} cards</p>
+      </div>
+
+      <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {rows.map((row, index) => (
+          <div key={`${row.ticker}-${index}`} className="min-w-[88%] snap-center">
+            <FeaturedStrongBuyCard
+              row={row}
+              rank={index + 1}
+              onClick={() => onCardClick(row.ticker)}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function FilterSelect({
   label,
   value,
@@ -1016,14 +1077,14 @@ function FilterSelect({
   options: Array<{ value: string; label: string }>
 }) {
   return (
-    <div className="min-w-0">
+    <div>
       <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
         {label}
       </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full min-w-0 max-w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3.5 text-white outline-none transition focus:border-emerald-400/40 focus:bg-slate-950 sm:py-4"
+        className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3.5 text-white outline-none transition focus:border-cyan-400/40 focus:bg-slate-950 sm:py-4"
       >
         {options.map((option) => (
           <option key={`${label}-${option.value}`} value={option.value} className="bg-slate-900">
@@ -1197,45 +1258,28 @@ function FeaturedStrongBuyCard({
   const bullets = getFeaturedBullets(row)
 
   const miniMetrics: MiniMetricItem[] = [
-    {
-      label: "Price",
-      value: formatMoney(row.price),
-    },
-    {
-      label: "5D Move",
-      value: formatPercent(row.price_return_5d),
-    },
-    {
-      label: "20D Move",
-      value: formatPercent(row.price_return_20d),
-    },
-    {
-      label: "Volume",
-      value: formatRatio(row.volume_ratio),
-    },
-    {
-      label: "Relative Strength",
-      value: formatRelativeStrengthForDisplay(row),
-    },
-    {
-      label: "Signals",
-      value: formatSignalStack(row.stacked_signal_count, row),
-    },
+    { label: "Price", value: formatMoney(row.price) },
+    { label: "5D Move", value: formatPercent(row.price_return_5d) },
+    { label: "20D Move", value: formatPercent(row.price_return_20d) },
+    { label: "Volume", value: formatRatio(row.volume_ratio) },
+    { label: "Relative Strength", value: formatRelativeStrengthForDisplay(row) },
+    { label: "Signals", value: formatSignalStack(row.stacked_signal_count, row) },
   ].filter((item) => hasDisplayValue(item.value))
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group relative w-full min-w-0 self-start overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.34)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5 lg:p-6"
+      className="group relative w-full overflow-hidden rounded-[1.75rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.36)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5 lg:p-6"
       style={{
         borderColor: `${palette.end}45`,
-        background: `linear-gradient(135deg, ${palette.start}14 0%, rgba(15,23,42,0.94) 34%, rgba(2,6,23,1) 100%)`,
+        background: `linear-gradient(135deg, ${palette.start}14 0%, rgba(10,15,30,0.95) 34%, rgba(2,6,23,1) 100%)`,
       }}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.06),_transparent_25%)] opacity-0 transition group-hover:opacity-100" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.08),_transparent_28%)] opacity-0 transition group-hover:opacity-100" />
+      <div className="pointer-events-none absolute -right-10 top-6 h-28 w-28 rounded-full bg-white/5 blur-2xl" />
 
-      <div className="relative min-w-0">
+      <div className="relative">
         <div className="flex items-start justify-between gap-3">
           <FeaturedRankBadge rank={rank} />
           <div className="shrink-0">
@@ -1243,44 +1287,39 @@ function FeaturedStrongBuyCard({
           </div>
         </div>
 
-        <div className="mt-3 flex min-w-0 flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           <SignalTypeBadge row={row} />
           <FreshnessBadge row={row} />
           <SourceBadge row={row} />
           <ConfidenceBadge row={row} />
         </div>
 
-        <div className="mt-5 min-w-0">
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div className="min-w-0">
-              <h3 className="break-words text-4xl font-bold leading-none tracking-tight text-white sm:text-[2.75rem]">
-                {row.ticker}
-              </h3>
+        <div className="mt-5">
+          <h3 className="text-4xl font-bold leading-none tracking-tight text-white sm:text-[2.8rem]">
+            {row.ticker}
+          </h3>
 
-              {row.company_name ? (
-                <p className="mt-2 break-words text-base text-slate-300 sm:text-lg">
-                  {row.company_name}
-                </p>
-              ) : null}
-            </div>
-          </div>
+          {row.company_name ? (
+            <p className="mt-2 text-base text-slate-300 sm:text-lg">{row.company_name}</p>
+          ) : null}
         </div>
 
         <div className="mt-5">
           <ScoreBar row={row} />
         </div>
 
-        <div className="mt-5 rounded-[1.25rem] border border-white/10 bg-black/20 p-4 sm:rounded-[1.5rem] sm:p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300/80 sm:text-xs">
-            Why this is on today’s short list
+        <div className="mt-5 rounded-[1.5rem] border border-white/10 bg-black/20 p-4 sm:p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/80 sm:text-xs">
+            Why this is on the short list
           </p>
-          <p className="mt-2 break-words text-lg font-semibold leading-7 text-white sm:text-xl">
+          <p className="mt-2 text-lg font-semibold leading-7 text-white sm:text-xl">
             {thesis}
           </p>
+
           <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
             {bullets.map((item, i) => (
               <li key={i} className="flex items-start gap-2">
-                <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
                 <span>{item}</span>
               </li>
             ))}
@@ -1288,24 +1327,32 @@ function FeaturedStrongBuyCard({
         </div>
 
         {!!reasons.length && (
-          <div className="mt-5 flex justify-center">
-            <div className="flex w-full max-w-[440px] min-w-0 flex-wrap justify-center gap-2">
-              {reasons.map((reason) => (
-                <ReasonChip key={reason} label={reason} />
-              ))}
-            </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            {reasons.map((reason) => (
+              <ReasonChip key={reason} label={reason} />
+            ))}
           </div>
         )}
 
         {!!miniMetrics.length && (
-          <div className="mt-5 flex justify-center">
-            <div className="grid w-full max-w-[440px] min-w-0 grid-cols-2 gap-3">
-              {miniMetrics.map((item) => (
-                <MiniMetric key={item.label} label={item.label} value={item.value} />
-              ))}
-            </div>
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            {miniMetrics.map((item) => (
+              <MiniMetric key={item.label} label={item.label} value={item.value} />
+            ))}
           </div>
         )}
+
+        <div className="mt-5 flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+              Tap to explore
+            </p>
+            <p className="mt-1 text-sm text-slate-200">Open the guided detail view</p>
+          </div>
+          <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-200">
+            View →
+          </span>
+        </div>
       </div>
     </button>
   )
@@ -1329,30 +1376,12 @@ function TopSignalCard({
   const takeawayBullets = getPremiumSummaryBullets(row)
 
   const metricItems: MiniMetricItem[] = [
-    {
-      label: "Price",
-      value: formatMoney(row.price),
-    },
-    {
-      label: "Relative Strength",
-      value: formatRelativeStrengthForDisplay(row),
-    },
-    {
-      label: "5D Move",
-      value: formatPercent(row.price_return_5d),
-    },
-    {
-      label: "Volume",
-      value: formatRatio(row.volume_ratio),
-    },
-    {
-      label: "1D Δ",
-      value: formatScoreChange(row.ticker_score_change_1d),
-    },
-    {
-      label: "Tech Score",
-      value: formatSimpleNumber(row.candidate_score),
-    },
+    { label: "Price", value: formatMoney(row.price) },
+    { label: "Relative Strength", value: formatRelativeStrengthForDisplay(row) },
+    { label: "5D Move", value: formatPercent(row.price_return_5d) },
+    { label: "Volume", value: formatRatio(row.volume_ratio) },
+    { label: "1D Δ", value: formatScoreChange(row.ticker_score_change_1d) },
+    { label: "Tech Score", value: formatSimpleNumber(row.candidate_score) },
   ].filter((item) => hasDisplayValue(item.value))
 
   return (
@@ -1360,9 +1389,9 @@ function TopSignalCard({
       type="button"
       onClick={onClick}
       className={[
-        "flex w-full min-w-0 self-start flex-col overflow-hidden rounded-3xl border p-4 text-left shadow-xl transition duration-200 sm:p-5",
+        "flex w-full flex-col overflow-hidden rounded-[1.75rem] border p-4 text-left shadow-xl transition duration-200 sm:p-5",
         isSelected
-          ? "ring-2 ring-emerald-300/25"
+          ? "ring-2 ring-cyan-300/25"
           : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
       ].join(" ")}
       style={{
@@ -1370,11 +1399,11 @@ function TopSignalCard({
         background: `linear-gradient(135deg, ${palette.start}12 0%, rgba(15,23,42,0.92) 40%, rgba(2,6,23,1) 100%)`,
       }}
     >
-      <div className="mb-4 flex min-w-0 items-start justify-between gap-3">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <CardRankBadge rank={rank} />
-            <p className="break-words text-xs uppercase tracking-[0.2em] text-emerald-300/80">
+            <p className="break-words text-xs uppercase tracking-[0.2em] text-cyan-300/80">
               {formatSource(row.primary_signal_source)}
             </p>
             <SourceBadge row={row} />
@@ -1397,13 +1426,13 @@ function TopSignalCard({
       </div>
 
       <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
           Why it could matter today
         </p>
         <ul className="mt-3 space-y-2 text-sm leading-6 text-white">
           {whyBullets.map((item, i) => (
             <li key={i} className="flex items-start gap-2">
-              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
               <span>{item}</span>
             </li>
           ))}
@@ -1411,7 +1440,7 @@ function TopSignalCard({
       </div>
 
       {!!reasons.length && (
-        <div className="mb-4 flex min-w-0 flex-wrap gap-2">
+        <div className="mb-4 flex flex-wrap gap-2">
           {reasons.map((reason) => (
             <ReasonChip key={reason} label={reason} />
           ))}
@@ -1425,7 +1454,7 @@ function TopSignalCard({
       ) : null}
 
       {!!metricItems.length && (
-        <div className="mb-4 grid min-w-0 grid-cols-2 gap-3 auto-rows-fr">
+        <div className="mb-4 grid grid-cols-2 gap-3 auto-rows-fr">
           {metricItems.map((item) => (
             <MiniMetric key={item.label} label={item.label} value={item.value} />
           ))}
@@ -1439,11 +1468,18 @@ function TopSignalCard({
         <ul className="space-y-2 text-sm leading-6 text-slate-100">
           {takeawayBullets.map((item, i) => (
             <li key={i} className="flex items-start gap-2">
-              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
               <span>{item}</span>
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+        <span className="text-sm text-slate-300">Open guided detail</span>
+        <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white">
+          Explore →
+        </span>
       </div>
     </button>
   )
@@ -1460,10 +1496,10 @@ function ScoreBar({
   const palette = getScorePalette(score)
 
   return (
-    <div className="w-full min-w-0 rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
+    <div className="w-full rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-          Display Score
+          Setup Score
         </p>
         <p className="shrink-0 text-sm font-semibold text-white">{score}/100</p>
       </div>
@@ -1497,7 +1533,7 @@ function MiniMetric({
   value: string
 }) {
   return (
-    <div className="flex min-h-[92px] min-w-0 w-full flex-col items-center justify-center rounded-[1.25rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[100px] sm:px-4">
+    <div className="flex min-h-[92px] w-full flex-col items-center justify-center rounded-[1.25rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[100px] sm:px-4">
       <p className="mb-2 break-words text-[10px] uppercase tracking-[0.22em] text-slate-400 sm:text-[11px]">
         {label}
       </p>
@@ -1510,7 +1546,7 @@ function MiniMetric({
 
 function FeaturedRankBadge({ rank }: { rank: number }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-emerald-400 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-950">
+    <span className="inline-flex items-center rounded-full bg-cyan-400 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-950">
       Top #{rank}
     </span>
   )
@@ -1518,7 +1554,7 @@ function FeaturedRankBadge({ rank }: { rank: number }) {
 
 function CardRankBadge({ rank }: { rank: number }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-emerald-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200">
+    <span className="inline-flex items-center rounded-full bg-cyan-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200">
       #{rank}
     </span>
   )
@@ -1609,12 +1645,7 @@ function SignalTypeBadge({ row }: { row: UnifiedRow }) {
   const config = getSignalBadgeConfig(row)
 
   return (
-    <span
-      className={[
-        "inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold",
-        config.className,
-      ].join(" ")}
-    >
+    <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${config.className}`}>
       {config.label}
     </span>
   )
@@ -1622,7 +1653,7 @@ function SignalTypeBadge({ row }: { row: UnifiedRow }) {
 
 function ReasonChip({ label }: { label: string }) {
   return (
-    <span className="inline-flex min-h-[42px] max-w-full items-center justify-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-center text-xs font-semibold text-emerald-200">
+    <span className="inline-flex min-h-[42px] max-w-full items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 text-center text-xs font-semibold text-cyan-200">
       {label}
     </span>
   )
@@ -1678,7 +1709,7 @@ function PaginationControls({
               className={[
                 "min-w-[42px] rounded-xl border px-3 py-2 text-sm font-semibold transition",
                 page === currentPage
-                  ? "border-emerald-400/30 bg-emerald-400/15 text-white"
+                  ? "border-cyan-400/30 bg-cyan-400/15 text-white"
                   : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white",
               ].join(" ")}
             >
@@ -1719,26 +1750,10 @@ function buildPaginationPages(currentPage: number, totalPages: number): Array<nu
   }
 
   if (currentPage >= totalPages - 3) {
-    return [
-      1,
-      "ellipsis",
-      totalPages - 4,
-      totalPages - 3,
-      totalPages - 2,
-      totalPages - 1,
-      totalPages,
-    ]
+    return [1, "ellipsis", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
   }
 
-  return [
-    1,
-    "ellipsis",
-    currentPage - 1,
-    currentPage,
-    currentPage + 1,
-    "ellipsis",
-    totalPages,
-  ]
+  return [1, "ellipsis", currentPage - 1, currentPage, currentPage + 1, "ellipsis", totalPages]
 }
 
 function getSignalBadgeConfig(row: UnifiedRow) {
@@ -2010,16 +2025,13 @@ function SignalDetailsModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md" onClick={onClose}>
       <div
         className="absolute inset-0 flex items-end justify-center p-0 sm:items-center sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex h-[100dvh] w-full max-w-6xl flex-col overflow-hidden rounded-none border border-white/10 bg-slate-950 shadow-2xl sm:h-[92vh] sm:rounded-[2rem]">
-          <div className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/95 backdrop-blur">
+        <div className="flex h-[100dvh] w-full max-w-6xl flex-col overflow-hidden rounded-none border border-white/10 bg-[linear-gradient(to_bottom,_#020617,_#081122_40%,_#020617)] shadow-2xl sm:h-[92vh] sm:rounded-[2rem]">
+          <div className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur">
             <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-2">
                 <button
@@ -2057,12 +2069,12 @@ function SignalDetailsModal({
                     {positionLabel}
                   </p>
                 ) : null}
-                <p className="text-sm font-semibold text-slate-200">Strong Buy Detail</p>
+                <p className="text-sm font-semibold text-slate-200">Guided Detail View</p>
               </div>
             </div>
 
             <div className="border-t border-white/10 px-4 py-4 sm:px-6">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-2xl font-bold sm:text-3xl">{row.ticker}</h2>
                 <ScoreBadge row={row} large />
                 <ConfidenceBadge row={row} />
@@ -2087,7 +2099,7 @@ function SignalDetailsModal({
                     className={[
                       "rounded-full px-3 py-1.5 text-xs font-semibold transition",
                       index === activeSlide
-                        ? "bg-emerald-400/15 text-emerald-200 ring-1 ring-emerald-400/30"
+                        ? "bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-400/30"
                         : "bg-white/5 text-slate-400 ring-1 ring-white/10",
                     ].join(" ")}
                   >
@@ -2103,18 +2115,18 @@ function SignalDetailsModal({
           </div>
 
           <div className="flex-1 overflow-hidden">
-            <div className="hidden h-full min-w-0 overflow-y-auto lg:block">
-              <div className="grid min-w-0 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-                <div className="min-w-0">
-                  <div className="mb-5 rounded-[1.75rem] border border-emerald-400/15 bg-[linear-gradient(135deg,rgba(16,185,129,0.10),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+            <div className="hidden h-full overflow-y-auto lg:block">
+              <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                <div>
+                  <div className="mb-5 rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
                       Why members are seeing this today
                     </p>
                     <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">{thesis}</p>
                     <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-300 sm:text-base">
                       {confidenceBullets.map((item, i) => (
                         <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
                           <span>{item}</span>
                         </li>
                       ))}
@@ -2135,7 +2147,7 @@ function SignalDetailsModal({
                     <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                       Score drivers
                     </p>
-                    <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       {reasons.map((reason) => (
                         <ReasonCard key={`${reason.label}-${reason.value}`} reason={reason} />
                       ))}
@@ -2146,7 +2158,7 @@ function SignalDetailsModal({
                     <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                       Score movement
                     </p>
-                    <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
                       <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
                     </div>
@@ -2159,14 +2171,14 @@ function SignalDetailsModal({
                     <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-200 sm:text-base">
                       {setupBullets.map((item, i) => (
                         <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
                           <span>{item}</span>
                         </li>
                       ))}
                     </ul>
 
                     {!!tags.length && (
-                      <div className="mt-4 flex min-w-0 flex-wrap gap-2">
+                      <div className="mt-4 flex flex-wrap gap-2">
                         {tags.slice(0, 12).map((tag) => (
                           <TagPill key={tag} tag={tag} />
                         ))}
@@ -2178,11 +2190,8 @@ function SignalDetailsModal({
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                       What confirms the setup
                     </p>
-                    <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2">
-                      <ConfirmationRow
-                        label="Price confirmation"
-                        value={row.price_confirmed === true ? "Confirmed" : "Not confirmed"}
-                      />
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <ConfirmationRow label="Price confirmation" value={row.price_confirmed === true ? "Confirmed" : "Not confirmed"} />
                       <ConfirmationRow
                         label="Breakout"
                         value={
@@ -2197,25 +2206,16 @@ function SignalDetailsModal({
                         label="Trend alignment"
                         value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"}
                       />
-                      <ConfirmationRow
-                        label="Relative strength"
-                        value={formatRelativeStrengthForDisplay(row)}
-                      />
-                      <ConfirmationRow
-                        label="Participation"
-                        value={formatRatio(row.volume_ratio)}
-                      />
-                      <ConfirmationRow
-                        label="Signal stack"
-                        value={formatSignalStack(row.stacked_signal_count, row)}
-                      />
+                      <ConfirmationRow label="Relative strength" value={formatRelativeStrengthForDisplay(row)} />
+                      <ConfirmationRow label="Participation" value={formatRatio(row.volume_ratio)} />
+                      <ConfirmationRow label="Signal stack" value={formatSignalStack(row.stacked_signal_count, row)} />
                     </div>
                   </div>
                 </div>
 
-                <div className="min-w-0 rounded-3xl border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                    Conviction snapshot
+                <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                    Quick snapshot
                   </p>
 
                   <div className="mt-4 space-y-3">
@@ -2304,15 +2304,15 @@ function SignalDetailsModal({
             >
               <div className="h-full min-w-full snap-center overflow-y-auto p-4 pb-28">
                 <div className="space-y-5">
-                  <div className="rounded-[1.75rem] border border-emerald-400/15 bg-[linear-gradient(135deg,rgba(16,185,129,0.10),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                  <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
                       Why members are seeing this today
                     </p>
                     <p className="mt-2 break-words text-xl font-semibold text-white">{thesis}</p>
                     <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-300">
                       {confidenceBullets.map((item, i) => (
                         <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
                           <span>{item}</span>
                         </li>
                       ))}
@@ -2326,9 +2326,7 @@ function SignalDetailsModal({
                       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                         Company
                       </p>
-                      <p className="break-words text-sm leading-7 text-slate-300">
-                        {row.business_description}
-                      </p>
+                      <p className="break-words text-sm leading-7 text-slate-300">{row.business_description}</p>
                     </div>
                   ) : null}
 
@@ -2339,7 +2337,7 @@ function SignalDetailsModal({
                     <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-200">
                       {setupBullets.map((item, i) => (
                         <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
                           <span>{item}</span>
                         </li>
                       ))}
@@ -2384,10 +2382,7 @@ function SignalDetailsModal({
                       What confirms the setup
                     </p>
                     <div className="mt-4 grid gap-3">
-                      <ConfirmationRow
-                        label="Price confirmation"
-                        value={row.price_confirmed === true ? "Confirmed" : "Not confirmed"}
-                      />
+                      <ConfirmationRow label="Price confirmation" value={row.price_confirmed === true ? "Confirmed" : "Not confirmed"} />
                       <ConfirmationRow
                         label="Breakout"
                         value={
@@ -2402,18 +2397,9 @@ function SignalDetailsModal({
                         label="Trend alignment"
                         value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"}
                       />
-                      <ConfirmationRow
-                        label="Relative strength"
-                        value={formatRelativeStrengthForDisplay(row)}
-                      />
-                      <ConfirmationRow
-                        label="Participation"
-                        value={formatRatio(row.volume_ratio)}
-                      />
-                      <ConfirmationRow
-                        label="Signal stack"
-                        value={formatSignalStack(row.stacked_signal_count, row)}
-                      />
+                      <ConfirmationRow label="Relative strength" value={formatRelativeStrengthForDisplay(row)} />
+                      <ConfirmationRow label="Participation" value={formatRatio(row.volume_ratio)} />
+                      <ConfirmationRow label="Signal stack" value={formatSignalStack(row.stacked_signal_count, row)} />
                     </div>
                   </div>
                 </div>
@@ -2422,8 +2408,8 @@ function SignalDetailsModal({
               <div className="h-full min-w-full snap-center overflow-y-auto p-4 pb-28">
                 <div className="space-y-5">
                   <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                      Conviction snapshot
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                      Quick snapshot
                     </p>
 
                     <div className="mt-4 space-y-3">
@@ -2483,7 +2469,7 @@ function SignalDetailsModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-3 text-sm font-semibold text-emerald-200 transition hover:border-emerald-400/30 hover:bg-emerald-400/15"
+                className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-3 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/30 hover:bg-cyan-400/15"
               >
                 Back to Board
               </button>
@@ -2516,11 +2502,9 @@ function MetricRow({
   }
 
   return (
-    <div className="flex min-w-0 items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3 text-sm">
+    <div className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3 text-sm">
       <span className="min-w-0 break-words text-slate-400">{label}</span>
-      <span className="max-w-[58%] truncate text-right font-semibold text-white">
-        {value}
-      </span>
+      <span className="max-w-[58%] truncate text-right font-semibold text-white">{value}</span>
     </div>
   )
 }
@@ -2533,7 +2517,7 @@ function ConfirmationRow({
   value: string
 }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
       <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
       <p className="mt-2 break-words text-sm font-semibold text-white">{value}</p>
     </div>
@@ -2556,7 +2540,7 @@ function ReasonCard({ reason }: { reason: ReasonLine }) {
         : "text-slate-300"
 
   return (
-    <div className={`min-w-0 rounded-2xl border p-4 ${classes}`}>
+    <div className={`rounded-2xl border p-4 ${classes}`}>
       <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{reason.label}</p>
       <p className={`mt-2 break-words text-sm font-semibold ${textClasses}`}>{reason.value}</p>
     </div>
@@ -2587,7 +2571,7 @@ function MovementCard({
   return (
     <div
       className={[
-        "min-w-0 rounded-2xl border p-4",
+        "rounded-2xl border p-4",
         isUp
           ? "border-emerald-400/20 bg-emerald-500/10"
           : isDown
@@ -2628,9 +2612,7 @@ function StrengthBadge({ bucket }: { bucket?: string | null }) {
         : "border-yellow-400/30 bg-yellow-400/10 text-yellow-300"
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}
-    >
+    <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}>
       {value}
     </span>
   )
@@ -2979,34 +2961,18 @@ function getScorePalette(score: number) {
   const s = Math.max(0, Math.min(100, score))
 
   if (s <= 69) {
-    return {
-      start: "#facc15",
-      end: "#eab308",
-      text: "#1f2937",
-    }
+    return { start: "#facc15", end: "#eab308", text: "#1f2937" }
   }
 
   if (s <= 79) {
-    return {
-      start: "#a3e635",
-      end: "#84cc16",
-      text: "#15210b",
-    }
+    return { start: "#a3e635", end: "#84cc16", text: "#15210b" }
   }
 
   if (s <= 89) {
-    return {
-      start: "#4ade80",
-      end: "#22c55e",
-      text: "#0b1a10",
-    }
+    return { start: "#4ade80", end: "#22c55e", text: "#0b1a10" }
   }
 
-  return {
-    start: "#22c55e",
-    end: "#16a34a",
-    text: "#08110a",
-  }
+  return { start: "#22c55e", end: "#16a34a", text: "#08110a" }
 }
 
 function getConfidenceTierLabel(score: number) {
