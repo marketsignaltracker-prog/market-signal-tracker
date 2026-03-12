@@ -15,6 +15,7 @@ type CandidateUniverseRow = {
   return_5d?: number | null
   return_10d?: number | null
   return_20d?: number | null
+  relative_strength_20d?: number | null
   volume_ratio?: number | null
   breakout_20d?: boolean | null
   breakout_10d?: boolean | null
@@ -401,6 +402,7 @@ export default function Home() {
               return_5d,
               return_10d,
               return_20d,
+              relative_strength_20d,
               volume_ratio,
               breakout_20d,
               breakout_10d,
