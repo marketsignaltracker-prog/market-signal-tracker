@@ -1260,7 +1260,6 @@ function TopSignalCard({
   const [showCompanyInfo, setShowCompanyInfo] = useState(false)
 
   const hasRealCompanyInfo = Boolean(row.business_description?.trim())
-  const summaryPreview = (row.business_description || row.primary_summary || "").trim()
 
   const infoTitle = hasRealCompanyInfo ? "About the company" : "Current signal summary"
   const infoBody = hasRealCompanyInfo
@@ -1293,7 +1292,7 @@ function TopSignalCard({
       }}
     >
       <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <CardRankBadge rank={rank} />
           </div>
@@ -1308,13 +1307,7 @@ function TopSignalCard({
             </p>
           ) : null}
 
-          {summaryPreview ? (
-            <p className="mt-2 text-sm leading-6 text-slate-300">
-              {truncateText(summaryPreview, 120)}
-            </p>
-          ) : null}
-
-          <div className="mt-2">
+          <div className="mt-3">
             <button
               type="button"
               onClick={(e) => {
@@ -1325,30 +1318,30 @@ function TopSignalCard({
             >
               {showCompanyInfo ? "Hide details" : hasRealCompanyInfo ? "About the company" : "More info"}
             </button>
-
-            <div
-              className={[
-                "grid transition-all duration-300 ease-out",
-                showCompanyInfo ? "mt-2 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-              ].join(" ")}
-            >
-              <div className="overflow-hidden">
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300/80">
-                    {infoTitle}
-                  </p>
-                  <p className="text-sm leading-6 text-slate-300">
-                    {infoBody}
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-2">
           <ScoreBadge row={row} />
           <FreshnessBadge row={row} />
+        </div>
+      </div>
+
+      <div
+        className={[
+          "grid transition-all duration-300 ease-out",
+          showCompanyInfo ? "mb-4 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        ].join(" ")}
+      >
+        <div className="overflow-hidden">
+          <div className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300/80">
+              {infoTitle}
+            </p>
+            <p className="text-sm leading-6 text-slate-300">
+              {infoBody}
+            </p>
+          </div>
         </div>
       </div>
 
