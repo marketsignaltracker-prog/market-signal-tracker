@@ -358,7 +358,7 @@ function firstBooleanOrNull(...values: Array<boolean | null | undefined>) {
 }
 
 export default function Home() {
-    const [rows, setRows] = useState<UnifiedRow[]>([])
+  const [rows, setRows] = useState<UnifiedRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -591,7 +591,7 @@ export default function Home() {
   const pageStart = remainingRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
   const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, remainingRows.length)
 
-    const selectedRow = useMemo(() => {
+  const selectedRow = useMemo(() => {
     if (!selectedTicker) return null
     return rows.find((row) => row.ticker === selectedTicker) ?? null
   }, [rows, selectedTicker])
@@ -619,7 +619,7 @@ export default function Home() {
     setSelectedTicker(null)
   }
 
-    function resetFilters() {
+  function resetFilters() {
     setPriceFilter("all")
     setPeFilter("all")
     setFreshnessFilter("all")
@@ -634,98 +634,99 @@ export default function Home() {
   return (
     <main className="min-h-screen w-full overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.14),_transparent_22%),linear-gradient(to_bottom,_#020617,_#0f172a_45%,_#020617)] text-white">
       <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
-     <section className="relative w-full min-w-0 overflow-hidden rounded-[1.5rem] border border-emerald-400/15 bg-white/[0.04] p-3 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-sm sm:rounded-[2rem] sm:p-5 lg:p-7">
-  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_30%)]" />
+        <section className="relative w-full min-w-0 overflow-hidden rounded-[1.5rem] border border-emerald-400/15 bg-white/[0.04] p-3 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-sm sm:rounded-[2rem] sm:p-5 lg:p-7">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,197,94,0.14),_transparent_28%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_30%)]" />
 
-  <div className="relative min-w-0">
-    <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-      <div className="min-w-0 max-w-3xl">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <p className="inline-flex max-w-full rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-emerald-300 sm:px-4 sm:text-xs">
-            Member Market Dashboard
-          </p>
+          <div className="relative min-w-0">
+            <div className="flex min-w-0 flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0 max-w-3xl">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="inline-flex max-w-full rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-emerald-300 sm:px-4 sm:text-xs">
+                    Member Market Dashboard
+                  </p>
 
-          <span className="inline-flex max-w-full rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-cyan-200 sm:px-4 sm:text-xs">
-            Updated Daily
-          </span>
-        </div>
+                  <span className="inline-flex max-w-full rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-cyan-200 sm:px-4 sm:text-xs">
+                    Updated Daily
+                  </span>
+                </div>
 
-        <h1 className="mt-3 max-w-3xl break-words text-2xl font-bold leading-tight tracking-tight text-white sm:mt-4 sm:text-4xl lg:text-5xl">
-          Today’s strongest stock ideas, already narrowed down for you.
-        </h1>
+                <h1 className="mt-3 max-w-3xl break-words text-2xl font-bold leading-tight tracking-tight text-white sm:mt-4 sm:text-4xl lg:text-5xl">
+                  Today’s strongest stock ideas, already narrowed down for you.
+                </h1>
 
-       <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-  Instead of sorting through hundreds of tickers, focus on the names showing the strongest mix of market outperformance, participation, and higher-quality signal support right now.
-</p>
+                <p className="mt-3 max-w-2xl break-words text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
+                  Instead of sorting through hundreds of tickers, focus on the names showing the strongest mix of market outperformance, participation, and higher-quality signal support right now.
+                </p>
 
-        <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-              What you’re seeing
-            </p>
-            <p className="mt-1 text-sm font-semibold text-white">
-              The highest-priority names on today’s board
-            </p>
+                <div className="mt-4 grid min-w-0 gap-2 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      What you’re seeing
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      The highest-priority names on today’s board
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Best for
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-white">
+                      Members who want faster, simpler stock ideas
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Last refresh
+                    </p>
+                    <p className="mt-1 truncate text-sm font-semibold text-white">
+                      {lastUpdated ?? "—"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:gap-3 lg:w-[390px]">
+                <div className="min-w-0 rounded-[1.25rem] border border-emerald-400/20 bg-[linear-gradient(145deg,rgba(16,185,129,0.18),rgba(255,255,255,0.03))] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.24)] sm:rounded-[1.5rem] sm:p-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 sm:text-[11px]">
+                    Strong Buys
+                  </p>
+                  <p className="mt-2 break-words text-3xl font-bold leading-none tracking-tight text-white sm:mt-3 sm:text-5xl">
+                    {loading ? "…" : String(strongBuyCount)}
+                  </p>
+                  <p className="mt-1.5 text-xs leading-5 text-slate-300 sm:mt-2 sm:text-sm">
+                    Curated names worth attention today
+                  </p>
+                </div>
+
+                <div className="min-w-0 rounded-[1.25rem] border border-cyan-400/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.12),rgba(255,255,255,0.03))] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)] sm:rounded-[1.5rem] sm:p-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200 sm:text-[11px]">
+                    Elite Setups
+                  </p>
+                  <p className="mt-2 break-words text-3xl font-bold leading-none tracking-tight text-white sm:mt-3 sm:text-5xl">
+                    {loading ? "…" : String(eliteCount)}
+                  </p>
+                  <p className="mt-1.5 text-xs leading-5 text-slate-300 sm:mt-2 sm:text-sm">
+                    Highest-rated names on the board
+                  </p>
+                </div>
+
+                <div className="col-span-2 min-w-0 rounded-[1.25rem] border border-white/10 bg-black/25 p-4 sm:rounded-[1.5rem] sm:p-5">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 sm:text-[11px]">
+                    Why this matters
+                  </p>
+                  <p className="mt-2 break-words text-sm leading-6 text-slate-200 sm:text-base sm:leading-7">
+                    These names have already been filtered down so you can spend less time digging and more time focusing on stocks that are standing out versus the market right now.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-              Best for
-            </p>
-            <p className="mt-1 text-sm font-semibold text-white">
-              Members who want faster, simpler stock ideas
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-              Last refresh
-            </p>
-            <p className="mt-1 truncate text-sm font-semibold text-white">
-              {lastUpdated ?? "—"}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:gap-3 lg:w-[390px]">
-        <div className="min-w-0 rounded-[1.25rem] border border-emerald-400/20 bg-[linear-gradient(145deg,rgba(16,185,129,0.18),rgba(255,255,255,0.03))] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.24)] sm:rounded-[1.5rem] sm:p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 sm:text-[11px]">
-            Strong Buys
-          </p>
-          <p className="mt-2 break-words text-3xl font-bold leading-none tracking-tight text-white sm:mt-3 sm:text-5xl">
-            {loading ? "…" : String(strongBuyCount)}
-          </p>
-          <p className="mt-1.5 text-xs leading-5 text-slate-300 sm:mt-2 sm:text-sm">
-            Curated names worth attention today
-          </p>
-        </div>
-
-        <div className="min-w-0 rounded-[1.25rem] border border-cyan-400/20 bg-[linear-gradient(145deg,rgba(34,211,238,0.12),rgba(255,255,255,0.03))] p-3.5 shadow-[0_14px_36px_rgba(0,0,0,0.22)] sm:rounded-[1.5rem] sm:p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-200 sm:text-[11px]">
-            Elite Setups
-          </p>
-          <p className="mt-2 break-words text-3xl font-bold leading-none tracking-tight text-white sm:mt-3 sm:text-5xl">
-            {loading ? "…" : String(eliteCount)}
-          </p>
-          <p className="mt-1.5 text-xs leading-5 text-slate-300 sm:mt-2 sm:text-sm">
-            Highest-rated names on the board
-          </p>
-        </div>
-
-        <div className="col-span-2 min-w-0 rounded-[1.25rem] border border-white/10 bg-black/25 p-4 sm:rounded-[1.5rem] sm:p-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400 sm:text-[11px]">
-            Why this matters
-          </p>
-          <p className="mt-2 break-words text-sm leading-6 text-slate-200 sm:text-base sm:leading-7">
-            These names have already been filtered down so you can spend less time digging and more time focusing on the stocks most likely to be getting attention right now.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-                        <section className="mt-6 w-full min-w-0 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] shadow-xl backdrop-blur-sm sm:mt-8 sm:rounded-[2rem]">
+                <section className="mt-6 w-full min-w-0 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] shadow-xl backdrop-blur-sm sm:mt-8 sm:rounded-[2rem]">
           <div className="p-4 sm:p-6">
             <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
@@ -736,7 +737,7 @@ export default function Home() {
                   Narrow today’s list
                 </h2>
                 <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
-                Open filters when you want to focus on price ranges, freshness, sector, etc..
+                  Open filters when you want to focus on price ranges, freshness, sector, etc..
                 </p>
               </div>
 
@@ -873,22 +874,22 @@ export default function Home() {
 
         <section className="mt-6 min-w-0 sm:mt-8">
           <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-  <div className="min-w-0">
-    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-      Start here
-    </p>
-    <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
-      The 3 names most likely to stand out today
-    </h2>
-    <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
-      These are the first setups to review if you want the strongest mix of quality, strength, and current attention without digging through the full board yourself.
-    </p>
-  </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                Start here
+              </p>
+              <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
+                The 3 names most likely to stand out today
+              </h2>
+              <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
+                These are the first setups to review if you want the strongest mix of leadership, strength, and current attention without digging through the full board yourself.
+              </p>
+            </div>
 
-  <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-    {loading ? "Loading board…" : `${filteredRows.length} names on today’s board`}
-  </div>
-</div>
+            <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+              {loading ? "Loading board…" : `${filteredRows.length} names on today’s board`}
+            </div>
+          </div>
 
           {loading ? (
             <LoadingPanel />
@@ -911,24 +912,24 @@ export default function Home() {
 
               <section id="board" className="mt-8 min-w-0">
                 <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-  <div className="min-w-0">
-    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-      Extended board
-    </p>
-    <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
-      More names worth a closer look
-    </h2>
-    <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
-      After the featured picks, this is the rest of today’s ranked board — useful when you want more options without starting from scratch.
-    </p>
-  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                      Extended board
+                    </p>
+                    <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
+                      More names worth a closer look
+                    </h2>
+                    <p className="mt-2 break-words text-sm leading-7 text-slate-400 sm:text-base">
+                      After the featured picks, this is the rest of today’s ranked board — useful when you want more market leaders and high-strength setups without starting from scratch.
+                    </p>
+                  </div>
 
-  <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-    {remainingRows.length === 0
-      ? "No additional names"
-      : `${pageStart}-${pageEnd} of ${remainingRows.length}`}
-  </div>
-</div>
+                  <div className="max-w-full rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+                    {remainingRows.length === 0
+                      ? "No additional names"
+                      : `${pageStart}-${pageEnd} of ${remainingRows.length}`}
+                  </div>
+                </div>
 
                 <div className="grid min-w-0 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {paginatedRows.map((row, i) => (
@@ -957,9 +958,9 @@ export default function Home() {
           )}
         </section>
 
-      <footer className="mt-10 border-t border-white/10 pt-8 text-sm leading-6 text-slate-500">
-  Rankings are model-based and designed to help members surface promising stock ideas faster. They are not guarantees, and they should be used as part of a broader decision process.
-</footer>
+        <footer className="mt-10 border-t border-white/10 pt-8 text-sm leading-6 text-slate-500">
+          Rankings are model-based and designed to help members surface promising stock ideas faster. They are not guarantees, and they should be used as part of a broader decision process.
+        </footer>
       </div>
 
       {selectedRow ? <SignalDetailsModal row={selectedRow} onClose={closeDetails} /> : null}
@@ -995,15 +996,6 @@ function FilterSelect({
         ))}
       </select>
     </div>
-  )
-}
-
-function BoardChip({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-sm text-emerald-200">
-      <span className="text-slate-300">{label}:</span>
-      <span className="font-semibold text-white">{value}</span>
-    </span>
   )
 }
 
@@ -1078,7 +1070,15 @@ function matchesPeFilter(row: UnifiedRow, peFilter: PeFilterType) {
 function matchesFreshnessFilter(row: UnifiedRow, freshnessFilter: FreshnessFilterType) {
   if (freshnessFilter === "all") return true
 
-  const age = row.age_days
+  let age = row.age_days
+
+  if ((age === null || age === undefined) && row.last_screened_at) {
+    const timestamp = new Date(row.last_screened_at).getTime()
+    if (!Number.isNaN(timestamp)) {
+      age = Math.max(0, Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000)))
+    }
+  }
+
   if (age === null || age === undefined) {
     return false
   }
@@ -1158,6 +1158,7 @@ function FeaturedStrongBuyCard({
   const palette = getScorePalette(score)
   const reasons = getTopReasonChips(row)
   const thesis = getFeaturedThesis(row)
+  const bullets = getFeaturedBullets(row)
 
   const miniMetrics: MiniMetricItem[] = [
     {
@@ -1177,9 +1178,9 @@ function FeaturedStrongBuyCard({
       value: formatRatio(row.volume_ratio),
     },
     {
-  label: "Vs Market",
-  value: formatPercent(row.relative_strength_20d),
-},
+      label: "Vs Market",
+      value: formatPercent(row.relative_strength_20d),
+    },
     {
       label: "Signals",
       value: formatWholeNumber(row.stacked_signal_count),
@@ -1190,7 +1191,8 @@ function FeaturedStrongBuyCard({
     <button
       type="button"
       onClick={onClick}
-className="group relative w-full min-w-0 self-start overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.34)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5 lg:p-6"      style={{
+      className="group relative w-full min-w-0 self-start overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.34)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5 lg:p-6"
+      style={{
         borderColor: `${palette.end}45`,
         background: `linear-gradient(135deg, ${palette.start}14 0%, rgba(15,23,42,0.94) 34%, rgba(2,6,23,1) 100%)`,
       }}
@@ -1240,13 +1242,13 @@ className="group relative w-full min-w-0 self-start overflow-hidden rounded-[1.5
             {thesis}
           </p>
           <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-  {getSetupBullets(row).map((item, i) => (
-    <li key={i} className="flex items-start gap-2">
-      <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-      <span>{item}</span>
-    </li>
-  ))}
-</ul>
+            {bullets.map((item, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
         {!!reasons.length && (
@@ -1291,6 +1293,8 @@ function TopSignalCard({
   const score = row.display_score
   const palette = getScorePalette(score)
   const reasons = getTopReasonChips(row)
+  const whyBullets = getSimpleCardBullets(row)
+  const takeawayBullets = getPremiumSummaryBullets(row)
 
   const metricItems: MiniMetricItem[] = [
     {
@@ -1324,11 +1328,11 @@ function TopSignalCard({
       type="button"
       onClick={onClick}
       className={[
-  "flex w-full min-w-0 self-start flex-col overflow-hidden rounded-3xl border p-4 text-left shadow-xl transition duration-200 sm:p-5",
-  isSelected
-    ? "ring-2 ring-emerald-300/25"
-    : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
-].join(" ")}
+        "flex w-full min-w-0 self-start flex-col overflow-hidden rounded-3xl border p-4 text-left shadow-xl transition duration-200 sm:p-5",
+        isSelected
+          ? "ring-2 ring-emerald-300/25"
+          : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
+      ].join(" ")}
       style={{
         borderColor: isSelected ? `${palette.end}80` : `${palette.end}33`,
         background: `linear-gradient(135deg, ${palette.start}12 0%, rgba(15,23,42,0.92) 40%, rgba(2,6,23,1) 100%)`,
@@ -1361,13 +1365,18 @@ function TopSignalCard({
       </div>
 
       <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-    Why it could matter today
-  </p>
-  <p className="mt-2 break-words text-sm font-semibold leading-6 text-white">
-    {getSimpleCardExplanation(row)}
-  </p>
-</div>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+          Why it could matter today
+        </p>
+        <ul className="mt-3 space-y-2 text-sm leading-6 text-white">
+          {whyBullets.map((item, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       {!!reasons.length && (
         <div className="mb-4 flex min-w-0 flex-wrap gap-2">
@@ -1399,9 +1408,14 @@ function TopSignalCard({
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
           Member takeaway
         </p>
-        <p className="break-words text-sm leading-6 text-slate-100">
-          {truncateText(getPremiumSummary(row), 180)}
-        </p>
+        <ul className="space-y-2 text-sm leading-6 text-slate-100">
+          {takeawayBullets.map((item, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
       </div>
     </button>
   )
@@ -1445,42 +1459,6 @@ function ScoreBar({
       ) : null}
     </div>
   )
-}
-
-function getSetupBullets(row: UnifiedRow) {
-  const bullets: string[] = []
-
-  if (row.breakout_20d || row.breakout_52w) {
-    bullets.push("The stock just broke above recent price levels.")
-  }
-
-  if ((row.volume_ratio ?? 0) > 1.3) {
-    bullets.push("Trading volume is higher than normal, suggesting stronger participation.")
-  }
-
-  if ((row.relative_strength_20d ?? 0) > 0) {
-    bullets.push("It has been outperforming the broader market recently.")
-  }
-
-  if ((row.stacked_signal_count ?? 0) >= 2) {
-    bullets.push("Multiple bullish signals are showing up at the same time.")
-  }
-
-  if ((row.earnings_surprise_pct ?? 0) > 0) {
-    bullets.push("Recent earnings came in stronger than expected.")
-  }
-
-  if ((row.revenue_growth_pct ?? 0) > 10) {
-    bullets.push("The company is showing solid revenue growth.")
-  }
-
-  if (bullets.length === 0) {
-    bullets.push(
-      "This stock is showing multiple signs of strength compared with others on the board."
-    )
-  }
-
-  return bullets.slice(0, 3)
 }
 
 function MiniMetric({
@@ -1809,7 +1787,7 @@ function getFeaturedThesis(row: UnifiedRow) {
   }
 
   if ((row.relative_strength_20d ?? 0) >= 8) {
-    return "This name is outperforming while conviction stays high"
+    return "This name is acting like a true market leader right now"
   }
 
   if ((row.candidate_score ?? 0) >= 85 && !row.has_signal_data) {
@@ -1819,69 +1797,110 @@ function getFeaturedThesis(row: UnifiedRow) {
   return "A high-conviction setup with strong current support"
 }
 
-function getCardThesis(row: UnifiedRow) {
-  if (row.primary_title) return row.primary_title
-  if (row.screen_reason) return row.screen_reason
+function getFeaturedBullets(row: UnifiedRow) {
+  const bullets: string[] = []
 
-  if (row.primary_signal_source === "breakout") {
-    return "Fresh technical setup with confirmed momentum"
+  if (row.breakout_20d || row.breakout_52w) {
+    bullets.push("The stock is pushing above recent price levels, which can be a sign that buyers are stepping in.")
   }
 
-  if ((row.cluster_buyers ?? 0) >= 2) {
-    return "Buying interest is showing up in a meaningful way"
+  if ((row.volume_ratio ?? 0) > 1.3) {
+    bullets.push("Trading volume is higher than normal, which suggests more people are paying attention.")
   }
 
-  if ((row.volume_ratio ?? 0) >= 2 && (row.price_return_5d ?? 0) >= 5) {
-    return "Participation and price action are moving together"
+  if ((row.relative_strength_20d ?? 0) > 0) {
+    bullets.push("It has been outperforming both the broader market and much of the stock universe recently.")
   }
 
-  return "Strong buy conditions are lining up"
+  if ((row.stacked_signal_count ?? 0) >= 2) {
+    bullets.push("More than one bullish signal is showing up at the same time, which makes the setup stronger.")
+  }
+
+  if ((row.earnings_surprise_pct ?? 0) > 0) {
+    bullets.push("Recent earnings came in better than expected.")
+  }
+
+  if ((row.revenue_growth_pct ?? 0) > 10) {
+    bullets.push("The company is still growing revenue at a healthy pace.")
+  }
+
+  if (bullets.length === 0) {
+    bullets.push("This stock is showing several signs of strength compared with others on today’s board.")
+  }
+
+  return bullets.slice(0, 3)
 }
 
-function getSimpleCardExplanation(row: UnifiedRow) {
+function getSimpleCardBullets(row: UnifiedRow) {
   const points: string[] = []
 
   if (row.primary_signal_source === "breakout" || row.breakout_20d || row.breakout_52w) {
-    points.push("The stock is pushing above recent price levels")
+    points.push("The stock is pushing above recent price levels.")
   }
 
   if ((row.volume_ratio ?? 0) >= 1.5) {
-    points.push("trading activity is stronger than normal")
+    points.push("Trading activity is stronger than normal.")
   }
 
   if ((row.relative_strength_20d ?? 0) >= 5) {
-    points.push("it has been outperforming much of the market")
+    points.push("It has been outperforming the market while also standing out versus other stocks.")
   }
 
   if ((row.cluster_buyers ?? 0) >= 2) {
-    points.push("multiple bullish signals are showing up at once")
+    points.push("Multiple bullish signals are showing up at once.")
   }
 
   if ((row.earnings_surprise_pct ?? 0) >= 10) {
-    points.push("recent earnings were stronger than expected")
+    points.push("Recent earnings were stronger than expected.")
   }
 
   if ((row.revenue_growth_pct ?? 0) >= 15) {
-    points.push("the business is still showing solid growth")
+    points.push("The business is still showing solid growth.")
   }
 
   if (row.guidance_flag === true) {
-    points.push("management outlook appears supportive")
+    points.push("Management outlook appears supportive.")
   }
 
   if (points.length === 0) {
-    return "This stock is showing enough strength right now to stay on today’s ranked board."
+    points.push("This stock is showing enough strength right now to stay on today’s ranked board.")
   }
 
-  if (points.length === 1) {
-    return `${capitalizeFirst(points[0])}.`
+  return points.slice(0, 3)
+}
+
+function getPremiumSummaryBullets(row: UnifiedRow) {
+  const bullets: string[] = []
+
+  if (row.has_candidate_data && row.has_signal_data) {
+    bullets.push("This stock passed the technical screen and also picked up extra confirmation from filings or other signals.")
   }
 
-  if (points.length === 2) {
-    return `${capitalizeFirst(points[0])}, and ${points[1]}.`
+  if (row.has_candidate_data && !row.has_signal_data) {
+    bullets.push("This stock is here mainly because its technical setup scored well on the model.")
   }
 
-  return `${capitalizeFirst(points[0])}, ${points[1]}, and ${points[2]}.`
+  if (row.has_signal_data && !row.has_candidate_data) {
+    bullets.push("This stock is here mainly because the signal layer was strong enough on its own.")
+  }
+
+  if ((row.relative_strength_20d ?? 0) > 0) {
+    bullets.push("It has been beating the broader market recently.")
+  }
+
+  if ((row.volume_ratio ?? 0) >= 1.5) {
+    bullets.push("Higher-than-normal trading volume suggests stronger interest from buyers.")
+  }
+
+  if ((row.candidate_score ?? 0) >= 90) {
+    bullets.push("Its technical score is strong compared with most names on the board.")
+  }
+
+  if (!bullets.length) {
+    bullets.push("This setup has enough strength and support to deserve attention today.")
+  }
+
+  return bullets.slice(0, 3)
 }
 
 function SignalDetailsModal({
@@ -1894,6 +1913,8 @@ function SignalDetailsModal({
   const reasons = getTopReasonLines(row)
   const tags = normalizeTags(row.signal_tags)
   const thesis = getFeaturedThesis(row)
+  const confidenceBullets = getConfidenceBullets(row)
+  const setupBullets = getSimpleSetupBullets(row)
 
   return (
     <div
@@ -1937,14 +1958,19 @@ function SignalDetailsModal({
         <div className="grid min-w-0 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           <div className="min-w-0">
             <div className="mb-5 rounded-[1.75rem] border border-emerald-400/15 bg-[linear-gradient(135deg,rgba(16,185,129,0.10),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-    Why members are seeing this today
-  </p>
-  <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">{thesis}</p>
-  <p className="mt-3 break-words text-sm leading-7 text-slate-300 sm:text-base">
-    {getConfidenceStatement(row)}
-  </p>
-</div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                Why members are seeing this today
+              </p>
+              <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">{thesis}</p>
+              <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-300 sm:text-base">
+                {confidenceBullets.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
             {row.business_description ? (
               <p className="mb-5 break-words text-sm leading-7 text-slate-300 sm:text-base">
@@ -1978,21 +2004,26 @@ function SignalDetailsModal({
             </div>
 
             <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-    What stands out here
-  </p>
-  <p className="mt-2 break-words text-sm leading-7 text-slate-200 sm:text-base">
-    {getSimpleSetupExplanation(row)}
-  </p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                What stands out here
+              </p>
+              <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-200 sm:text-base">
+                {setupBullets.map((item, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
 
-  {!!tags.length && (
-    <div className="mt-4 flex min-w-0 flex-wrap gap-2">
-      {tags.slice(0, 12).map((tag) => (
-        <TagPill key={tag} tag={tag} />
-      ))}
-    </div>
-  )}
-</div>
+              {!!tags.length && (
+                <div className="mt-4 flex min-w-0 flex-wrap gap-2">
+                  {tags.slice(0, 12).map((tag) => (
+                    <TagPill key={tag} tag={tag} />
+                  ))}
+                </div>
+              )}
+            </div>
 
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -2139,11 +2170,6 @@ function MetricRow({
   )
 }
 
-function capitalizeFirst(value: string) {
-  if (!value) return value
-  return value.charAt(0).toUpperCase() + value.slice(1)
-}
-
 function ConfirmationRow({
   label,
   value,
@@ -2180,46 +2206,6 @@ function ReasonCard({ reason }: { reason: ReasonLine }) {
       <p className={`mt-2 break-words text-sm font-semibold ${textClasses}`}>{reason.value}</p>
     </div>
   )
-}
-
-function getSimpleSetupExplanation(row: UnifiedRow) {
-  const parts: string[] = []
-
-  if (row.breakout_20d) {
-    parts.push(
-      "The stock just broke above recent price levels, which often signals new buying interest."
-    )
-  }
-
-  if (row.relative_strength_20d && row.relative_strength_20d > 0) {
-    parts.push(
-      "It has been outperforming the overall market recently."
-    )
-  }
-
-  if (row.volume_ratio && row.volume_ratio > 1.3) {
-    parts.push(
-      "Trading volume is higher than usual, which suggests stronger participation from investors."
-    )
-  }
-
-  if (row.earnings_surprise_pct && row.earnings_surprise_pct > 0) {
-    parts.push(
-      "Recent earnings came in stronger than expected, which can attract new buyers."
-    )
-  }
-
-  if (row.revenue_growth_pct && row.revenue_growth_pct > 10) {
-    parts.push(
-      "The company is also showing solid revenue growth."
-    )
-  }
-
-  if (parts.length === 0) {
-    return "This stock is showing multiple signs of strength compared with the rest of the market, which is why it appears on today’s shortlist."
-  }
-
-  return parts.slice(0, 3).join(" ")
 }
 
 function MovementCard({
@@ -2389,92 +2375,83 @@ function getTopReasonLines(row: UnifiedRow): ReasonLine[] {
   return items.sort((a, b) => b.weight - a.weight).slice(0, 4)
 }
 
-function getPlainEnglishSummary(row: UnifiedRow) {
-  const reasons = getTopReasonChips(row)
-
-  if (row.has_candidate_data && row.has_signal_data) {
-    return `This name passed the technical candidate screen and also has filing or signal confirmation. ${reasons.join(", ")} are helping keep it on the board.`
-  }
-
-  if (row.has_candidate_data && !row.has_signal_data) {
-    return `This is a technical board candidate with a score of ${formatSimpleNumber(row.candidate_score)}. It qualifies even without separate filing confirmation right now.`
-  }
-
-  if (!reasons.length) {
-    return "Several bullish signals are stacking up here, which keeps the setup on the strong-buy board."
-  }
-
-  return `This name is showing ${reasons.join(", ").toLowerCase()}, which keeps it near the top of the strong-buy board.`
-}
-
-function getPremiumSummary(row: UnifiedRow) {
-  const reasons = getTopReasonChips(row)
-
-  if (row.has_candidate_data && row.has_signal_data) {
-    return `This name cleared the technical screen and also picked up additional confirmation signals, which makes it more interesting than a basic watchlist candidate. ${reasons.length ? `${reasons.join(", ")} are helping it stay near the top of today’s board.` : "It is holding up well across multiple parts of the model."}`
-  }
-
-  if (row.has_candidate_data && !row.has_signal_data) {
-    return `This is one of the cleaner technical setups on the board right now. Even without extra filing confirmation, its price action and screen quality were strong enough to keep it ranked here today.`
-  }
-
-  if (row.has_signal_data && !row.has_candidate_data) {
-    return `This name is standing out because the signal layer is strong enough on its own to put it on the board. It may not be the most obvious stock at first glance, which is exactly why it can be worth a closer look.`
-  }
-
-  return `This setup is still standing out after the board was narrowed down. It has enough strength, support, or unusual signal activity to deserve attention today.`
-}
-
-function getConfidenceStatement(row: UnifiedRow) {
+function getConfidenceBullets(row: UnifiedRow) {
   const score = row.display_score
   const tags = normalizeTags(row.signal_tags)
 
-  const hasCluster = (row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")
-  const heavyCluster = (row.cluster_buyers ?? 0) >= 3 || tags.includes("cluster-strong")
-  const hasMomentum =
-    (row.price_return_5d ?? 0) >= 5 ||
-    tags.includes("momentum-confirmed") ||
-    tags.includes("breakout-20d") ||
-    tags.includes("breakout-52w") ||
-    row.primary_signal_source === "breakout" ||
-    row.breakout_20d === true
-
-  const hasVolume = (row.volume_ratio ?? 0) >= 1.5 || tags.includes("volume-confirmed")
-  const hasEarnings =
-    (row.earnings_surprise_pct ?? 0) >= 10 ||
-    (row.revenue_growth_pct ?? 0) >= 15 ||
-    row.guidance_flag === true ||
-    tags.includes("earnings-support")
-
-  const source = formatSource(row.primary_signal_source)
+  const bullets: string[] = []
 
   if (row.has_candidate_data && !row.has_signal_data) {
-    return "This made the board because the technical screening layer alone scored it highly enough. It may not have separate filing confirmation yet, but the underlying screen still sees a strong setup."
+    bullets.push("This made the board because the technical screen alone scored it highly enough.")
   }
 
-  if (heavyCluster && hasMomentum) {
-    return "Multiple bullish signals are stacking together, and the stock is still acting well. That combination is much more interesting than a one-off headline."
+  if ((row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")) {
+    bullets.push("More than one bullish signal is showing up at the same time.")
   }
 
-  if (row.primary_signal_source === "breakout" && hasMomentum && hasVolume) {
-    return "This is not just a filing-driven idea. Technical strength, participation, and broader momentum are all reinforcing the setup."
+  if (
+    row.primary_signal_source === "breakout" ||
+    row.breakout_20d === true ||
+    row.breakout_52w === true
+  ) {
+    bullets.push("The stock is breaking above important price levels, which often attracts attention.")
   }
 
-  if (score >= 90 && hasCluster && hasMomentum) {
-    return "This stands out because several bullish signals are lining up at once, including buying interest and strong price action."
+  if ((row.volume_ratio ?? 0) >= 1.5 || tags.includes("volume-confirmed")) {
+    bullets.push("Trading volume is elevated, which suggests stronger interest from buyers.")
   }
 
-  if (hasEarnings && hasMomentum && hasVolume) {
-    return "Recent earnings support, stronger price action, and elevated trading activity are all pointing in the same direction."
+  if (
+    (row.earnings_surprise_pct ?? 0) >= 10 ||
+    (row.revenue_growth_pct ?? 0) >= 15 ||
+    row.guidance_flag === true
+  ) {
+    bullets.push("Recent business or earnings data is helping support the setup.")
   }
 
-  return `This remains a constructive setup overall, with ${source} providing the original signal and the broader evaluation still holding up.`
+  if ((row.relative_strength_20d ?? 0) > 0) {
+    bullets.push("The stock has been outperforming the broader market recently.")
+  }
+
+  if (score >= 90) {
+    bullets.push("Its overall model score is near the top of today’s board.")
+  }
+
+  if (!bullets.length) {
+    bullets.push("The original signal is still holding up well enough to keep this name on the board.")
+  }
+
+  return bullets.slice(0, 4)
 }
 
-function getSignalSummary(row: UnifiedRow) {
-  if (row.primary_summary) return row.primary_summary
-  if (row.screen_reason) return row.screen_reason
-  return `${row.ticker} is showing a strong-buy setup based on technical screening and broader confirmation.`
+function getSimpleSetupBullets(row: UnifiedRow) {
+  const parts: string[] = []
+
+  if (row.breakout_20d) {
+    parts.push("The stock just moved above recent price levels, which can be a sign of fresh buying interest.")
+  }
+
+  if ((row.relative_strength_20d ?? 0) > 0) {
+    parts.push("It has been outperforming the overall market recently.")
+  }
+
+  if ((row.volume_ratio ?? 0) > 1.3) {
+    parts.push("Trading volume is higher than usual, which suggests stronger participation from investors.")
+  }
+
+  if ((row.earnings_surprise_pct ?? 0) > 0) {
+    parts.push("Recent earnings came in stronger than expected, which can attract new buyers.")
+  }
+
+  if ((row.revenue_growth_pct ?? 0) > 10) {
+    parts.push("The company is also showing solid revenue growth.")
+  }
+
+  if (parts.length === 0) {
+    parts.push("This stock is showing multiple signs of strength compared with the rest of the market, which is why it appears on today’s shortlist.")
+  }
+
+  return parts.slice(0, 4)
 }
 
 function normalizeTags(tags: string[] | null | undefined) {
