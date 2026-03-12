@@ -377,6 +377,8 @@ export default function Home() {
   const [sectorFilter, setSectorFilter] = useState<SectorFilterType>("all")
   const [sourceFilter, setSourceFilter] = useState<SourceFilterType>("all")
 
+  const [detailInitialTab, setDetailInitialTab] = useState(0)
+
   useEffect(() => {
     let isMounted = true
 
@@ -582,19 +584,16 @@ export default function Home() {
       .sort(compareRows)
   }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
 
-  const featuredRows = useMemo(() => filteredRows.slice(0, 6), [filteredRows])
-  const remainingRows = useMemo(() => filteredRows.slice(6), [filteredRows])
-
-  const totalPages = Math.max(1, Math.ceil(remainingRows.length / CARDS_PER_PAGE))
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / CARDS_PER_PAGE))
   const safeCurrentPage = Math.min(currentPage, totalPages)
 
   const paginatedRows = useMemo(() => {
     const startIndex = (safeCurrentPage - 1) * CARDS_PER_PAGE
-    return remainingRows.slice(startIndex, startIndex + CARDS_PER_PAGE)
-  }, [remainingRows, safeCurrentPage])
+    return filteredRows.slice(startIndex, startIndex + CARDS_PER_PAGE)
+  }, [filteredRows, safeCurrentPage])
 
-  const pageStart = remainingRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
-  const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, remainingRows.length)
+  const pageStart = filteredRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
+  const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, filteredRows.length)
 
   const selectedRow = useMemo(() => {
     if (!selectedTicker) return null
@@ -621,21 +620,25 @@ export default function Home() {
     return count
   }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
 
-  function openDetails(ticker: string) {
+  function openDetails(ticker: string, initialTab = 0) {
+    setDetailInitialTab(initialTab)
     setSelectedTicker(ticker)
   }
 
   function closeDetails() {
     setSelectedTicker(null)
+    setDetailInitialTab(0)
   }
 
   function goToPrevSelected() {
     if (selectedIndex <= 0) return
+    setDetailInitialTab(0)
     setSelectedTicker(filteredRows[selectedIndex - 1]?.ticker ?? null)
   }
 
   function goToNextSelected() {
     if (selectedIndex < 0 || selectedIndex >= filteredRows.length - 1) return
+    setDetailInitialTab(0)
     setSelectedTicker(filteredRows[selectedIndex + 1]?.ticker ?? null)
   }
 
@@ -705,8 +708,8 @@ export default function Home() {
                 <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300 sm:text-xs">
                   Market Signal Tracker
                 </p>
-                <span className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200 sm:text-xs">
-                  Beginner Friendly
+                <span className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-semibold tracking-[0.04em] text-cyan-200 sm:text-xs">
+                  {lastUpdated ? `Updated ${lastUpdated}` : "Updated —"}
                 </span>
               </div>
 
@@ -719,10 +722,9 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 sm:gap-3 lg:w-[380px]">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:w-[250px]">
               <CompactStatCard label="Strong Buys" value={loading ? "…" : String(strongBuyCount)} tone="emerald" />
               <CompactStatCard label="Elite" value={loading ? "…" : String(eliteCount)} tone="cyan" />
-              <CompactStatCard label="Updated" value={lastUpdated ? "Live" : "—"} tone="slate" />
             </div>
           </div>
         </section>
@@ -873,22 +875,24 @@ export default function Home() {
           </div>
         </section>
 
-        <section id="featured" className="mt-6 sm:mt-8">
+        <section id="board" className="mt-6 sm:mt-8">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                Featured picks
+                Ranked board
               </p>
               <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
-                Start here
+                Today’s board
               </h2>
               <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-                The strongest names on the board right now.
+                One full board, sorted from highest score down.
               </p>
             </div>
 
             <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-              {loading ? "Loading board…" : `${filteredRows.length} names`}
+              {filteredRows.length === 0
+                ? "No names"
+                : `${pageStart}-${pageEnd} of ${filteredRows.length}`}
             </div>
           </div>
 
@@ -900,70 +904,29 @@ export default function Home() {
             <EmptyPanel />
           ) : (
             <>
-              <div className="hidden items-start gap-5 md:grid md:grid-cols-2 xl:grid-cols-3">
-                {featuredRows.slice(0, 3).map((row, index) => (
-                  <FeaturedStrongBuyCard
-                    key={`${row.ticker}-${index}`}
+              <div className="grid items-start gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {paginatedRows.map((row, i) => (
+                  <TopSignalCard
+                    key={getRowKey(row, i)}
                     row={row}
-                    rank={index + 1}
-                    onClick={() => openDetails(row.ticker)}
-                    animationIndex={index}
+                    isSelected={row.ticker === selectedTicker}
+                    onClick={() => openDetails(row.ticker, 0)}
+                    rank={(safeCurrentPage - 1) * CARDS_PER_PAGE + i + 1}
+                    animationIndex={i}
                   />
                 ))}
               </div>
 
-              <div className="md:hidden">
-                <MobileFeaturedCarousel
-                  rows={featuredRows}
-                  onCardClick={openDetails}
+              {filteredRows.length > CARDS_PER_PAGE ? (
+                <PaginationControls
+                  currentPage={safeCurrentPage}
+                  totalPages={totalPages}
+                  onPageChange={(page) => {
+                    setCurrentPage(page)
+                    window.scrollTo({ top: 0, behavior: "smooth" })
+                  }}
                 />
-              </div>
-
-              <section id="board" className="mt-8">
-                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                      Ranked board
-                    </p>
-                    <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
-                      More ideas
-                    </h2>
-                    <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-                      Keep exploring the rest of today’s ranked list.
-                    </p>
-                  </div>
-
-                  <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-                    {remainingRows.length === 0
-                      ? "No additional names"
-                      : `${pageStart}-${pageEnd} of ${remainingRows.length}`}
-                  </div>
-                </div>
-
-                <div className="grid items-start gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-                  {paginatedRows.map((row, i) => (
-                    <TopSignalCard
-                      key={getRowKey(row, i)}
-                      row={row}
-                      isSelected={row.ticker === selectedTicker}
-                      onClick={() => openDetails(row.ticker)}
-                      rank={featuredRows.length + (safeCurrentPage - 1) * CARDS_PER_PAGE + i + 1}
-                      animationIndex={i}
-                    />
-                  ))}
-                </div>
-
-                {remainingRows.length > CARDS_PER_PAGE ? (
-                  <PaginationControls
-                    currentPage={safeCurrentPage}
-                    totalPages={totalPages}
-                    onPageChange={(page) => {
-                      setCurrentPage(page)
-                      window.scrollTo({ top: 0, behavior: "smooth" })
-                    }}
-                  />
-                ) : null}
-              </section>
+              ) : null}
             </>
           )}
         </section>
@@ -976,7 +939,6 @@ export default function Home() {
       {!selectedRow ? (
         <MobileAppNav
           onGoTop={() => scrollToSection("hero")}
-          onGoFeatured={() => scrollToSection("featured")}
           onGoBoard={() => scrollToSection("board")}
           onGoFilters={() => scrollToSection("filters")}
         />
@@ -991,6 +953,7 @@ export default function Home() {
           positionLabel={
             selectedIndex >= 0 ? `${selectedIndex + 1} of ${filteredRows.length}` : null
           }
+          initialTab={detailInitialTab}
         />
       ) : null}
     </main>
@@ -1004,14 +967,12 @@ function CompactStatCard({
 }: {
   label: string
   value: string
-  tone: "emerald" | "cyan" | "slate"
+  tone: "emerald" | "cyan"
 }) {
   const styles =
     tone === "emerald"
       ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
-      : tone === "cyan"
-        ? "border-cyan-400/20 bg-cyan-400/10 text-cyan-200"
-        : "border-white/10 bg-white/5 text-slate-200"
+      : "border-cyan-400/20 bg-cyan-400/10 text-cyan-200"
 
   return (
     <div className={`rounded-[1.25rem] border px-3 py-3 sm:px-4 ${styles}`}>
@@ -1027,31 +988,22 @@ function CompactStatCard({
 
 function MobileAppNav({
   onGoTop,
-  onGoFeatured,
   onGoBoard,
   onGoFilters,
 }: {
   onGoTop: () => void
-  onGoFeatured: () => void
   onGoBoard: () => void
   onGoFilters: () => void
 }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/90 px-3 py-3 backdrop-blur-md sm:hidden">
-      <div className="mx-auto grid max-w-xl grid-cols-4 gap-2">
+      <div className="mx-auto grid max-w-xl grid-cols-3 gap-2">
         <button
           type="button"
           onClick={onGoTop}
           className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
         >
           Home
-        </button>
-        <button
-          type="button"
-          onClick={onGoFeatured}
-          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
-        >
-          Picks
         </button>
         <button
           type="button"
@@ -1067,38 +1019,6 @@ function MobileAppNav({
         >
           Filters
         </button>
-      </div>
-    </div>
-  )
-}
-
-function MobileFeaturedCarousel({
-  rows,
-  onCardClick,
-}: {
-  rows: UnifiedRow[]
-  onCardClick: (ticker: string) => void
-}) {
-  return (
-    <div className="-mx-3 px-3">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-          Swipe top picks
-        </p>
-        <p className="text-xs text-slate-500">{rows.length} cards</p>
-      </div>
-
-      <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {rows.map((row, index) => (
-          <div key={`${row.ticker}-${index}`} className="min-w-[88%] snap-center">
-            <FeaturedStrongBuyCard
-              row={row}
-              rank={index + 1}
-              onClick={() => onCardClick(row.ticker)}
-              animationIndex={index}
-            />
-          </div>
-        ))}
       </div>
     </div>
   )
@@ -1293,7 +1213,6 @@ function FeaturedStrongBuyCard({
   animationIndex?: number
 }) {
   const score = row.display_score
-  const palette = getScorePalette(score)
   const reasons = getTopReasonChips(row)
   const thesis = getFeaturedThesis(row)
   const bullets = getFeaturedBullets(row)
@@ -1313,8 +1232,8 @@ function FeaturedStrongBuyCard({
       onClick={onClick}
       className="group relative w-full self-start overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.36)] transition duration-300 hover:-translate-y-1 hover:scale-[1.01] sm:rounded-[1.75rem] sm:p-5"
       style={{
-        borderColor: `${palette.end}45`,
-        background: `linear-gradient(135deg, ${palette.start}14 0%, rgba(10,15,30,0.95) 34%, rgba(2,6,23,1) 100%)`,
+        borderColor: `${getScorePalette(score).end}45`,
+        background: `linear-gradient(135deg, ${getScorePalette(score).start}14 0%, rgba(10,15,30,0.95) 34%, rgba(2,6,23,1) 100%)`,
         animation: `cardFadeUp 480ms ease-out both`,
         animationDelay: `${animationIndex * 70}ms`,
       }}
@@ -1327,13 +1246,6 @@ function FeaturedStrongBuyCard({
           <div className="shrink-0">
             <ScoreBadge row={row} large />
           </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-2">
-          <SignalTypeBadge row={row} />
-          <FreshnessBadge row={row} />
-          <SourceBadge row={row} />
-          <ConfidenceBadge row={row} />
         </div>
 
         <div className="mt-5">
@@ -1415,7 +1327,6 @@ function TopSignalCard({
 }) {
   const score = row.display_score
   const palette = getScorePalette(score)
-  const reasons = getTopReasonChips(row)
   const whyBullets = getSimpleCardBullets(row)
   const takeawayBullets = getPremiumSummaryBullets(row)
 
@@ -1449,10 +1360,6 @@ function TopSignalCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <CardRankBadge rank={rank} />
-            <p className="break-words text-xs uppercase tracking-[0.2em] text-cyan-300/80">
-              {formatSource(row.primary_signal_source)}
-            </p>
-            <SourceBadge row={row} />
           </div>
 
           <h3 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{row.ticker}</h3>
@@ -1484,14 +1391,6 @@ function TopSignalCard({
           ))}
         </ul>
       </div>
-
-      {!!reasons.length && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {reasons.map((reason) => (
-            <ReasonChip key={reason} label={reason} />
-          ))}
-        </div>
-      )}
 
       {row.business_description ? (
         <p className="mb-4 break-words text-sm leading-6 text-slate-300">
@@ -1624,7 +1523,7 @@ function ScoreBadge({
 }) {
   const score = row.display_score
   const palette = getScorePalette(score)
-  const tier = getConfidenceTierLabel(score)
+  const tier = getScoreTierLabel(score)
 
   const glowAnimation =
     score >= 90
@@ -1646,7 +1545,7 @@ function ScoreBadge({
       }}
     >
       <span>{score}</span>
-      {large ? <span className="opacity-80">• {tier}</span> : null}
+      <span className="opacity-90">• {tier}</span>
     </div>
   )
 }
@@ -1680,38 +1579,6 @@ function FreshnessBadge({ row }: { row: UnifiedRow }) {
   return (
     <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
       {label}
-    </span>
-  )
-}
-
-function SourceBadge({ row }: { row: UnifiedRow }) {
-  const classes =
-    row.data_source_label === "Technical + Filing"
-      ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-300"
-      : row.data_source_label === "Technical Only"
-        ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-        : "border-violet-400/30 bg-violet-400/10 text-violet-300"
-
-  const label =
-    row.data_source_label === "Technical + Filing"
-      ? "Multi-Signal"
-      : row.data_source_label === "Technical Only"
-        ? "Technical Setup"
-        : "Signal Discovery"
-
-  return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}>
-      {label}
-    </span>
-  )
-}
-
-function SignalTypeBadge({ row }: { row: UnifiedRow }) {
-  const config = getSignalBadgeConfig(row)
-
-  return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${config.className}`}>
-      {config.label}
     </span>
   )
 }
@@ -1905,40 +1772,6 @@ function getFeaturedThesis(row: UnifiedRow) {
   return "A high-conviction setup with strong current support"
 }
 
-function getFeaturedBullets(row: UnifiedRow) {
-  const bullets: string[] = []
-
-  if (row.breakout_20d || row.breakout_52w) {
-    bullets.push("The stock is pushing above recent price levels, which can be a sign that buyers are stepping in.")
-  }
-
-  if ((row.volume_ratio ?? 0) > 1.3) {
-    bullets.push("Trading volume is higher than normal, which suggests more people are paying attention.")
-  }
-
-  if ((row.relative_strength_20d ?? 0) > 0) {
-    bullets.push("It has been outperforming both the broader market and much of the stock universe recently.")
-  }
-
-  if ((row.stacked_signal_count ?? 0) >= 2) {
-    bullets.push("More than one bullish signal is showing up at the same time, which makes the setup stronger.")
-  }
-
-  if ((row.earnings_surprise_pct ?? 0) > 0) {
-    bullets.push("Recent earnings came in better than expected.")
-  }
-
-  if ((row.revenue_growth_pct ?? 0) > 10) {
-    bullets.push("The company is still growing revenue at a healthy pace.")
-  }
-
-  if (bullets.length === 0) {
-    bullets.push("This stock is showing several signs of strength compared with others on today’s board.")
-  }
-
-  return bullets.slice(0, 3)
-}
-
 function getSimpleCardBullets(row: UnifiedRow) {
   const points: string[] = []
 
@@ -1975,6 +1808,40 @@ function getSimpleCardBullets(row: UnifiedRow) {
   }
 
   return points.slice(0, 3)
+}
+
+function getFeaturedBullets(row: UnifiedRow) {
+  const bullets: string[] = []
+
+  if (row.breakout_20d || row.breakout_52w) {
+    bullets.push("The stock is pushing above recent price levels, which can be a sign that buyers are stepping in.")
+  }
+
+  if ((row.volume_ratio ?? 0) > 1.3) {
+    bullets.push("Trading volume is higher than normal, which suggests more people are paying attention.")
+  }
+
+  if ((row.relative_strength_20d ?? 0) > 0) {
+    bullets.push("It has been outperforming both the broader market and much of the stock universe recently.")
+  }
+
+  if ((row.stacked_signal_count ?? 0) >= 2) {
+    bullets.push("More than one bullish signal is showing up at the same time, which makes the setup stronger.")
+  }
+
+  if ((row.earnings_surprise_pct ?? 0) > 0) {
+    bullets.push("Recent earnings came in better than expected.")
+  }
+
+  if ((row.revenue_growth_pct ?? 0) > 10) {
+    bullets.push("The company is still growing revenue at a healthy pace.")
+  }
+
+  if (bullets.length === 0) {
+    bullets.push("This stock is showing several signs of strength compared with others on today’s board.")
+  }
+
+  return bullets.slice(0, 3)
 }
 
 function getPremiumSummaryBullets(row: UnifiedRow) {
@@ -2017,12 +1884,14 @@ function SignalDetailsModal({
   onPrev,
   onNext,
   positionLabel,
+  initialTab = 0,
 }: {
   row: UnifiedRow
   onClose: () => void
   onPrev?: () => void
   onNext?: () => void
   positionLabel?: string | null
+  initialTab?: number
 }) {
   const reasons = getTopReasonLines(row)
   const tags = normalizeTags(row.signal_tags)
@@ -2031,9 +1900,13 @@ function SignalDetailsModal({
   const setupBullets = getSimpleSetupBullets(row)
 
   const mobileSlides = ["Overview", "Drivers", "Metrics"] as const
-  const [activeSlide, setActiveSlide] = useState(0)
+  const [activeSlide, setActiveSlide] = useState(initialTab)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const scrollFrame = useRef<number | null>(null)
+
+  useEffect(() => {
+    setActiveSlide(initialTab)
+  }, [row.ticker, initialTab])
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -2052,6 +1925,16 @@ function SignalDetailsModal({
       window.removeEventListener("keydown", onKeyDown)
     }
   }, [onClose, onPrev, onNext])
+
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+    const width = container.clientWidth
+    container.scrollTo({
+      left: width * activeSlide,
+      behavior: "auto",
+    })
+  }, [row.ticker, activeSlide])
 
   function scrollToSlide(index: number) {
     const container = scrollRef.current
@@ -2132,11 +2015,7 @@ function SignalDetailsModal({
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-2xl font-bold sm:text-3xl">{row.ticker}</h2>
                 <ScoreBadge row={row} large />
-                <ConfidenceBadge row={row} />
                 <FreshnessBadge row={row} />
-                <SignalTypeBadge row={row} />
-                <SourceBadge row={row} />
-                <StrengthBadge bucket={row.signal_strength_bucket} />
               </div>
 
               {row.company_name ? (
@@ -2164,7 +2043,7 @@ function SignalDetailsModal({
               </div>
 
               <p className="text-center text-xs text-slate-500">
-                Swipe gently left or right
+                Tap a tab or swipe left and right
               </p>
             </div>
           </div>
@@ -2656,33 +2535,12 @@ function TagPill({ tag }: { tag: string }) {
   )
 }
 
-function StrengthBadge({ bucket }: { bucket?: string | null }) {
-  const value = bucket ?? "Strong Buy"
-  const classes =
-    value === "Strong Buy"
-      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
-      : value === "Buy"
-        ? "border-blue-400/30 bg-blue-400/10 text-blue-300"
-        : "border-yellow-400/30 bg-yellow-400/10 text-yellow-300"
-
-  return (
-    <span className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-semibold ${classes}`}>
-      {value}
-    </span>
-  )
-}
-
 function getTopReasonChips(row: UnifiedRow) {
   const tags = normalizeTags(row.signal_tags)
   const chips: string[] = []
 
-  if (row.has_candidate_data) chips.push("Technical Candidate")
-  if (row.has_signal_data) chips.push("Signal Confirmed")
-  if (row.primary_signal_source === "breakout") chips.push("Technical Setup")
-  if (tags.includes("cluster-buy") || (row.cluster_buyers ?? 0) >= 2) chips.push("Buying Wave")
-  if (tags.includes("insider-buy") || row.insider_action === "Buy") chips.push("Insider Buying")
   if ((row.relative_strength_20d ?? 0) > 0) chips.push("Stronger Than Market")
-
+  if ((row.volume_ratio ?? 0) >= 1.5) chips.push("Heavy Demand")
   if (
     tags.includes("momentum-confirmed") ||
     tags.includes("breakout-20d") ||
@@ -2691,17 +2549,9 @@ function getTopReasonChips(row: UnifiedRow) {
   ) {
     chips.push("Strong Momentum")
   }
-
   if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
     chips.push("Strong Earnings")
   }
-
-  if ((row.volume_ratio ?? 0) >= 1.5) chips.push("Heavy Demand")
-  if ((row.pe_ratio ?? row.pe_forward ?? 999) <= 25 && (row.pe_ratio ?? row.pe_forward) != null) {
-    chips.push("Reasonable Valuation")
-  }
-
-  if ((row.candidate_score ?? 0) >= 90) chips.push("High Candidate Score")
 
   return Array.from(new Set(chips)).slice(0, 4)
 }
@@ -3027,6 +2877,13 @@ function getScorePalette(score: number) {
   }
 
   return { start: "#22c55e", end: "#16a34a", text: "#08110a" }
+}
+
+function getScoreTierLabel(score: number) {
+  if (score >= 90) return "Elite"
+  if (score >= 80) return "Strong Buy"
+  if (score >= 70) return "Buy"
+  return "Watch"
 }
 
 function getConfidenceTierLabel(score: number) {
