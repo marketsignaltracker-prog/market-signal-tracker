@@ -876,36 +876,37 @@ export default function Home() {
 
         <section id="board" className="mt-6 sm:mt-8">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                Ranked board
-              </p>
-              <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
-                Today’s board
-              </h2>
-              <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-                Only a score of 70 or higher will make the list.
-              </p>
-            </div>
+  <div>
+    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+      Ranked board
+    </p>
+    <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
+      Today’s board
+    </h2>
+    <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
+      One full board, sorted from highest score down.
+    </p>
+  </div>
 
-            <div className="flex items-center gap-3">
-  {safeCurrentPage > 1 && (
-    <button
-      type="button"
-      onClick={() => {
-        setCurrentPage(1)
-        window.scrollTo({ top: 0, behavior: "smooth" })
-      }}
-      className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/40 hover:bg-cyan-400/15"
-    >
-      Best
-    </button>
-  )}
+  <div className="flex items-center gap-3">
+    {safeCurrentPage > 1 ? (
+      <button
+        type="button"
+        onClick={() => {
+          setCurrentPage(1)
+          window.scrollTo({ top: 0, behavior: "smooth" })
+        }}
+        className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/40 hover:bg-cyan-400/15"
+      >
+        Best
+      </button>
+    ) : null}
 
-  <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-    {filteredRows.length === 0
-      ? "No names"
-      : `${pageStart}-${pageEnd} of ${filteredRows.length}`}
+    <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+      {filteredRows.length === 0
+        ? "No names"
+        : `${pageStart}-${pageEnd} of ${filteredRows.length}`}
+    </div>
   </div>
 </div>
 
