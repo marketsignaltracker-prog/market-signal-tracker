@@ -898,7 +898,7 @@ export default function Home() {
             <EmptyPanel />
           ) : (
             <>
-              <div className="grid min-w-0 gap-4 sm:gap-5 lg:grid-cols-3">
+              <div className="grid min-w-0 items-start gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
                 {featuredRows.map((row, index) => (
                   <FeaturedStrongBuyCard
                     key={`${row.ticker}-${index}`}
@@ -1190,8 +1190,7 @@ function FeaturedStrongBuyCard({
     <button
       type="button"
       onClick={onClick}
-      className="group relative w-full min-w-0 overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.34)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5 lg:p-6"
-      style={{
+className="group relative w-full min-w-0 self-start overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.34)] transition duration-200 hover:-translate-y-1 sm:rounded-[2rem] sm:p-5 lg:p-6"      style={{
         borderColor: `${palette.end}45`,
         background: `linear-gradient(135deg, ${palette.start}14 0%, rgba(15,23,42,0.94) 34%, rgba(2,6,23,1) 100%)`,
       }}
@@ -1320,11 +1319,11 @@ function TopSignalCard({
       type="button"
       onClick={onClick}
       className={[
-        "flex h-full w-full min-w-0 flex-col overflow-hidden rounded-3xl border p-4 text-left shadow-xl transition duration-200 sm:p-5",
-        isSelected
-          ? "ring-2 ring-emerald-300/25"
-          : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
-      ].join(" ")}
+  "flex w-full min-w-0 self-start flex-col overflow-hidden rounded-3xl border p-4 text-left shadow-xl transition duration-200 sm:p-5",
+  isSelected
+    ? "ring-2 ring-emerald-300/25"
+    : "hover:-translate-y-0.5 hover:ring-1 hover:ring-white/10",
+].join(" ")}
       style={{
         borderColor: isSelected ? `${palette.end}80` : `${palette.end}33`,
         background: `linear-gradient(135deg, ${palette.start}12 0%, rgba(15,23,42,0.92) 40%, rgba(2,6,23,1) 100%)`,
