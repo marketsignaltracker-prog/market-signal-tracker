@@ -733,10 +733,10 @@ export default function Home() {
                   Refine the board
                 </p>
                 <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
-                  Narrow today’s list only when you want to
+                  Narrow today’s list
                 </h2>
                 <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
-                  The board starts clean by default. Open filters when you want to focus on price ranges, freshness, sector, or only the highest-rated setups.
+                Open filters when you want to focus on price ranges, freshness, sector, etc..
                 </p>
               </div>
 
