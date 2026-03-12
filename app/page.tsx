@@ -1000,10 +1000,24 @@ function CompactStatCard({
   )
 }
 
-function formatPriceConfirmation(value: boolean | null | undefined) {
-  if (value === true) return "Confirmed"
-  if (value === false) return "Not confirmed"
-  return "No confirmation data"
+function formatPriceConfirmation(row: UnifiedRow) {
+  if (row.price_confirmed === true) return "Confirmed"
+  if (row.price_confirmed === false) return "Not confirmed"
+
+  const hasBreakout = row.breakout_20d === true || row.breakout_52w === true
+  const hasVolumeSupport = (row.volume_ratio ?? 0) >= 1.2
+  const hasRelativeStrength = (row.relative_strength_20d ?? 0) > 0
+  const hasTrendSupport = row.trend_aligned === true || row.above_sma_20 === true || row.above_50dma === true
+
+  if (hasBreakout && (hasVolumeSupport || hasRelativeStrength || hasTrendSupport)) {
+    return "Confirmed"
+  }
+
+  if (!hasBreakout && !hasVolumeSupport && !hasRelativeStrength && !hasTrendSupport) {
+    return "Not confirmed"
+  }
+
+  return "Developing"
 }
 
 function MobileAppNav({
@@ -1241,6 +1255,9 @@ function TopSignalCard({
   const palette = getScorePalette(score)
   const whyBullets = getSimpleCardBullets(row)
   const takeawayBullets = getPremiumSummaryBullets(row)
+  const companyOneLiner = getCompanyOneLiner(row)
+
+  const [showCompanyInfo, setShowCompanyInfo] = useState(false)
 
   const metricItems: MiniMetricItem[] = [
     { label: "Price", value: formatMoney(row.price) },
@@ -1273,9 +1290,38 @@ function TopSignalCard({
           </div>
 
           <h3 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{row.ticker}</h3>
+
           {row.company_name ? (
-            <p className="mt-1 truncate text-sm text-slate-400">{truncateText(row.company_name, 34)}</p>
+            <p className="mt-1 truncate text-sm text-slate-400">
+              {truncateText(row.company_name, 34)}
+            </p>
           ) : null}
+
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowCompanyInfo((prev) => !prev)
+              }}
+              className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
+            >
+              {showCompanyInfo ? "Hide company info" : "About company"}
+            </button>
+          </div>
+
+          <div
+            className={[
+              "grid transition-all duration-300 ease-out",
+              showCompanyInfo ? "mt-2 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+            ].join(" ")}
+          >
+            <div className="overflow-hidden">
+              <p className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-slate-300">
+                {companyOneLiner}
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="flex shrink-0 flex-col items-end gap-2">
@@ -1799,8 +1845,9 @@ function SignalDetailsModal({
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
 <ConfirmationRow
   label="Price confirmation"
-  value={formatPriceConfirmation(row.price_confirmed)}
-/>                      <ConfirmationRow
+  value={formatPriceConfirmation(row)}
+/>
+                      <ConfirmationRow
                         label="Breakout"
                         value={
                           row.breakout_52w
@@ -2210,6 +2257,22 @@ function TagPill({ tag }: { tag: string }) {
       {pretty}
     </span>
   )
+}
+
+function getCompanyOneLiner(row: UnifiedRow) {
+  if (row.business_description && row.business_description.trim()) {
+    return truncateText(row.business_description, 140)
+  }
+
+  if (row.sector && row.industry) {
+    return `${row.company_name || row.ticker} operates in ${row.industry} within the ${row.sector} sector.`
+  }
+
+  if (row.sector) {
+    return `${row.company_name || row.ticker} operates in the ${row.sector} sector.`
+  }
+
+  return `${row.company_name || row.ticker} is on today’s ranked board based on current signal strength.`
 }
 
 function getFeaturedThesis(row: UnifiedRow) {
