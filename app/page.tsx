@@ -721,7 +721,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:w-[250px]">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:w-[320px]">
               <CompactStatCard label="Strong Buys" value={loading ? "…" : String(strongBuyCount)} tone="emerald" />
               <CompactStatCard label="Elite" value={loading ? "…" : String(eliteCount)} tone="cyan" />
             </div>
