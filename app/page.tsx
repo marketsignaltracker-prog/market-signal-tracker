@@ -262,7 +262,10 @@ function makeUnifiedRow(
     return_10d: candidate?.return_10d ?? null,
     price_return_20d: firstNumberOrNull(signal?.price_return_20d, candidate?.return_20d, null),
        volume_ratio: firstNumberOrNull(signal?.volume_ratio, candidate?.volume_ratio, null),
-    relative_strength_20d: signal?.relative_strength_20d ?? null,
+    relative_strength_20d:
+  signal?.relative_strength_20d ??
+  candidate?.relative_strength_20d ??
+  null,
 
     breakout_20d: firstBooleanOrNull(signal?.breakout_20d, candidate?.breakout_20d, null),
     breakout_10d: candidate?.breakout_10d ?? null,

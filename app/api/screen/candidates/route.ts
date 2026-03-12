@@ -1213,6 +1213,7 @@ export async function GET(request: Request) {
           relativeReturn5d,
           relativeReturn10d,
           relativeReturn20d,
+          relative_strength_20d: relativeStrength20d,
           oneDayReturn,
           volumeRatio,
           breakout20d,
