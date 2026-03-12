@@ -204,6 +204,7 @@ type ReasonLine = {
 }
 
 const CARDS_PER_PAGE = 18
+const DETAIL_TABS = ["Overview", "Drivers", "Metrics"] as const
 
 function normalizeTicker(value: string | null | undefined) {
   return (value || "").trim().toUpperCase()
@@ -537,9 +538,7 @@ export default function Home() {
           const include =
             (unified.candidate_score ?? -1) >= 70 || (unified.signal_score ?? -1) >= 70
 
-          if (include) {
-            merged.push(unified)
-          }
+          if (include) merged.push(unified)
         }
 
         merged.sort(compareRows)
@@ -1201,117 +1200,6 @@ function getRowKey(row: UnifiedRow, index: number) {
   return `${row.ticker}-${accessionKey}-${index}`
 }
 
-function FeaturedStrongBuyCard({
-  row,
-  rank,
-  onClick,
-  animationIndex = 0,
-}: {
-  row: UnifiedRow
-  rank: number
-  onClick: () => void
-  animationIndex?: number
-}) {
-  const score = row.display_score
-  const reasons = getTopReasonChips(row)
-  const thesis = getFeaturedThesis(row)
-  const bullets = getFeaturedBullets(row)
-
-  const miniMetrics: MiniMetricItem[] = [
-    { label: "Price", value: formatMoney(row.price) },
-    { label: "5D Move", value: formatPercent(row.price_return_5d) },
-    { label: "20D Move", value: formatPercent(row.price_return_20d) },
-    { label: "Volume", value: formatRatio(row.volume_ratio) },
-    { label: "Strength", value: formatRelativeStrengthForDisplay(row) },
-    { label: "Signals", value: formatSignalStack(row.stacked_signal_count, row) },
-  ].filter((item) => hasDisplayValue(item.value))
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group relative w-full self-start overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-[0_22px_60px_rgba(0,0,0,0.36)] transition duration-300 hover:-translate-y-1 hover:scale-[1.01] sm:rounded-[1.75rem] sm:p-5"
-      style={{
-        borderColor: `${getScorePalette(score).end}45`,
-        background: `linear-gradient(135deg, ${getScorePalette(score).start}14 0%, rgba(10,15,30,0.95) 34%, rgba(2,6,23,1) 100%)`,
-        animation: `cardFadeUp 480ms ease-out both`,
-        animationDelay: `${animationIndex * 70}ms`,
-      }}
-    >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.08),_transparent_28%)] opacity-0 transition group-hover:opacity-100" />
-
-      <div className="relative">
-        <div className="flex items-start justify-between gap-3">
-          <FeaturedRankBadge rank={rank} />
-          <div className="shrink-0">
-            <ScoreBadge row={row} large />
-          </div>
-        </div>
-
-        <div className="mt-5">
-          <h3 className="text-4xl font-bold leading-none tracking-tight text-white sm:text-[2.65rem]">
-            {row.ticker}
-          </h3>
-
-          {row.company_name ? (
-            <p className="mt-2 text-base text-slate-300 sm:text-lg">{row.company_name}</p>
-          ) : null}
-        </div>
-
-        <div className="mt-5">
-          <ScoreBar row={row} />
-        </div>
-
-        <div className="mt-5 rounded-[1.35rem] border border-white/10 bg-black/20 p-4 sm:p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300/80 sm:text-xs">
-            Why this stands out
-          </p>
-          <p className="mt-2 text-lg font-semibold leading-7 text-white sm:text-xl">
-            {thesis}
-          </p>
-
-          <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-            {bullets.map((item, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {!!reasons.length && (
-          <div className="mt-5 flex flex-wrap gap-2">
-            {reasons.map((reason) => (
-              <ReasonChip key={reason} label={reason} />
-            ))}
-          </div>
-        )}
-
-        {!!miniMetrics.length && (
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            {miniMetrics.map((item) => (
-              <MiniMetric key={item.label} label={item.label} value={item.value} />
-            ))}
-          </div>
-        )}
-
-        <div className="mt-5 flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-              Tap to explore
-            </p>
-            <p className="mt-1 text-sm text-slate-200">Open the guided detail view</p>
-          </div>
-          <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-200">
-            View →
-          </span>
-        </div>
-      </div>
-    </button>
-  )
-}
-
 function TopSignalCard({
   row,
   onClick,
@@ -1332,11 +1220,9 @@ function TopSignalCard({
 
   const metricItems: MiniMetricItem[] = [
     { label: "Price", value: formatMoney(row.price) },
-    { label: "Strength", value: formatRelativeStrengthForDisplay(row) },
     { label: "5D Move", value: formatPercent(row.price_return_5d) },
+    { label: "Strength", value: formatRelativeStrengthForDisplay(row) },
     { label: "Volume", value: formatRatio(row.volume_ratio) },
-    { label: "1D Δ", value: formatScoreChange(row.ticker_score_change_1d) },
-    { label: "Tech Score", value: formatSimpleNumber(row.candidate_score) },
   ].filter((item) => hasDisplayValue(item.value))
 
   return (
@@ -1364,7 +1250,7 @@ function TopSignalCard({
 
           <h3 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{row.ticker}</h3>
           {row.company_name ? (
-            <p className="mt-1 truncate text-sm text-slate-400">{row.company_name}</p>
+            <p className="mt-1 truncate text-sm text-slate-400">{truncateText(row.company_name, 34)}</p>
           ) : null}
         </div>
 
@@ -1391,12 +1277,6 @@ function TopSignalCard({
           ))}
         </ul>
       </div>
-
-      {row.business_description ? (
-        <p className="mb-4 break-words text-sm leading-6 text-slate-300">
-          {truncateText(row.business_description, 110)}
-        </p>
-      ) : null}
 
       {!!metricItems.length && (
         <div className="mb-4 grid grid-cols-2 gap-3 auto-rows-fr">
@@ -1487,7 +1367,7 @@ function MiniMetric({
   value: string
 }) {
   return (
-    <div className="flex min-h-[92px] w-full flex-col items-center justify-center rounded-[1.2rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[100px] sm:px-4">
+    <div className="flex min-h-[88px] w-full flex-col items-center justify-center rounded-[1.15rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[94px] sm:px-4">
       <p className="mb-2 break-words text-[10px] uppercase tracking-[0.22em] text-slate-400 sm:text-[11px]">
         {label}
       </p>
@@ -1495,14 +1375,6 @@ function MiniMetric({
         {value}
       </p>
     </div>
-  )
-}
-
-function FeaturedRankBadge({ rank }: { rank: number }) {
-  return (
-    <span className="inline-flex items-center rounded-full bg-cyan-400 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-950">
-      Top #{rank}
-    </span>
   )
 }
 
@@ -1550,28 +1422,6 @@ function ScoreBadge({
   )
 }
 
-function ConfidenceBadge({
-  row,
-  small = false,
-}: {
-  row: UnifiedRow
-  small?: boolean
-}) {
-  const score = row.display_score
-  const label = getConfidenceTierLabel(score)
-
-  return (
-    <span
-      className={[
-        "inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 font-semibold text-slate-200",
-        small ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs",
-      ].join(" ")}
-    >
-      {label}
-    </span>
-  )
-}
-
 function FreshnessBadge({ row }: { row: UnifiedRow }) {
   const label = getFreshnessLabel(row)
   if (!label) return null
@@ -1585,7 +1435,7 @@ function FreshnessBadge({ row }: { row: UnifiedRow }) {
 
 function ReasonChip({ label }: { label: string }) {
   return (
-    <span className="inline-flex min-h-[42px] max-w-full items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 text-center text-xs font-semibold text-cyan-200">
+    <span className="inline-flex min-h-[38px] max-w-full items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 text-center text-xs font-semibold text-cyan-200">
       {label}
     </span>
   )
@@ -1688,196 +1538,6 @@ function buildPaginationPages(currentPage: number, totalPages: number): Array<nu
   return [1, "ellipsis", currentPage - 1, currentPage, currentPage + 1, "ellipsis", totalPages]
 }
 
-function getSignalBadgeConfig(row: UnifiedRow) {
-  const source = row.primary_signal_source
-  const category = getSignalCategory(row)
-
-  if (source === "breakout") {
-    return {
-      label: "Technical Buy",
-      className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
-    }
-  }
-
-  if (category === "Cluster Buys") {
-    return {
-      label: "Buying Wave",
-      className: "border-cyan-400/30 bg-cyan-400/10 text-cyan-300",
-    }
-  }
-
-  if (category === "Insider Buys") {
-    return {
-      label: "Insider Buying",
-      className: "border-cyan-400/30 bg-cyan-400/10 text-cyan-300",
-    }
-  }
-
-  if (category === "Institutional") {
-    return {
-      label: "Big Investor",
-      className: "border-violet-400/30 bg-violet-400/10 text-violet-300",
-    }
-  }
-
-  if (category === "Momentum") {
-    return {
-      label: "Momentum",
-      className: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
-    }
-  }
-
-  if (category === "Fundamental") {
-    return {
-      label: "Fundamental",
-      className: "border-blue-400/30 bg-blue-400/10 text-blue-300",
-    }
-  }
-
-  return {
-    label: row.has_signal_data ? "Signal Confirmed" : "Technical Candidate",
-    className: row.has_signal_data
-      ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-300"
-      : "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
-  }
-}
-
-function getSignalCategory(row: UnifiedRow) {
-  const storedCategory = (row.primary_signal_category ?? "").trim()
-  if (storedCategory) return storedCategory
-  return row.has_signal_data ? "Strong Buy" : "Technical"
-}
-
-function getFeaturedThesis(row: UnifiedRow) {
-  if (row.primary_signal_source === "breakout" && (row.volume_ratio ?? 0) >= 2) {
-    return "Fresh breakout with strong participation"
-  }
-
-  if ((row.cluster_buyers ?? 0) >= 2) {
-    return "Multiple bullish signals are stacking together"
-  }
-
-  if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
-    return "Momentum is being reinforced by earnings support"
-  }
-
-  if ((row.relative_strength_20d ?? 0) >= 8) {
-    return "This name is acting like a true market leader right now"
-  }
-
-  if ((row.candidate_score ?? 0) >= 85 && !row.has_signal_data) {
-    return "High-scoring technical candidate with clean setup quality"
-  }
-
-  return "A high-conviction setup with strong current support"
-}
-
-function getSimpleCardBullets(row: UnifiedRow) {
-  const points: string[] = []
-
-  if (row.primary_signal_source === "breakout" || row.breakout_20d || row.breakout_52w) {
-    points.push("The stock is pushing above recent price levels.")
-  }
-
-  if ((row.volume_ratio ?? 0) >= 1.5) {
-    points.push("Trading activity is stronger than normal.")
-  }
-
-  if ((row.relative_strength_20d ?? 0) >= 5) {
-    points.push("It has been outperforming the market while also standing out versus other stocks.")
-  }
-
-  if ((row.cluster_buyers ?? 0) >= 2) {
-    points.push("Multiple bullish signals are showing up at once.")
-  }
-
-  if ((row.earnings_surprise_pct ?? 0) >= 10) {
-    points.push("Recent earnings were stronger than expected.")
-  }
-
-  if ((row.revenue_growth_pct ?? 0) >= 15) {
-    points.push("The business is still showing solid growth.")
-  }
-
-  if (row.guidance_flag === true) {
-    points.push("Management outlook appears supportive.")
-  }
-
-  if (points.length === 0) {
-    points.push("This stock is showing enough strength right now to stay on today’s ranked board.")
-  }
-
-  return points.slice(0, 3)
-}
-
-function getFeaturedBullets(row: UnifiedRow) {
-  const bullets: string[] = []
-
-  if (row.breakout_20d || row.breakout_52w) {
-    bullets.push("The stock is pushing above recent price levels, which can be a sign that buyers are stepping in.")
-  }
-
-  if ((row.volume_ratio ?? 0) > 1.3) {
-    bullets.push("Trading volume is higher than normal, which suggests more people are paying attention.")
-  }
-
-  if ((row.relative_strength_20d ?? 0) > 0) {
-    bullets.push("It has been outperforming both the broader market and much of the stock universe recently.")
-  }
-
-  if ((row.stacked_signal_count ?? 0) >= 2) {
-    bullets.push("More than one bullish signal is showing up at the same time, which makes the setup stronger.")
-  }
-
-  if ((row.earnings_surprise_pct ?? 0) > 0) {
-    bullets.push("Recent earnings came in better than expected.")
-  }
-
-  if ((row.revenue_growth_pct ?? 0) > 10) {
-    bullets.push("The company is still growing revenue at a healthy pace.")
-  }
-
-  if (bullets.length === 0) {
-    bullets.push("This stock is showing several signs of strength compared with others on today’s board.")
-  }
-
-  return bullets.slice(0, 3)
-}
-
-function getPremiumSummaryBullets(row: UnifiedRow) {
-  const bullets: string[] = []
-
-  if (row.has_candidate_data && row.has_signal_data) {
-    bullets.push("This stock passed the technical screen and also picked up extra confirmation from filings or other signals.")
-  }
-
-  if (row.has_candidate_data && !row.has_signal_data) {
-    bullets.push("This stock is here mainly because its technical setup scored well on the model.")
-  }
-
-  if (row.has_signal_data && !row.has_candidate_data) {
-    bullets.push("This stock is here mainly because the signal layer was strong enough on its own.")
-  }
-
-  if ((row.relative_strength_20d ?? 0) > 0) {
-    bullets.push("It has been beating the broader market recently.")
-  }
-
-  if ((row.volume_ratio ?? 0) >= 1.5) {
-    bullets.push("Higher-than-normal trading volume suggests stronger interest from buyers.")
-  }
-
-  if ((row.candidate_score ?? 0) >= 90) {
-    bullets.push("Its technical score is strong compared with most names on the board.")
-  }
-
-  if (!bullets.length) {
-    bullets.push("This setup has enough strength and support to deserve attention today.")
-  }
-
-  return bullets.slice(0, 3)
-}
-
 function SignalDetailsModal({
   row,
   onClose,
@@ -1899,10 +1559,9 @@ function SignalDetailsModal({
   const confidenceBullets = getConfidenceBullets(row)
   const setupBullets = getSimpleSetupBullets(row)
 
-  const mobileSlides = ["Overview", "Drivers", "Metrics"] as const
   const [activeSlide, setActiveSlide] = useState(initialTab)
-  const scrollRef = useRef<HTMLDivElement | null>(null)
-  const scrollFrame = useRef<number | null>(null)
+  const touchStartX = useRef<number | null>(null)
+  const touchStartY = useRef<number | null>(null)
 
   useEffect(() => {
     setActiveSlide(initialTab)
@@ -1926,49 +1585,38 @@ function SignalDetailsModal({
     }
   }, [onClose, onPrev, onNext])
 
-  useEffect(() => {
-    const container = scrollRef.current
-    if (!container) return
-    const width = container.clientWidth
-    container.scrollTo({
-      left: width * activeSlide,
-      behavior: "auto",
-    })
-  }, [row.ticker, activeSlide])
-
-  function scrollToSlide(index: number) {
-    const container = scrollRef.current
-    if (!container) return
-    const width = container.clientWidth
-    container.scrollTo({
-      left: width * index,
-      behavior: "smooth",
-    })
-    setActiveSlide(index)
+  function handleTouchStart(e: React.TouchEvent<HTMLDivElement>) {
+    touchStartX.current = e.touches[0]?.clientX ?? null
+    touchStartY.current = e.touches[0]?.clientY ?? null
   }
 
-  function handleMobileScroll() {
-    if (scrollFrame.current) cancelAnimationFrame(scrollFrame.current)
+  function handleTouchEnd(e: React.TouchEvent<HTMLDivElement>) {
+    if (touchStartX.current === null || touchStartY.current === null) return
 
-    scrollFrame.current = requestAnimationFrame(() => {
-      const container = scrollRef.current
-      if (!container) return
-      const width = container.clientWidth
-      if (!width) return
+    const endX = e.changedTouches[0]?.clientX ?? 0
+    const endY = e.changedTouches[0]?.clientY ?? 0
+    const deltaX = endX - touchStartX.current
+    const deltaY = endY - touchStartY.current
 
-      const progress = container.scrollLeft / width
-      const index = Math.round(progress)
-      if (index !== activeSlide) setActiveSlide(index)
-    })
+    if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+      if (deltaX < 0 && activeSlide < DETAIL_TABS.length - 1) {
+        setActiveSlide((prev) => prev + 1)
+      } else if (deltaX > 0 && activeSlide > 0) {
+        setActiveSlide((prev) => prev - 1)
+      }
+    }
+
+    touchStartX.current = null
+    touchStartY.current = null
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md" onClick={onClose}>
       <div
-        className="absolute inset-0 flex items-end justify-center p-0 sm:items-center sm:p-6"
+        className="fixed inset-0 flex items-stretch justify-center p-0 sm:items-center sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex h-[100dvh] w-full max-w-6xl flex-col overflow-hidden rounded-none border border-white/10 bg-[linear-gradient(to_bottom,_#020617,_#081122_40%,_#020617)] shadow-2xl sm:h-[92vh] sm:rounded-[2rem]">
+        <div className="flex h-screen min-h-screen w-screen max-w-none flex-col overflow-hidden rounded-none border-0 bg-[linear-gradient(to_bottom,_#020617,_#081122_40%,_#020617)] shadow-2xl sm:h-[92vh] sm:min-h-0 sm:w-full sm:max-w-6xl sm:rounded-[2rem] sm:border sm:border-white/10">
           <div className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur">
             <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-2">
@@ -2019,17 +1667,17 @@ function SignalDetailsModal({
               </div>
 
               {row.company_name ? (
-                <p className="mt-2 break-words text-sm text-slate-400">{row.company_name}</p>
+                <p className="mt-2 truncate text-sm text-slate-400">{row.company_name}</p>
               ) : null}
             </div>
 
-            <div className="border-t border-white/10 px-4 py-3 sm:hidden">
+            <div className="border-t border-white/10 px-4 py-3 lg:hidden">
               <div className="mb-3 flex items-center justify-center gap-2">
-                {mobileSlides.map((slide, index) => (
+                {DETAIL_TABS.map((slide, index) => (
                   <button
                     key={slide}
                     type="button"
-                    onClick={() => scrollToSlide(index)}
+                    onClick={() => setActiveSlide(index)}
                     className={[
                       "rounded-full px-3 py-1.5 text-xs font-semibold transition",
                       index === activeSlide
@@ -2230,160 +1878,161 @@ function SignalDetailsModal({
             </div>
 
             <div
-              ref={scrollRef}
-              onScroll={handleMobileScroll}
-              className="flex h-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scroll-smooth lg:hidden"
-              style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}
+              className="h-full overflow-y-auto lg:hidden"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
             >
-              <div className="h-full min-w-full snap-center overflow-y-auto p-4 pb-28">
-                <div className="space-y-5">
-                  <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                      Why members are seeing this today
-                    </p>
-                    <p className="mt-2 break-words text-xl font-semibold text-white">{thesis}</p>
-                    <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-300">
-                      {confidenceBullets.map((item, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <ScoreBar row={row} />
-
-                  {row.business_description ? (
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Company
+              <div className="p-4 pb-28">
+                {activeSlide === 0 ? (
+                  <div className="space-y-5">
+                    <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                        Why members are seeing this today
                       </p>
-                      <p className="break-words text-sm leading-7 text-slate-300">{row.business_description}</p>
+                      <p className="mt-2 break-words text-xl font-semibold text-white">{thesis}</p>
+                      <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-300">
+                        {confidenceBullets.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                  ) : null}
 
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                      What stands out here
-                    </p>
-                    <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-200">
-                      {setupBullets.map((item, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <ScoreBar row={row} />
 
-                    {!!tags.length && (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {tags.slice(0, 10).map((tag) => (
-                          <TagPill key={tag} tag={tag} />
+                    {row.business_description ? (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          Company
+                        </p>
+                        <p className="break-words text-sm leading-7 text-slate-300">{row.business_description}</p>
+                      </div>
+                    ) : null}
+
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                        What stands out here
+                      </p>
+                      <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-200">
+                        {setupBullets.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      {!!tags.length && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {tags.slice(0, 10).map((tag) => (
+                            <TagPill key={tag} tag={tag} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {activeSlide === 1 ? (
+                  <div className="space-y-5">
+                    <div>
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Score drivers
+                      </p>
+                      <div className="grid gap-3">
+                        {reasons.map((reason) => (
+                          <ReasonCard key={`${reason.label}-${reason.value}`} reason={reason} />
                         ))}
                       </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+                    </div>
 
-              <div className="h-full min-w-full snap-center overflow-y-auto p-4 pb-28">
-                <div className="space-y-5">
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Score drivers
-                    </p>
-                    <div className="grid gap-3">
-                      {reasons.map((reason) => (
-                        <ReasonCard key={`${reason.label}-${reason.value}`} reason={reason} />
-                      ))}
+                    <div>
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Score movement
+                      </p>
+                      <div className="grid gap-3">
+                        <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
+                        <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        What confirms the setup
+                      </p>
+                      <div className="mt-4 grid gap-3">
+                        <ConfirmationRow label="Price confirmation" value={row.price_confirmed === true ? "Confirmed" : "Not confirmed"} />
+                        <ConfirmationRow
+                          label="Breakout"
+                          value={
+                            row.breakout_52w
+                              ? "52-week breakout"
+                              : row.breakout_20d
+                                ? "20-day breakout"
+                                : "No breakout flag"
+                          }
+                        />
+                        <ConfirmationRow
+                          label="Trend alignment"
+                          value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"}
+                        />
+                        <ConfirmationRow label="Relative strength" value={formatRelativeStrengthForDisplay(row)} />
+                        <ConfirmationRow label="Participation" value={formatRatio(row.volume_ratio)} />
+                        <ConfirmationRow label="Signal stack" value={formatSignalStack(row.stacked_signal_count, row)} />
+                      </div>
                     </div>
                   </div>
+                ) : null}
 
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Score movement
-                    </p>
-                    <div className="grid gap-3">
-                      <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
-                      <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
+                {activeSlide === 2 ? (
+                  <div className="space-y-5">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                        Quick snapshot
+                      </p>
+
+                      <div className="mt-4 space-y-3">
+                        <MetricRow label="Display score" value={`${row.display_score}`} />
+                        <MetricRow label="Candidate score" value={formatSimpleNumber(row.candidate_score)} />
+                        <MetricRow label="Signal score" value={formatSimpleNumber(row.signal_score)} />
+                        <MetricRow label="Source" value={row.data_source_label} />
+                        <MetricRow label="Confidence tier" value={getConfidenceTierLabel(row.display_score)} />
+                        <MetricRow label="Price" value={formatMoney(row.price)} />
+                        <MetricRow label="Primary signal" value={row.primary_title || "Technical setup"} />
+                        <MetricRow label="Signal source" value={formatSource(row.primary_signal_source)} />
+                        <MetricRow label="Signal category" value={getSignalCategory(row)} />
+                        <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
+                        <MetricRow label="Filed at" value={row.filed_at ? formatDateLong(row.filed_at) : null} />
+                        <MetricRow label="Last screened" value={row.last_screened_at ? formatDateLong(row.last_screened_at) : null} />
+                        <MetricRow label="Signals stacked" value={formatWholeNumber(row.stacked_signal_count)} />
+                        <MetricRow label="1D score change" value={formatScoreChange(row.ticker_score_change_1d)} />
+                        <MetricRow label="7D score change" value={formatScoreChange(row.ticker_score_change_7d)} />
+                        <MetricRow label="1D move" value={formatPercent(row.one_day_return)} />
+                        <MetricRow label="5D move" value={formatPercent(row.price_return_5d)} />
+                        <MetricRow label="10D move" value={formatPercent(row.return_10d)} />
+                        <MetricRow label="20D move" value={formatPercent(row.price_return_20d)} />
+                        <MetricRow label="Volume ratio" value={formatRatio(row.volume_ratio)} />
+                        <MetricRow label="Vs market 20D" value={formatPercent(row.relative_strength_20d)} />
+                        <MetricRow label="Valuation" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
+                        <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
+                        <MetricRow label="Sector" value={row.sector || null} />
+                        <MetricRow label="Industry" value={row.industry || null} />
+                        <MetricRow label="Source forms" value={row.source_forms.length ? row.source_forms.join(", ") : null} />
+                        <MetricRow label="Insider action" value={row.insider_action || null} />
+                        <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
+                        <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
+                        <MetricRow label="Insider value" value={formatInsiderValue(row)} />
+                        <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
+                        <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
+                        <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
+                        <MetricRow label="Revenue growth" value={formatPercent(row.revenue_growth_pct)} />
+                        <MetricRow label="Guidance support" value={formatBooleanLabel(row.guidance_flag)} />
+                      </div>
                     </div>
                   </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      What confirms the setup
-                    </p>
-                    <div className="mt-4 grid gap-3">
-                      <ConfirmationRow label="Price confirmation" value={row.price_confirmed === true ? "Confirmed" : "Not confirmed"} />
-                      <ConfirmationRow
-                        label="Breakout"
-                        value={
-                          row.breakout_52w
-                            ? "52-week breakout"
-                            : row.breakout_20d
-                              ? "20-day breakout"
-                              : "No breakout flag"
-                        }
-                      />
-                      <ConfirmationRow
-                        label="Trend alignment"
-                        value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"}
-                      />
-                      <ConfirmationRow label="Relative strength" value={formatRelativeStrengthForDisplay(row)} />
-                      <ConfirmationRow label="Participation" value={formatRatio(row.volume_ratio)} />
-                      <ConfirmationRow label="Signal stack" value={formatSignalStack(row.stacked_signal_count, row)} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="h-full min-w-full snap-center overflow-y-auto p-4 pb-28">
-                <div className="space-y-5">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                      Quick snapshot
-                    </p>
-
-                    <div className="mt-4 space-y-3">
-                      <MetricRow label="Display score" value={`${row.display_score}`} />
-                      <MetricRow label="Candidate score" value={formatSimpleNumber(row.candidate_score)} />
-                      <MetricRow label="Signal score" value={formatSimpleNumber(row.signal_score)} />
-                      <MetricRow label="Source" value={row.data_source_label} />
-                      <MetricRow label="Confidence tier" value={getConfidenceTierLabel(row.display_score)} />
-                      <MetricRow label="Price" value={formatMoney(row.price)} />
-                      <MetricRow label="Primary signal" value={row.primary_title || "Technical setup"} />
-                      <MetricRow label="Signal source" value={formatSource(row.primary_signal_source)} />
-                      <MetricRow label="Signal category" value={getSignalCategory(row)} />
-                      <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
-                      <MetricRow label="Filed at" value={row.filed_at ? formatDateLong(row.filed_at) : null} />
-                      <MetricRow label="Last screened" value={row.last_screened_at ? formatDateLong(row.last_screened_at) : null} />
-                      <MetricRow label="Signals stacked" value={formatWholeNumber(row.stacked_signal_count)} />
-                      <MetricRow label="1D score change" value={formatScoreChange(row.ticker_score_change_1d)} />
-                      <MetricRow label="7D score change" value={formatScoreChange(row.ticker_score_change_7d)} />
-                      <MetricRow label="1D move" value={formatPercent(row.one_day_return)} />
-                      <MetricRow label="5D move" value={formatPercent(row.price_return_5d)} />
-                      <MetricRow label="10D move" value={formatPercent(row.return_10d)} />
-                      <MetricRow label="20D move" value={formatPercent(row.price_return_20d)} />
-                      <MetricRow label="Volume ratio" value={formatRatio(row.volume_ratio)} />
-                      <MetricRow label="Vs market 20D" value={formatPercent(row.relative_strength_20d)} />
-                      <MetricRow label="Valuation" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
-                      <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
-                      <MetricRow label="Sector" value={row.sector || null} />
-                      <MetricRow label="Industry" value={row.industry || null} />
-                      <MetricRow label="Source forms" value={row.source_forms.length ? row.source_forms.join(", ") : null} />
-                      <MetricRow label="Insider action" value={row.insider_action || null} />
-                      <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
-                      <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
-                      <MetricRow label="Insider value" value={formatInsiderValue(row)} />
-                      <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
-                      <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
-                      <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
-                      <MetricRow label="Revenue growth" value={formatPercent(row.revenue_growth_pct)} />
-                      <MetricRow label="Guidance support" value={formatBooleanLabel(row.guidance_flag)} />
-                    </div>
-                  </div>
-                </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -2535,25 +2184,100 @@ function TagPill({ tag }: { tag: string }) {
   )
 }
 
-function getTopReasonChips(row: UnifiedRow) {
-  const tags = normalizeTags(row.signal_tags)
-  const chips: string[] = []
-
-  if ((row.relative_strength_20d ?? 0) > 0) chips.push("Stronger Than Market")
-  if ((row.volume_ratio ?? 0) >= 1.5) chips.push("Heavy Demand")
-  if (
-    tags.includes("momentum-confirmed") ||
-    tags.includes("breakout-20d") ||
-    tags.includes("breakout-52w") ||
-    (row.price_return_5d ?? 0) >= 5
-  ) {
-    chips.push("Strong Momentum")
+function getFeaturedThesis(row: UnifiedRow) {
+  if (row.primary_signal_source === "breakout" && (row.volume_ratio ?? 0) >= 2) {
+    return "Fresh breakout with strong participation"
   }
+
+  if ((row.cluster_buyers ?? 0) >= 2) {
+    return "Multiple bullish signals are stacking together"
+  }
+
   if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
-    chips.push("Strong Earnings")
+    return "Momentum is being reinforced by earnings support"
   }
 
-  return Array.from(new Set(chips)).slice(0, 4)
+  if ((row.relative_strength_20d ?? 0) >= 8) {
+    return "This name is acting like a true market leader right now"
+  }
+
+  if ((row.candidate_score ?? 0) >= 85 && !row.has_signal_data) {
+    return "High-scoring technical candidate with clean setup quality"
+  }
+
+  return "A high-conviction setup with strong current support"
+}
+
+function getSimpleCardBullets(row: UnifiedRow) {
+  const points: string[] = []
+
+  if (row.primary_signal_source === "breakout" || row.breakout_20d || row.breakout_52w) {
+    points.push("The stock is pushing above recent price levels.")
+  }
+
+  if ((row.volume_ratio ?? 0) >= 1.5) {
+    points.push("Trading activity is stronger than normal.")
+  }
+
+  if ((row.relative_strength_20d ?? 0) >= 5) {
+    points.push("It has been outperforming the market while also standing out versus other stocks.")
+  }
+
+  if ((row.cluster_buyers ?? 0) >= 2) {
+    points.push("Multiple bullish signals are showing up at once.")
+  }
+
+  if ((row.earnings_surprise_pct ?? 0) >= 10) {
+    points.push("Recent earnings were stronger than expected.")
+  }
+
+  if ((row.revenue_growth_pct ?? 0) >= 15) {
+    points.push("The business is still showing solid growth.")
+  }
+
+  if (row.guidance_flag === true) {
+    points.push("Management outlook appears supportive.")
+  }
+
+  if (points.length === 0) {
+    points.push("This stock is showing enough strength right now to stay on today’s ranked board.")
+  }
+
+  return points.slice(0, 3)
+}
+
+function getPremiumSummaryBullets(row: UnifiedRow) {
+  const bullets: string[] = []
+
+  if (row.has_candidate_data && row.has_signal_data) {
+    bullets.push("This stock passed the technical screen and also picked up extra confirmation from filings or other signals.")
+  }
+
+  if (row.has_candidate_data && !row.has_signal_data) {
+    bullets.push("This stock is here mainly because its technical setup scored well on the model.")
+  }
+
+  if (row.has_signal_data && !row.has_candidate_data) {
+    bullets.push("This stock is here mainly because the signal layer was strong enough on its own.")
+  }
+
+  if ((row.relative_strength_20d ?? 0) > 0) {
+    bullets.push("It has been beating the broader market recently.")
+  }
+
+  if ((row.volume_ratio ?? 0) >= 1.5) {
+    bullets.push("Higher-than-normal trading volume suggests stronger interest from buyers.")
+  }
+
+  if ((row.candidate_score ?? 0) >= 90) {
+    bullets.push("Its technical score is strong compared with most names on the board.")
+  }
+
+  if (!bullets.length) {
+    bullets.push("This setup has enough strength and support to deserve attention today.")
+  }
+
+  return bullets.slice(0, 3)
 }
 
 function getTopReasonLines(row: UnifiedRow): ReasonLine[] {
