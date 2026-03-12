@@ -1328,22 +1328,36 @@ function TopSignalCard({
       </div>
 
       <div
-        className={[
-          "grid transition-all duration-300 ease-out",
-          showCompanyInfo ? "mb-4 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-        ].join(" ")}
-      >
-        <div className="overflow-hidden">
-          <div className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300/80">
-              {infoTitle}
-            </p>
-            <p className="text-sm leading-6 text-slate-300">
-              {infoBody}
-            </p>
-          </div>
-        </div>
+  className={[
+    "grid transition-all duration-300 ease-out",
+    showCompanyInfo ? "mb-4 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+  ].join(" ")}
+>
+  <div className="overflow-hidden">
+    <div className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300/80">
+        {infoTitle}
+      </p>
+
+      <p className="text-sm leading-6 text-slate-300">
+        {infoBody}
+      </p>
+
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            setShowCompanyInfo(false)
+          }}
+          className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
+        >
+          Close
+        </button>
       </div>
+    </div>
+  </div>
+</div>
 
       <div className="mb-4">
         <ScoreBar row={row} compact />
