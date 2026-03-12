@@ -713,11 +713,11 @@ export default function Home() {
               </div>
 
               <h1 className="mt-3 max-w-3xl text-2xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-[2.85rem]">
-                Strong stock ideas, ranked and simplified.
+                Today's Strong Buys Ranked and Simplified.
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-                Start with the names showing the strongest mix of price strength, interest, and signal support right now.
+                The strongest mix of price strength, interest, and signal support right now.
               </p>
             </div>
 
@@ -884,7 +884,7 @@ export default function Home() {
                 Today’s board
               </h2>
               <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-                One full board, sorted from highest score down.
+                Only a score of 70 or higher will make the list.
               </p>
             </div>
 
