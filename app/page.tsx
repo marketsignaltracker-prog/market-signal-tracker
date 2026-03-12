@@ -2038,7 +2038,7 @@ function SignalDetailsModal({
                       <div className="mt-4 grid gap-3">
 <ConfirmationRow
   label="Price confirmation"
-  value={formatPriceConfirmation(row.price_confirmed)}
+  value={formatPriceConfirmation(row)}
 />                        <ConfirmationRow
                           label="Breakout"
                           value={
