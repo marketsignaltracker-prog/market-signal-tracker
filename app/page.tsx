@@ -1268,21 +1268,6 @@ function FeaturedStrongBuyCard({
             </div>
           </div>
         )}
-
-        <div className="mt-5 flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400 sm:text-xs">
-              First thing to review
-            </p>
-            <p className="mt-1 truncate text-sm font-semibold text-white sm:text-base">
-              {row.primary_title || row.screen_reason || "Why this setup is attracting attention"}
-            </p>
-          </div>
-
-          <span className="shrink-0 rounded-full bg-emerald-400 px-3 py-1 text-xs font-bold text-slate-950">
-            Review
-          </span>
-        </div>
       </div>
     </button>
   )
