@@ -1000,6 +1000,12 @@ function CompactStatCard({
   )
 }
 
+function formatPriceConfirmation(value: boolean | null | undefined) {
+  if (value === true) return "Confirmed"
+  if (value === false) return "Not confirmed"
+  return "No confirmation data"
+}
+
 function MobileAppNav({
   onGoTop,
   onGoBoard,
@@ -1791,8 +1797,10 @@ function SignalDetailsModal({
                       What confirms the setup
                     </p>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <ConfirmationRow label="Price confirmation" value={row.price_confirmed === true ? "Confirmed" : "Not confirmed"} />
-                      <ConfirmationRow
+<ConfirmationRow
+  label="Price confirmation"
+  value={formatPriceConfirmation(row.price_confirmed)}
+/>                      <ConfirmationRow
                         label="Breakout"
                         value={
                           row.breakout_52w
@@ -1981,8 +1989,10 @@ function SignalDetailsModal({
                         What confirms the setup
                       </p>
                       <div className="mt-4 grid gap-3">
-                        <ConfirmationRow label="Price confirmation" value={row.price_confirmed === true ? "Confirmed" : "Not confirmed"} />
-                        <ConfirmationRow
+<ConfirmationRow
+  label="Price confirmation"
+  value={formatPriceConfirmation(row.price_confirmed)}
+/>                        <ConfirmationRow
                           label="Breakout"
                           value={
                             row.breakout_52w
