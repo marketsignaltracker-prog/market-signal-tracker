@@ -725,7 +725,7 @@ export default function Home() {
     </div>
   </div>
 </section>
-                <section className="mt-6 w-full min-w-0 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] shadow-xl backdrop-blur-sm sm:mt-8 sm:rounded-[2rem]">
+                        <section className="mt-6 w-full min-w-0 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] shadow-xl backdrop-blur-sm sm:mt-8 sm:rounded-[2rem]">
           <div className="p-4 sm:p-6">
             <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
@@ -733,143 +733,141 @@ export default function Home() {
                   Refine the board
                 </p>
                 <h2 className="mt-1 break-words text-xl font-semibold text-white sm:text-3xl">
-                  Narrow today’s list
+                  Narrow today’s list only when you want to
                 </h2>
                 <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
-                  Open filters when you want to focus on price ranges, freshness, sector, or only the highest-rated setups.
+                  The board starts clean by default. Open filters when you want to focus on price ranges, freshness, sector, or only the highest-rated setups.
                 </p>
               </div>
 
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-                <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
-  <button
-    type="button"
-    onClick={() => setFiltersOpen((prev) => !prev)}
-    aria-expanded={filtersOpen}
-    aria-controls="filter-board-panel"
-    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200"
-  >
-    <span>{filtersOpen ? "Hide filters" : "Show filters"}</span>
-    <span className="text-xs text-slate-400">{filtersOpen ? "▲" : "▼"}</span>
-  </button>
-</div>
-   </div>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen((prev) => !prev)}
+                  aria-expanded={filtersOpen}
+                  aria-controls="filter-board-panel"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200"
+                >
+                  <span>{filtersOpen ? "Hide filters" : "Show filters"}</span>
+                  <span
+                    className={`text-xs text-slate-400 transition-transform duration-300 ${
+                      filtersOpen ? "rotate-180" : "rotate-0"
+                    }`}
+                  >
+                    ▼
+                  </span>
+                </button>
+              </div>
+            </div>
 
-            {filtersOpen ? (
-              <div
-                id="filter-board-panel"
-                className="mt-5 border-t border-white/10 pt-5"
-              >
-                <div className="mb-5 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                      Filter options
-                    </p>
-                    <h3 className="mt-1 break-words text-lg font-semibold text-white sm:text-2xl">
-                      Adjust the board to match what you want to review
-                    </h3>
-                    <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
-                      Use these only when you want to get more specific. Otherwise, the featured names and ranked board are already ready to review.
-                    </p>
+            <div
+              id="filter-board-panel"
+              className={`grid transition-all duration-300 ease-out ${
+                filtersOpen ? "mt-5 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+              }`}
+            >
+              <div className="overflow-hidden">
+                <div className="border-t border-white/10 pt-5">
+                  <div className="mb-5 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                        Filter options
+                      </p>
+                      <h3 className="mt-1 break-words text-lg font-semibold text-white sm:text-2xl">
+                        Adjust the board to match what you want to review
+                      </h3>
+                      <p className="mt-2 max-w-3xl break-words text-sm leading-7 text-slate-400 sm:text-base">
+                        Use these only when you want to get more specific. Otherwise, the featured names and ranked board are already ready to review.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200 lg:w-auto"
+                    >
+                      Reset filters
+                    </button>
                   </div>
 
-                  <button
-                    onClick={resetFilters}
-                    className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200 lg:w-auto"
-                  >
-                    Reset filters
-                  </button>
-                </div>
+                  <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-6">
+                    <FilterSelect
+                      label="Price"
+                      value={priceFilter}
+                      onChange={(value) => setPriceFilter(value as PriceFilterType)}
+                      options={[
+                        { value: "all", label: "All prices" },
+                        { value: "under10", label: "Under $10" },
+                        { value: "10to25", label: "$10 to $25" },
+                        { value: "25to100", label: "$25 to $100" },
+                        { value: "100plus", label: "$100+" },
+                      ]}
+                    />
 
-                <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-6">
-                  <FilterSelect
-                    label="Price"
-                    value={priceFilter}
-                    onChange={(value) => setPriceFilter(value as PriceFilterType)}
-                    options={[
-                      { value: "all", label: "All prices" },
-                      { value: "under10", label: "Under $10" },
-                      { value: "10to25", label: "$10 to $25" },
-                      { value: "25to100", label: "$25 to $100" },
-                      { value: "100plus", label: "$100+" },
-                    ]}
-                  />
+                    <FilterSelect
+                      label="Valuation"
+                      value={peFilter}
+                      onChange={(value) => setPeFilter(value as PeFilterType)}
+                      options={[
+                        { value: "all", label: "All valuations" },
+                        { value: "20", label: "P/E ≤ 20" },
+                        { value: "30", label: "P/E ≤ 30" },
+                        { value: "50", label: "P/E ≤ 50" },
+                      ]}
+                    />
 
-                  <FilterSelect
-                    label="Valuation"
-                    value={peFilter}
-                    onChange={(value) => setPeFilter(value as PeFilterType)}
-                    options={[
-                      { value: "all", label: "All valuations" },
-                      { value: "20", label: "P/E ≤ 20" },
-                      { value: "30", label: "P/E ≤ 30" },
-                      { value: "50", label: "P/E ≤ 50" },
-                    ]}
-                  />
+                    <FilterSelect
+                      label="Freshness"
+                      value={freshnessFilter}
+                      onChange={(value) => setFreshnessFilter(value as FreshnessFilterType)}
+                      options={[
+                        { value: "all", label: "All freshness" },
+                        { value: "today", label: "Today" },
+                        { value: "3d", label: "Last 3 days" },
+                        { value: "7d", label: "Last 7 days" },
+                        { value: "14d", label: "Last 14 days" },
+                      ]}
+                    />
 
-                  <FilterSelect
-                    label="Freshness"
-                    value={freshnessFilter}
-                    onChange={(value) => setFreshnessFilter(value as FreshnessFilterType)}
-                    options={[
-                      { value: "all", label: "All freshness" },
-                      { value: "today", label: "Today" },
-                      { value: "3d", label: "Last 3 days" },
-                      { value: "7d", label: "Last 7 days" },
-                      { value: "14d", label: "Last 14 days" },
-                    ]}
-                  />
+                    <FilterSelect
+                      label="Conviction"
+                      value={scoreFilter}
+                      onChange={(value) => setScoreFilter(value as ScoreFilterType)}
+                      options={[
+                        { value: "all", label: "All scores" },
+                        { value: "70", label: "70+" },
+                        { value: "75", label: "75+" },
+                        { value: "80", label: "80+" },
+                        { value: "85", label: "85+" },
+                        { value: "90", label: "90+" },
+                      ]}
+                    />
 
-                  <FilterSelect
-                    label="Conviction"
-                    value={scoreFilter}
-                    onChange={(value) => setScoreFilter(value as ScoreFilterType)}
-                    options={[
-                      { value: "all", label: "All scores" },
-                      { value: "70", label: "70+" },
-                      { value: "75", label: "75+" },
-                      { value: "80", label: "80+" },
-                      { value: "85", label: "85+" },
-                      { value: "90", label: "90+" },
-                    ]}
-                  />
+                    <FilterSelect
+                      label="Sector"
+                      value={sectorFilter}
+                      onChange={(value) => setSectorFilter(value)}
+                      options={sectorOptions.map((sector) => ({
+                        value: sector,
+                        label: sector === "all" ? "All sectors" : sector,
+                      }))}
+                    />
 
-                  <FilterSelect
-                    label="Sector"
-                    value={sectorFilter}
-                    onChange={(value) => setSectorFilter(value)}
-                    options={sectorOptions.map((sector) => ({
-                      value: sector,
-                      label: sector === "all" ? "All sectors" : sector,
-                    }))}
-                  />
-
-                  <FilterSelect
-                    label="Source"
-                    value={sourceFilter}
-                    onChange={(value) => setSourceFilter(value as SourceFilterType)}
-                    options={[
-                      { value: "all", label: "All sources" },
-                      { value: "both", label: "Technical + Filing" },
-                      { value: "technical_only", label: "Technical only" },
-                      { value: "filing_only", label: "Filing only" },
-                    ]}
-                  />
-                </div>
-
-                <div className="mt-5 flex flex-wrap items-center gap-2 text-sm text-slate-300">
-                  <BoardChip label="Names showing" value={String(filteredRows.length)} />
-                  <BoardChip
-                    label="Extra-confirmed setups"
-                    value={String(filteredRows.filter((r) => r.has_candidate_data && r.has_signal_data).length)}
-                  />
-                  <BoardChip
-                    label="Pure technical setups"
-                    value={String(filteredRows.filter((r) => r.has_candidate_data && !r.has_signal_data).length)}
-                  />
+                    <FilterSelect
+                      label="Source"
+                      value={sourceFilter}
+                      onChange={(value) => setSourceFilter(value as SourceFilterType)}
+                      options={[
+                        { value: "all", label: "All sources" },
+                        { value: "both", label: "Technical + Filing" },
+                        { value: "technical_only", label: "Technical only" },
+                        { value: "filing_only", label: "Filing only" },
+                      ]}
+                    />
+                  </div>
                 </div>
               </div>
-            ) : null}
+            </div>
           </div>
         </section>
 
