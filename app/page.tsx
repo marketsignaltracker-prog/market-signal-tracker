@@ -269,7 +269,11 @@ function makeUnifiedRow(
   return {
     ticker,
     company_name: firstString(signal?.company_name, candidate?.name),
-    business_description: firstString(signal?.business_description, null),
+    business_description: firstString(
+  signal?.business_description,
+  signal?.primary_summary,
+  null
+),
     price: firstNumberOrNull(candidate?.price, null),
 
     candidate_score: candidateScore,
@@ -2262,6 +2266,10 @@ function TagPill({ tag }: { tag: string }) {
 function getCompanyOneLiner(row: UnifiedRow) {
   if (row.business_description && row.business_description.trim()) {
     return row.business_description.trim()
+  }
+
+  if (row.primary_summary && row.primary_summary.trim()) {
+    return row.primary_summary.trim()
   }
 
   if (row.company_name && row.industry && row.sector) {
