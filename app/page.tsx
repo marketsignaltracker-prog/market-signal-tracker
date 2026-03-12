@@ -1239,9 +1239,14 @@ className="group relative w-full min-w-0 self-start overflow-hidden rounded-[1.5
           <p className="mt-2 break-words text-lg font-semibold leading-7 text-white sm:text-xl">
             {thesis}
           </p>
-          <p className="mt-3 break-words text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-            {getPremiumSummary(row)}
-          </p>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
+  {getSetupBullets(row).map((item, i) => (
+    <li key={i} className="flex items-start gap-2">
+      <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+      <span>{item}</span>
+    </li>
+  ))}
+</ul>
         </div>
 
         {!!reasons.length && (
@@ -1440,6 +1445,42 @@ function ScoreBar({
       ) : null}
     </div>
   )
+}
+
+function getSetupBullets(row: UnifiedRow) {
+  const bullets: string[] = []
+
+  if (row.breakout_20d || row.breakout_52w) {
+    bullets.push("The stock just broke above recent price levels.")
+  }
+
+  if ((row.volume_ratio ?? 0) > 1.3) {
+    bullets.push("Trading volume is higher than normal, suggesting stronger participation.")
+  }
+
+  if ((row.relative_strength_20d ?? 0) > 0) {
+    bullets.push("It has been outperforming the broader market recently.")
+  }
+
+  if ((row.stacked_signal_count ?? 0) >= 2) {
+    bullets.push("Multiple bullish signals are showing up at the same time.")
+  }
+
+  if ((row.earnings_surprise_pct ?? 0) > 0) {
+    bullets.push("Recent earnings came in stronger than expected.")
+  }
+
+  if ((row.revenue_growth_pct ?? 0) > 10) {
+    bullets.push("The company is showing solid revenue growth.")
+  }
+
+  if (bullets.length === 0) {
+    bullets.push(
+      "This stock is showing multiple signs of strength compared with others on the board."
+    )
+  }
+
+  return bullets.slice(0, 3)
 }
 
 function MiniMetric({
