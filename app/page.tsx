@@ -1257,11 +1257,14 @@ function TopSignalCard({
   const palette = getScorePalette(score)
   const whyBullets = getSimpleCardBullets(row)
   const takeawayBullets = getPremiumSummaryBullets(row)
+
   const [showCompanyInfo, setShowCompanyInfo] = useState(false)
+  const cardRef = useRef<HTMLButtonElement | null>(null)
 
   const hasRealCompanyInfo = Boolean(row.business_description?.trim())
 
   const infoTitle = hasRealCompanyInfo ? "About the company" : "Current signal summary"
+
   const infoBody = hasRealCompanyInfo
     ? row.business_description!.trim()
     : (row.primary_summary || "").trim() ||
@@ -1276,6 +1279,7 @@ function TopSignalCard({
 
   return (
     <button
+      ref={cardRef}
       type="button"
       onClick={onClick}
       className={[
@@ -1316,7 +1320,11 @@ function TopSignalCard({
               }}
               className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
             >
-              {showCompanyInfo ? "Hide details" : hasRealCompanyInfo ? "About the company" : "More info"}
+              {showCompanyInfo
+                ? "Hide details"
+                : hasRealCompanyInfo
+                ? "About the company"
+                : "More info"}
             </button>
           </div>
         </div>
@@ -1328,36 +1336,43 @@ function TopSignalCard({
       </div>
 
       <div
-  className={[
-    "grid transition-all duration-300 ease-out",
-    showCompanyInfo ? "mb-4 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-  ].join(" ")}
->
-  <div className="overflow-hidden">
-    <div className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300/80">
-        {infoTitle}
-      </p>
+        className={[
+          "grid transition-all duration-300 ease-out",
+          showCompanyInfo ? "mb-4 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        ].join(" ")}
+      >
+        <div className="overflow-hidden">
+          <div className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300/80">
+              {infoTitle}
+            </p>
 
-      <p className="text-sm leading-6 text-slate-300">
-        {infoBody}
-      </p>
+            <p className="text-sm leading-6 text-slate-300">
+              {infoBody}
+            </p>
 
-      <div className="mt-4 flex justify-end">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            setShowCompanyInfo(false)
-          }}
-          className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
-        >
-          Close
-        </button>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowCompanyInfo(false)
+
+                  setTimeout(() => {
+                    cardRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    })
+                  }, 150)
+                }}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-</div>
 
       <div className="mb-4">
         <ScoreBar row={row} compact />
@@ -1367,6 +1382,7 @@ function TopSignalCard({
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
           Why it could matter today
         </p>
+
         <ul className="mt-3 space-y-2 text-sm leading-6 text-white">
           {whyBullets.map((item, i) => (
             <li key={i} className="flex items-start gap-2">
@@ -1389,6 +1405,7 @@ function TopSignalCard({
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
           Member takeaway
         </p>
+
         <ul className="space-y-2 text-sm leading-6 text-slate-100">
           {takeawayBullets.map((item, i) => (
             <li key={i} className="flex items-start gap-2">
@@ -1401,6 +1418,7 @@ function TopSignalCard({
 
       <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
         <span className="text-sm text-slate-300">Open guided detail</span>
+
         <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white">
           Explore →
         </span>
