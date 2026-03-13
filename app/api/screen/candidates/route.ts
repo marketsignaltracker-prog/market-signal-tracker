@@ -198,6 +198,7 @@ type ScreeningPreparationResult =
       error: string
       errorKind?: string
       removeTicker?: string
+      historyRow?: CandidateUniverseRow
       result?: Record<string, any>
     }
 
@@ -295,17 +296,12 @@ function isProbablyCommonStockTicker(ticker: string) {
     return true
   }
 
-  // obvious structured / non-common-share symbols
   if (t.includes("^")) return false
   if (t.includes("/")) return false
 
-  // preferred-share style suffixes
-  // examples: ABC-PA, ABC-PB, ABC.PR.A, ABC.PRA
   if (/-P[A-Z0-9]+$/.test(t)) return false
   if (/\.P[R]?[A-Z0-9]+$/.test(t)) return false
 
-  // warrants
-  // examples: ABC-WT, ABC-WS, ABC.WT
   if (/-WT$/.test(t)) return false
   if (/-WTS$/.test(t)) return false
   if (/-WS$/.test(t)) return false
@@ -313,26 +309,19 @@ function isProbablyCommonStockTicker(ticker: string) {
   if (/\.WTS$/.test(t)) return false
   if (/\.WS$/.test(t)) return false
 
-  // rights
   if (/-RT$/.test(t)) return false
   if (/-RIGHT$/.test(t)) return false
   if (/-RIGHTS$/.test(t)) return false
   if (/\.RT$/.test(t)) return false
   if (/\.RGT$/.test(t)) return false
 
-  // units
   if (/-U$/.test(t)) return false
   if (/\.U$/.test(t)) return false
 
-  // textual preferred indicators
   if (/PREFERRED/i.test(t)) return false
   if (/PREF/i.test(t)) return false
-
-  // test symbols
   if (/TEST/i.test(t)) return false
 
-  // fallback: allow normal-looking tickers that are letters/numbers with optional dash/dot,
-  // but block the obvious structured patterns above
   if (/^[A-Z0-9.-]{1,10}$/.test(t)) {
     return true
   }
@@ -1324,6 +1313,17 @@ async function prepareTickerForScoring(
   } catch (err: any) {
     const disposition = classifyYahooError(err)
 
+    const historyRow = makeExcludedRow({
+      ticker,
+      cik: company.cik,
+      name: company.name,
+      screenReason:
+        disposition.kind === "permanent"
+          ? `Permanent Yahoo error: ${disposition.reason}`
+          : `Transient Yahoo error: ${disposition.reason}`,
+      nowIso,
+    })
+
     return {
       kind: "error",
       ticker,
@@ -1333,6 +1333,7 @@ async function prepareTickerForScoring(
           ? "permanent_yahoo_error"
           : "transient_yahoo_error",
       removeTicker: disposition.kind === "permanent" ? ticker : undefined,
+      historyRow,
       result: includeResults
         ? {
             ticker,
@@ -1624,11 +1625,23 @@ export async function GET(request: Request) {
 
       if (item.kind === "error") {
         failedInBatch += 1
+
         if (item.errorKind === "transient_yahoo_error") {
           keptUniverseOnTransientError += 1
         }
-        if (item.removeTicker) tickersToDelete.push(item.removeTicker)
-        if (item.result && includeResults) results.push(item.result)
+
+        if (item.removeTicker) {
+          tickersToDelete.push(item.removeTicker)
+        }
+
+        if (item.historyRow) {
+          earlyHistoryRows.push(makeHistoryRow(item.historyRow, screenedOn, nowIso))
+        }
+
+        if (item.result && includeResults) {
+          results.push(item.result)
+        }
+
         continue
       }
 
@@ -1906,7 +1919,7 @@ export async function GET(request: Request) {
     const removedFromUniverseInBatch = Math.max(0, tickersToDelete.length - deleteErrorCount)
     failedInBatch += deleteErrorCount + universeUpsertErrorCount
 
-    let retentionMessage: string = "skipped"
+    let retentionMessage = "skipped"
     if (runRetention) {
       const cutoffDate = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000)
         .toISOString()
