@@ -46,8 +46,8 @@ type PipelineStateRow = {
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
-const DEFAULT_SCREEN_BATCH = 100
-const MAX_SCREEN_BATCH = 100
+const DEFAULT_SCREEN_BATCH = 200
+const MAX_SCREEN_BATCH = 250
 const MIN_SCREEN_BATCH = 25
 
 const DEFAULT_FILINGS_BATCH = 1000
