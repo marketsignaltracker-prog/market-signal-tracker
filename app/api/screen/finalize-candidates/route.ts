@@ -80,7 +80,9 @@ type CandidateUniverseRow = {
 }
 
 const MAX_FINAL_CANDIDATES = 150
-const MIN_FINAL_SCORE = 55
+const STRICT_MIN_SCORE = 60
+const FALLBACK_MIN_SCORE = 45
+const MIN_STRICT_POOL_SIZE = 25
 const DB_CHUNK_SIZE = 250
 
 function chunkArray<T>(items: T[], size: number) {
@@ -111,20 +113,48 @@ async function deleteAllUniverseRows(table: any) {
   return error ? error.message : null
 }
 
-function isFinalEligible(row: CandidateHistoryRow) {
+function isStrictEligible(row: CandidateHistoryRow) {
   return (
     row.passes_price &&
     row.passes_volume &&
     row.passes_dollar_volume &&
     row.passes_market_cap &&
     row.above_sma_20 &&
-    (row.return_20d ?? 0) > 0 &&
-    (row.relative_strength_20d ?? 0) > 0 &&
-    (row.candidate_score ?? 0) >= MIN_FINAL_SCORE
+    (row.return_20d ?? -999) > 0 &&
+    (row.relative_strength_20d ?? -999) > 0 &&
+    (row.candidate_score ?? 0) >= STRICT_MIN_SCORE
   )
 }
 
-function toUniverseRow(row: CandidateHistoryRow): CandidateUniverseRow {
+function isFallbackEligible(row: CandidateHistoryRow) {
+  return (
+    row.passes_price &&
+    row.passes_volume &&
+    row.passes_dollar_volume &&
+    row.passes_market_cap &&
+    (row.return_20d ?? -999) > -2 &&
+    (row.relative_strength_20d ?? -999) > -2 &&
+    (row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE
+  )
+}
+
+function compareRows(a: CandidateHistoryRow, b: CandidateHistoryRow) {
+  if ((b.candidate_score ?? 0) !== (a.candidate_score ?? 0)) {
+    return (b.candidate_score ?? 0) - (a.candidate_score ?? 0)
+  }
+  if ((b.relative_strength_20d ?? 0) !== (a.relative_strength_20d ?? 0)) {
+    return (b.relative_strength_20d ?? 0) - (a.relative_strength_20d ?? 0)
+  }
+  if ((b.return_20d ?? 0) !== (a.return_20d ?? 0)) {
+    return (b.return_20d ?? 0) - (a.return_20d ?? 0)
+  }
+  if ((b.avg_dollar_volume_20d ?? 0) !== (a.avg_dollar_volume_20d ?? 0)) {
+    return (b.avg_dollar_volume_20d ?? 0) - (a.avg_dollar_volume_20d ?? 0)
+  }
+  return (b.market_cap ?? 0) - (a.market_cap ?? 0)
+}
+
+function toUniverseRow(row: CandidateHistoryRow, reason: string): CandidateUniverseRow {
   return {
     ticker: row.ticker,
     cik: row.cik,
@@ -158,7 +188,7 @@ function toUniverseRow(row: CandidateHistoryRow): CandidateUniverseRow {
     passes_market_cap: row.passes_market_cap,
     candidate_score: row.candidate_score,
     included: true,
-    screen_reason: `Finalized top candidate (${row.candidate_score})`,
+    screen_reason: reason,
     last_screened_at: row.last_screened_at,
     updated_at: new Date().toISOString(),
   }
@@ -220,24 +250,52 @@ export async function GET(request: Request) {
       return Response.json({ ok: false, error: rowsError.message }, { status: 500 })
     }
 
-    const allRows = ((latestRows || []) as CandidateHistoryRow[]).filter(isFinalEligible)
+    const snapshotRows = (latestRows || []) as CandidateHistoryRow[]
 
-    allRows.sort((a, b) => {
-      if ((b.candidate_score ?? 0) !== (a.candidate_score ?? 0)) {
-        return (b.candidate_score ?? 0) - (a.candidate_score ?? 0)
-      }
-      if ((b.relative_strength_20d ?? 0) !== (a.relative_strength_20d ?? 0)) {
-        return (b.relative_strength_20d ?? 0) - (a.relative_strength_20d ?? 0)
-      }
-      if ((b.avg_dollar_volume_20d ?? 0) !== (a.avg_dollar_volume_20d ?? 0)) {
-        return (b.avg_dollar_volume_20d ?? 0) - (a.avg_dollar_volume_20d ?? 0)
-      }
-      return (b.market_cap ?? 0) - (a.market_cap ?? 0)
-    })
+    if (!snapshotRows.length) {
+      return Response.json(
+        { ok: false, error: "Latest screened snapshot contains no rows" },
+        { status: 500 }
+      )
+    }
 
-    const selectedRows = allRows.slice(0, MAX_FINAL_CANDIDATES)
+    const scoredRows = snapshotRows.filter(
+      (row) => row.candidate_score !== null && row.candidate_score !== undefined
+    )
+
+    const strictPool = scoredRows.filter(isStrictEligible).sort(compareRows)
+    const fallbackPool = scoredRows.filter(isFallbackEligible).sort(compareRows)
+
+    const selectedSource = strictPool.length >= MIN_STRICT_POOL_SIZE ? "strict" : "fallback"
+    const selectedPool = selectedSource === "strict" ? strictPool : fallbackPool
+    const selectedRows = selectedPool.slice(0, MAX_FINAL_CANDIDATES)
+
+    if (!selectedRows.length) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Finalize step found zero eligible candidates",
+          debug: {
+            screenedOn,
+            snapshotRowCount: snapshotRows.length,
+            scoredRowCount: scoredRows.length,
+            strictEligibleCount: strictPool.length,
+            fallbackEligibleCount: fallbackPool.length,
+          },
+        },
+        { status: 500 }
+      )
+    }
+
     const selectedTickers = new Set(selectedRows.map((row) => row.ticker))
-    const universeRows = selectedRows.map(toUniverseRow)
+    const universeRows = selectedRows.map((row) =>
+      toUniverseRow(
+        row,
+        selectedSource === "strict"
+          ? `Finalized strict top candidate (${row.candidate_score})`
+          : `Finalized fallback top candidate (${row.candidate_score})`
+      )
+    )
 
     const deleteError = await deleteAllUniverseRows(candidateUniverseTable)
     if (deleteError) {
@@ -306,8 +364,11 @@ export async function GET(request: Request) {
     return Response.json({
       ok: true,
       screenedOn,
-      totalRowsInSnapshot: latestRows?.length ?? 0,
-      eligibleRows: allRows.length,
+      snapshotRowCount: snapshotRows.length,
+      scoredRowCount: scoredRows.length,
+      strictEligibleCount: strictPool.length,
+      fallbackEligibleCount: fallbackPool.length,
+      selectedSource,
       finalizedCount: universeRows.length,
       firstTicker: universeRows[0]?.ticker ?? null,
       lastTicker: universeRows[universeRows.length - 1]?.ticker ?? null,
