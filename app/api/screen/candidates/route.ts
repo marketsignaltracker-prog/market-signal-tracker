@@ -289,19 +289,27 @@ function isProbablyCommonStockTicker(ticker: string) {
 
   const t = ticker.trim().toUpperCase()
 
-  const badPatterns = [
-    /\^/,
-    /\//,
-    /(?:^|[-.])(WS|WT|WTS|WARRANT|WAR)$/i,
-    /(?:^|[-.])(W|U|R)$/i,
-    /(?:^|[-.])(RT|RIGHT|RIGHTS)$/i,
-    /(?:^|[-.])P(?:R)?[A-Z]{0,2}$/i,
-    /PREFERRED/i,
-    /PREF/i,
-    /TEST/i,
-  ]
+  // obvious non-common-share / structured symbols
+  if (t.includes("^")) return false
+  if (t.includes("/")) return false
 
-  return !badPatterns.some((pattern) => pattern.test(t))
+  // preferred shares and series classes like ABC-PA, ABC.PR.A, etc.
+  if (/-P[A-Z0-9]*$/.test(t)) return false
+  if (/\.P[R]?[A-Z0-9]*$/.test(t)) return false
+  if (/PREFERRED/i.test(t)) return false
+  if (/PREF/i.test(t)) return false
+
+  // warrants / rights / units only when explicitly suffixed
+  if (/-WT$/.test(t) || /-WTS$/.test(t) || /-WS$/.test(t)) return false
+  if (/\.WT$/.test(t) || /\.WTS$/.test(t) || /\.WS$/.test(t)) return false
+  if (/-RT$/.test(t) || /-RIGHT$/.test(t) || /-RIGHTS$/.test(t)) return false
+  if (/\.RT$/.test(t) || /\.RGT$/.test(t)) return false
+  if (/-U$/.test(t) || /\.U$/.test(t)) return false
+
+  // test symbols
+  if (/TEST/i.test(t)) return false
+
+  return true
 }
 
 function calcPercentChange(current: number, prior: number) {
