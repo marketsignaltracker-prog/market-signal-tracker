@@ -179,7 +179,7 @@ type Diagnostics = {
 }
 
 const yahooFinance = new YahooFinance({
-  queue: { concurrency: 1 },
+  queue: { concurrency: 6 },
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
@@ -194,8 +194,8 @@ const SEC_USER_AGENT =
   process.env.SEC_USER_AGENT ||
   "Market Signal Tracker marketsignaltracker@gmail.com"
 
-const DEFAULT_LIMIT = 500
-const MAX_LIMIT = 1500
+const DEFAULT_LIMIT = 250
+const MAX_LIMIT = 1000
 const DEFAULT_LOOKBACK_DAYS = 14
 const MAX_LOOKBACK_DAYS = 30
 const RETENTION_DAYS = 30
@@ -210,6 +210,10 @@ const MIN_SIGNAL_APP_SCORE = 80
 const MIN_TICKER_APP_SCORE = 82
 const MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL = 90
 const MAX_SIGNAL_AGE_DAYS = 14
+
+const PREPARE_CONCURRENCY = 8
+const CATALYST_FETCH_CONCURRENCY = 4
+const DB_CHUNK_SIZE = 250
 
 function normalizeFormType(formType: string | null) {
   const normalized = (formType || "")
@@ -368,6 +372,63 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
     })
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  async function runner() {
+    while (true) {
+      const current = nextIndex
+      nextIndex += 1
+      if (current >= items.length) return
+      results[current] = await worker(items[current], current)
+    }
+  }
+
+  const runners = Array.from(
+    { length: Math.min(Math.max(1, concurrency), Math.max(1, items.length)) },
+    () => runner()
+  )
+
+  await Promise.all(runners)
+  return results
+}
+
+async function upsertInChunks(
+  table: any,
+  rows: any[],
+  onConflict: string
+) {
+  for (const chunk of chunkArray(rows, DB_CHUNK_SIZE)) {
+    const { error } = await table.upsert(chunk, { onConflict })
+    if (error) {
+      throw new Error(error.message)
+    }
+  }
+}
+
+async function deleteInChunksByTicker(table: any, tickers: string[]) {
+  const unique = uniqueStrings(tickers)
+  for (const chunk of chunkArray(unique, DB_CHUNK_SIZE)) {
+    const { error } = await table.delete().in("ticker", chunk)
+    if (error) {
+      throw new Error(error.message)
+    }
   }
 }
 
@@ -847,19 +908,20 @@ async function getPriceConfirmation(ticker: string): Promise<PriceConfirmation> 
         const startDate = new Date()
         startDate.setDate(startDate.getDate() - 400)
 
-        const candles = await yahooFinance.historical(ticker, {
-          period1: toIsoDateString(startDate),
-          period2: toIsoDateString(endDate),
-          interval: "1d",
-        })
-
-        const spyCandles = await yahooFinance
-          .historical("SPY", {
+        const [candles, spyCandles] = await Promise.all([
+          yahooFinance.historical(ticker, {
             period1: toIsoDateString(startDate),
             period2: toIsoDateString(endDate),
             interval: "1d",
-          })
-          .catch(() => null)
+          }),
+          yahooFinance
+            .historical("SPY", {
+              period1: toIsoDateString(startDate),
+              period2: toIsoDateString(endDate),
+              interval: "1d",
+            })
+            .catch(() => null),
+        ])
 
         if (!candles || candles.length < 60) {
           return {
@@ -1003,6 +1065,7 @@ async function getTickerSnapshot(ticker: string): Promise<TickerSnapshot> {
         ])
 
         const currentPrice =
+          safeNumber((summary.price as any)?.regularMarketPrice) ??
           safeNumber((summary.financialData as any)?.currentPrice) ??
           safeNumber((quote as any)?.regularMarketPrice)
 
@@ -2343,13 +2406,17 @@ async function attachTickerScoreChangesToCurrentRows(
 
   const earliestNeededDate = addDays(runDate, -14)
 
-  const { data: historyRows } = await supabase
+  const { data: historyRows, error } = await supabase
     .from("ticker_score_history")
     .select("ticker, score_date, app_score")
     .in("ticker", tickers)
     .gte("score_date", earliestNeededDate)
     .lt("score_date", runDate)
     .order("score_date", { ascending: false })
+
+  if (error) {
+    return currentRows
+  }
 
   const byTicker = new Map<string, Map<string, number>>()
 
@@ -2402,6 +2469,156 @@ function buildTickerScoreHistoryRows(currentRows: any[], runDate: string, runTim
   }))
 }
 
+type SharedCaches = {
+  snapshotCache: Map<string, Promise<TickerSnapshot>>
+  priceCache: Map<string, Promise<PriceConfirmation>>
+  earningsCache: Map<string, Promise<EarningsSignal>>
+  catalystCache: Map<string, Promise<string | null>>
+}
+
+async function getCachedSnapshot(caches: SharedCaches, ticker: string) {
+  if (!caches.snapshotCache.has(ticker)) {
+    caches.snapshotCache.set(ticker, getTickerSnapshot(ticker))
+  }
+  return await caches.snapshotCache.get(ticker)!
+}
+
+async function getCachedPrice(caches: SharedCaches, ticker: string) {
+  if (!caches.priceCache.has(ticker)) {
+    caches.priceCache.set(ticker, getPriceConfirmation(ticker))
+  }
+  return await caches.priceCache.get(ticker)!
+}
+
+async function getCachedEarnings(caches: SharedCaches, ticker: string) {
+  if (!caches.earningsCache.has(ticker)) {
+    caches.earningsCache.set(ticker, getEarningsSignal(ticker))
+  }
+  return await caches.earningsCache.get(ticker)!
+}
+
+async function getCachedCatalyst(caches: SharedCaches, filing: RawFiling) {
+  const key = filing.accession_no
+  if (!caches.catalystCache.has(key)) {
+    caches.catalystCache.set(
+      key,
+      (async () => {
+        const filingText = await fetchFilingText(filing.filing_url)
+        return classify8kEvent(filingText)
+      })()
+    )
+  }
+  return await caches.catalystCache.get(key)!
+}
+
+type FilingPreparationResult =
+  | { kind: "prepared"; item: PreparedSignal }
+  | { kind: "unsupported"; form: string }
+  | { kind: "skip"; reason: "noTicker" | "noBaseSignal" | "notBullishEnough" }
+
+async function prepareFilingSignal(
+  filing: RawFiling,
+  caches: SharedCaches,
+  candidateByTicker: Map<string, CandidateUniverseSignalInput>
+): Promise<FilingPreparationResult> {
+  const ticker = normalizeTicker(filing.ticker)
+  if (!ticker) {
+    return { kind: "skip", reason: "noTicker" }
+  }
+
+  const [price, snapshot, earnings] = await Promise.all([
+    getCachedPrice(caches, ticker),
+    getCachedSnapshot(caches, ticker),
+    getCachedEarnings(caches, ticker),
+  ])
+
+  let base = baseSignal(filing.form_type)
+  if (!base) {
+    base = maybeCreateEarningsBreakoutBase({ ...filing, ticker }, price, earnings)
+  }
+
+  if (!base) {
+    const form = normalizeFormType(filing.form_type) || "UNKNOWN"
+    return { kind: "unsupported", form }
+  }
+
+  let insider: InsiderParseResult = {
+    action: null,
+    shares: null,
+    avgPrice: null,
+    role: null,
+    insiderName: null,
+  }
+
+  const form = normalizeFormType(filing.form_type)
+
+  if (form === "4" || form === "4/A") {
+    insider = await parseForm4({ ...filing, ticker })
+  }
+
+  let catalystType: string | null = null
+  if (form === "8-K" || form === "6-K") {
+    catalystType = await getCachedCatalyst(caches, filing)
+  }
+
+  if ((form === "4" || form === "4/A") && insider.action !== "Buy") {
+    return { kind: "skip", reason: "notBullishEnough" }
+  }
+
+  if ((form === "8-K" || form === "6-K") && !isPositive8kCatalyst(catalystType)) {
+    return { kind: "skip", reason: "notBullishEnough" }
+  }
+
+  return {
+    kind: "prepared",
+    item: {
+      filing: { ...filing, ticker },
+      base,
+      insider,
+      price,
+      snapshot,
+      earnings,
+      catalystType,
+      candidate: candidateByTicker.get(ticker) ?? null,
+    },
+  }
+}
+
+async function prepareCandidateSignal(
+  candidate: CandidateUniverseSignalInput,
+  caches: SharedCaches
+): Promise<PreparedSignal | null> {
+  const ticker = normalizeTicker(candidate.ticker)
+  if (!ticker) return null
+
+  const [price, snapshot, earnings] = await Promise.all([
+    getCachedPrice(caches, ticker),
+    getCachedSnapshot(caches, ticker),
+    getCachedEarnings(caches, ticker),
+  ])
+
+  const syntheticFiling = buildSyntheticCandidateFiling(candidate, new Date().toISOString())
+  const base = maybeCreateCandidateTechnicalBase(candidate, price, earnings)
+  if (!base) return null
+
+  return {
+    filing: syntheticFiling,
+    base,
+    insider: {
+      action: null,
+      shares: null,
+      avgPrice: null,
+      role: null,
+      insiderName: null,
+    },
+    price,
+    snapshot,
+    earnings,
+    catalystType: null,
+    candidate,
+  }
+}
+
 export async function GET(request: Request) {
   const pipelineToken = process.env.PIPELINE_TOKEN
   const suppliedToken = request.headers.get("x-pipeline-token")
@@ -2421,7 +2638,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
+
     const { searchParams } = new URL(request.url)
 
     const limit = Math.min(
@@ -2432,6 +2655,9 @@ export async function GET(request: Request) {
       Math.max(1, parseInteger(searchParams.get("lookbackDays"), DEFAULT_LOOKBACK_DAYS)),
       MAX_LOOKBACK_DAYS
     )
+
+    const includeCounts = (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
+    const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
 
     const now = new Date()
     const runDate = toIsoDateString(now)
@@ -2498,152 +2724,59 @@ export async function GET(request: Request) {
     diagnostics.scanned = filings?.length || 0
     diagnostics.candidateRowsLoaded = candidateRows?.length || 0
 
-    const snapshotCache = new Map<string, TickerSnapshot>()
-    const priceCache = new Map<string, PriceConfirmation>()
-    const earningsCache = new Map<string, EarningsSignal>()
-    const catalystCache = new Map<string, string | null>()
-    const candidateByTicker = new Map<string, CandidateUniverseSignalInput>()
-    const prepared: PreparedSignal[] = []
-    const preparedKeys = new Set<string>()
+    const caches: SharedCaches = {
+      snapshotCache: new Map(),
+      priceCache: new Map(),
+      earningsCache: new Map(),
+      catalystCache: new Map(),
+    }
 
+    const candidateByTicker = new Map<string, CandidateUniverseSignalInput>()
     for (const candidate of (candidateRows || []) as CandidateUniverseSignalInput[]) {
       const ticker = normalizeTicker(candidate.ticker)
       if (!ticker) continue
       candidateByTicker.set(ticker, { ...candidate, ticker })
     }
 
-    for (const filing of (filings || []) as RawFiling[]) {
-      const ticker = normalizeTicker(filing.ticker)
-      if (!ticker) {
-        diagnostics.skippedNoTicker += 1
+    const filingPreparations = await mapWithConcurrency(
+      (filings || []) as RawFiling[],
+      PREPARE_CONCURRENCY,
+      async (filing) => prepareFilingSignal(filing, caches, candidateByTicker)
+    )
+
+    const prepared: PreparedSignal[] = []
+    const preparedKeys = new Set<string>()
+
+    for (const result of filingPreparations) {
+      if (result.kind === "prepared") {
+        prepared.push(result.item)
+        preparedKeys.add(`filing:${result.item.filing.accession_no}`)
         continue
       }
 
-      let price = priceCache.get(ticker)
-      if (!price) {
-        price = await getPriceConfirmation(ticker)
-        priceCache.set(ticker, price)
-      }
-
-      let snapshot = snapshotCache.get(ticker)
-      if (!snapshot) {
-        snapshot = await getTickerSnapshot(ticker)
-        snapshotCache.set(ticker, snapshot)
-      }
-
-      let earnings = earningsCache.get(ticker)
-      if (!earnings) {
-        earnings = await getEarningsSignal(ticker)
-        earningsCache.set(ticker, earnings)
-      }
-
-      let base = baseSignal(filing.form_type)
-      if (!base) {
-        base = maybeCreateEarningsBreakoutBase(filing, price, earnings)
-      }
-
-      if (!base) {
+      if (result.kind === "unsupported") {
         diagnostics.skippedNoBaseSignal += 1
-        const form = normalizeFormType(filing.form_type) || "UNKNOWN"
-        diagnostics.unsupportedForms[form] = (diagnostics.unsupportedForms[form] || 0) + 1
+        diagnostics.unsupportedForms[result.form] =
+          (diagnostics.unsupportedForms[result.form] || 0) + 1
         continue
       }
 
-      let insider: InsiderParseResult = {
-        action: null,
-        shares: null,
-        avgPrice: null,
-        role: null,
-        insiderName: null,
-      }
-
-      const form = normalizeFormType(filing.form_type)
-
-      if (form === "4" || form === "4/A") {
-        insider = await parseForm4(filing)
-      }
-
-      let catalystType: string | null = null
-      if (form === "8-K" || form === "6-K") {
-        if (catalystCache.has(filing.accession_no)) {
-          catalystType = catalystCache.get(filing.accession_no) ?? null
-        } else {
-          const filingText = await fetchFilingText(filing.filing_url)
-          catalystType = classify8kEvent(filingText)
-          catalystCache.set(filing.accession_no, catalystType)
-        }
-      }
-
-      if ((form === "4" || form === "4/A") && insider.action !== "Buy") {
-        diagnostics.skippedNotBullishEnough += 1
-        continue
-      }
-
-      if ((form === "8-K" || form === "6-K") && !isPositive8kCatalyst(catalystType)) {
-        diagnostics.skippedNotBullishEnough += 1
-        continue
-      }
-
-      prepared.push({
-        filing: { ...filing, ticker },
-        base,
-        insider,
-        price,
-        snapshot,
-        earnings,
-        catalystType,
-        candidate: candidateByTicker.get(ticker) ?? null,
-      })
-
-      preparedKeys.add(`filing:${filing.accession_no}`)
+      if (result.reason === "noTicker") diagnostics.skippedNoTicker += 1
+      else if (result.reason === "noBaseSignal") diagnostics.skippedNoBaseSignal += 1
+      else if (result.reason === "notBullishEnough") diagnostics.skippedNotBullishEnough += 1
     }
 
-    for (const candidate of (candidateRows || []) as CandidateUniverseSignalInput[]) {
-      const ticker = normalizeTicker(candidate.ticker)
-      if (!ticker) continue
+    const candidatePreparations = await mapWithConcurrency(
+      (candidateRows || []) as CandidateUniverseSignalInput[],
+      PREPARE_CONCURRENCY,
+      async (candidate) => prepareCandidateSignal(candidate, caches)
+    )
 
-      let price = priceCache.get(ticker)
-      if (!price) {
-        price = await getPriceConfirmation(ticker)
-        priceCache.set(ticker, price)
-      }
-
-      let snapshot = snapshotCache.get(ticker)
-      if (!snapshot) {
-        snapshot = await getTickerSnapshot(ticker)
-        snapshotCache.set(ticker, snapshot)
-      }
-
-      let earnings = earningsCache.get(ticker)
-      if (!earnings) {
-        earnings = await getEarningsSignal(ticker)
-        earningsCache.set(ticker, earnings)
-      }
-
-      const syntheticFiling = buildSyntheticCandidateFiling(candidate, runTimestamp)
-      const base = maybeCreateCandidateTechnicalBase(candidate, price, earnings)
-      if (!base) continue
-
-      const preparedKey = `candidate:${syntheticFiling.accession_no}`
+    for (const item of candidatePreparations) {
+      if (!item) continue
+      const preparedKey = `candidate:${item.filing.accession_no}`
       if (preparedKeys.has(preparedKey)) continue
-
-      prepared.push({
-        filing: syntheticFiling,
-        base,
-        insider: {
-          action: null,
-          shares: null,
-          avgPrice: null,
-          role: null,
-          insiderName: null,
-        },
-        price,
-        snapshot,
-        earnings,
-        catalystType: null,
-        candidate,
-      })
-
+      prepared.push(item)
       preparedKeys.add(preparedKey)
     }
 
@@ -2771,46 +2904,33 @@ export async function GET(request: Request) {
     diagnostics.filingSignalsBuilt = signalRows.length
 
     if (signalRows.length > 0) {
-      const { error: upsertError } = await supabase
-        .from("signals")
-        .upsert(signalRows, { onConflict: "signal_key" })
-
-      if (upsertError) {
-        return Response.json(
-          {
-            ok: false,
-            error: upsertError.message,
-            diagnostics,
-          },
-          { status: 500 }
-        )
-      }
+      await upsertInChunks(supabase.from("signals"), signalRows, "signal_key")
     }
 
     diagnostics.filingSignalsInserted = signalRows.length
     diagnostics.candidateTechnicalSignalsInserted = diagnostics.candidateTechnicalSignalsBuilt
 
     if (historyRows.length > 0) {
-      const { error: historyError } = await supabase
-        .from("signal_history")
-        .upsert(historyRows, { onConflict: "signal_history_key" })
+      await upsertInChunks(supabase.from("signal_history"), historyRows, "signal_history_key")
+    }
 
-      if (historyError) {
+    if (runRetention) {
+      const { error: staleSignalsCleanupError } = await supabase
+        .from("signals")
+        .delete()
+        .lt("filed_at", cutoffDateString)
+
+      if (staleSignalsCleanupError) {
         return Response.json(
           {
             ok: false,
-            error: historyError.message,
+            error: staleSignalsCleanupError.message,
             diagnostics,
           },
           { status: 500 }
         )
       }
     }
-
-    const { error: staleSignalsCleanupError } = await supabase
-      .from("signals")
-      .delete()
-      .lt("filed_at", cutoffDateString)
 
     const { data: allSignalRows, error: allSignalsError } = await supabase
       .from("signals")
@@ -2839,20 +2959,7 @@ export async function GET(request: Request) {
     tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(supabase, tickerCurrentRows, runDate)
 
     if (tickerCurrentRows.length > 0) {
-      const { error: tickerCurrentError } = await supabase
-        .from("ticker_scores_current")
-        .upsert(tickerCurrentRows, { onConflict: "ticker" })
-
-      if (tickerCurrentError) {
-        return Response.json(
-          {
-            ok: false,
-            error: tickerCurrentError.message,
-            diagnostics,
-          },
-          { status: 500 }
-        )
-      }
+      await upsertInChunks(supabase.from("ticker_scores_current"), tickerCurrentRows, "ticker")
     }
 
     const currentTickerSet = new Set(tickerCurrentRows.map((row) => normalizeTicker(row.ticker)))
@@ -2878,21 +2985,7 @@ export async function GET(request: Request) {
     )
 
     if (staleTickerList.length > 0) {
-      const { error: staleTickerCleanupError } = await supabase
-        .from("ticker_scores_current")
-        .delete()
-        .in("ticker", staleTickerList)
-
-      if (staleTickerCleanupError) {
-        return Response.json(
-          {
-            ok: false,
-            error: staleTickerCleanupError.message,
-            diagnostics,
-          },
-          { status: 500 }
-        )
-      }
+      await deleteInChunksByTicker(supabase.from("ticker_scores_current"), staleTickerList)
     }
 
     diagnostics.tickerCurrentInserted = tickerCurrentRows.length
@@ -2900,48 +2993,55 @@ export async function GET(request: Request) {
     const tickerHistoryRows = buildTickerScoreHistoryRows(tickerCurrentRows, runDate, runTimestamp)
 
     if (tickerHistoryRows.length > 0) {
-      const { error: tickerHistoryError } = await supabase
-        .from("ticker_score_history")
-        .upsert(tickerHistoryRows, { onConflict: "ticker,score_date" })
-
-      if (tickerHistoryError) {
-        return Response.json(
-          {
-            ok: false,
-            error: tickerHistoryError.message,
-            diagnostics,
-          },
-          { status: 500 }
-        )
-      }
+      await upsertInChunks(
+        supabase.from("ticker_score_history"),
+        tickerHistoryRows,
+        "ticker,score_date"
+      )
     }
 
     diagnostics.tickerHistoryInserted = tickerHistoryRows.length
 
-    const retentionCutoff = new Date(now)
-    retentionCutoff.setDate(retentionCutoff.getDate() - RETENTION_DAYS)
-    const retentionCutoffString = toIsoDateString(retentionCutoff)
+    let retentionMessage = "skipped"
+    let tickerRetentionMessage = "skipped"
 
-    const { error: retentionError } = await supabase
-      .from("signal_history")
-      .delete()
-      .lt("scored_on", retentionCutoffString)
+    if (runRetention) {
+      const retentionCutoff = new Date(now)
+      retentionCutoff.setDate(retentionCutoff.getDate() - RETENTION_DAYS)
+      const retentionCutoffString = toIsoDateString(retentionCutoff)
 
-    const { error: tickerRetentionError } = await supabase
-      .from("ticker_score_history")
-      .delete()
-      .lt("score_date", retentionCutoffString)
+      const { error: retentionError } = await supabase
+        .from("signal_history")
+        .delete()
+        .lt("scored_on", retentionCutoffString)
 
-    const [{ count: strongBuyCount }, { count: eliteBuyCount }] = await Promise.all([
-      supabase
-        .from("ticker_scores_current")
-        .select("*", { count: "exact", head: true })
-        .gte("app_score", 90),
-      supabase
-        .from("ticker_scores_current")
-        .select("*", { count: "exact", head: true })
-        .gte("app_score", 97),
-    ])
+      const { error: tickerRetentionError } = await supabase
+        .from("ticker_score_history")
+        .delete()
+        .lt("score_date", retentionCutoffString)
+
+      retentionMessage = retentionError ? retentionError.message : "ok"
+      tickerRetentionMessage = tickerRetentionError ? tickerRetentionError.message : "ok"
+    }
+
+    let strongBuyCount: number | null = null
+    let eliteBuyCount: number | null = null
+
+    if (includeCounts) {
+      const [{ count: strongBuy }, { count: eliteBuy }] = await Promise.all([
+        supabase
+          .from("ticker_scores_current")
+          .select("*", { count: "exact", head: true })
+          .gte("app_score", 90),
+        supabase
+          .from("ticker_scores_current")
+          .select("*", { count: "exact", head: true })
+          .gte("app_score", 97),
+      ])
+
+      strongBuyCount = strongBuy ?? 0
+      eliteBuyCount = eliteBuy ?? 0
+    }
 
     return Response.json({
       ok: true,
@@ -2958,14 +3058,14 @@ export async function GET(request: Request) {
       scoreVersion: SCORE_VERSION,
       minSignalAppScore: MIN_SIGNAL_APP_SCORE,
       minTickerAppScore: MIN_TICKER_APP_SCORE,
-      retentionCleanup: retentionError ? retentionError.message : "ok",
-      tickerRetentionCleanup: tickerRetentionError ? tickerRetentionError.message : "ok",
-      staleSignalsCleanup: staleSignalsCleanupError ? staleSignalsCleanupError.message : "ok",
-      strongBuyCount: strongBuyCount ?? 0,
-      eliteBuyCount: eliteBuyCount ?? 0,
+      retentionCleanup: retentionMessage,
+      tickerRetentionCleanup: tickerRetentionMessage,
+      staleSignalsCleanup: runRetention ? "ok" : "skipped",
+      strongBuyCount,
+      eliteBuyCount,
       diagnostics,
       message:
-        "Strong-buy-only signals generated from filings and technical candidate setups, with ticker-level grading, history, and freshness cleanup.",
+        "Strong-buy-only signals generated from filings and technical candidate setups, with ticker-level grading, history, and optional freshness cleanup.",
     })
   } catch (error: any) {
     return Response.json(
