@@ -46,8 +46,13 @@ type PipelineStateRow = {
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
-const DEFAULT_SCREEN_BATCH = 500
-const MAX_SCREEN_BATCH = 1000
+/**
+ * Screening is the expensive step.
+ * Start smaller and let more batches happen per run.
+ */
+const DEFAULT_SCREEN_BATCH = 100
+const MAX_SCREEN_BATCH = 250
+const MIN_SCREEN_BATCH = 25
 
 const DEFAULT_FILINGS_BATCH = 2000
 const DEFAULT_SIGNALS_LIMIT = 3000
@@ -55,10 +60,24 @@ const DEFAULT_SIGNALS_LOOKBACK_DAYS = 30
 
 const MAX_PIPELINE_RUNTIME_MS = 285_000
 const RUNTIME_SAFETY_BUFFER_MS = 12_000
-const MAX_BATCHES_PER_RUN = 8
+
+/**
+ * Since screening batches are smaller, allow more progress per run.
+ */
+const MAX_BATCHES_PER_RUN = 10
 const SCREENING_CHECKPOINT_EVERY = 3
 const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
-const STEP_TIMEOUT_MS = 120_000
+
+/**
+ * Use step-specific timeouts instead of one shared timeout.
+ */
+const DEFAULT_STEP_TIMEOUT_MS = 120_000
+const SCREENING_STEP_TIMEOUT_MS = 180_000
+
+/**
+ * If screening times out, retry once at half the batch size.
+ */
+const ENABLE_SCREENING_RETRY_ON_TIMEOUT = true
 
 function nowIso() {
   return new Date().toISOString()
@@ -145,16 +164,34 @@ function isRecentRun(dateString: string | null | undefined, windowMs: number) {
 
 function clampScreenBatch(batch: number | null | undefined) {
   return Math.min(
-    Math.max(1, batch || DEFAULT_SCREEN_BATCH),
+    Math.max(MIN_SCREEN_BATCH, batch || DEFAULT_SCREEN_BATCH),
     MAX_SCREEN_BATCH
   )
+}
+
+function reduceScreenBatch(batch: number) {
+  return Math.max(MIN_SCREEN_BATCH, Math.floor(batch / 2))
 }
 
 function getStepName(path: string) {
   return path.split("?")[0].split("/").filter(Boolean).slice(-2).join("/")
 }
 
-async function runStep(baseUrl: string, path: string): Promise<StepResult> {
+function isTimeoutLikeError(message: unknown) {
+  if (typeof message !== "string") return false
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes("aborted due to timeout") ||
+    normalized.includes("timeout") ||
+    normalized.includes("timed out")
+  )
+}
+
+async function runStep(
+  baseUrl: string,
+  path: string,
+  timeoutMs = DEFAULT_STEP_TIMEOUT_MS
+): Promise<StepResult> {
   const pipelineToken = process.env.PIPELINE_TOKEN
 
   if (!pipelineToken) {
@@ -171,7 +208,7 @@ async function runStep(baseUrl: string, path: string): Promise<StepResult> {
         "x-pipeline-token": pipelineToken,
       },
       cache: "no-store",
-      signal: AbortSignal.timeout(STEP_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     })
 
     const durationMs = Date.now() - startedAt
@@ -294,15 +331,6 @@ async function patchPipelineState(
   return data as PipelineStateRow
 }
 
-/**
- * Simple, reliable lock:
- * 1. Read current row
- * 2. If still running recently, do not acquire
- * 3. Otherwise update the row normally
- *
- * This avoids the broken .or(...) PATCH filter issue you hit.
- * If you later want true atomic locking, move this into a DB RPC/function.
- */
 async function tryAcquireRunLock(
   supabase: any,
   currentState: PipelineStateRow,
@@ -388,6 +416,57 @@ async function checkpointPipeline(
       lastSuccessAt: state.last_success_at,
     },
   })
+}
+
+async function runScreeningStepWithRetry(
+  baseUrl: string,
+  start: number,
+  batchSize: number
+): Promise<{ result: StepResult; effectiveBatchSize: number; retried: boolean }> {
+  const firstPath = withSearchParams("/api/screen/candidates", {
+    start,
+    batch: batchSize,
+    onlyActive: true,
+  })
+
+  const firstResult = await runStep(
+    baseUrl,
+    firstPath,
+    SCREENING_STEP_TIMEOUT_MS
+  )
+
+  if (
+    firstResult.ok ||
+    !ENABLE_SCREENING_RETRY_ON_TIMEOUT ||
+    !isTimeoutLikeError((firstResult.data as any)?.error) ||
+    batchSize <= MIN_SCREEN_BATCH
+  ) {
+    return {
+      result: firstResult,
+      effectiveBatchSize: batchSize,
+      retried: false,
+    }
+  }
+
+  const smallerBatch = reduceScreenBatch(batchSize)
+
+  const retryPath = withSearchParams("/api/screen/candidates", {
+    start,
+    batch: smallerBatch,
+    onlyActive: true,
+  })
+
+  const retryResult = await runStep(
+    baseUrl,
+    retryPath,
+    SCREENING_STEP_TIMEOUT_MS
+  )
+
+  return {
+    result: retryResult,
+    effectiveBatchSize: smallerBatch,
+    retried: true,
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -488,7 +567,7 @@ export async function GET(request: NextRequest) {
 
     if (state.stage === "screening") {
       let nextStart = state.screen_next_start ?? state.screen_start ?? 0
-      const batchSize = clampScreenBatch(
+      let batchSize = clampScreenBatch(
         parseInteger(state.screen_batch, DEFAULT_SCREEN_BATCH)
       )
 
@@ -530,28 +609,39 @@ export async function GET(request: NextRequest) {
           )
         }
 
-        const screenPath = withSearchParams("/api/screen/candidates", {
-          start: nextStart,
-          batch: batchSize,
-          onlyActive: true,
-        })
+        const screeningAttempt = await runScreeningStepWithRetry(
+          baseUrl,
+          nextStart,
+          batchSize
+        )
 
-        const screenResult = await runStep(baseUrl, screenPath)
+        const screenResult = screeningAttempt.result
         results.push(screenResult)
         batchesThisRun += 1
 
+        if (screeningAttempt.retried) {
+          batchSize = screeningAttempt.effectiveBatchSize
+        }
+
         if (!screenResult.ok) {
+          const errorText = String(
+            (screenResult.data as any)?.error || screenResult.status
+          )
+
+          const timedOut = isTimeoutLikeError(errorText)
+          const nextSuggestedBatch = timedOut
+            ? reduceScreenBatch(batchSize)
+            : batchSize
+
           return await failPipelineForStep(
             supabase,
             results,
             screenResult,
-            `Screening step failed at start=${nextStart}: ${String(
-              (screenResult.data as any)?.error || screenResult.status
-            )}`,
+            `Screening step failed at start=${nextStart}: ${errorText}`,
             {
               screen_start: nextStart,
               screen_next_start: nextStart,
-              screen_batch: batchSize,
+              screen_batch: nextSuggestedBatch,
             }
           )
         }
