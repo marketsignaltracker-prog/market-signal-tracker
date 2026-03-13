@@ -17,13 +17,13 @@ type ChunkWriteResult = {
   }>
 }
 
-const DEFAULT_LOOKBACK_DAYS = 10
+const DEFAULT_LOOKBACK_DAYS = 14
 const MAX_LOOKBACK_DAYS = 30
-const DEFAULT_LIMIT = 500
-const MAX_LIMIT = 2000
+const DEFAULT_LIMIT = 1000
+const MAX_LIMIT = 3000
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v6-tech-only"
-const MIN_SIGNAL_APP_SCORE = 70
+const SCORE_VERSION = "v6-combined"
+const MIN_SIGNAL_APP_SCORE = 68
 const MIN_TICKER_APP_SCORE = 75
 const DB_CHUNK_SIZE = 100
 
@@ -60,14 +60,6 @@ function addDays(isoDate: string, days: number) {
   const d = new Date(`${isoDate}T00:00:00.000Z`)
   d.setUTCDate(d.getUTCDate() + days)
   return d.toISOString().slice(0, 10)
-}
-
-function chunkArray<T>(items: T[], size: number) {
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
-  }
-  return chunks
 }
 
 async function upsertInChunksDetailed(
@@ -154,10 +146,11 @@ function getStrengthBucket(score: number): "Buy" | "Strong Buy" | "Elite Buy" {
 function countPositiveEvidencePillars(breakdown: Record<string, number>) {
   return [
     (breakdown.base || 0) > 0,
-    (breakdown.candidate_score || 0) > 0,
+    (breakdown.candidate_score || 0) > 0 || (breakdown.included || 0) > 0,
     (breakdown.breakout || 0) > 0 || (breakdown.trend || 0) > 0,
     (breakdown.volume || 0) > 0,
     (breakdown.relative_strength || 0) > 0,
+    (breakdown.freshness || 0) > 0 || (breakdown.momentum || 0) > 0,
   ].filter(Boolean).length
 }
 
@@ -177,7 +170,12 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
     const sorted = [...tickerSignalRows].sort((a, b) => {
       const scoreDiff = Number(b.app_score ?? 0) - Number(a.app_score ?? 0)
       if (scoreDiff !== 0) return scoreDiff
-      return new Date(b.filed_at || 0).getTime() - new Date(a.filed_at || 0).getTime()
+
+      const filedAtDiff =
+        new Date(b.filed_at || 0).getTime() - new Date(a.filed_at || 0).getTime()
+      if (filedAtDiff !== 0) return filedAtDiff
+
+      return String(a.signal_key || "").localeCompare(String(b.signal_key || ""))
     })
 
     const primary = sorted[0]
@@ -189,11 +187,15 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
     const accessionNos: string[] = []
     const signalKeys: string[] = []
     const sourceForms: string[] = []
+    const signalSources = new Set<string>()
+    const signalCategories = new Set<string>()
 
     for (const row of sorted) {
       signalKeys.push(row.signal_key)
       accessionNos.push(row.accession_no)
       if (row.source_form) sourceForms.push(row.source_form)
+      if (row.signal_source) signalSources.add(row.signal_source)
+      if (row.signal_category) signalCategories.add(row.signal_category)
 
       for (const tag of row.signal_tags || []) signalTags.add(tag)
       for (const reason of row.signal_reasons || []) signalReasons.add(reason)
@@ -208,8 +210,24 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
     let stackedScore = Number(primary.app_score || 0)
 
     if (sorted.length >= 2) stackedScore += 2
-    if (sorted.length >= 3) stackedScore += 1
+    if (sorted.length >= 3) stackedScore += 2
     if (sorted.length >= 4) stackedScore += 1
+    if (sorted.length >= 5) stackedScore += 1
+
+    if (signalSources.has("breakout") && signalSources.has("form4")) {
+      stackedScore += 2
+      scoreCapsApplied.add("technical-plus-insider-bonus")
+    }
+
+    if (signalSources.has("breakout") && (signalSources.has("13d") || signalSources.has("13g"))) {
+      stackedScore += 2
+      scoreCapsApplied.add("technical-plus-ownership-bonus")
+    }
+
+    if (signalSources.has("breakout") && signalSources.has("8k")) {
+      stackedScore += 1
+      scoreCapsApplied.add("technical-plus-catalyst-bonus")
+    }
 
     const positivePillars = countPositiveEvidencePillars(scoreBreakdown)
 
@@ -226,20 +244,45 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
     const hasBreakoutSupport =
       (scoreBreakdown.breakout || 0) > 0 || primary.breakout_20d === true
 
-    const hasHeavyVolume = (primary.volume_ratio ?? 0) >= 2 || (scoreBreakdown.volume || 0) >= 5
+    const hasHeavyVolume =
+      (primary.volume_ratio ?? 0) >= 2 || (scoreBreakdown.volume || 0) >= 5
+
+    const hasFilingConfirmation =
+      signalSources.has("form4") ||
+      signalSources.has("13d") ||
+      signalSources.has("13g") ||
+      signalSources.has("8k") ||
+      signalSources.has("earnings")
 
     if (!(hasBreakoutSupport && hasHeavyVolume && positivePillars >= 4)) {
       stackedScore = Math.min(stackedScore, 97)
       scoreCapsApplied.add("stacked-elite-confirmation-cap")
     }
 
-    if (!(hasBreakoutSupport && hasHeavyVolume && positivePillars >= 4 && Number(primary.app_score || 0) >= 97)) {
+    if (
+      !(
+        hasBreakoutSupport &&
+        hasHeavyVolume &&
+        positivePillars >= 4 &&
+        (hasFilingConfirmation || Number(primary.app_score || 0) >= 97)
+      )
+    ) {
       stackedScore = Math.min(stackedScore, 99)
       scoreCapsApplied.add("stacked-no-perfect-score-cap")
     }
 
     const finalScore = clamp(Math.round(stackedScore), 0, 100)
     if (finalScore < MIN_TICKER_APP_SCORE) continue
+
+    const primaryTitle =
+      sorted.length >= 2
+        ? `Multi-signal strong-buy setup (${sorted.length} signals)`
+        : primary.title
+
+    const primarySummary =
+      sorted.length >= 2
+        ? `Multiple signal sources are lining up for this ticker: ${Array.from(signalSources).join(", ")}. Primary setup: ${primary.title}`
+        : primary.summary
 
     rows.push({
       ticker,
@@ -258,11 +301,12 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
       score_caps_applied: Array.from(scoreCapsApplied),
       signal_tags: Array.from(signalTags),
       primary_signal_key: primary.signal_key,
-      primary_signal_type: primary.signal_type,
-      primary_signal_source: primary.signal_source,
-      primary_signal_category: primary.signal_category,
-      primary_title: primary.title,
-      primary_summary: primary.summary,
+      primary_signal_type: sorted.length >= 2 ? "Multi-Signal Strong Buy" : primary.signal_type,
+      primary_signal_source: sorted.length >= 2 ? "multi" : primary.signal_source,
+      primary_signal_category:
+        sorted.length >= 2 ? "Multi-Signal Strong Buy" : primary.signal_category,
+      primary_title: primaryTitle,
+      primary_summary: primarySummary,
       filed_at: primary.filed_at,
       signal_keys: signalKeys,
       accession_nos: accessionNos,
@@ -583,7 +627,7 @@ export async function GET(request: Request) {
       retentionCleanup: retentionMessage,
       strongBuyCount,
       eliteBuyCount,
-      message: "Ticker scores rebuilt from signals successfully.",
+      message: "Ticker scores rebuilt from combined technical and filing signals successfully.",
     })
   } catch (error: any) {
     return Response.json(

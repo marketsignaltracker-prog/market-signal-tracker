@@ -19,6 +19,7 @@ type PipelineStage =
   | "screening"
   | "filings"
   | "signals"
+  | "filing_signals"
   | "ticker_scores"
   | "complete"
   | "error"
@@ -53,6 +54,8 @@ const MAX_SCREEN_BATCH = 350
 const DEFAULT_FILINGS_BATCH = 150
 const DEFAULT_SIGNALS_LIMIT = 75
 const DEFAULT_SIGNALS_LOOKBACK_DAYS = 10
+const DEFAULT_FILING_SIGNALS_LIMIT = 200
+const DEFAULT_FILING_SIGNALS_LOOKBACK_DAYS = 14
 const DEFAULT_TICKER_SCORES_LIMIT = 1000
 
 const DEFAULT_STEP_TIMEOUT_MS = 240_000
@@ -629,6 +632,55 @@ export async function GET(request: NextRequest) {
       }
 
       state = await patchPipelineState(supabase, {
+        stage: "filing_signals",
+        status: "running",
+        signals_completed_at: nowIso(),
+      })
+    }
+
+    if (state.stage === "filing_signals") {
+      if (shouldStopForRuntime(runStartedAtMs)) {
+        const checkpointAt = nowIso()
+
+        await patchPipelineState(supabase, {
+          stage: "filing_signals",
+          status: "idle",
+          last_run_finished_at: checkpointAt,
+        })
+
+        return NextResponse.json({
+          ok: true,
+          message: "Pipeline checkpointed before filing signals. Continue on next cron run.",
+          stage: "filing_signals",
+          results,
+        })
+      }
+
+      const filingSignalsResult = await runStep(
+        baseUrl,
+        withSearchParams("/api/ingest/filing-signals", {
+          limit: DEFAULT_FILING_SIGNALS_LIMIT,
+          lookbackDays: DEFAULT_FILING_SIGNALS_LOOKBACK_DAYS,
+          runRetention: false,
+          includeCounts: false,
+        }),
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(filingSignalsResult)
+
+      if (!filingSignalsResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          filingSignalsResult,
+          `Filing signals step failed: ${String(
+            (filingSignalsResult.data as any)?.error || filingSignalsResult.status
+          )}`
+        )
+      }
+
+      state = await patchPipelineState(supabase, {
         stage: "ticker_scores",
         status: "running",
       })
@@ -656,7 +708,7 @@ export async function GET(request: NextRequest) {
         baseUrl,
         withSearchParams("/api/ingest/ticker-scores", {
           limit: DEFAULT_TICKER_SCORES_LIMIT,
-          lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
+          lookbackDays: DEFAULT_FILING_SIGNALS_LOOKBACK_DAYS,
           runRetention: false,
           includeCounts: false,
         }),

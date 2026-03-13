@@ -1,285 +1,99 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js"
+import { createClient } from "@supabase/supabase-js"
 
-type CompanyRow = {
+export const dynamic = "force-dynamic"
+export const maxDuration = 300
+
+type CandidateTickerRow = {
   ticker: string
-  cik: string
+  cik: string | null
   name: string | null
-  is_active?: boolean | null
   candidate_score?: number | null
+  included?: boolean | null
+  last_screened_at?: string | null
 }
 
-type SecSubmissions = {
+type CandidateHistoryTickerRow = {
+  ticker: string
+  cik: string | null
+  name: string | null
+  candidate_score?: number | null
+  included?: boolean | null
+  last_screened_at?: string | null
+  screened_on: string
+}
+
+type SecSubmissionRecent = {
+  accessionNumber?: string[]
+  filingDate?: string[]
+  form?: string[]
+  primaryDocument?: string[]
+}
+
+type SecSubmissionResponse = {
+  cik?: string
   name?: string
+  tickers?: string[]
   filings?: {
-    recent?: {
-      accessionNumber?: string[]
-      filingDate?: string[]
-      form?: string[]
-      primaryDocument?: string[]
-      acceptanceDateTime?: string[]
-      act?: string[]
-      fileNumber?: string[]
-      filmNumber?: string[]
-      items?: string[]
-      size?: number[]
-      isXBRL?: number[]
-      isInlineXBRL?: number[]
-      reportDate?: string[]
-    }
+    recent?: SecSubmissionRecent
   }
 }
 
-type FilingInsertRow = {
-  cik: string
+type RawFilingInsertRow = {
   ticker: string
   company_name: string | null
   form_type: string | null
-  accession_no: string
   filed_at: string | null
-  primary_doc: string | null
   filing_url: string | null
-  filing_json: Record<string, any>
+  accession_no: string
+  cik: string | null
+  primary_doc: string | null
   fetched_at: string
-  updated_at: string
+}
+
+type ChunkWriteResult = {
+  insertedOrUpdated: number
+  errors: Array<{
+    table: string
+    chunkStart: number
+    chunkSize: number
+    message: string
+    details?: string | null
+    hint?: string | null
+    code?: string | null
+    sampleKeys?: string[]
+  }>
 }
 
 type Diagnostics = {
-  companiesLoaded: number
-  companiesAttempted: number
-  companiesWithRelevantRecentFilings: number
-  companiesWithNoRelevantRecentFilings: number
-  companiesWithFetchErrors: number
-  companiesWithUpsertErrors: number
-  invalidCompanies: number
-  secRetryCount: number
-  totalFetchedRows: number
-  totalRelevantRows: number
-  totalInsertedRows: number
-  totalNewRows: number
-  totalExistingRows: number
-  totalSkippedOldRows: number
-  totalSkippedIrrelevantRows: number
-  totalSkippedInvalidRows: number
-  totalErrors: number
-  formsSeen: Record<string, number>
-  relevantFormsSeen: Record<string, number>
-  filingCategoriesSeen: Record<string, number>
+  candidateUniverseRowsLoaded: number
+  candidateHistoryRowsLoaded: number
+  candidateRowsLoaded: number
+  fallbackCandidateSourceUsed: boolean
+  candidateRowsWithoutCik: number
+  secSubmissionsFetched: number
+  secSubmissionsFailed: number
+  filingRowsBuilt: number
+  filingRowsInserted: number
+  unsupportedFormsSkipped: number
+  duplicateRowsCollapsed: number
 }
 
-type Database = {
-  public: {
-    Tables: {
-      companies: {
-        Row: {
-          id: number
-          ticker: string
-          company_name: string | null
-          cik: string | null
-          created_at: string | null
-          name: string | null
-          is_active: boolean
-          source: string | null
-          last_seen_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          ticker: string
-          company_name?: string | null
-          cik?: string | null
-          created_at?: string | null
-          name?: string | null
-          is_active?: boolean
-          source?: string | null
-          last_seen_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: number
-          ticker?: string
-          company_name?: string | null
-          cik?: string | null
-          created_at?: string | null
-          name?: string | null
-          is_active?: boolean
-          source?: string | null
-          last_seen_at?: string | null
-          updated_at?: string | null
-        }
-      }
-      candidate_universe: {
-        Row: {
-          ticker: string
-          cik: string | null
-          name: string | null
-          price: number | null
-          market_cap: number | null
-          avg_volume_20d: number | null
-          avg_dollar_volume_20d: number | null
-          one_day_return: number | null
-          return_5d: number | null
-          return_10d: number | null
-          return_20d: number | null
-          volume_ratio: number | null
-          breakout_20d: boolean | null
-          breakout_10d: boolean | null
-          above_sma_20: boolean | null
-          breakout_clearance_pct: number | null
-          extension_from_sma20_pct: number | null
-          close_in_day_range: number | null
-          catalyst_count: number | null
-          passes_price: boolean | null
-          passes_volume: boolean | null
-          passes_dollar_volume: boolean | null
-          passes_market_cap: boolean | null
-          candidate_score: number | null
-          included: boolean | null
-          screen_reason: string | null
-          last_screened_at: string | null
-          updated_at: string | null
-          created_at: string | null
-        }
-        Insert: {
-          ticker: string
-          cik?: string | null
-          name?: string | null
-          price?: number | null
-          market_cap?: number | null
-          avg_volume_20d?: number | null
-          avg_dollar_volume_20d?: number | null
-          one_day_return?: number | null
-          return_5d?: number | null
-          return_10d?: number | null
-          return_20d?: number | null
-          volume_ratio?: number | null
-          breakout_20d?: boolean | null
-          breakout_10d?: boolean | null
-          above_sma_20?: boolean | null
-          breakout_clearance_pct?: number | null
-          extension_from_sma20_pct?: number | null
-          close_in_day_range?: number | null
-          catalyst_count?: number | null
-          passes_price?: boolean | null
-          passes_volume?: boolean | null
-          passes_dollar_volume?: boolean | null
-          passes_market_cap?: boolean | null
-          candidate_score?: number | null
-          included?: boolean | null
-          screen_reason?: string | null
-          last_screened_at?: string | null
-          updated_at?: string | null
-          created_at?: string | null
-        }
-        Update: {
-          ticker?: string
-          cik?: string | null
-          name?: string | null
-          price?: number | null
-          market_cap?: number | null
-          avg_volume_20d?: number | null
-          avg_dollar_volume_20d?: number | null
-          one_day_return?: number | null
-          return_5d?: number | null
-          return_10d?: number | null
-          return_20d?: number | null
-          volume_ratio?: number | null
-          breakout_20d?: boolean | null
-          breakout_10d?: boolean | null
-          above_sma_20?: boolean | null
-          breakout_clearance_pct?: number | null
-          extension_from_sma20_pct?: number | null
-          close_in_day_range?: number | null
-          catalyst_count?: number | null
-          passes_price?: boolean | null
-          passes_volume?: boolean | null
-          passes_dollar_volume?: boolean | null
-          passes_market_cap?: boolean | null
-          candidate_score?: number | null
-          included?: boolean | null
-          screen_reason?: string | null
-          last_screened_at?: string | null
-          updated_at?: string | null
-          created_at?: string | null
-        }
-      }
-      raw_filings: {
-        Row: {
-          id: number
-          company_id: number | null
-          ticker: string
-          accession_no: string
-          filing_type: string | null
-          filed_at: string | null
-          filing_url: string | null
-          filing_json: Record<string, any> | null
-          created_at: string | null
-          cik: string | null
-          company_name: string | null
-          form_type: string | null
-          primary_doc: string | null
-          fetched_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: number
-          company_id?: number | null
-          ticker: string
-          accession_no: string
-          filing_type?: string | null
-          filed_at?: string | null
-          filing_url?: string | null
-          filing_json?: Record<string, any> | null
-          created_at?: string | null
-          cik?: string | null
-          company_name?: string | null
-          form_type?: string | null
-          primary_doc?: string | null
-          fetched_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: number
-          company_id?: number | null
-          ticker?: string
-          accession_no?: string
-          filing_type?: string | null
-          filed_at?: string | null
-          filing_url?: string | null
-          filing_json?: Record<string, any> | null
-          created_at?: string | null
-          cik?: string | null
-          company_name?: string | null
-          form_type?: string | null
-          primary_doc?: string | null
-          fetched_at?: string | null
-          updated_at?: string | null
-        }
-      }
-    }
-  }
-}
-
-const SEC_USER_AGENT =
-  process.env.SEC_USER_AGENT ||
-  "Market Signal Tracker marketsignaltracker@gmail.com"
-
-const SEC_BASE_URL = "https://data.sec.gov/submissions"
-const MAX_BATCH = 250
-const DEFAULT_BATCH = 100
-const REQUEST_DELAY_MS = 175
-const MAX_FILINGS_PER_COMPANY = 25
+const DEFAULT_BATCH = 150
+const MAX_BATCH = 300
+const DEFAULT_START = 0
 const RETENTION_DAYS = 30
-const SEC_FETCH_TIMEOUT_MS = 12000
-const MAX_UPSERT_RETRIES = 4
-const MAX_SEC_FETCH_RETRIES = 4
+const CANDIDATE_LOOKBACK_DAYS = 10
+const MIN_CANDIDATE_SCORE = 65
+const SEC_TIMEOUT_MS = 8000
+const DB_CHUNK_SIZE = 100
 
-const RELEVANT_FORM_TYPES = new Set([
-  "8-K",
-  "10-Q",
-  "10-K",
-  "6-K",
+const ALLOWED_FORMS = new Set([
   "4",
   "4/A",
+  "8-K",
+  "6-K",
+  "10-Q",
+  "10-K",
   "13D",
   "13D/A",
   "13G",
@@ -290,24 +104,20 @@ const RELEVANT_FORM_TYPES = new Set([
   "SC 13G/A",
 ])
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function parseInteger(value: string | null | undefined, fallback: number) {
-  if (value === null || value === undefined || value.trim() === "") {
-    return fallback
-  }
-
-  const parsed = Number.parseInt(value, 10)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
+const SEC_USER_AGENT =
+  process.env.SEC_USER_AGENT ||
+  "Market Signal Tracker marketsignaltracker@gmail.com"
 
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
 }
 
-function normalizeFormType(formType: string | null | undefined) {
+function normalizeCik(cik: string | null | undefined) {
+  const digits = String(cik || "").replace(/\D/g, "")
+  return digits || null
+}
+
+function normalizeFormType(formType: string | null) {
   const normalized = (formType || "")
     .trim()
     .toUpperCase()
@@ -325,78 +135,33 @@ function normalizeFormType(formType: string | null | undefined) {
   if (normalized === "SC13D/A") return "SC 13D/A"
   if (normalized === "SC13G") return "SC 13G"
   if (normalized === "SC13G/A") return "SC 13G/A"
-  if (normalized === "SC14D9" || normalized === "SC14D9C") return "SC 14D9"
 
   return normalized
 }
 
-function padCik(cik: string | number | null | undefined) {
-  return String(cik || "").replace(/\D/g, "").padStart(10, "0")
-}
-
-function buildSecSubmissionUrl(cikPadded: string) {
-  return `${SEC_BASE_URL}/CIK${cikPadded}.json`
-}
-
-function buildFilingUrl(cikPadded: string, accessionNo: string, primaryDoc: string | null) {
-  if (!primaryDoc) return null
-
-  const accessionNoNoDashes = accessionNo.replace(/-/g, "")
-  const cikNoLeadingZeros = String(parseInt(cikPadded, 10))
-
-  return `https://www.sec.gov/Archives/edgar/data/${cikNoLeadingZeros}/${accessionNoNoDashes}/${primaryDoc}`
-}
-
-function isDeadlockError(message: string | undefined | null) {
-  return (message || "").toLowerCase().includes("deadlock detected")
-}
-
-function isRetryableSecStatus(status: number) {
-  return status === 403 || status === 408 || status === 425 || status === 429 || status >= 500
-}
-
-function isRetryableFetchError(error: unknown) {
-  const message = error instanceof Error ? error.message.toLowerCase() : String(error || "").toLowerCase()
-  return (
-    message.includes("aborted") ||
-    message.includes("timeout") ||
-    message.includes("network") ||
-    message.includes("fetch failed")
-  )
-}
-
-function daysAgoIso(days: number) {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-}
-
-function isDateOlderThanCutoff(dateStr: string | null | undefined, cutoffDate: string) {
-  if (!dateStr) return false
-  return dateStr < cutoffDate
-}
-
-function categorizeFormType(formType: string | null) {
-  switch (formType) {
-    case "8-K":
-    case "6-K":
-      return "corporate_event"
-    case "10-Q":
-    case "10-K":
-      return "financial_reporting"
-    case "4":
-    case "4/A":
-      return "insider_activity"
-    case "13D":
-    case "13D/A":
-    case "SC 13D":
-    case "SC 13D/A":
-    case "13G":
-    case "13G/A":
-    case "SC 13G":
-    case "SC 13G/A":
-      return "ownership_change"
-    default:
-      return "other"
+function parseInteger(value: string | null | undefined, fallback: number) {
+  if (value === null || value === undefined || value.trim() === "") {
+    return fallback
   }
+
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function toIsoDateString(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
+
+function uniqueStrings(values: (string | null | undefined)[]) {
+  return Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean)))
 }
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number) {
@@ -407,289 +172,250 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
     return await fetch(url, {
       ...options,
       signal: controller.signal,
+      cache: "no-store",
     })
   } finally {
     clearTimeout(timeout)
   }
 }
 
-async function upsertWithRetry(
-  supabase: SupabaseClient<Database>,
-  rows: FilingInsertRow[]
-) {
-  let attempt = 0
+async function upsertInChunksDetailed(
+  table: any,
+  tableName: string,
+  rows: any[],
+  onConflict: string,
+  sampleKeyBuilder?: (row: any) => string
+): Promise<ChunkWriteResult> {
+  let insertedOrUpdated = 0
+  const errors: ChunkWriteResult["errors"] = []
 
-  while (attempt < MAX_UPSERT_RETRIES) {
-    const typedRows: Database["public"]["Tables"]["raw_filings"]["Insert"][] = rows.map(
-      (row) => ({
-        cik: row.cik,
-        ticker: row.ticker,
-        company_name: row.company_name,
-        form_type: row.form_type,
-        accession_no: row.accession_no,
-        filed_at: row.filed_at,
-        primary_doc: row.primary_doc,
-        filing_url: row.filing_url,
-        filing_json: row.filing_json,
-        fetched_at: row.fetched_at,
-        updated_at: row.updated_at,
+  for (let i = 0; i < rows.length; i += DB_CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + DB_CHUNK_SIZE)
+    const { error } = await table.upsert(chunk, { onConflict })
+
+    if (error) {
+      errors.push({
+        table: tableName,
+        chunkStart: i,
+        chunkSize: chunk.length,
+        message: error.message,
+        details: (error as any)?.details ?? null,
+        hint: (error as any)?.hint ?? null,
+        code: (error as any)?.code ?? null,
+        sampleKeys: sampleKeyBuilder ? chunk.slice(0, 10).map(sampleKeyBuilder) : undefined,
       })
+    } else {
+      insertedOrUpdated += chunk.length
+    }
+  }
+
+  return {
+    insertedOrUpdated,
+    errors,
+  }
+}
+
+function buildSubmissionUrl(cik: string) {
+  const padded = cik.padStart(10, "0")
+  return `https://data.sec.gov/submissions/CIK${padded}.json`
+}
+
+function buildFilingUrl(cik: string, accessionNo: string, primaryDoc: string | null) {
+  const normalizedCik = String(Number(cik))
+  const accessionNoNoDash = accessionNo.replace(/-/g, "")
+
+  if (!primaryDoc) {
+    return `https://www.sec.gov/Archives/edgar/data/${normalizedCik}/${accessionNoNoDash}/`
+  }
+
+  return `https://www.sec.gov/Archives/edgar/data/${normalizedCik}/${accessionNoNoDash}/${primaryDoc}`
+}
+
+async function fetchSecSubmission(cik: string): Promise<SecSubmissionResponse | null> {
+  try {
+    const url = buildSubmissionUrl(cik)
+    const res = await fetchWithTimeout(
+      url,
+      {
+        headers: {
+          "User-Agent": SEC_USER_AGENT,
+          Accept: "application/json,text/plain,*/*",
+        },
+      },
+      SEC_TIMEOUT_MS
     )
 
-    const rawFilingsTable = supabase.from("raw_filings") as any
-    const { error } = await rawFilingsTable.upsert(typedRows, {
-      onConflict: "accession_no",
-    })
-
-    if (!error) return
-
-    if (!isDeadlockError(error.message)) {
-      throw new Error(`Supabase upsert failed: ${error.message}`)
-    }
-
-    attempt += 1
-
-    if (attempt >= MAX_UPSERT_RETRIES) {
-      throw new Error(`Supabase upsert failed after retries: ${error.message}`)
-    }
-
-    await sleep(250 * Math.pow(2, attempt - 1))
+    if (!res.ok) return null
+    return (await res.json()) as SecSubmissionResponse
+  } catch {
+    return null
   }
 }
 
-async function fetchRecentFilingsForCompany(
-  company: CompanyRow,
-  diagnostics: Diagnostics
-) {
-  const cikPadded = padCik(company.cik)
-  const secUrl = buildSecSubmissionUrl(cikPadded)
+function extractRecentFilingsFromSubmission(params: {
+  submission: SecSubmissionResponse
+  fallbackTicker: string
+  fallbackCompanyName: string | null
+  fallbackCik: string
+  nowIso: string
+}) {
+  const { submission, fallbackTicker, fallbackCompanyName, fallbackCik, nowIso } = params
 
-  let attempt = 0
-
-  while (attempt < MAX_SEC_FETCH_RETRIES) {
-    try {
-      const response = await fetchWithTimeout(
-        secUrl,
-        {
-          headers: {
-            "User-Agent": SEC_USER_AGENT,
-            Accept: "application/json",
-          },
-          cache: "no-store",
-        },
-        SEC_FETCH_TIMEOUT_MS
-      )
-
-      if (!response.ok) {
-        if (isRetryableSecStatus(response.status) && attempt < MAX_SEC_FETCH_RETRIES - 1) {
-          attempt += 1
-          diagnostics.secRetryCount += 1
-          await sleep(500 * Math.pow(2, attempt - 1))
-          continue
-        }
-
-        throw new Error(`SEC request failed with status ${response.status}`)
-      }
-
-      const json = (await response.json()) as SecSubmissions
-
-      return {
-        cikPadded,
-        secUrl,
-        json,
-      }
-    } catch (error) {
-      if (attempt < MAX_SEC_FETCH_RETRIES - 1 && isRetryableFetchError(error)) {
-        attempt += 1
-        diagnostics.secRetryCount += 1
-        await sleep(500 * Math.pow(2, attempt - 1))
-        continue
-      }
-
-      throw error
-    }
-  }
-
-  throw new Error("SEC fetch failed after retries")
-}
-
-async function getExistingAccessionNumbersForTicker(
-  supabase: SupabaseClient<Database>,
-  ticker: string
-) {
-  const rawFilingsTable = supabase.from("raw_filings") as any
-
-  const { data, error } = await rawFilingsTable
-    .select("accession_no")
-    .eq("ticker", ticker)
-
-  if (error) {
-    throw new Error(`Existing filings lookup failed: ${error.message}`)
-  }
-
-  return new Set<string>((data || []).map((row: { accession_no: string }) => row.accession_no))
-}
-
-function mapRecentFilingsToRows(
-  company: CompanyRow,
-  cikPadded: string,
-  secUrl: string,
-  json: SecSubmissions,
-  fetchedAt: string,
-  freshnessCutoffDate: string,
-  diagnostics: Diagnostics
-): FilingInsertRow[] {
-  const recent = json.filings?.recent
+  const recent = submission.filings?.recent
   if (!recent) return []
 
   const accessionNumbers = recent.accessionNumber || []
   const filingDates = recent.filingDate || []
   const forms = recent.form || []
-  const primaryDocuments = recent.primaryDocument || []
-  const acceptanceDateTimes = recent.acceptanceDateTime || []
-  const acts = recent.act || []
-  const fileNumbers = recent.fileNumber || []
-  const filmNumbers = recent.filmNumber || []
-  const items = recent.items || []
-  const sizes = recent.size || []
-  const isXbrlFlags = recent.isXBRL || []
-  const isInlineXbrlFlags = recent.isInlineXBRL || []
-  const reportDates = recent.reportDate || []
+  const primaryDocs = recent.primaryDocument || []
 
-  const sharedLength = Math.min(
-    accessionNumbers.length,
-    filingDates.length,
-    forms.length,
-    primaryDocuments.length || accessionNumbers.length
-  )
+  const ticker =
+    normalizeTicker(submission.tickers?.[0]) || normalizeTicker(fallbackTicker)
+  const companyName = submission.name?.trim() || fallbackCompanyName || null
+  const cik = normalizeCik(submission.cik) || normalizeCik(fallbackCik)
 
-  const rows: FilingInsertRow[] = []
+  if (!ticker || !cik) return []
 
-  for (let i = 0; i < Math.min(sharedLength, MAX_FILINGS_PER_COMPANY); i++) {
-    const accessionNo = accessionNumbers[i]?.trim()
-    const filingDate = filingDates[i]?.trim() || null
-    const formType = normalizeFormType(forms[i] || null) || null
-    const primaryDoc = primaryDocuments[i]?.trim() || null
+  const rows: RawFilingInsertRow[] = []
 
-    if (!accessionNo || !formType) {
-      diagnostics.totalSkippedInvalidRows += 1
-      continue
-    }
+  for (let i = 0; i < accessionNumbers.length; i += 1) {
+    const accessionNo = String(accessionNumbers[i] || "").trim()
+    const filedAt = String(filingDates[i] || "").trim() || null
+    const formType = normalizeFormType(String(forms[i] || "").trim() || null)
+    const primaryDoc = String(primaryDocs[i] || "").trim() || null
 
-    diagnostics.formsSeen[formType] = (diagnostics.formsSeen[formType] || 0) + 1
-
-    if (!RELEVANT_FORM_TYPES.has(formType)) {
-      diagnostics.totalSkippedIrrelevantRows += 1
-      continue
-    }
-
-    if (isDateOlderThanCutoff(filingDate, freshnessCutoffDate)) {
-      diagnostics.totalSkippedOldRows += 1
-      break
-    }
-
-    diagnostics.relevantFormsSeen[formType] =
-      (diagnostics.relevantFormsSeen[formType] || 0) + 1
-
-    const filingCategory = categorizeFormType(formType)
-    diagnostics.filingCategoriesSeen[filingCategory] =
-      (diagnostics.filingCategoriesSeen[filingCategory] || 0) + 1
+    if (!accessionNo || !formType) continue
+    if (!ALLOWED_FORMS.has(formType)) continue
 
     rows.push({
-      cik: cikPadded,
-      ticker: normalizeTicker(company.ticker),
-      company_name: json.name || company.name || null,
+      ticker,
+      company_name: companyName,
       form_type: formType,
+      filed_at: filedAt,
+      filing_url: buildFilingUrl(cik, accessionNo, primaryDoc),
       accession_no: accessionNo,
-      filed_at: filingDate,
+      cik,
       primary_doc: primaryDoc,
-      filing_url: buildFilingUrl(cikPadded, accessionNo, primaryDoc),
-      filing_json: {
-        accessionNumber: accessionNo,
-        filingDate,
-        form: formType,
-        primaryDocument: primaryDoc,
-        source: secUrl,
-        signalRelevant: true,
-        filingCategory,
-        acceptanceDateTime: acceptanceDateTimes[i] || null,
-        act: acts[i] || null,
-        fileNumber: fileNumbers[i] || null,
-        filmNumber: filmNumbers[i] || null,
-        items: items[i] || null,
-        size: sizes[i] ?? null,
-        isXBRL: isXbrlFlags[i] ?? null,
-        isInlineXBRL: isInlineXbrlFlags[i] ?? null,
-        reportDate: reportDates[i] || null,
-      },
-      fetched_at: fetchedAt,
-      updated_at: fetchedAt,
+      fetched_at: nowIso,
     })
   }
 
   return rows
 }
 
-async function loadCompaniesForBatch(
-  supabase: SupabaseClient<Database>,
-  scope: "all" | "active" | "candidates",
-  from: number,
-  to: number
-) {
-  if (scope === "candidates") {
-    const candidateUniverseTable = supabase.from("candidate_universe") as any
+function dedupeFilings(rows: RawFilingInsertRow[]) {
+  const byKey = new Map<string, RawFilingInsertRow>()
 
-    const { data, error } = await candidateUniverseTable
-      .select("ticker, cik, name, candidate_score")
-      .eq("included", true)
-      .order("candidate_score", { ascending: false })
-      .order("ticker", { ascending: true })
-      .range(from, to)
-
-    if (error) throw new Error(`Candidate load failed: ${error.message}`)
-
-    const { count, error: countError } = await candidateUniverseTable
-      .select("*", { count: "exact", head: true })
-      .eq("included", true)
-
-    if (countError) throw new Error(`Candidate count failed: ${countError.message}`)
-
-    return {
-      companies: (data || []) as CompanyRow[],
-      totalCompanies: count || 0,
-      sourceTable: "candidate_universe",
+  for (const row of rows) {
+    const key = `${row.accession_no}:${normalizeTicker(row.ticker)}`
+    if (!byKey.has(key)) {
+      byKey.set(key, row)
     }
   }
 
-  const companiesTable = supabase.from("companies") as any
+  return [...byKey.values()]
+}
 
-  let query = companiesTable
-    .select("ticker, cik, name, is_active")
-    .not("cik", "is", null)
-    .order("ticker", { ascending: true })
-    .range(from, to)
+async function loadCandidateContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  candidateCutoffDateString: string
+): Promise<{
+  candidateRows: CandidateTickerRow[]
+  candidateUniverseRowsLoaded: number
+  candidateHistoryRowsLoaded: number
+  fallbackCandidateSourceUsed: boolean
+}> {
+  const universeQuery = await supabase
+    .from("candidate_universe")
+    .select("ticker, cik, name, candidate_score, included, last_screened_at")
+    .gte("candidate_score", MIN_CANDIDATE_SCORE)
+    .gte("last_screened_at", candidateCutoffDateString)
+    .order("candidate_score", { ascending: false })
+    .range(start, start + batch - 1)
 
-  let countQuery = companiesTable
-    .select("*", { count: "exact", head: true })
-    .not("cik", "is", null)
-
-  if (scope === "active") {
-    query = query.eq("is_active", true)
-    countQuery = countQuery.eq("is_active", true)
+  if (universeQuery.error) {
+    throw new Error(`candidate_universe load failed: ${universeQuery.error.message}`)
   }
 
-  const [{ data, error }, { count, error: countError }] = await Promise.all([
-    query,
-    countQuery,
-  ])
+  const universeRows = (universeQuery.data || []) as CandidateTickerRow[]
 
-  if (error) throw new Error(`Company load failed: ${error.message}`)
-  if (countError) throw new Error(`Company count failed: ${countError.message}`)
+  if (universeRows.length >= Math.min(25, batch)) {
+    return {
+      candidateRows: universeRows,
+      candidateUniverseRowsLoaded: universeRows.length,
+      candidateHistoryRowsLoaded: 0,
+      fallbackCandidateSourceUsed: false,
+    }
+  }
+
+  const latestScreened = await supabase
+    .from("candidate_screen_history")
+    .select("screened_on")
+    .order("screened_on", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestScreened.error) {
+    throw new Error(
+      `candidate_screen_history latest snapshot lookup failed: ${latestScreened.error.message}`
+    )
+  }
+
+  const screenedOn = latestScreened.data?.screened_on ?? null
+  if (!screenedOn) {
+    return {
+      candidateRows: universeRows,
+      candidateUniverseRowsLoaded: universeRows.length,
+      candidateHistoryRowsLoaded: 0,
+      fallbackCandidateSourceUsed: false,
+    }
+  }
+
+  const historyQuery = await supabase
+    .from("candidate_screen_history")
+    .select("ticker, cik, name, candidate_score, included, last_screened_at, screened_on")
+    .eq("screened_on", screenedOn)
+    .gte("candidate_score", MIN_CANDIDATE_SCORE)
+    .order("candidate_score", { ascending: false })
+    .range(start, start + batch - 1)
+
+  if (historyQuery.error) {
+    throw new Error(
+      `candidate_screen_history snapshot load failed: ${historyQuery.error.message}`
+    )
+  }
+
+  const historyRows = (historyQuery.data || []) as CandidateHistoryTickerRow[]
+
+  const deduped = new Map<string, CandidateTickerRow>()
+  for (const row of universeRows) {
+    const ticker = normalizeTicker(row.ticker)
+    if (!ticker) continue
+    deduped.set(ticker, row)
+  }
+
+  for (const row of historyRows) {
+    const ticker = normalizeTicker(row.ticker)
+    if (!ticker) continue
+    if (!deduped.has(ticker)) {
+      deduped.set(ticker, {
+        ticker: row.ticker,
+        cik: row.cik,
+        name: row.name,
+        candidate_score: row.candidate_score,
+        included: row.included,
+        last_screened_at: row.last_screened_at,
+      })
+    }
+  }
 
   return {
-    companies: (data || []) as CompanyRow[],
-    totalCompanies: count || 0,
-    sourceTable: "companies",
+    candidateRows: [...deduped.values()].slice(0, batch),
+    candidateUniverseRowsLoaded: universeRows.length,
+    candidateHistoryRowsLoaded: historyRows.length,
+    fallbackCandidateSourceUsed: historyRows.length > 0,
   }
 }
 
@@ -712,234 +438,164 @@ export async function GET(request: Request) {
   }
 
   try {
-    const supabase = createClient<Database>(supabaseUrl, serviceRoleKey)
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
+
     const { searchParams } = new URL(request.url)
 
-    const scopeParam = (searchParams.get("scope") || "candidates").toLowerCase()
-    const scope: "all" | "active" | "candidates" =
-      scopeParam === "all" || scopeParam === "active" || scopeParam === "candidates"
-        ? scopeParam
-        : "candidates"
+    const scope = (searchParams.get("scope") || "candidates").toLowerCase()
+    const start = Math.max(0, parseInteger(searchParams.get("start"), DEFAULT_START))
+    const batch = Math.min(Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)), MAX_BATCH)
+    const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
 
-    const start = parseInteger(searchParams.get("start"), 0)
-    const batch = parseInteger(searchParams.get("batch"), DEFAULT_BATCH)
-
-    const safeStart = Math.max(0, start)
-    const safeBatch = Math.min(Math.max(1, batch), MAX_BATCH)
-    const from = safeStart
-    const to = safeStart + safeBatch - 1
-
-    const fetchedAt = new Date().toISOString()
-    const freshnessCutoffDate = daysAgoIso(RETENTION_DAYS)
-
-    const diagnostics: Diagnostics = {
-      companiesLoaded: 0,
-      companiesAttempted: 0,
-      companiesWithRelevantRecentFilings: 0,
-      companiesWithNoRelevantRecentFilings: 0,
-      companiesWithFetchErrors: 0,
-      companiesWithUpsertErrors: 0,
-      invalidCompanies: 0,
-      secRetryCount: 0,
-      totalFetchedRows: 0,
-      totalRelevantRows: 0,
-      totalInsertedRows: 0,
-      totalNewRows: 0,
-      totalExistingRows: 0,
-      totalSkippedOldRows: 0,
-      totalSkippedIrrelevantRows: 0,
-      totalSkippedInvalidRows: 0,
-      totalErrors: 0,
-      formsSeen: {},
-      relevantFormsSeen: {},
-      filingCategoriesSeen: {},
+    if (scope !== "candidates") {
+      return Response.json(
+        { ok: false, error: "Only scope=candidates is supported in this route" },
+        { status: 400 }
+      )
     }
 
-    const { companies, totalCompanies, sourceTable } = await loadCompaniesForBatch(
+    const now = new Date()
+    const nowIso = now.toISOString()
+
+    const candidateCutoffDate = new Date(now)
+    candidateCutoffDate.setDate(candidateCutoffDate.getDate() - CANDIDATE_LOOKBACK_DAYS)
+    const candidateCutoffDateString = candidateCutoffDate.toISOString()
+
+    const diagnostics: Diagnostics = {
+      candidateUniverseRowsLoaded: 0,
+      candidateHistoryRowsLoaded: 0,
+      candidateRowsLoaded: 0,
+      fallbackCandidateSourceUsed: false,
+      candidateRowsWithoutCik: 0,
+      secSubmissionsFetched: 0,
+      secSubmissionsFailed: 0,
+      filingRowsBuilt: 0,
+      filingRowsInserted: 0,
+      unsupportedFormsSkipped: 0,
+      duplicateRowsCollapsed: 0,
+    }
+
+    const candidateContext = await loadCandidateContext(
       supabase,
-      scope,
-      from,
-      to
+      start,
+      batch,
+      candidateCutoffDateString
     )
 
-    diagnostics.companiesLoaded = companies.length
+    diagnostics.candidateUniverseRowsLoaded = candidateContext.candidateUniverseRowsLoaded
+    diagnostics.candidateHistoryRowsLoaded = candidateContext.candidateHistoryRowsLoaded
+    diagnostics.candidateRowsLoaded = candidateContext.candidateRows.length
+    diagnostics.fallbackCandidateSourceUsed = candidateContext.fallbackCandidateSourceUsed
 
-    const results: Array<Record<string, any>> = []
-    const sampleInsertedRows: FilingInsertRow[] = []
+    const rawRows: RawFilingInsertRow[] = []
 
-    for (const company of companies) {
-      diagnostics.companiesAttempted += 1
+    for (const candidate of candidateContext.candidateRows) {
+      const ticker = normalizeTicker(candidate.ticker)
+      const cik = normalizeCik(candidate.cik)
 
-      const normalizedTicker = normalizeTicker(company.ticker)
-      const cikPadded = padCik(company.cik)
-
-      if (!normalizedTicker || !cikPadded || cikPadded.length !== 10) {
-        diagnostics.invalidCompanies += 1
-        diagnostics.totalErrors += 1
-
-        results.push({
-          ticker: normalizedTicker || null,
-          cik: cikPadded || null,
-          ok: false,
-          stage: "validate",
-          error: "Missing or invalid ticker/cik",
-        })
-
-        await sleep(REQUEST_DELAY_MS)
+      if (!ticker || !cik) {
+        diagnostics.candidateRowsWithoutCik += 1
         continue
       }
 
-      try {
-        const existingAccessionNumbers = await getExistingAccessionNumbersForTicker(
-          supabase,
-          normalizedTicker
-        )
+      const submission = await fetchSecSubmission(cik)
 
-        const { secUrl, json } = await fetchRecentFilingsForCompany(company, diagnostics)
-
-        const rows = mapRecentFilingsToRows(
-          company,
-          cikPadded,
-          secUrl,
-          json,
-          fetchedAt,
-          freshnessCutoffDate,
-          diagnostics
-        )
-
-        diagnostics.totalFetchedRows += rows.length
-        diagnostics.totalRelevantRows += rows.length
-
-        if (rows.length === 0) {
-          diagnostics.companiesWithNoRelevantRecentFilings += 1
-
-          results.push({
-            ticker: normalizedTicker,
-            ok: true,
-            stage: "no_relevant_recent_filings",
-            fetchedRows: 0,
-            newRows: 0,
-            existingRows: 0,
-            secUrl,
-          })
-
-          await sleep(REQUEST_DELAY_MS)
-          continue
-        }
-
-        const newRows = rows.filter((row) => !existingAccessionNumbers.has(row.accession_no))
-        const existingRows = rows.length - newRows.length
-
-        await upsertWithRetry(supabase, rows)
-
-        diagnostics.companiesWithRelevantRecentFilings += 1
-        diagnostics.totalInsertedRows += rows.length
-        diagnostics.totalNewRows += newRows.length
-        diagnostics.totalExistingRows += existingRows
-
-        if (sampleInsertedRows.length < 5) {
-          for (const row of rows.slice(0, 2)) {
-            if (sampleInsertedRows.length < 5) {
-              sampleInsertedRows.push(row)
-            }
-          }
-        }
-
-        results.push({
-          ticker: normalizedTicker,
-          ok: true,
-          stage: "upsert",
-          inserted: rows.length,
-          fetchedRows: rows.length,
-          newRows: newRows.length,
-          existingRows,
-          firstForm: rows[0]?.form_type ?? null,
-          firstFiledAt: rows[0]?.filed_at ?? null,
-          secUrl,
-        })
-      } catch (error: any) {
-        const message = error?.message || "Unknown error"
-        diagnostics.totalErrors += 1
-
-        if (message.toLowerCase().includes("upsert failed")) {
-          diagnostics.companiesWithUpsertErrors += 1
-          results.push({
-            ticker: normalizedTicker,
-            ok: false,
-            stage: "upsert",
-            error: message,
-          })
-        } else {
-          diagnostics.companiesWithFetchErrors += 1
-          results.push({
-            ticker: normalizedTicker,
-            ok: false,
-            stage: "fetch_or_parse",
-            error: message,
-          })
-        }
+      if (!submission) {
+        diagnostics.secSubmissionsFailed += 1
+        continue
       }
 
-      await sleep(REQUEST_DELAY_MS)
+      diagnostics.secSubmissionsFetched += 1
+
+      const extracted = extractRecentFilingsFromSubmission({
+        submission,
+        fallbackTicker: ticker,
+        fallbackCompanyName: candidate.name,
+        fallbackCik: cik,
+        nowIso,
+      })
+
+      const supportedCount = extracted.length
+      rawRows.push(...extracted)
+
+      const recent = submission.filings?.recent
+      if (recent?.form?.length) {
+        let unsupportedForThisSubmission = 0
+        for (const rawForm of recent.form) {
+          const normalized = normalizeFormType(String(rawForm || "").trim() || null)
+          if (!normalized) continue
+          if (!ALLOWED_FORMS.has(normalized)) unsupportedForThisSubmission += 1
+        }
+        diagnostics.unsupportedFormsSkipped += unsupportedForThisSubmission
+      }
+
+      diagnostics.filingRowsBuilt += supportedCount
     }
 
-    const retentionCutoffDate = new Date(
-      Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
-    )
-      .toISOString()
-      .slice(0, 10)
+    const dedupedRows = dedupeFilings(rawRows)
+    diagnostics.duplicateRowsCollapsed = rawRows.length - dedupedRows.length
 
-    const retentionCutoffTimestamp = new Date(
-      Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000
-    ).toISOString()
+   const writeResult =
+  dedupedRows.length > 0
+    ? await upsertInChunksDetailed(
+        supabase.from("raw_filings"),
+        "raw_filings",
+        dedupedRows,
+        "accession_no",
+        (row) => row.accession_no
+      )
+    : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
 
-    const rawFilingsTable = supabase.from("raw_filings") as any
+    if (writeResult.errors.length > 0) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Failed writing one or more raw filing chunks to Supabase",
+          debug: {
+            diagnostics,
+            errorSamples: writeResult.errors.slice(0, 5),
+          },
+        },
+        { status: 500 }
+      )
+    }
 
-    const { error: retentionErrorByFiledAt } = await rawFilingsTable
-      .delete()
-      .lt("filed_at", retentionCutoffDate)
+    diagnostics.filingRowsInserted = writeResult.insertedOrUpdated
 
-    const { error: retentionErrorNullFiledAt } = await rawFilingsTable
-      .delete()
-      .is("filed_at", null)
-      .lt("fetched_at", retentionCutoffTimestamp)
+    let retentionMessage = "skipped"
+    if (runRetention) {
+      const retentionCutoff = new Date(now)
+      retentionCutoff.setDate(retentionCutoff.getDate() - RETENTION_DAYS)
+      const retentionCutoffString = toIsoDateString(retentionCutoff)
 
-    const { count: rawFilingsCount, error: rawCountError } = await rawFilingsTable.select("*", {
-      count: "exact",
-      head: true,
-    })
+      const { error: retentionError } = await supabase
+        .from("raw_filings")
+        .delete()
+        .lt("filed_at", retentionCutoffString)
 
-    const nextStart = to + 1 < totalCompanies ? to + 1 : null
+      retentionMessage = retentionError ? retentionError.message : "ok"
+    }
+
+    const nextStart =
+      candidateContext.candidateRows.length < batch ? null : start + batch
 
     return Response.json({
       ok: true,
       scope,
-      sourceTable,
-      processedCompanies: companies.length,
-      totalCompanies,
-      start: safeStart,
-      batch: safeBatch,
+      start,
+      batch,
       nextStart,
+      filingRowsInserted: diagnostics.filingRowsInserted,
       retainedDays: RETENTION_DAYS,
-      freshnessCutoffDate,
-      relevantForms: Array.from(RELEVANT_FORM_TYPES),
-      retentionCleanupByFiledAt: retentionErrorByFiledAt
-        ? retentionErrorByFiledAt.message
-        : "ok",
-      retentionCleanupNullFiledAt: retentionErrorNullFiledAt
-        ? retentionErrorNullFiledAt.message
-        : "ok",
-      rawFilingsCount: rawCountError ? null : rawFilingsCount,
-      fetchedAt,
+      retentionCleanup: retentionMessage,
       diagnostics,
-      sampleInsertedRows,
-      results,
       message:
-        diagnostics.totalNewRows > 0
-          ? "Filings ingest completed and new relevant filings were written to raw_filings."
-          : diagnostics.totalInsertedRows > 0
-            ? "Filings ingest completed and existing relevant filings were refreshed."
-            : "Filings ingest completed but no relevant fresh filings were written. Check diagnostics and results.",
+        "Raw filing metadata ingested for candidate tickers only. Filing parsing and scoring are handled in a separate filing-signals route.",
     })
   } catch (error: any) {
     return Response.json(
