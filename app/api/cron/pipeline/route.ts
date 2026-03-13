@@ -693,7 +693,7 @@ const signalsResult = await runStep(
   withSearchParams("/api/ingest/signals", {
     limit: DEFAULT_SIGNALS_LIMIT,
     lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
-    rebuildTickerScores: false,
+    rebuildTickerScores: true,
     runRetention: false,
     includeCounts: false,
   }),
