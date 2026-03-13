@@ -340,6 +340,8 @@ function isProbablyCommonStockTicker(ticker: string) {
   return false
 }
 
+function getBenchmarkReturns(candles: any[]): BenchmarkReturns {
+
 function calculatePercentile(sortedValues: number[], value: number) {
   if (!sortedValues.length || !Number.isFinite(value)) return 0
 
