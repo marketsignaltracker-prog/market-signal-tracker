@@ -178,6 +178,29 @@ type CandidateMetricRow = {
   speculativePenalty: number
 }
 
+type ScreeningPreparationResult =
+  | {
+      kind: "metric"
+      metric: CandidateMetricRow
+      result?: Record<string, any>
+      removeTicker?: string
+    }
+  | {
+      kind: "final_row"
+      row: CandidateUniverseRow
+      includeInUniverse: boolean
+      removeTicker?: string
+      result?: Record<string, any>
+    }
+  | {
+      kind: "error"
+      ticker: string | null
+      error: string
+      errorKind?: string
+      removeTicker?: string
+      result?: Record<string, any>
+    }
+
 type StrongCompanyEvaluation = {
   passes: boolean
   score: number
@@ -187,14 +210,13 @@ type StrongCompanyEvaluation = {
 }
 
 const yahooFinance = new YahooFinance({
-  queue: { concurrency: 3 },
+  queue: { concurrency: 8 },
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
 const MAX_BATCH = 250
-const DEFAULT_BATCH = 200
+const DEFAULT_BATCH = 100
 const RETENTION_DAYS = 30
-const REQUEST_DELAY_MS = 150
 
 const BENCHMARK_TICKER = "SPY"
 
@@ -222,9 +244,8 @@ const LEADERSHIP_PERCENTILE_ELITE = 95
 
 const MIN_STRONG_COMPANY_SCORE = 65
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
+const TICKER_CONCURRENCY = 6
+const DB_CHUNK_SIZE = 250
 
 function avg(nums: number[]) {
   if (!nums.length) return 0
@@ -636,11 +657,7 @@ function evaluateStrongCompany(params: {
     }
   }
 
-  if (
-    return20d > 28 &&
-    volumeRatio > 3.5 &&
-    marketCap < 10_000_000_000
-  ) {
+  if (return20d > 28 && volumeRatio > 3.5 && marketCap < 10_000_000_000) {
     speculativePenalty -= 15
     failures.push("too extended / momentum spike")
   }
@@ -668,107 +685,118 @@ function evaluateStrongCompany(params: {
   }
 }
 
-async function getTickerSnapshot(ticker: string): Promise<TickerSnapshot> {
-  try {
-    const [summary, quote] = await Promise.all([
-      yahooFinance.quoteSummary(ticker, {
-        modules: [
-          "summaryDetail",
-          "defaultKeyStatistics",
-          "financialData",
-          "assetProfile",
-          "price",
-        ],
-      }),
-      yahooFinance.quote(ticker).catch(() => null),
-    ])
+function emptySnapshot(): TickerSnapshot {
+  return {
+    peRatio: null,
+    forwardPe: null,
+    peType: null,
+    sector: null,
+    industry: null,
+    businessDescription: null,
+    companyProfile: {
+      profitMargin: null,
+      operatingMargin: null,
+      grossMargin: null,
+      returnOnEquity: null,
+      debtToEquity: null,
+      currentRatio: null,
+      revenueGrowth: null,
+      earningsGrowth: null,
+      freeCashflow: null,
+      operatingCashflow: null,
+      recommendationKey: null,
+    },
+  }
+}
 
-    const currentPrice =
-      safeNumber((summary.financialData as any)?.currentPrice) ??
-      safeNumber((quote as any)?.regularMarketPrice)
+function buildTickerSnapshot(summary: any, quote: any): TickerSnapshot {
+  const currentPrice =
+    safeNumber((summary?.financialData as any)?.currentPrice) ??
+    safeNumber((quote as any)?.regularMarketPrice)
 
-    const trailingEps =
-      safeNumber((summary.defaultKeyStatistics as any)?.trailingEps) ??
-      safeNumber((quote as any)?.epsTrailingTwelveMonths)
+  const trailingEps =
+    safeNumber((summary?.defaultKeyStatistics as any)?.trailingEps) ??
+    safeNumber((quote as any)?.epsTrailingTwelveMonths)
 
-    const derivedTrailingPe =
-      currentPrice !== null && trailingEps !== null && trailingEps > 0
-        ? currentPrice / trailingEps
-        : null
+  const derivedTrailingPe =
+    currentPrice !== null && trailingEps !== null && trailingEps > 0
+      ? currentPrice / trailingEps
+      : null
 
-    const trailingPeCandidates = [
-      safeNumber((summary.summaryDetail as any)?.trailingPE),
-      safeNumber((summary.defaultKeyStatistics as any)?.trailingPE),
-      safeNumber((summary.financialData as any)?.trailingPE),
-      derivedTrailingPe,
-      safeNumber((quote as any)?.trailingPE),
-    ].filter((v) => v !== null && Number.isFinite(v as number)) as number[]
+  const trailingPeCandidates = [
+    safeNumber((summary?.summaryDetail as any)?.trailingPE),
+    safeNumber((summary?.defaultKeyStatistics as any)?.trailingPE),
+    safeNumber((summary?.financialData as any)?.trailingPE),
+    derivedTrailingPe,
+    safeNumber((quote as any)?.trailingPE),
+  ].filter((v) => v !== null && Number.isFinite(v as number)) as number[]
 
-    const forwardPeCandidates = [
-      safeNumber((summary.summaryDetail as any)?.forwardPE),
-      safeNumber((summary.defaultKeyStatistics as any)?.forwardPE),
-      safeNumber((summary.financialData as any)?.forwardPE),
-      safeNumber((quote as any)?.forwardPE),
-    ].filter((v) => v !== null && Number.isFinite(v as number)) as number[]
+  const forwardPeCandidates = [
+    safeNumber((summary?.summaryDetail as any)?.forwardPE),
+    safeNumber((summary?.defaultKeyStatistics as any)?.forwardPE),
+    safeNumber((summary?.financialData as any)?.forwardPE),
+    safeNumber((quote as any)?.forwardPE),
+  ].filter((v) => v !== null && Number.isFinite(v as number)) as number[]
 
-    const rawTrailingPe = trailingPeCandidates.length > 0 ? trailingPeCandidates[0] : null
-    const rawForwardPe = forwardPeCandidates.length > 0 ? forwardPeCandidates[0] : null
+  const rawTrailingPe = trailingPeCandidates.length > 0 ? trailingPeCandidates[0] : null
+  const rawForwardPe = forwardPeCandidates.length > 0 ? forwardPeCandidates[0] : null
 
-    const peRatio = rawTrailingPe !== null && rawTrailingPe > 0 ? rawTrailingPe : null
-    const forwardPe = rawForwardPe !== null && rawForwardPe > 0 ? rawForwardPe : null
-    const peType = peRatio !== null ? "trailing" : forwardPe !== null ? "forward" : null
+  const peRatio = rawTrailingPe !== null && rawTrailingPe > 0 ? rawTrailingPe : null
+  const forwardPe = rawForwardPe !== null && rawForwardPe > 0 ? rawForwardPe : null
+  const peType = peRatio !== null ? "trailing" : forwardPe !== null ? "forward" : null
 
-    const sector = ((summary.assetProfile as any)?.sector as string | undefined)?.trim() ?? null
-    const industry = ((summary.assetProfile as any)?.industry as string | undefined)?.trim() ?? null
-    const businessDescription =
-      ((summary.assetProfile as any)?.longBusinessSummary as string | undefined)?.trim() ?? null
-
-    const companyProfile: StrongCompanyProfile = {
-      profitMargin: safeNumber((summary.financialData as any)?.profitMargins),
-      operatingMargin: safeNumber((summary.financialData as any)?.operatingMargins),
-      grossMargin: safeNumber((summary.financialData as any)?.grossMargins),
-      returnOnEquity: safeNumber((summary.financialData as any)?.returnOnEquity),
-      debtToEquity: safeNumber((summary.financialData as any)?.debtToEquity),
-      currentRatio: safeNumber((summary.financialData as any)?.currentRatio),
-      revenueGrowth: safeNumber((summary.financialData as any)?.revenueGrowth),
-      earningsGrowth: safeNumber((summary.financialData as any)?.earningsGrowth),
-      freeCashflow: safeNumber((summary.financialData as any)?.freeCashflow),
-      operatingCashflow: safeNumber((summary.financialData as any)?.operatingCashflow),
+  return {
+    peRatio,
+    forwardPe,
+    peType,
+    sector: ((summary?.assetProfile as any)?.sector as string | undefined)?.trim() ?? null,
+    industry: ((summary?.assetProfile as any)?.industry as string | undefined)?.trim() ?? null,
+    businessDescription:
+      ((summary?.assetProfile as any)?.longBusinessSummary as string | undefined)?.trim() ?? null,
+    companyProfile: {
+      profitMargin: safeNumber((summary?.financialData as any)?.profitMargins),
+      operatingMargin: safeNumber((summary?.financialData as any)?.operatingMargins),
+      grossMargin: safeNumber((summary?.financialData as any)?.grossMargins),
+      returnOnEquity: safeNumber((summary?.financialData as any)?.returnOnEquity),
+      debtToEquity: safeNumber((summary?.financialData as any)?.debtToEquity),
+      currentRatio: safeNumber((summary?.financialData as any)?.currentRatio),
+      revenueGrowth: safeNumber((summary?.financialData as any)?.revenueGrowth),
+      earningsGrowth: safeNumber((summary?.financialData as any)?.earningsGrowth),
+      freeCashflow: safeNumber((summary?.financialData as any)?.freeCashflow),
+      operatingCashflow: safeNumber((summary?.financialData as any)?.operatingCashflow),
       recommendationKey:
-        ((summary.financialData as any)?.recommendationKey as string | undefined)?.trim() ?? null,
-    }
+        ((summary?.financialData as any)?.recommendationKey as string | undefined)?.trim() ?? null,
+    },
+  }
+}
 
-    return {
-      peRatio,
-      forwardPe,
-      peType,
-      sector,
-      industry,
-      businessDescription,
-      companyProfile,
-    }
-  } catch {
-    return {
-      peRatio: null,
-      forwardPe: null,
-      peType: null,
-      sector: null,
-      industry: null,
-      businessDescription: null,
-      companyProfile: {
-        profitMargin: null,
-        operatingMargin: null,
-        grossMargin: null,
-        returnOnEquity: null,
-        debtToEquity: null,
-        currentRatio: null,
-        revenueGrowth: null,
-        earningsGrowth: null,
-        freeCashflow: null,
-        operatingCashflow: null,
-        recommendationKey: null,
-      },
-    }
+async function getTickerData(ticker: string) {
+  const endDate = new Date()
+  const startDate = new Date()
+  startDate.setDate(startDate.getDate() - 60)
+
+  const [candles, quote, summary] = await Promise.all([
+    yahooFinance.historical(ticker, {
+      period1: toIsoDateString(startDate),
+      period2: toIsoDateString(endDate),
+      interval: "1d",
+    }),
+    yahooFinance.quote(ticker),
+    yahooFinance.quoteSummary(ticker, {
+      modules: [
+        "summaryDetail",
+        "defaultKeyStatistics",
+        "financialData",
+        "assetProfile",
+        "price",
+      ],
+    }),
+  ])
+
+  return {
+    candles,
+    quote,
+    snapshot: buildTickerSnapshot(summary, quote),
   }
 }
 
@@ -886,7 +914,6 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
 
   if (!passesStrongCompanyGate) penaltyScore -= 22
   if (strongCompanyScore < MIN_STRONG_COMPANY_SCORE) penaltyScore -= 10
-
   if (!passesPrice) penaltyScore -= 5
   if (!passesVolume) penaltyScore -= 4
   if (!passesDollarVolume) penaltyScore -= 6
@@ -905,7 +932,6 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   if (breakoutClearancePct < MIN_BREAKOUT_CLEARANCE_PCT) penaltyScore -= 4
   if (closeInDayRange < 0.5) penaltyScore -= 5
   if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) penaltyScore -= 9
-
   if (return20d > MAX_STRONG_BUY_RETURN_20D) penaltyScore -= 10
   if (extensionFromSma20Pct > 16) penaltyScore -= 8
   if (extensionFromSma20Pct > 20) penaltyScore -= 10
@@ -1051,32 +1077,371 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   }
 }
 
-async function writeHistoryRow(
-  candidateHistoryTable: any,
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  async function runner() {
+    while (true) {
+      const current = nextIndex
+      nextIndex += 1
+      if (current >= items.length) return
+      results[current] = await worker(items[current], current)
+    }
+  }
+
+  const runners = Array.from(
+    { length: Math.min(concurrency, Math.max(items.length, 1)) },
+    () => runner()
+  )
+
+  await Promise.all(runners)
+  return results
+}
+
+async function upsertRowsInChunks(
+  table: any,
+  rows: CandidateUniverseRow[] | CandidateHistoryRow[],
+  onConflict: string
+) {
+  let errorCount = 0
+
+  for (const chunk of chunkArray(rows, DB_CHUNK_SIZE)) {
+    const { error } = await table.upsert(chunk, { onConflict })
+    if (error) errorCount += chunk.length
+  }
+
+  return errorCount
+}
+
+async function deleteTickersInChunks(table: any, tickers: string[]) {
+  let errorCount = 0
+
+  for (const chunk of chunkArray([...new Set(tickers)], DB_CHUNK_SIZE)) {
+    const { error } = await table.delete().in("ticker", chunk)
+    if (error) errorCount += chunk.length
+  }
+
+  return errorCount
+}
+
+function makeHistoryRow(
   row: CandidateUniverseRow,
   screenedOn: string,
   nowIso: string
-) {
-  const historyRow: CandidateHistoryRow = {
+): CandidateHistoryRow {
+  return {
     ...row,
     screened_on: screenedOn,
     snapshot_key: `${screenedOn}_${row.ticker}`,
     created_at: nowIso,
   }
-
-  return candidateHistoryTable.upsert(historyRow, {
-    onConflict: "snapshot_key",
-  })
 }
 
-async function removeFromUniverse(candidateUniverseTable: any, ticker: string) {
-  return candidateUniverseTable.delete().eq("ticker", ticker)
+function makeExcludedRow(params: {
+  ticker: string
+  cik: string
+  name: string | null
+  peRatio?: number | null
+  forwardPe?: number | null
+  peType?: string | null
+  sector?: string | null
+  industry?: string | null
+  businessDescription?: string | null
+  screenReason: string
+  nowIso: string
+}): CandidateUniverseRow {
+  return {
+    ticker: params.ticker,
+    cik: params.cik,
+    name: params.name,
+    price: null,
+    market_cap: null,
+    pe_ratio: round2(params.peRatio ?? null),
+    pe_forward: round2(params.forwardPe ?? null),
+    pe_type: params.peType ?? null,
+    sector: params.sector ?? null,
+    industry: params.industry ?? null,
+    business_description: params.businessDescription ?? null,
+    avg_volume_20d: null,
+    avg_dollar_volume_20d: null,
+    one_day_return: null,
+    return_5d: null,
+    return_10d: null,
+    return_20d: null,
+    relative_strength_20d: null,
+    volume_ratio: null,
+    breakout_20d: false,
+    breakout_10d: false,
+    above_sma_20: false,
+    breakout_clearance_pct: null,
+    extension_from_sma20_pct: null,
+    close_in_day_range: null,
+    catalyst_count: 0,
+    passes_price: false,
+    passes_volume: false,
+    passes_dollar_volume: false,
+    passes_market_cap: false,
+    candidate_score: 0,
+    included: false,
+    screen_reason: params.screenReason,
+    last_screened_at: params.nowIso,
+    updated_at: params.nowIso,
+  }
 }
 
-async function upsertUniverseRow(candidateUniverseTable: any, row: CandidateUniverseRow) {
-  return candidateUniverseTable.upsert(row, {
-    onConflict: "ticker",
+async function prepareTickerForScoring(
+  company: CompanyRow,
+  benchmarkReturns: BenchmarkReturns,
+  nowIso: string,
+  includeResults: boolean
+): Promise<ScreeningPreparationResult> {
+  const ticker = normalizeTicker(company.ticker)
+
+  if (!ticker || !company.cik) {
+    return {
+      kind: "error",
+      ticker: ticker || null,
+      error: "Missing ticker or cik",
+      removeTicker: ticker || undefined,
+      result: includeResults
+        ? {
+            ticker: ticker || null,
+            ok: false,
+            error: "Missing ticker or cik",
+          }
+        : undefined,
+    }
+  }
+
+  if (!isProbablyCommonStockTicker(ticker)) {
+    const row = makeExcludedRow({
+      ticker,
+      cik: company.cik,
+      name: company.name,
+      screenReason: "Excluded likely non-common-share ticker",
+      nowIso,
+    })
+
+    return {
+      kind: "final_row",
+      row,
+      includeInUniverse: false,
+      removeTicker: ticker,
+      result: includeResults
+        ? {
+            ticker,
+            ok: true,
+            included: false,
+            score: 0,
+            tier: "excluded",
+            reason: row.screen_reason,
+          }
+        : undefined,
+    }
+  }
+
+  let candles: any[] = []
+  let quote: any = null
+  let snapshot: TickerSnapshot = emptySnapshot()
+
+  try {
+    const tickerData = await getTickerData(ticker)
+    candles = tickerData.candles || []
+    quote = tickerData.quote
+    snapshot = tickerData.snapshot
+  } catch (err: any) {
+    const disposition = classifyYahooError(err)
+
+    return {
+      kind: "error",
+      ticker,
+      error: disposition.reason,
+      errorKind:
+        disposition.kind === "permanent"
+          ? "permanent_yahoo_error"
+          : "transient_yahoo_error",
+      removeTicker: disposition.kind === "permanent" ? ticker : undefined,
+      result: includeResults
+        ? {
+            ticker,
+            ok: false,
+            error: disposition.reason,
+            errorKind:
+              disposition.kind === "permanent"
+                ? "permanent_yahoo_error"
+                : "transient_yahoo_error",
+            removedFromUniverse: disposition.kind === "permanent",
+          }
+        : undefined,
+    }
+  }
+
+  const clean = (candles || [])
+    .filter(
+      (c) =>
+        c.close !== null &&
+        c.close !== undefined &&
+        c.volume !== null &&
+        c.volume !== undefined
+    )
+    .sort((a, b) => +new Date(a.date) - +new Date(b.date))
+
+  if (clean.length < 22) {
+    const row = makeExcludedRow({
+      ticker,
+      cik: company.cik,
+      name: company.name,
+      peRatio: snapshot.peRatio,
+      forwardPe: snapshot.forwardPe,
+      peType: snapshot.peType,
+      sector: snapshot.sector,
+      industry: snapshot.industry,
+      businessDescription: snapshot.businessDescription,
+      screenReason: "Not enough price history",
+      nowIso,
+    })
+
+    return {
+      kind: "final_row",
+      row,
+      includeInUniverse: false,
+      removeTicker: ticker,
+      result: includeResults
+        ? {
+            ticker,
+            ok: true,
+            included: false,
+            score: 0,
+            tier: "not_included",
+            reason: row.screen_reason,
+          }
+        : undefined,
+    }
+  }
+
+  const latest = clean[clean.length - 1]
+  const previous = clean[clean.length - 2]
+  const fiveAgo = clean[clean.length - 6]
+  const tenAgo = clean[clean.length - 11]
+  const twentyAgo = clean[clean.length - 21]
+  const prior20 = clean.slice(-21, -1)
+  const prior10 = clean.slice(-11, -1)
+
+  const latestClose = Number(latest.close || 0)
+  const latestOpen = Number(latest.open || latestClose)
+  const latestHigh = Number(latest.high || latestClose)
+  const latestLow = Number(latest.low || latestClose)
+  const latestVolume = Number(latest.volume || 0)
+  const previousClose = Number(previous?.close || latestClose)
+
+  const avgVolume20d = avg(prior20.map((c) => Number(c.volume || 0)))
+  const avgDollarVolume20d = avg(
+    prior20.map((c) => Number(c.close || 0) * Number(c.volume || 0))
+  )
+  const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
+  const high10 = Math.max(...prior10.map((c) => Number(c.high || 0)))
+  const sma20 = avg(prior20.map((c) => Number(c.close || 0)))
+  const sma10 = avg(prior10.map((c) => Number(c.close || 0)))
+  const return5d = calcPercentChange(latestClose, Number(fiveAgo?.close || 0))
+  const return10d = calcPercentChange(latestClose, Number(tenAgo?.close || 0))
+  const return20d = calcPercentChange(latestClose, Number(twentyAgo?.close || 0))
+  const oneDayReturn = calcPercentChange(latestClose, previousClose)
+
+  const relativeReturn5d = return5d - benchmarkReturns.return5d
+  const relativeReturn10d = return10d - benchmarkReturns.return10d
+  const relativeReturn20d = return20d - benchmarkReturns.return20d
+
+  const volumeRatio = avgVolume20d > 0 ? latestVolume / avgVolume20d : 0
+  const breakout20d = latestClose > high20
+  const breakout10d = latestClose > high10
+  const nearHigh20 = high20 > 0 ? latestClose >= high20 * 0.99 : false
+  const aboveSma20 = latestClose > sma20
+  const shortTermTrendUp = sma10 > sma20
+  const marketCap = Number((quote as any)?.marketCap || 0)
+
+  const breakoutClearancePct =
+    high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
+
+  const extensionFromSma20Pct =
+    sma20 > 0 ? ((latestClose - sma20) / sma20) * 100 : 0
+
+  const closeInDayRange =
+    latestHigh > latestLow
+      ? (latestClose - latestLow) / (latestHigh - latestLow)
+      : latestClose >= latestOpen
+        ? 1
+        : 0
+
+  const passesPrice = latestClose >= MIN_PRICE
+  const passesVolume = avgVolume20d >= MIN_AVG_VOLUME_20D
+  const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
+  const passesMarketCap = marketCap >= MIN_MARKET_CAP
+
+  const strongCompanyEval = evaluateStrongCompany({
+    marketCap,
+    avgDollarVolume20d,
+    return20d,
+    volumeRatio,
+    sector: snapshot.sector,
+    industry: snapshot.industry,
+    peRatio: snapshot.peRatio,
+    forwardPe: snapshot.forwardPe,
+    companyProfile: snapshot.companyProfile,
   })
+
+  return {
+    kind: "metric",
+    metric: {
+      company,
+      ticker,
+      latestClose,
+      marketCap,
+      avgVolume20d,
+      avgDollarVolume20d,
+      return5d,
+      return10d,
+      return20d,
+      relativeReturn5d,
+      relativeReturn10d,
+      relativeReturn20d,
+      relative_strength_20d: relativeReturn20d,
+      oneDayReturn,
+      volumeRatio,
+      breakout20d,
+      breakout10d,
+      nearHigh20,
+      aboveSma20,
+      shortTermTrendUp,
+      sma10,
+      sma20,
+      high20,
+      breakoutClearancePct,
+      extensionFromSma20Pct,
+      closeInDayRange,
+      passesPrice,
+      passesVolume,
+      passesDollarVolume,
+      passesMarketCap,
+      snapshot,
+      strongCompanyScore: strongCompanyEval.score,
+      passesStrongCompanyGate: strongCompanyEval.passes,
+      strongCompanyReasons: strongCompanyEval.reasons,
+      speculativePenalty: strongCompanyEval.speculativePenalty,
+    },
+  }
 }
 
 export async function GET(request: Request) {
@@ -1098,13 +1463,23 @@ export async function GET(request: Request) {
   }
 
   try {
-    const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
+
     const { searchParams } = new URL(request.url)
 
     const start = parseInteger(searchParams.get("start"), 0)
     const batch = parseInteger(searchParams.get("batch"), DEFAULT_BATCH)
     const onlyActiveParam = (searchParams.get("onlyActive") || "true").toLowerCase()
     const onlyActive = onlyActiveParam !== "false"
+
+    const includeResults = (searchParams.get("includeResults") || "false").toLowerCase() === "true"
+    const includeCounts = (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
+    const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
 
     const safeStart = Math.max(0, start)
     const safeBatch = Math.min(Math.max(1, batch), MAX_BATCH)
@@ -1164,418 +1539,45 @@ export async function GET(request: Request) {
       )
     }
 
+    const companyList = (companies || []) as CompanyRow[]
+    const preparation = await mapWithConcurrency(
+      companyList,
+      TICKER_CONCURRENCY,
+      async (company) =>
+        prepareTickerForScoring(company, benchmarkReturns, nowIso, includeResults)
+    )
+
     const results: Array<Record<string, any>> = []
     const metricRows: CandidateMetricRow[] = []
 
-    let includedInBatch = 0
-    let strongBuyNowInBatch = 0
     let failedInBatch = 0
-    let historyInserted = 0
-    let historyWriteErrors = 0
-    let removedFromUniverseInBatch = 0
     let keptUniverseOnTransientError = 0
 
-    for (const company of (companies || []) as CompanyRow[]) {
-      const ticker = normalizeTicker(company.ticker)
+    const tickersToDelete: string[] = []
+    const earlyHistoryRows: CandidateHistoryRow[] = []
 
-      try {
-        if (!ticker || !company.cik) {
-          failedInBatch += 1
-
-          if (ticker) {
-            const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
-            if (!deleteResult.error) removedFromUniverseInBatch += 1
-          }
-
-          results.push({
-            ticker: ticker || null,
-            ok: false,
-            error: "Missing ticker or cik",
-          })
-
-          await sleep(REQUEST_DELAY_MS)
-          continue
-        }
-
-        if (!isProbablyCommonStockTicker(ticker)) {
-          const excludedRow: CandidateUniverseRow = {
-            ticker,
-            cik: company.cik,
-            name: company.name,
-            price: null,
-            market_cap: null,
-            pe_ratio: null,
-            pe_forward: null,
-            pe_type: null,
-            sector: null,
-            industry: null,
-            business_description: null,
-            avg_volume_20d: null,
-            avg_dollar_volume_20d: null,
-            one_day_return: null,
-            return_5d: null,
-            return_10d: null,
-            return_20d: null,
-            relative_strength_20d: null,
-            volume_ratio: null,
-            breakout_20d: false,
-            breakout_10d: false,
-            above_sma_20: false,
-            breakout_clearance_pct: null,
-            extension_from_sma20_pct: null,
-            close_in_day_range: null,
-            catalyst_count: 0,
-            passes_price: false,
-            passes_volume: false,
-            passes_dollar_volume: false,
-            passes_market_cap: false,
-            candidate_score: 0,
-            included: false,
-            screen_reason: "Excluded likely non-common-share ticker",
-            last_screened_at: nowIso,
-            updated_at: nowIso,
-          }
-
-          const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
-          if (deleteResult.error) {
-            failedInBatch += 1
-            results.push({
-              ticker,
-              ok: false,
-              error: deleteResult.error.message,
-            })
-            await sleep(REQUEST_DELAY_MS)
-            continue
-          }
-
-          removedFromUniverseInBatch += 1
-
-          const historyResult = await writeHistoryRow(
-            candidateHistoryTable,
-            excludedRow,
-            screenedOn,
-            nowIso
-          )
-
-          if (historyResult.error) {
-            historyWriteErrors += 1
-            results.push({
-              ticker,
-              ok: true,
-              included: false,
-              score: 0,
-              tier: "excluded",
-              reason: excludedRow.screen_reason,
-              historyWarning: historyResult.error.message,
-            })
-            await sleep(REQUEST_DELAY_MS)
-            continue
-          }
-
-          historyInserted += 1
-
-          results.push({
-            ticker,
-            ok: true,
-            included: false,
-            score: 0,
-            tier: "excluded",
-            reason: excludedRow.screen_reason,
-          })
-
-          await sleep(REQUEST_DELAY_MS)
-          continue
-        }
-
-        const endDate = new Date()
-        const startDate = new Date()
-        startDate.setDate(startDate.getDate() - 60)
-
-        let candles: any[] | null = null
-        let quote: any = null
-        let snapshot: TickerSnapshot = {
-          peRatio: null,
-          forwardPe: null,
-          peType: null,
-          sector: null,
-          industry: null,
-          businessDescription: null,
-          companyProfile: {
-            profitMargin: null,
-            operatingMargin: null,
-            grossMargin: null,
-            returnOnEquity: null,
-            debtToEquity: null,
-            currentRatio: null,
-            revenueGrowth: null,
-            earningsGrowth: null,
-            freeCashflow: null,
-            operatingCashflow: null,
-            recommendationKey: null,
-          },
-        }
-
-        try {
-          ;[candles, quote, snapshot] = await Promise.all([
-            yahooFinance.historical(ticker, {
-              period1: toIsoDateString(startDate),
-              period2: toIsoDateString(endDate),
-              interval: "1d",
-            }),
-            yahooFinance.quote(ticker),
-            getTickerSnapshot(ticker),
-          ])
-        } catch (err: any) {
-          const disposition = classifyYahooError(err)
-
-          if (disposition.kind === "permanent") {
-            const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
-            if (!deleteResult.error) removedFromUniverseInBatch += 1
-
-            failedInBatch += 1
-            results.push({
-              ticker,
-              ok: false,
-              error: disposition.reason,
-              errorKind: "permanent_yahoo_error",
-              removedFromUniverse: true,
-            })
-
-            await sleep(REQUEST_DELAY_MS)
-            continue
-          }
-
-          keptUniverseOnTransientError += 1
-          failedInBatch += 1
-          results.push({
-            ticker,
-            ok: false,
-            error: disposition.reason,
-            errorKind: "transient_yahoo_error",
-            removedFromUniverse: false,
-          })
-
-          await sleep(REQUEST_DELAY_MS)
-          continue
-        }
-
-        const clean = (candles || [])
-          .filter(
-            (c) =>
-              c.close !== null &&
-              c.close !== undefined &&
-              c.volume !== null &&
-              c.volume !== undefined
-          )
-          .sort((a, b) => +new Date(a.date) - +new Date(b.date))
-
-        if (clean.length < 22) {
-          const row: CandidateUniverseRow = {
-            ticker,
-            cik: company.cik,
-            name: company.name,
-            price: null,
-            market_cap: null,
-            pe_ratio: snapshot.peRatio,
-            pe_forward: snapshot.forwardPe,
-            pe_type: snapshot.peType,
-            sector: snapshot.sector,
-            industry: snapshot.industry,
-            business_description: snapshot.businessDescription,
-            avg_volume_20d: null,
-            avg_dollar_volume_20d: null,
-            one_day_return: null,
-            return_5d: null,
-            return_10d: null,
-            return_20d: null,
-            relative_strength_20d: null,
-            volume_ratio: null,
-            breakout_20d: false,
-            breakout_10d: false,
-            above_sma_20: false,
-            breakout_clearance_pct: null,
-            extension_from_sma20_pct: null,
-            close_in_day_range: null,
-            catalyst_count: 0,
-            passes_price: false,
-            passes_volume: false,
-            passes_dollar_volume: false,
-            passes_market_cap: false,
-            candidate_score: 0,
-            included: false,
-            screen_reason: "Not enough price history",
-            last_screened_at: nowIso,
-            updated_at: nowIso,
-          }
-
-          const deleteResult = await removeFromUniverse(candidateUniverseTable, ticker)
-          if (deleteResult.error) {
-            failedInBatch += 1
-            results.push({
-              ticker,
-              ok: false,
-              error: deleteResult.error.message,
-            })
-            await sleep(REQUEST_DELAY_MS)
-            continue
-          }
-
-          removedFromUniverseInBatch += 1
-
-          const historyResult = await writeHistoryRow(
-            candidateHistoryTable,
-            row,
-            screenedOn,
-            nowIso
-          )
-
-          if (historyResult.error) {
-            historyWriteErrors += 1
-            results.push({
-              ticker,
-              ok: true,
-              included: false,
-              score: 0,
-              tier: "not_included",
-              reason: row.screen_reason,
-              historyWarning: historyResult.error.message,
-            })
-            await sleep(REQUEST_DELAY_MS)
-            continue
-          }
-
-          historyInserted += 1
-
-          results.push({
-            ticker,
-            ok: true,
-            included: false,
-            score: 0,
-            tier: "not_included",
-            reason: row.screen_reason,
-          })
-
-          await sleep(REQUEST_DELAY_MS)
-          continue
-        }
-
-        const latest = clean[clean.length - 1]
-        const previous = clean[clean.length - 2]
-        const fiveAgo = clean[clean.length - 6]
-        const tenAgo = clean[clean.length - 11]
-        const twentyAgo = clean[clean.length - 21]
-        const prior20 = clean.slice(-21, -1)
-        const prior10 = clean.slice(-11, -1)
-
-        const latestClose = Number(latest.close || 0)
-        const latestOpen = Number(latest.open || latestClose)
-        const latestHigh = Number(latest.high || latestClose)
-        const latestLow = Number(latest.low || latestClose)
-        const latestVolume = Number(latest.volume || 0)
-        const previousClose = Number(previous?.close || latestClose)
-
-        const avgVolume20d = avg(prior20.map((c) => Number(c.volume || 0)))
-        const avgDollarVolume20d = avg(
-          prior20.map((c) => Number(c.close || 0) * Number(c.volume || 0))
-        )
-        const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
-        const high10 = Math.max(...prior10.map((c) => Number(c.high || 0)))
-        const sma20 = avg(prior20.map((c) => Number(c.close || 0)))
-        const sma10 = avg(prior10.map((c) => Number(c.close || 0)))
-        const return5d = calcPercentChange(latestClose, Number(fiveAgo?.close || 0))
-        const return10d = calcPercentChange(latestClose, Number(tenAgo?.close || 0))
-        const return20d = calcPercentChange(latestClose, Number(twentyAgo?.close || 0))
-        const oneDayReturn = calcPercentChange(latestClose, previousClose)
-
-        const relativeReturn5d = return5d - benchmarkReturns.return5d
-        const relativeReturn10d = return10d - benchmarkReturns.return10d
-        const relativeReturn20d = return20d - benchmarkReturns.return20d
-
-        const volumeRatio = avgVolume20d > 0 ? latestVolume / avgVolume20d : 0
-        const breakout20d = latestClose > high20
-        const breakout10d = latestClose > high10
-        const nearHigh20 = high20 > 0 ? latestClose >= high20 * 0.99 : false
-        const aboveSma20 = latestClose > sma20
-        const shortTermTrendUp = sma10 > sma20
-        const marketCap = Number((quote as any)?.marketCap || 0)
-
-        const breakoutClearancePct =
-          high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
-
-        const extensionFromSma20Pct =
-          sma20 > 0 ? ((latestClose - sma20) / sma20) * 100 : 0
-
-        const closeInDayRange =
-          latestHigh > latestLow
-            ? (latestClose - latestLow) / (latestHigh - latestLow)
-            : latestClose >= latestOpen
-              ? 1
-              : 0
-
-        const passesPrice = latestClose >= MIN_PRICE
-        const passesVolume = avgVolume20d >= MIN_AVG_VOLUME_20D
-        const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
-        const passesMarketCap = marketCap >= MIN_MARKET_CAP
-
-        const strongCompanyEval = evaluateStrongCompany({
-          marketCap,
-          avgDollarVolume20d,
-          return20d,
-          volumeRatio,
-          sector: snapshot.sector,
-          industry: snapshot.industry,
-          peRatio: snapshot.peRatio,
-          forwardPe: snapshot.forwardPe,
-          companyProfile: snapshot.companyProfile,
-        })
-
-        metricRows.push({
-          company,
-          ticker,
-          latestClose,
-          marketCap,
-          avgVolume20d,
-          avgDollarVolume20d,
-          return5d,
-          return10d,
-          return20d,
-          relativeReturn5d,
-          relativeReturn10d,
-          relativeReturn20d,
-          relative_strength_20d: relativeReturn20d,
-          oneDayReturn,
-          volumeRatio,
-          breakout20d,
-          breakout10d,
-          nearHigh20,
-          aboveSma20,
-          shortTermTrendUp,
-          sma10,
-          sma20,
-          high20,
-          breakoutClearancePct,
-          extensionFromSma20Pct,
-          closeInDayRange,
-          passesPrice,
-          passesVolume,
-          passesDollarVolume,
-          passesMarketCap,
-          snapshot,
-          strongCompanyScore: strongCompanyEval.score,
-          passesStrongCompanyGate: strongCompanyEval.passes,
-          strongCompanyReasons: strongCompanyEval.reasons,
-          speculativePenalty: strongCompanyEval.speculativePenalty,
-        })
-      } catch (err: any) {
-        failedInBatch += 1
-        results.push({
-          ticker,
-          ok: false,
-          error: err?.message || "Unknown screening error",
-        })
+    for (const item of preparation) {
+      if (item.kind === "metric") {
+        metricRows.push(item.metric)
+        if (item.result && includeResults) results.push(item.result)
+        continue
       }
 
-      await sleep(REQUEST_DELAY_MS)
+      if (item.kind === "error") {
+        failedInBatch += 1
+        if (item.errorKind === "transient_yahoo_error") {
+          keptUniverseOnTransientError += 1
+        }
+        if (item.removeTicker) tickersToDelete.push(item.removeTicker)
+        if (item.result && includeResults) results.push(item.result)
+        continue
+      }
+
+      if (item.kind === "final_row") {
+        if (item.removeTicker) tickersToDelete.push(item.removeTicker)
+        earlyHistoryRows.push(makeHistoryRow(item.row, screenedOn, nowIso))
+        if (item.result && includeResults) results.push(item.result)
+      }
     }
 
     const percentileMap = buildRelativeStrengthPercentileMap(
@@ -1586,6 +1588,11 @@ export async function GET(request: Request) {
         relativeReturn20d: row.relativeReturn20d,
       }))
     )
+
+    const universeRowsToUpsert: CandidateUniverseRow[] = []
+    const scoredHistoryRows: CandidateHistoryRow[] = []
+    let includedInBatch = 0
+    let strongBuyNowInBatch = 0
 
     for (const metric of metricRows) {
       const pct = percentileMap.get(metric.ticker) ?? {
@@ -1663,7 +1670,6 @@ export async function GET(request: Request) {
         score >= MIN_BOARD_SCORE
 
       const included = boardCandidate
-
       const reasons: string[] = []
 
       if (metric.passesStrongCompanyGate) reasons.push("strong underlying company")
@@ -1762,116 +1768,113 @@ export async function GET(request: Request) {
         updated_at: nowIso,
       }
 
+      scoredHistoryRows.push(makeHistoryRow(row, screenedOn, nowIso))
+
       if (included) {
-        const universeResult = await upsertUniverseRow(candidateUniverseTable, row)
-
-        if (universeResult.error) {
-          failedInBatch += 1
-          results.push({
-            ticker: metric.ticker,
-            ok: false,
-            error: universeResult.error.message,
-          })
-          continue
-        }
-
+        universeRowsToUpsert.push(row)
         includedInBatch += 1
         if (strongBuyNowCandidate) strongBuyNowInBatch += 1
       } else {
-        const deleteResult = await removeFromUniverse(candidateUniverseTable, metric.ticker)
-
-        if (deleteResult.error) {
-          failedInBatch += 1
-          results.push({
-            ticker: metric.ticker,
-            ok: false,
-            error: deleteResult.error.message,
-          })
-          continue
-        }
-
-        removedFromUniverseInBatch += 1
+        tickersToDelete.push(metric.ticker)
       }
 
-      const historyResult = await writeHistoryRow(
-        candidateHistoryTable,
-        row,
-        screenedOn,
-        nowIso
-      )
-
-      if (historyResult.error) {
-        historyWriteErrors += 1
-      } else {
-        historyInserted += 1
+      if (includeResults) {
+        results.push({
+          ticker: metric.ticker,
+          ok: true,
+          included,
+          strongBuyNowCandidate,
+          score,
+          rawScore: round2(scoreDetails.rawScore),
+          tier: strongBuyNowCandidate
+            ? "strong_buy_now"
+            : included
+              ? "board_candidate"
+              : "not_included",
+          reason: row.screen_reason,
+          price: round2(metric.latestClose),
+          oneDayReturn: round2(metric.oneDayReturn),
+          return5d: round2(metric.return5d),
+          return10d: round2(metric.return10d),
+          return20d: round2(metric.return20d),
+          relativeReturn5d: round2(metric.relativeReturn5d),
+          relativeReturn10d: round2(metric.relativeReturn10d),
+          relativeReturn20d: round2(metric.relativeReturn20d),
+          rsPercentile5d: pct.rsPercentile5d,
+          rsPercentile10d: pct.rsPercentile10d,
+          rsPercentile20d: pct.rsPercentile20d,
+          benchmarkReturn5d: round2(benchmarkReturns.return5d),
+          benchmarkReturn10d: round2(benchmarkReturns.return10d),
+          benchmarkReturn20d: round2(benchmarkReturns.return20d),
+          volumeRatio: round2(metric.volumeRatio),
+          breakoutClearancePct: round2(metric.breakoutClearancePct),
+          extensionFromSma20Pct: round2(metric.extensionFromSma20Pct),
+          closeInDayRange: round2(metric.closeInDayRange),
+          strongCompanyScore: round2(metric.strongCompanyScore),
+          passesStrongCompanyGate: metric.passesStrongCompanyGate,
+          catalystCount,
+          historyWarning: null,
+          scoreBreakdown: {
+            quality: round2(scoreDetails.qualityScore),
+            fundamental: round2(scoreDetails.fundamentalScore),
+            momentum: round2(scoreDetails.momentumScore),
+            relativeStrength: round2(scoreDetails.relativeStrengthScore),
+            leadership: round2(scoreDetails.leadershipScore),
+            volume: round2(scoreDetails.volumeScore),
+            breakout: round2(scoreDetails.breakoutScore),
+            trend: round2(scoreDetails.trendScore),
+            penalty: round2(scoreDetails.penaltyScore),
+          },
+        })
       }
-
-      results.push({
-        ticker: metric.ticker,
-        ok: true,
-        included,
-        strongBuyNowCandidate,
-        score,
-        rawScore: round2(scoreDetails.rawScore),
-        tier: strongBuyNowCandidate
-          ? "strong_buy_now"
-          : included
-            ? "board_candidate"
-            : "not_included",
-        reason: row.screen_reason,
-        price: round2(metric.latestClose),
-        oneDayReturn: round2(metric.oneDayReturn),
-        return5d: round2(metric.return5d),
-        return10d: round2(metric.return10d),
-        return20d: round2(metric.return20d),
-        relativeReturn5d: round2(metric.relativeReturn5d),
-        relativeReturn10d: round2(metric.relativeReturn10d),
-        relativeReturn20d: round2(metric.relativeReturn20d),
-        rsPercentile5d: pct.rsPercentile5d,
-        rsPercentile10d: pct.rsPercentile10d,
-        rsPercentile20d: pct.rsPercentile20d,
-        benchmarkReturn5d: round2(benchmarkReturns.return5d),
-        benchmarkReturn10d: round2(benchmarkReturns.return10d),
-        benchmarkReturn20d: round2(benchmarkReturns.return20d),
-        volumeRatio: round2(metric.volumeRatio),
-        breakoutClearancePct: round2(metric.breakoutClearancePct),
-        extensionFromSma20Pct: round2(metric.extensionFromSma20Pct),
-        closeInDayRange: round2(metric.closeInDayRange),
-        strongCompanyScore: round2(metric.strongCompanyScore),
-        passesStrongCompanyGate: metric.passesStrongCompanyGate,
-        catalystCount,
-        historyWarning: historyResult.error ? historyResult.error.message : null,
-        scoreBreakdown: {
-          quality: round2(scoreDetails.qualityScore),
-          fundamental: round2(scoreDetails.fundamentalScore),
-          momentum: round2(scoreDetails.momentumScore),
-          relativeStrength: round2(scoreDetails.relativeStrengthScore),
-          leadership: round2(scoreDetails.leadershipScore),
-          volume: round2(scoreDetails.volumeScore),
-          breakout: round2(scoreDetails.breakoutScore),
-          trend: round2(scoreDetails.trendScore),
-          penalty: round2(scoreDetails.penaltyScore),
-        },
-      })
     }
 
-    const cutoffDate = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10)
+    const deleteErrorCount = await deleteTickersInChunks(candidateUniverseTable, tickersToDelete)
+    const universeUpsertErrorCount = await upsertRowsInChunks(
+      candidateUniverseTable,
+      universeRowsToUpsert,
+      "ticker"
+    )
+    const historyRows = [...earlyHistoryRows, ...scoredHistoryRows]
+    const historyWriteErrors = await upsertRowsInChunks(
+      candidateHistoryTable,
+      historyRows,
+      "snapshot_key"
+    )
 
-    const { error: retentionError } = await candidateHistoryTable
-      .delete()
-      .lt("screened_on", cutoffDate)
+    const removedFromUniverseInBatch = Math.max(0, tickersToDelete.length - deleteErrorCount)
+    failedInBatch += deleteErrorCount + universeUpsertErrorCount
 
-    const [
-      { count: candidateCount, error: includedCountError },
-      { count: historyCount, error: historyCountError },
-    ] = await Promise.all([
-      candidateUniverseTable
-        .select("*", { count: "exact", head: true })
-        .eq("included", true),
-      candidateHistoryTable.select("*", { count: "exact", head: true }),
-    ])
+    let retentionMessage: string = "skipped"
+    if (runRetention) {
+      const cutoffDate = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10)
+
+      const { error: retentionError } = await candidateHistoryTable
+        .delete()
+        .lt("screened_on", cutoffDate)
+
+      retentionMessage = retentionError ? retentionError.message : "ok"
+    }
+
+    let candidateCount: number | null = null
+    let historyCount: number | null = null
+
+    if (includeCounts) {
+      const [
+        { count: candidateCountValue, error: includedCountError },
+        { count: historyCountValue, error: historyCountError },
+      ] = await Promise.all([
+        candidateUniverseTable
+          .select("*", { count: "exact", head: true })
+          .eq("included", true),
+        candidateHistoryTable.select("*", { count: "exact", head: true }),
+      ])
+
+      candidateCount = includedCountError ? null : candidateCountValue
+      historyCount = historyCountError ? null : historyCountValue
+    }
 
     const nextStart =
       totalCompanies !== null &&
@@ -1882,7 +1885,7 @@ export async function GET(request: Request) {
 
     return Response.json({
       ok: true,
-      processedCompanies: companies?.length || 0,
+      processedCompanies: companyList.length,
       totalCompanies: totalCountError ? null : totalCompanies,
       start: safeStart,
       batch: safeBatch,
@@ -1894,10 +1897,10 @@ export async function GET(request: Request) {
       historyWriteErrors,
       keptUniverseOnTransientError,
       removedFromUniverseInBatch,
-      includedCount: includedCountError ? null : candidateCount,
-      historyInserted,
-      historyCount: historyCountError ? null : historyCount,
-      retentionCleanup: retentionError ? retentionError.message : "ok",
+      includedCount: candidateCount,
+      historyInserted: Math.max(0, historyRows.length - historyWriteErrors),
+      historyCount,
+      retentionCleanup: retentionMessage,
       retainedDays: RETENTION_DAYS,
       screenedOn,
       thresholds: {
@@ -1923,7 +1926,7 @@ export async function GET(request: Request) {
         minCloseInDayRange: MIN_CLOSE_IN_DAY_RANGE,
         minCatalystCount: MIN_CATALYST_COUNT,
       },
-      results,
+      results: includeResults ? results : [],
     })
   } catch (error: any) {
     return Response.json(
