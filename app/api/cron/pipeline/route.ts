@@ -17,6 +17,7 @@ type PipelineStage =
   | "idle"
   | "companies"
   | "screening"
+  | "finalize_candidates"
   | "filings"
   | "signals"
   | "filing_signals"
@@ -523,7 +524,7 @@ export async function GET(request: NextRequest) {
             : null
 
         state = await patchPipelineState(supabase, {
-          stage: returnedNextStart === null ? "filings" : "screening",
+          stage: returnedNextStart === null ? "finalize_candidates" : "screening",
           status: "running",
           screen_start: nextStart,
           screen_batch: batchSize,
@@ -537,6 +538,49 @@ export async function GET(request: NextRequest) {
           nextStart = returnedNextStart
         }
       }
+    }
+
+    if (state.stage === "finalize_candidates") {
+      if (shouldStopForRuntime(runStartedAtMs)) {
+        const checkpointAt = nowIso()
+
+        await patchPipelineState(supabase, {
+          stage: "finalize_candidates",
+          status: "idle",
+          last_run_finished_at: checkpointAt,
+        })
+
+        return NextResponse.json({
+          ok: true,
+          message: "Pipeline checkpointed before candidate finalization. Continue on next cron run.",
+          stage: "finalize_candidates",
+          results,
+        })
+      }
+
+      const finalizeResult = await runStep(
+        baseUrl,
+        "/api/screen/candidates/finalize-candidates",
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(finalizeResult)
+
+      if (!finalizeResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          finalizeResult,
+          `Finalize candidates step failed: ${String(
+            (finalizeResult.data as any)?.error || finalizeResult.status
+          )}`
+        )
+      }
+
+      state = await patchPipelineState(supabase, {
+        stage: "filings",
+        status: "running",
+      })
     }
 
     if (state.stage === "filings") {
