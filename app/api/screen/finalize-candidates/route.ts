@@ -259,7 +259,10 @@ function buildPtrSignalMap(rows: RawPtrTradeRow[]) {
   return out
 }
 
-function getAdjustedSelectionScore(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
+function getAdjustedSelectionScore(
+  row: CandidateHistoryRow,
+  ptr: PtrSignalSummary | null | undefined
+) {
   return (row.candidate_score ?? 0) + (ptr?.ptrBonus ?? 0)
 }
 
