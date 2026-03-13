@@ -47,37 +47,26 @@ type PipelineStateRow = {
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
 /**
- * Screening is the expensive step.
- * Start smaller and let more batches happen per run.
+ * Screening is the bottleneck.
+ * Keep batches small enough to reliably finish inside serverless limits.
  */
-const DEFAULT_SCREEN_BATCH = 100
-const MAX_SCREEN_BATCH = 250
-const MIN_SCREEN_BATCH = 25
+const DEFAULT_SCREEN_BATCH = 25
+const MAX_SCREEN_BATCH = 100
+const MIN_SCREEN_BATCH = 10
 
-const DEFAULT_FILINGS_BATCH = 2000
-const DEFAULT_SIGNALS_LIMIT = 3000
+const DEFAULT_FILINGS_BATCH = 1000
+const DEFAULT_SIGNALS_LIMIT = 2000
 const DEFAULT_SIGNALS_LOOKBACK_DAYS = 30
 
-const MAX_PIPELINE_RUNTIME_MS = 285_000
-const RUNTIME_SAFETY_BUFFER_MS = 12_000
+const MAX_PIPELINE_RUNTIME_MS = 250_000
+const RUNTIME_SAFETY_BUFFER_MS = 15_000
 
-/**
- * Since screening batches are smaller, allow more progress per run.
- */
-const MAX_BATCHES_PER_RUN = 10
-const SCREENING_CHECKPOINT_EVERY = 3
+const MAX_BATCHES_PER_RUN = 6
+const SCREENING_CHECKPOINT_EVERY = 2
 const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
 
-/**
- * Use step-specific timeouts instead of one shared timeout.
- */
-const DEFAULT_STEP_TIMEOUT_MS = 120_000
-const SCREENING_STEP_TIMEOUT_MS = 180_000
-
-/**
- * If screening times out, retry once at half the batch size.
- */
-const ENABLE_SCREENING_RETRY_ON_TIMEOUT = true
+const DEFAULT_STEP_TIMEOUT_MS = 90_000
+const SCREENING_STEP_TIMEOUT_MS = 90_000
 
 function nowIso() {
   return new Date().toISOString()
@@ -418,57 +407,6 @@ async function checkpointPipeline(
   })
 }
 
-async function runScreeningStepWithRetry(
-  baseUrl: string,
-  start: number,
-  batchSize: number
-): Promise<{ result: StepResult; effectiveBatchSize: number; retried: boolean }> {
-  const firstPath = withSearchParams("/api/screen/candidates", {
-    start,
-    batch: batchSize,
-    onlyActive: true,
-  })
-
-  const firstResult = await runStep(
-    baseUrl,
-    firstPath,
-    SCREENING_STEP_TIMEOUT_MS
-  )
-
-  if (
-    firstResult.ok ||
-    !ENABLE_SCREENING_RETRY_ON_TIMEOUT ||
-    !isTimeoutLikeError((firstResult.data as any)?.error) ||
-    batchSize <= MIN_SCREEN_BATCH
-  ) {
-    return {
-      result: firstResult,
-      effectiveBatchSize: batchSize,
-      retried: false,
-    }
-  }
-
-  const smallerBatch = reduceScreenBatch(batchSize)
-
-  const retryPath = withSearchParams("/api/screen/candidates", {
-    start,
-    batch: smallerBatch,
-    onlyActive: true,
-  })
-
-  const retryResult = await runStep(
-    baseUrl,
-    retryPath,
-    SCREENING_STEP_TIMEOUT_MS
-  )
-
-  return {
-    result: retryResult,
-    effectiveBatchSize: smallerBatch,
-    retried: true,
-  }
-}
-
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization")
   const cronSecret = process.env.CRON_SECRET
@@ -609,27 +547,27 @@ export async function GET(request: NextRequest) {
           )
         }
 
-        const screeningAttempt = await runScreeningStepWithRetry(
+        const screenPath = withSearchParams("/api/screen/candidates", {
+          start: nextStart,
+          batch: batchSize,
+          onlyActive: true,
+        })
+
+        const screenResult = await runStep(
           baseUrl,
-          nextStart,
-          batchSize
+          screenPath,
+          SCREENING_STEP_TIMEOUT_MS
         )
 
-        const screenResult = screeningAttempt.result
         results.push(screenResult)
         batchesThisRun += 1
-
-        if (screeningAttempt.retried) {
-          batchSize = screeningAttempt.effectiveBatchSize
-        }
 
         if (!screenResult.ok) {
           const errorText = String(
             (screenResult.data as any)?.error || screenResult.status
           )
 
-          const timedOut = isTimeoutLikeError(errorText)
-          const nextSuggestedBatch = timedOut
+          const nextSuggestedBatch = isTimeoutLikeError(errorText)
             ? reduceScreenBatch(batchSize)
             : batchSize
 
