@@ -51,7 +51,7 @@ const MAX_SCREEN_BATCH = 100
 const MIN_SCREEN_BATCH = 25
 
 const DEFAULT_FILINGS_BATCH = 1000
-const DEFAULT_SIGNALS_LIMIT = 200
+const DEFAULT_SIGNALS_LIMIT = 250
 const DEFAULT_SIGNALS_LOOKBACK_DAYS = 30
 
 const MAX_PIPELINE_RUNTIME_MS = 250_000
@@ -689,12 +689,13 @@ export async function GET(request: NextRequest) {
       }
 
       const signalsResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/ingest/signals", {
-          limit: DEFAULT_SIGNALS_LIMIT,
-          lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
-        })
-      )
+  baseUrl,
+  withSearchParams("/api/ingest/signals", {
+    limit: DEFAULT_SIGNALS_LIMIT,
+    lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
+  }),
+  DEFAULT_STEP_TIMEOUT_MS
+)
 
       results.push(signalsResult)
 
