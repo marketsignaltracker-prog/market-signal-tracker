@@ -194,8 +194,8 @@ const SEC_USER_AGENT =
   process.env.SEC_USER_AGENT ||
   "Market Signal Tracker marketsignaltracker@gmail.com"
 
-const DEFAULT_LIMIT = 250
-const MAX_LIMIT = 1000
+const DEFAULT_LIMIT = 150
+const MAX_LIMIT = 500
 const DEFAULT_LOOKBACK_DAYS = 14
 const MAX_LOOKBACK_DAYS = 30
 const RETENTION_DAYS = 30
@@ -212,8 +212,7 @@ const MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL = 90
 const MAX_SIGNAL_AGE_DAYS = 14
 
 const PREPARE_CONCURRENCY = 8
-const CATALYST_FETCH_CONCURRENCY = 4
-const DB_CHUNK_SIZE = 250
+const DB_CHUNK_SIZE = 200
 
 function normalizeFormType(formType: string | null) {
   const normalized = (formType || "")
@@ -416,9 +415,7 @@ async function upsertInChunks(
 ) {
   for (const chunk of chunkArray(rows, DB_CHUNK_SIZE)) {
     const { error } = await table.upsert(chunk, { onConflict })
-    if (error) {
-      throw new Error(error.message)
-    }
+    if (error) throw new Error(error.message)
   }
 }
 
@@ -426,9 +423,7 @@ async function deleteInChunksByTicker(table: any, tickers: string[]) {
   const unique = uniqueStrings(tickers)
   for (const chunk of chunkArray(unique, DB_CHUNK_SIZE)) {
     const { error } = await table.delete().in("ticker", chunk)
-    if (error) {
-      throw new Error(error.message)
-    }
+    if (error) throw new Error(error.message)
   }
 }
 
@@ -2414,9 +2409,7 @@ async function attachTickerScoreChangesToCurrentRows(
     .lt("score_date", runDate)
     .order("score_date", { ascending: false })
 
-  if (error) {
-    return currentRows
-  }
+  if (error) return currentRows
 
   const byTicker = new Map<string, Map<string, number>>()
 
@@ -2586,7 +2579,8 @@ async function prepareFilingSignal(
 
 async function prepareCandidateSignal(
   candidate: CandidateUniverseSignalInput,
-  caches: SharedCaches
+  caches: SharedCaches,
+  runTimestamp: string
 ): Promise<PreparedSignal | null> {
   const ticker = normalizeTicker(candidate.ticker)
   if (!ticker) return null
@@ -2597,7 +2591,7 @@ async function prepareCandidateSignal(
     getCachedEarnings(caches, ticker),
   ])
 
-  const syntheticFiling = buildSyntheticCandidateFiling(candidate, new Date().toISOString())
+  const syntheticFiling = buildSyntheticCandidateFiling(candidate, runTimestamp)
   const base = maybeCreateCandidateTechnicalBase(candidate, price, earnings)
   if (!base) return null
 
@@ -2658,6 +2652,8 @@ export async function GET(request: Request) {
 
     const includeCounts = (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
     const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
+    const rebuildTickerScores =
+      (searchParams.get("rebuildTickerScores") || "false").toLowerCase() === "true"
 
     const now = new Date()
     const runDate = toIsoDateString(now)
@@ -2769,7 +2765,7 @@ export async function GET(request: Request) {
     const candidatePreparations = await mapWithConcurrency(
       (candidateRows || []) as CandidateUniverseSignalInput[],
       PREPARE_CONCURRENCY,
-      async (candidate) => prepareCandidateSignal(candidate, caches)
+      async (candidate) => prepareCandidateSignal(candidate, caches, runTimestamp)
     )
 
     for (const item of candidatePreparations) {
@@ -2914,96 +2910,102 @@ export async function GET(request: Request) {
       await upsertInChunks(supabase.from("signal_history"), historyRows, "signal_history_key")
     }
 
-    if (runRetention) {
-      const { error: staleSignalsCleanupError } = await supabase
-        .from("signals")
-        .delete()
-        .lt("filed_at", cutoffDateString)
+    let tickerCurrentRows: any[] = []
+    let tickerHistoryRows: any[] = []
 
-      if (staleSignalsCleanupError) {
+    if (rebuildTickerScores) {
+      if (runRetention) {
+        const { error: staleSignalsCleanupError } = await supabase
+          .from("signals")
+          .delete()
+          .lt("filed_at", cutoffDateString)
+
+        if (staleSignalsCleanupError) {
+          return Response.json(
+            {
+              ok: false,
+              error: staleSignalsCleanupError.message,
+              diagnostics,
+            },
+            { status: 500 }
+          )
+        }
+      }
+
+      const { data: allSignalRows, error: allSignalsError } = await supabase
+        .from("signals")
+        .select("*")
+        .gte("filed_at", cutoffDateString)
+        .gte("app_score", MIN_SIGNAL_APP_SCORE)
+        .order("app_score", { ascending: false })
+        .order("filed_at", { ascending: false })
+
+      if (allSignalsError) {
         return Response.json(
           {
             ok: false,
-            error: staleSignalsCleanupError.message,
+            error: allSignalsError.message,
             diagnostics,
           },
           { status: 500 }
         )
       }
-    }
 
-    const { data: allSignalRows, error: allSignalsError } = await supabase
-      .from("signals")
-      .select("*")
-      .gte("filed_at", cutoffDateString)
-      .gte("app_score", MIN_SIGNAL_APP_SCORE)
-      .order("app_score", { ascending: false })
-      .order("filed_at", { ascending: false })
+      diagnostics.tickerCurrentBuiltFromSignalsTable = (allSignalRows || []).length
 
-    if (allSignalsError) {
-      return Response.json(
-        {
-          ok: false,
-          error: allSignalsError.message,
-          diagnostics,
-        },
-        { status: 500 }
+      tickerCurrentRows = buildTickerScoresCurrentRows((allSignalRows || []) as any[], runTimestamp)
+      diagnostics.tickerCurrentBuilt = tickerCurrentRows.length
+
+      tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(supabase, tickerCurrentRows, runDate)
+
+      if (tickerCurrentRows.length > 0) {
+        await upsertInChunks(supabase.from("ticker_scores_current"), tickerCurrentRows, "ticker")
+      }
+
+      const currentTickerSet = new Set(tickerCurrentRows.map((row) => normalizeTicker(row.ticker)))
+      const { data: existingTickerRows, error: existingTickerRowsError } = await supabase
+        .from("ticker_scores_current")
+        .select("ticker")
+
+      if (existingTickerRowsError) {
+        return Response.json(
+          {
+            ok: false,
+            error: existingTickerRowsError.message,
+            diagnostics,
+          },
+          { status: 500 }
+        )
+      }
+
+      const staleTickerList = uniqueStrings(
+        (existingTickerRows || [])
+          .map((row: any) => normalizeTicker(row.ticker))
+          .filter((ticker) => !currentTickerSet.has(ticker))
       )
+
+      if (staleTickerList.length > 0) {
+        await deleteInChunksByTicker(supabase.from("ticker_scores_current"), staleTickerList)
+      }
+
+      diagnostics.tickerCurrentInserted = tickerCurrentRows.length
+
+      tickerHistoryRows = buildTickerScoreHistoryRows(tickerCurrentRows, runDate, runTimestamp)
+
+      if (tickerHistoryRows.length > 0) {
+        await upsertInChunks(
+          supabase.from("ticker_score_history"),
+          tickerHistoryRows,
+          "ticker,score_date"
+        )
+      }
+
+      diagnostics.tickerHistoryInserted = tickerHistoryRows.length
     }
-
-    diagnostics.tickerCurrentBuiltFromSignalsTable = (allSignalRows || []).length
-
-    let tickerCurrentRows = buildTickerScoresCurrentRows((allSignalRows || []) as any[], runTimestamp)
-    diagnostics.tickerCurrentBuilt = tickerCurrentRows.length
-
-    tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(supabase, tickerCurrentRows, runDate)
-
-    if (tickerCurrentRows.length > 0) {
-      await upsertInChunks(supabase.from("ticker_scores_current"), tickerCurrentRows, "ticker")
-    }
-
-    const currentTickerSet = new Set(tickerCurrentRows.map((row) => normalizeTicker(row.ticker)))
-    const { data: existingTickerRows, error: existingTickerRowsError } = await supabase
-      .from("ticker_scores_current")
-      .select("ticker")
-
-    if (existingTickerRowsError) {
-      return Response.json(
-        {
-          ok: false,
-          error: existingTickerRowsError.message,
-          diagnostics,
-        },
-        { status: 500 }
-      )
-    }
-
-    const staleTickerList = uniqueStrings(
-      (existingTickerRows || [])
-        .map((row: any) => normalizeTicker(row.ticker))
-        .filter((ticker) => !currentTickerSet.has(ticker))
-    )
-
-    if (staleTickerList.length > 0) {
-      await deleteInChunksByTicker(supabase.from("ticker_scores_current"), staleTickerList)
-    }
-
-    diagnostics.tickerCurrentInserted = tickerCurrentRows.length
-
-    const tickerHistoryRows = buildTickerScoreHistoryRows(tickerCurrentRows, runDate, runTimestamp)
-
-    if (tickerHistoryRows.length > 0) {
-      await upsertInChunks(
-        supabase.from("ticker_score_history"),
-        tickerHistoryRows,
-        "ticker,score_date"
-      )
-    }
-
-    diagnostics.tickerHistoryInserted = tickerHistoryRows.length
 
     let retentionMessage = "skipped"
     let tickerRetentionMessage = "skipped"
+    let staleSignalsCleanupMessage = "skipped"
 
     if (runRetention) {
       const retentionCutoff = new Date(now)
@@ -3015,19 +3017,23 @@ export async function GET(request: Request) {
         .delete()
         .lt("scored_on", retentionCutoffString)
 
-      const { error: tickerRetentionError } = await supabase
-        .from("ticker_score_history")
-        .delete()
-        .lt("score_date", retentionCutoffString)
-
       retentionMessage = retentionError ? retentionError.message : "ok"
-      tickerRetentionMessage = tickerRetentionError ? tickerRetentionError.message : "ok"
+
+      if (rebuildTickerScores) {
+        const { error: tickerRetentionError } = await supabase
+          .from("ticker_score_history")
+          .delete()
+          .lt("score_date", retentionCutoffString)
+
+        tickerRetentionMessage = tickerRetentionError ? tickerRetentionError.message : "ok"
+        staleSignalsCleanupMessage = "ok"
+      }
     }
 
     let strongBuyCount: number | null = null
     let eliteBuyCount: number | null = null
 
-    if (includeCounts) {
+    if (includeCounts && rebuildTickerScores) {
       const [{ count: strongBuy }, { count: eliteBuy }] = await Promise.all([
         supabase
           .from("ticker_scores_current")
@@ -3058,14 +3064,15 @@ export async function GET(request: Request) {
       scoreVersion: SCORE_VERSION,
       minSignalAppScore: MIN_SIGNAL_APP_SCORE,
       minTickerAppScore: MIN_TICKER_APP_SCORE,
+      rebuildTickerScores,
       retentionCleanup: retentionMessage,
       tickerRetentionCleanup: tickerRetentionMessage,
-      staleSignalsCleanup: runRetention ? "ok" : "skipped",
+      staleSignalsCleanup: staleSignalsCleanupMessage,
       strongBuyCount,
       eliteBuyCount,
       diagnostics,
       message:
-        "Strong-buy-only signals generated from filings and technical candidate setups, with ticker-level grading, history, and optional freshness cleanup.",
+        "Strong-buy-only signals generated from filings and technical candidate setups. Ticker rebuild, counts, and retention are optional for fast runs.",
     })
   } catch (error: any) {
     return Response.json(
