@@ -1,159 +1,226 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from "@supabase/supabase-js"
+import { NextResponse } from "next/server"
 
-type SecCompany = {
-  cik_str: number
-  ticker: string
-  title: string
-}
+export const dynamic = "force-dynamic"
+export const maxDuration = 300
 
 type CompanyRow = {
-  cik: string
   ticker: string
-  name: string
+  cik: string
+  name: string | null
+  exchange: string | null
   is_active: boolean
-  source: string
-  last_seen_at: string
-  updated_at: string
+  updated_at?: string
 }
 
-const SEC_COMPANIES_URL = 'https://www.sec.gov/files/company_tickers.json'
-const SEC_USER_AGENT =
-  process.env.SEC_USER_AGENT ||
-  'Market Signal Tracker marketsignaltracker@gmail.com'
+function normalizeTicker(value: string | null | undefined) {
+  return (value || "").trim().toUpperCase()
+}
 
-const UPSERT_CHUNK_SIZE = 500
+function cleanString(value: unknown) {
+  if (value === null || value === undefined) return null
+  const s = String(value).trim()
+  return s.length ? s : null
+}
 
-function chunkArray<T>(items: T[], size: number): T[][] {
+function chunkArray<T>(items: T[], size: number) {
   const chunks: T[][] = []
-
   for (let i = 0; i < items.length; i += size) {
     chunks.push(items.slice(i, i + size))
   }
-
   return chunks
 }
 
-function normalizeTicker(ticker: string | null | undefined) {
-  return (ticker || '').trim().toUpperCase()
+async function upsertCompaniesInChunks(table: any, rows: CompanyRow[], chunkSize = 500) {
+  let insertedOrUpdated = 0
+  const errors: string[] = []
+
+  for (const chunk of chunkArray(rows, chunkSize)) {
+    const { error } = await table.upsert(chunk, { onConflict: "ticker" })
+    if (error) {
+      errors.push(error.message)
+    } else {
+      insertedOrUpdated += chunk.length
+    }
+  }
+
+  return {
+    insertedOrUpdated,
+    errors,
+  }
 }
 
-function normalizeName(name: string | null | undefined) {
-  return (name || '').trim()
-}
+async function fetchSecCompanyFactsLikeList() {
+  // Replace this URL with your real source if different.
+  // This is just the common SEC company_tickers.json source pattern.
+  const url = "https://www.sec.gov/files/company_tickers.json"
 
-async function fetchSecCompanies(refreshTimestamp: string): Promise<CompanyRow[]> {
-  const response = await fetch(SEC_COMPANIES_URL, {
+  const response = await fetch(url, {
     headers: {
-      'User-Agent': SEC_USER_AGENT,
-      Accept: 'application/json',
+      "User-Agent": "MarketSignalTracker admin@marketsignaltracker.com",
+      "Accept": "application/json",
     },
-    cache: 'no-store',
+    cache: "no-store",
   })
 
   if (!response.ok) {
-    throw new Error(`SEC request failed: ${response.status}`)
+    throw new Error(`Upstream fetch failed with status ${response.status}`)
   }
 
   const json = await response.json()
 
-  const companies = Object.values(json as Record<string, SecCompany>)
-    .map((item) => {
-      const ticker = normalizeTicker(item.ticker)
-      const name = normalizeName(item.title)
-      const cik = String(item.cik_str).padStart(10, '0')
+  const values = Array.isArray(json)
+    ? json
+    : typeof json === "object" && json !== null
+      ? Object.values(json)
+      : []
 
-      return {
-        cik,
-        ticker,
-        name,
-        is_active: true,
-        source: 'sec_company_tickers',
-        last_seen_at: refreshTimestamp,
-        updated_at: refreshTimestamp,
-      } satisfies CompanyRow
-    })
-    .filter((item) => item.ticker && item.name && item.cik)
-
-  const dedupedByTicker = new Map<string, CompanyRow>()
-
-  for (const company of companies) {
-    if (!dedupedByTicker.has(company.ticker)) {
-      dedupedByTicker.set(company.ticker, company)
-    }
-  }
-
-  return Array.from(dedupedByTicker.values()).sort((a, b) =>
-    a.ticker.localeCompare(b.ticker)
-  )
+  return values as Array<Record<string, unknown>>
 }
 
-export async function GET() {
+function mapSourceRowToCompany(row: Record<string, unknown>): CompanyRow | null {
+  const ticker =
+    normalizeTicker(
+      cleanString(row.ticker) ??
+      cleanString(row.symbol)
+    )
+
+  const cikRaw = cleanString(row.cik_str) ?? cleanString(row.cik)
+  const name = cleanString(row.title) ?? cleanString(row.name) ?? cleanString(row.company)
+  const exchange = cleanString(row.exchange)
+
+  if (!ticker || !cikRaw) return null
+
+  const cik = String(cikRaw).replace(/\D/g, "")
+  if (!cik) return null
+
+  return {
+    ticker,
+    cik,
+    name,
+    exchange,
+    is_active: true,
+  }
+}
+
+export async function GET(request: Request) {
+  const pipelineToken = process.env.PIPELINE_TOKEN
+  const suppliedToken = request.headers.get("x-pipeline-token")
+
+  if (!pipelineToken || suppliedToken !== pipelineToken) {
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 }
+    )
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!supabaseUrl || !serviceRoleKey) {
-    return Response.json(
-      { ok: false, error: 'Missing Supabase environment variables' },
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Missing Supabase environment variables",
+        debug: {
+          hasSupabaseUrl: Boolean(supabaseUrl),
+          hasServiceRoleKey: Boolean(serviceRoleKey),
+        },
+      },
       { status: 500 }
     )
   }
 
   try {
-    const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
 
-    const refreshStartedAt = new Date().toISOString()
-    const companies = await fetchSecCompanies(refreshStartedAt)
+    const companiesTable = supabase.from("companies") as any
 
-    if (!companies.length) {
-      return Response.json(
-        { ok: false, error: 'No companies returned from SEC feed.' },
+    let sourceRows: Array<Record<string, unknown>> = []
+
+    try {
+      sourceRows = await fetchSecCompanyFactsLikeList()
+    } catch (error: any) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Failed fetching upstream company source",
+          detail: error?.message || "Unknown upstream error",
+        },
         { status: 500 }
       )
     }
 
-    const chunks = chunkArray(companies, UPSERT_CHUNK_SIZE)
+    const mapped = sourceRows
+      .map(mapSourceRowToCompany)
+      .filter((row): row is CompanyRow => Boolean(row))
 
-    let totalUpserted = 0
-
-    for (const chunk of chunks) {
-      const { error } = await supabase
-        .from('companies')
-        .upsert(chunk, { onConflict: 'ticker' })
-
-      if (error) {
-        throw new Error(`Supabase upsert failed: ${error.message}`)
-      }
-
-      totalUpserted += chunk.length
+    const dedupedMap = new Map<string, CompanyRow>()
+    for (const row of mapped) {
+      dedupedMap.set(row.ticker, row)
     }
+    const companies = [...dedupedMap.values()]
 
-    const { error: staleError } = await supabase
-      .from('companies')
-      .update({
-        is_active: false,
-        updated_at: refreshStartedAt,
-      })
-      .lt('last_seen_at', refreshStartedAt)
-
-    if (staleError) {
-      throw new Error(
-        `Failed marking stale companies inactive: ${staleError.message}`
+    if (!companies.length) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "No companies were parsed from upstream source",
+          debug: {
+            sourceRowCount: sourceRows.length,
+            mappedRowCount: mapped.length,
+          },
+        },
+        { status: 500 }
       )
     }
 
-    return Response.json({
+    const upsertResult = await upsertCompaniesInChunks(companiesTable, companies, 500)
+
+    if (upsertResult.errors.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Failed writing one or more company chunks to Supabase",
+          debug: {
+            sourceRowCount: sourceRows.length,
+            mappedRowCount: mapped.length,
+            dedupedRowCount: companies.length,
+            errorSamples: upsertResult.errors.slice(0, 5),
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    const { count, error: countError } = await companiesTable.select("*", {
+      count: "exact",
+      head: true,
+    })
+
+    return NextResponse.json({
       ok: true,
-      totalFetched: companies.length,
-      totalUpserted,
-      chunks: chunks.length,
-      refreshStartedAt,
-      message: 'All SEC companies imported and synced into Supabase.',
+      sourceRowCount: sourceRows.length,
+      mappedRowCount: mapped.length,
+      dedupedRowCount: companies.length,
+      upsertedCount: upsertResult.insertedOrUpdated,
+      totalCompanies: countError ? null : count,
+      sample: companies.slice(0, 5),
     })
   } catch (error: any) {
-    return Response.json(
+    return NextResponse.json(
       {
         ok: false,
-        error: error?.message || 'Unknown error',
+        error: error?.message || "Unknown ingest companies error",
+        stack:
+          process.env.NODE_ENV !== "production" && error?.stack
+            ? String(error.stack)
+            : undefined,
       },
       { status: 500 }
     )
