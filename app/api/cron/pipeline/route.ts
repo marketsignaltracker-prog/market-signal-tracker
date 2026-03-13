@@ -560,7 +560,7 @@ export async function GET(request: NextRequest) {
 
       const finalizeResult = await runStep(
         baseUrl,
-        "/api/screen/candidates/finalize-candidates",
+        "/api/screen/finalize-candidates",
         DEFAULT_STEP_TIMEOUT_MS
       )
 
