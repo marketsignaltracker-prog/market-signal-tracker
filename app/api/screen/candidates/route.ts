@@ -919,6 +919,9 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     marketCap >= 10_000_000_000 &&
     catalystCount >= MIN_CATALYST_COUNT + 1
 
+  /**
+   * Hard caps so 100 becomes truly rare.
+   */
   if (!passesStrongCompanyGate) {
     candidateScore = Math.min(candidateScore, 68)
   } else if (!aboveSma20 || !shortTermTrendUp) {
@@ -931,23 +934,33 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     candidateScore = Math.min(candidateScore, 99)
   }
 
-  if (
+  /**
+   * Only the very best can score 100.
+   * This should be extremely rare.
+   */
+  const perfectInstitutionalSetup =
     eliteSetup &&
-    strongCompanyScore >= 86 &&
-    volumeRatio >= 2.2 &&
-    return5d >= 4 &&
-    return10d >= 10 &&
-    return20d >= 14 &&
+    strongCompanyScore >= 90 &&
+    passesStrongCompanyGate &&
+    volumeRatio >= 2.4 &&
+    return5d >= 4.5 &&
+    return10d >= 11 &&
+    return20d >= 16 &&
     return20d <= 24 &&
-    relativeReturn5d >= 2 &&
-    relativeReturn10d >= 5 &&
-    relativeReturn20d >= 8 &&
-    avgDollarVolume20d >= 70_000_000 &&
-    marketCap >= 15_000_000_000 &&
-    catalystCount >= 10 &&
-    closeInDayRange >= 0.8 &&
-    breakoutClearancePct >= 0.7
-  ) {
+    relativeReturn5d >= 2.5 &&
+    relativeReturn10d >= 5.5 &&
+    relativeReturn20d >= 9 &&
+    avgDollarVolume20d >= 80_000_000 &&
+    marketCap >= 20_000_000_000 &&
+    breakout20d &&
+    nearHigh20 &&
+    breakoutClearancePct >= 0.8 &&
+    closeInDayRange >= 0.82 &&
+    extensionFromSma20Pct >= 1 &&
+    extensionFromSma20Pct <= 9 &&
+    catalystCount >= 11
+
+  if (perfectInstitutionalSetup) {
     candidateScore = 100
   }
 
