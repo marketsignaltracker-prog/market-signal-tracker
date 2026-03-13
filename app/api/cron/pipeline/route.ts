@@ -46,13 +46,9 @@ type PipelineStateRow = {
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
-/**
- * Screening is the bottleneck.
- * Keep batches small enough to reliably finish inside serverless limits.
- */
-const DEFAULT_SCREEN_BATCH = 25
+const DEFAULT_SCREEN_BATCH = 100
 const MAX_SCREEN_BATCH = 100
-const MIN_SCREEN_BATCH = 10
+const MIN_SCREEN_BATCH = 25
 
 const DEFAULT_FILINGS_BATCH = 1000
 const DEFAULT_SIGNALS_LIMIT = 2000
@@ -61,9 +57,9 @@ const DEFAULT_SIGNALS_LOOKBACK_DAYS = 30
 const MAX_PIPELINE_RUNTIME_MS = 250_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
 
-const MAX_BATCHES_PER_RUN = 6
-const SCREENING_CHECKPOINT_EVERY = 2
-const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
+const MAX_BATCHES_PER_RUN = 12
+const SCREENING_CHECKPOINT_EVERY = 3
+const RUN_LOCK_WINDOW_MS = 60 * 1000
 
 const DEFAULT_STEP_TIMEOUT_MS = 90_000
 const SCREENING_STEP_TIMEOUT_MS = 90_000
@@ -172,7 +168,8 @@ function isTimeoutLikeError(message: unknown) {
   return (
     normalized.includes("aborted due to timeout") ||
     normalized.includes("timeout") ||
-    normalized.includes("timed out")
+    normalized.includes("timed out") ||
+    normalized.includes("function_invocation_timeout")
   )
 }
 
