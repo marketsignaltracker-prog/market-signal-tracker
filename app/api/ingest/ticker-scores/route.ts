@@ -22,9 +22,9 @@ const MAX_LOOKBACK_DAYS = 30
 const DEFAULT_LIMIT = 1000
 const MAX_LIMIT = 3000
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v6-combined"
-const MIN_SIGNAL_APP_SCORE = 68
-const MIN_TICKER_APP_SCORE = 75
+const SCORE_VERSION = "v7-combined-tight"
+const MIN_SIGNAL_APP_SCORE = 75
+const MIN_TICKER_APP_SCORE = 85
 const DB_CHUNK_SIZE = 100
 
 function normalizeTicker(ticker: string | null | undefined) {
@@ -139,7 +139,7 @@ async function deleteInChunksByTickerDetailed(table: any, tickers: string[]) {
 
 function getStrengthBucket(score: number): "Buy" | "Strong Buy" | "Elite Buy" {
   if (score >= 97) return "Elite Buy"
-  if (score >= 90) return "Strong Buy"
+  if (score >= 92) return "Strong Buy"
   return "Buy"
 }
 
@@ -179,6 +179,14 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
     })
 
     const primary = sorted[0]
+    const primaryScore = Number(primary.app_score || 0)
+
+    /**
+     * Require at least 2 supporting signals unless the primary signal is already extremely strong.
+     */
+    if (sorted.length < 2 && primaryScore < 95) {
+      continue
+    }
 
     const scoreBreakdown: Record<string, number> = {}
     const signalReasons = new Set<string>()
@@ -207,7 +215,7 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
       }
     }
 
-    let stackedScore = Number(primary.app_score || 0)
+    let stackedScore = primaryScore
 
     if (sorted.length >= 2) stackedScore += 2
     if (sorted.length >= 3) stackedScore += 2
@@ -232,12 +240,12 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
     const positivePillars = countPositiveEvidencePillars(scoreBreakdown)
 
     if (positivePillars < 3) {
-      stackedScore = Math.min(stackedScore, 89)
+      stackedScore = Math.min(stackedScore, 88)
       scoreCapsApplied.add("stacked-limited-evidence-cap")
     }
 
     if (positivePillars < 4) {
-      stackedScore = Math.min(stackedScore, 94)
+      stackedScore = Math.min(stackedScore, 92)
       scoreCapsApplied.add("stacked-broad-confirmation-cap")
     }
 
@@ -254,17 +262,33 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
       signalSources.has("8k") ||
       signalSources.has("earnings")
 
+    const hasMultipleSignalTypes = signalSources.size >= 2
+    const hasThreeSignals = sorted.length >= 3
+    const hasFourSignals = sorted.length >= 4
+
+    if (!hasMultipleSignalTypes) {
+      stackedScore = Math.min(stackedScore, 93)
+      scoreCapsApplied.add("multi-source-required-cap")
+    }
+
     if (!(hasBreakoutSupport && hasHeavyVolume && positivePillars >= 4)) {
-      stackedScore = Math.min(stackedScore, 97)
+      stackedScore = Math.min(stackedScore, 96)
       scoreCapsApplied.add("stacked-elite-confirmation-cap")
+    }
+
+    if (!(hasThreeSignals && hasMultipleSignalTypes && hasFilingConfirmation)) {
+      stackedScore = Math.min(stackedScore, 98)
+      scoreCapsApplied.add("stacked-top-tier-confirmation-cap")
     }
 
     if (
       !(
+        hasFourSignals &&
         hasBreakoutSupport &&
         hasHeavyVolume &&
-        positivePillars >= 4 &&
-        (hasFilingConfirmation || Number(primary.app_score || 0) >= 97)
+        positivePillars >= 5 &&
+        hasFilingConfirmation &&
+        primaryScore >= 95
       )
     ) {
       stackedScore = Math.min(stackedScore, 99)
@@ -272,11 +296,29 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
     }
 
     const finalScore = clamp(Math.round(stackedScore), 0, 100)
+
+    /**
+     * Only the best multi-signal names should survive.
+     */
     if (finalScore < MIN_TICKER_APP_SCORE) continue
+
+    const perfectTickerSetup =
+      sorted.length >= 4 &&
+      signalSources.size >= 3 &&
+      hasBreakoutSupport &&
+      hasHeavyVolume &&
+      hasFilingConfirmation &&
+      positivePillars >= 5 &&
+      primaryScore >= 97 &&
+      (primary.relative_strength_20d ?? 0) >= 8 &&
+      (primary.price_return_20d ?? 0) >= 12 &&
+      (primary.volume_ratio ?? 0) >= 2.2
+
+    const finalTickerScore = perfectTickerSetup ? 100 : finalScore
 
     const primaryTitle =
       sorted.length >= 2
-        ? `Multi-signal strong-buy setup (${sorted.length} signals)`
+        ? `Multi-signal institutional setup (${sorted.length} signals)`
         : primary.title
 
     const primarySummary =
@@ -288,11 +330,11 @@ function buildTickerScoresCurrentRows(signalRows: any[], runTimestamp: string) {
       ticker,
       company_name: primary.company_name,
       business_description: primary.business_description,
-      app_score: finalScore,
-      raw_score: finalScore,
+      app_score: finalTickerScore,
+      raw_score: finalTickerScore,
       bias: "Bullish",
       board_bucket: "Buy",
-      signal_strength_bucket: getStrengthBucket(finalScore),
+      signal_strength_bucket: getStrengthBucket(finalTickerScore),
       score_version: SCORE_VERSION,
       score_updated_at: runTimestamp,
       stacked_signal_count: sorted.length,
@@ -602,7 +644,7 @@ export async function GET(request: Request) {
         supabase
           .from("ticker_scores_current")
           .select("*", { count: "exact", head: true })
-          .gte("app_score", 90),
+          .gte("app_score", 92),
         supabase
           .from("ticker_scores_current")
           .select("*", { count: "exact", head: true })

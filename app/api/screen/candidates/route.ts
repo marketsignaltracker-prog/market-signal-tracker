@@ -216,7 +216,7 @@ const RETENTION_DAYS = 30
 const BENCHMARK_TICKER = "SPY"
 
 /**
- * TIGHTER FLOORS
+ * Broad elite pool, not the final shortlist.
  */
 const MIN_PRICE = 15
 const MIN_AVG_VOLUME_20D = 1_000_000
@@ -919,9 +919,6 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     marketCap >= 10_000_000_000 &&
     catalystCount >= MIN_CATALYST_COUNT + 1
 
-  /**
-   * Hard caps so 100 becomes truly rare.
-   */
   if (!passesStrongCompanyGate) {
     candidateScore = Math.min(candidateScore, 68)
   } else if (!aboveSma20 || !shortTermTrendUp) {
@@ -934,10 +931,6 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     candidateScore = Math.min(candidateScore, 99)
   }
 
-  /**
-   * Only the very best can score 100.
-   * This should be extremely rare.
-   */
   const perfectInstitutionalSetup =
     eliteSetup &&
     strongCompanyScore >= 90 &&

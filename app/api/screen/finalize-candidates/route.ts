@@ -79,11 +79,37 @@ type CandidateUniverseRow = {
   updated_at: string
 }
 
+type RawPtrTradeRow = {
+  filer_name: string | null
+  ticker: string | null
+  action: string | null
+  transaction_date: string | null
+  amount_low: number | null
+  amount_high: number | null
+}
+
+type PtrSignalSummary = {
+  ptrBonus: number
+  buyTradeCount: number
+  uniqueFilers: number
+  recentBuyCount: number
+  totalAmountLow: number
+  summary: string | null
+}
+
 const MAX_FINAL_CANDIDATES = 75
 const STRICT_MIN_SCORE = 78
 const FALLBACK_MIN_SCORE = 68
 const MIN_STRICT_POOL_SIZE = 15
 const DB_CHUNK_SIZE = 250
+
+/**
+ * PTRs should help rank already-strong names,
+ * not rescue weak ones.
+ */
+const PTR_LOOKBACK_DAYS = 45
+const PTR_RECENT_DAYS = 14
+const MAX_PTR_BONUS = 8
 
 function chunkArray<T>(items: T[], size: number) {
   const chunks: T[][] = []
@@ -91,6 +117,26 @@ function chunkArray<T>(items: T[], size: number) {
     chunks.push(items.slice(i, i + size))
   }
   return chunks
+}
+
+function normalizeTicker(ticker: string | null | undefined) {
+  return (ticker || "").trim().toUpperCase()
+}
+
+function uniqueStrings(values: (string | null | undefined)[]) {
+  return Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean)))
+}
+
+function toIsoDateString(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function daysAgo(isoDate: string | null) {
+  if (!isoDate) return null
+  const ts = new Date(isoDate).getTime()
+  if (Number.isNaN(ts)) return null
+  const diff = Date.now() - ts
+  return Math.max(0, Math.floor(diff / (24 * 60 * 60 * 1000)))
 }
 
 async function upsertUniverseInChunks(table: any, rows: CandidateUniverseRow[]) {
@@ -147,26 +193,121 @@ function isFallbackEligible(row: CandidateHistoryRow) {
   )
 }
 
-function compareRows(a: CandidateHistoryRow, b: CandidateHistoryRow) {
+function buildPtrSignalMap(rows: RawPtrTradeRow[]) {
+  const grouped = new Map<string, RawPtrTradeRow[]>()
+
+  for (const row of rows) {
+    const ticker = normalizeTicker(row.ticker)
+    if (!ticker) continue
+
+    const action = String(row.action || "").trim().toLowerCase()
+    if (action !== "buy" && action !== "purchase" && action !== "purchased") continue
+
+    if (!grouped.has(ticker)) grouped.set(ticker, [])
+    grouped.get(ticker)!.push(row)
+  }
+
+  const out = new Map<string, PtrSignalSummary>()
+
+  for (const [ticker, tickerRows] of grouped.entries()) {
+    const uniqueFilers = new Set(
+      tickerRows.map((row) => String(row.filer_name || "").trim()).filter(Boolean)
+    ).size
+
+    const recentBuyCount = tickerRows.filter((row) => {
+      const age = daysAgo(row.transaction_date)
+      return age !== null && age <= PTR_RECENT_DAYS
+    }).length
+
+    const totalAmountLow = tickerRows.reduce((sum, row) => sum + Number(row.amount_low || 0), 0)
+    const buyTradeCount = tickerRows.length
+
+    let ptrBonus = 0
+
+    if (buyTradeCount >= 1) ptrBonus += 2
+    if (buyTradeCount >= 2) ptrBonus += 1
+    if (buyTradeCount >= 3) ptrBonus += 1
+
+    if (uniqueFilers >= 2) ptrBonus += 1
+    if (uniqueFilers >= 3) ptrBonus += 1
+
+    if (recentBuyCount >= 1) ptrBonus += 1
+    if (recentBuyCount >= 2) ptrBonus += 1
+
+    if (totalAmountLow >= 100_001) ptrBonus += 1
+    if (totalAmountLow >= 250_001) ptrBonus += 1
+    if (totalAmountLow >= 500_001) ptrBonus += 1
+
+    ptrBonus = Math.min(ptrBonus, MAX_PTR_BONUS)
+
+    const summaryParts: string[] = []
+    summaryParts.push(`${buyTradeCount} PTR buy${buyTradeCount === 1 ? "" : "s"}`)
+    if (uniqueFilers > 0) summaryParts.push(`${uniqueFilers} filer${uniqueFilers === 1 ? "" : "s"}`)
+    if (recentBuyCount > 0) summaryParts.push(`${recentBuyCount} recent`)
+    if (totalAmountLow > 0) summaryParts.push(`min disclosed $${totalAmountLow.toLocaleString()}`)
+
+    out.set(ticker, {
+      ptrBonus,
+      buyTradeCount,
+      uniqueFilers,
+      recentBuyCount,
+      totalAmountLow,
+      summary: summaryParts.length ? `PTR support: ${summaryParts.join(", ")}` : null,
+    })
+  }
+
+  return out
+}
+
+function getAdjustedSelectionScore(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
+  return (row.candidate_score ?? 0) + (ptr?.ptrBonus ?? 0)
+}
+
+function compareRows(
+  a: CandidateHistoryRow,
+  b: CandidateHistoryRow,
+  ptrMap: Map<string, PtrSignalSummary>
+) {
+  const ptrA = ptrMap.get(normalizeTicker(a.ticker))
+  const ptrB = ptrMap.get(normalizeTicker(b.ticker))
+
+  const adjustedA = getAdjustedSelectionScore(a, ptrA)
+  const adjustedB = getAdjustedSelectionScore(b, ptrB)
+
+  if (adjustedB !== adjustedA) {
+    return adjustedB - adjustedA
+  }
+
   if ((b.candidate_score ?? 0) !== (a.candidate_score ?? 0)) {
     return (b.candidate_score ?? 0) - (a.candidate_score ?? 0)
   }
+
   if ((b.relative_strength_20d ?? 0) !== (a.relative_strength_20d ?? 0)) {
     return (b.relative_strength_20d ?? 0) - (a.relative_strength_20d ?? 0)
   }
+
   if ((b.return_20d ?? 0) !== (a.return_20d ?? 0)) {
     return (b.return_20d ?? 0) - (a.return_20d ?? 0)
   }
+
   if ((b.volume_ratio ?? 0) !== (a.volume_ratio ?? 0)) {
     return (b.volume_ratio ?? 0) - (a.volume_ratio ?? 0)
   }
+
   if ((b.avg_dollar_volume_20d ?? 0) !== (a.avg_dollar_volume_20d ?? 0)) {
     return (b.avg_dollar_volume_20d ?? 0) - (a.avg_dollar_volume_20d ?? 0)
   }
+
   return (b.market_cap ?? 0) - (a.market_cap ?? 0)
 }
 
-function toUniverseRow(row: CandidateHistoryRow, reason: string): CandidateUniverseRow {
+function toUniverseRow(
+  row: CandidateHistoryRow,
+  reason: string,
+  ptrSummary: PtrSignalSummary | null
+): CandidateUniverseRow {
+  const ptrReason = ptrSummary?.summary ? `; ${ptrSummary.summary}` : ""
+
   return {
     ticker: row.ticker,
     cik: row.cik,
@@ -200,7 +341,7 @@ function toUniverseRow(row: CandidateHistoryRow, reason: string): CandidateUnive
     passes_market_cap: row.passes_market_cap,
     candidate_score: row.candidate_score,
     included: true,
-    screen_reason: reason,
+    screen_reason: `${reason}${ptrReason}`,
     last_screened_at: row.last_screened_at,
     updated_at: new Date().toISOString(),
   }
@@ -275,8 +416,55 @@ export async function GET(request: Request) {
       (row) => row.candidate_score !== null && row.candidate_score !== undefined
     )
 
-    const strictPool = scoredRows.filter(isStrictEligible).sort(compareRows)
-    const fallbackPool = scoredRows.filter(isFallbackEligible).sort(compareRows)
+    /**
+     * Optional PTR overlay.
+     * If raw_ptr_trades is unavailable or query fails, finalization still proceeds.
+     */
+    const snapshotTickers = uniqueStrings(scoredRows.map((row) => row.ticker))
+    const ptrCutoff = new Date()
+    ptrCutoff.setDate(ptrCutoff.getDate() - PTR_LOOKBACK_DAYS)
+    const ptrCutoffString = toIsoDateString(ptrCutoff)
+
+    let ptrMap = new Map<string, PtrSignalSummary>()
+    let ptrDiagnostics: Record<string, any> = {
+      loaded: false,
+      rows: 0,
+      tickersWithPtrSupport: 0,
+      error: null as string | null,
+    }
+
+    if (snapshotTickers.length > 0) {
+      try {
+        const { data: ptrRows, error: ptrError } = await supabase
+          .from("raw_ptr_trades")
+          .select("filer_name, ticker, action, transaction_date, amount_low, amount_high")
+          .in("ticker", snapshotTickers)
+          .gte("transaction_date", ptrCutoffString)
+
+        if (ptrError) {
+          ptrDiagnostics.error = ptrError.message
+        } else {
+          const normalizedRows = (ptrRows || []) as RawPtrTradeRow[]
+          ptrMap = buildPtrSignalMap(normalizedRows)
+          ptrDiagnostics = {
+            loaded: true,
+            rows: normalizedRows.length,
+            tickersWithPtrSupport: ptrMap.size,
+            error: null,
+          }
+        }
+      } catch (error: any) {
+        ptrDiagnostics.error = error?.message || "Unknown PTR lookup error"
+      }
+    }
+
+    const strictPool = scoredRows
+      .filter(isStrictEligible)
+      .sort((a, b) => compareRows(a, b, ptrMap))
+
+    const fallbackPool = scoredRows
+      .filter(isFallbackEligible)
+      .sort((a, b) => compareRows(a, b, ptrMap))
 
     const selectedSource = strictPool.length >= MIN_STRICT_POOL_SIZE ? "strict" : "fallback"
     const selectedPool = selectedSource === "strict" ? strictPool : fallbackPool
@@ -293,6 +481,7 @@ export async function GET(request: Request) {
             scoredRowCount: scoredRows.length,
             strictEligibleCount: strictPool.length,
             fallbackEligibleCount: fallbackPool.length,
+            ptrDiagnostics,
           },
         },
         { status: 500 }
@@ -300,14 +489,16 @@ export async function GET(request: Request) {
     }
 
     const selectedTickers = new Set(selectedRows.map((row) => row.ticker))
-    const universeRows = selectedRows.map((row) =>
-      toUniverseRow(
-        row,
+
+    const universeRows = selectedRows.map((row) => {
+      const ptrSummary = ptrMap.get(normalizeTicker(row.ticker)) ?? null
+      const baseReason =
         selectedSource === "strict"
-          ? `Finalized elite strict candidate (${row.candidate_score})`
-          : `Finalized elite fallback candidate (${row.candidate_score})`
-      )
-    )
+          ? `Finalized elite strict candidate (${row.candidate_score}${ptrSummary ? ` + PTR ${ptrSummary.ptrBonus}` : ""})`
+          : `Finalized elite fallback candidate (${row.candidate_score}${ptrSummary ? ` + PTR ${ptrSummary.ptrBonus}` : ""})`
+
+      return toUniverseRow(row, baseReason, ptrSummary)
+    })
 
     const deleteError = await deleteAllUniverseRows(candidateUniverseTable)
     if (deleteError) {
@@ -373,6 +564,10 @@ export async function GET(request: Request) {
       }
     }
 
+    const ptrSelectedCount = selectedRows.filter((row) =>
+      ptrMap.has(normalizeTicker(row.ticker))
+    ).length
+
     return Response.json({
       ok: true,
       screenedOn,
@@ -382,6 +577,8 @@ export async function GET(request: Request) {
       fallbackEligibleCount: fallbackPool.length,
       selectedSource,
       finalizedCount: universeRows.length,
+      ptrDiagnostics,
+      ptrSelectedCount,
       firstTicker: universeRows[0]?.ticker ?? null,
       lastTicker: universeRows[universeRows.length - 1]?.ticker ?? null,
     })
