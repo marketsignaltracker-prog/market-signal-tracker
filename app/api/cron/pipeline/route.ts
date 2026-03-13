@@ -17,9 +17,9 @@ type PipelineStage =
   | "idle"
   | "companies"
   | "screening"
-  | "finalizing"
   | "filings"
   | "signals"
+  | "ticker_scores"
   | "complete"
   | "error"
 
@@ -50,14 +50,18 @@ const PIPELINE_JOB_NAME = "market_signal_pipeline"
 const DEFAULT_SCREEN_BATCH = 300
 const MAX_SCREEN_BATCH = 350
 
-const DEFAULT_FILINGS_BATCH = 500
-const DEFAULT_SIGNALS_LIMIT = 500
-const DEFAULT_SIGNALS_LOOKBACK_DAYS = 30
+const DEFAULT_FILINGS_BATCH = 150
+const DEFAULT_SIGNALS_LIMIT = 75
+const DEFAULT_SIGNALS_LOOKBACK_DAYS = 10
+const DEFAULT_TICKER_SCORES_LIMIT = 1000
 
 const DEFAULT_STEP_TIMEOUT_MS = 240_000
+
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
-const RUN_LOCK_WINDOW_MS = 10 * 60 * 1000
+
+const MAX_BATCHES_PER_RUN = 6
+const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
 
 function nowIso() {
   return new Date().toISOString()
@@ -65,7 +69,11 @@ function nowIso() {
 
 function getBaseUrl() {
   const appUrl = process.env.APP_URL?.trim()
-  if (!appUrl) throw new Error("Missing APP_URL environment variable")
+
+  if (!appUrl) {
+    throw new Error("Missing APP_URL environment variable")
+  }
+
   return appUrl.replace(/\/$/, "")
 }
 
@@ -125,7 +133,10 @@ function isRecentRun(dateString: string | null | undefined, windowMs: number) {
 }
 
 function clampScreenBatch(batch: number | null | undefined) {
-  return Math.min(Math.max(1, batch || DEFAULT_SCREEN_BATCH), MAX_SCREEN_BATCH)
+  return Math.min(
+    Math.max(1, batch || DEFAULT_SCREEN_BATCH),
+    MAX_SCREEN_BATCH
+  )
 }
 
 async function runStep(
@@ -134,7 +145,10 @@ async function runStep(
   timeoutMs: number = DEFAULT_STEP_TIMEOUT_MS
 ): Promise<StepResult> {
   const pipelineToken = process.env.PIPELINE_TOKEN
-  if (!pipelineToken) throw new Error("Missing PIPELINE_TOKEN environment variable")
+
+  if (!pipelineToken) {
+    throw new Error("Missing PIPELINE_TOKEN environment variable")
+  }
 
   const url = makeUrl(baseUrl, path)
   const startedAt = Date.now()
@@ -180,6 +194,7 @@ async function runStep(
   const durationMs = Date.now() - startedAt
 
   let data: unknown = null
+
   try {
     data = await response.json()
   } catch {
@@ -208,7 +223,9 @@ async function getPipelineState(supabase: any): Promise<PipelineStateRow> {
     throw new Error(`Failed to load pipeline state: ${JSON.stringify(error)}`)
   }
 
-  if (data) return data as PipelineStateRow
+  if (data) {
+    return data as PipelineStateRow
+  }
 
   const seed = {
     job_name: PIPELINE_JOB_NAME,
@@ -296,6 +313,13 @@ export async function GET(request: NextRequest) {
       {
         ok: false,
         error: "Missing CRON_SECRET environment variable",
+        debug: {
+          hasAppUrl: Boolean(process.env.APP_URL),
+          hasCronSecret: Boolean(process.env.CRON_SECRET),
+          hasPipelineToken: Boolean(process.env.PIPELINE_TOKEN),
+          hasSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+          hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+        },
       },
       { status: 500 }
     )
@@ -407,7 +431,6 @@ export async function GET(request: NextRequest) {
 
       let screeningComplete = false
       let batchesThisRun = 0
-      let screenedCompaniesThisRun = 0
 
       while (!screeningComplete) {
         if (shouldStopForRuntime(runStartedAtMs)) {
@@ -430,7 +453,30 @@ export async function GET(request: NextRequest) {
             status: updated.status,
             nextStart: updated.screen_next_start,
             batchesThisRun,
-            screenedCompaniesThisRun,
+            batchSize,
+            results,
+          })
+        }
+
+        if (batchesThisRun >= MAX_BATCHES_PER_RUN) {
+          const checkpointAt = nowIso()
+
+          const updated = await patchPipelineState(supabase, {
+            stage: "screening",
+            status: "idle",
+            screen_start: nextStart,
+            screen_next_start: nextStart,
+            screen_batch: batchSize,
+            last_run_finished_at: checkpointAt,
+          })
+
+          return NextResponse.json({
+            ok: true,
+            message: "Batch limit reached for this run.",
+            stage: updated.stage,
+            status: updated.status,
+            nextStart: updated.screen_next_start,
+            batchesThisRun,
             batchSize,
             results,
           })
@@ -445,7 +491,11 @@ export async function GET(request: NextRequest) {
           runRetention: false,
         })
 
-        const screenResult = await runStep(baseUrl, screenPath, DEFAULT_STEP_TIMEOUT_MS)
+        const screenResult = await runStep(
+          baseUrl,
+          screenPath,
+          DEFAULT_STEP_TIMEOUT_MS
+        )
 
         results.push(screenResult)
         batchesThisRun += 1
@@ -468,15 +518,9 @@ export async function GET(request: NextRequest) {
           typeof screenData?.totalCompanies === "number"
             ? screenData.totalCompanies
             : null
-        const processedCompanies =
-          typeof screenData?.processedCompanies === "number"
-            ? screenData.processedCompanies
-            : 0
-
-        screenedCompaniesThisRun += processedCompanies
 
         state = await patchPipelineState(supabase, {
-          stage: returnedNextStart === null ? "finalizing" : "screening",
+          stage: returnedNextStart === null ? "filings" : "screening",
           status: "running",
           screen_start: nextStart,
           screen_batch: batchSize,
@@ -490,49 +534,6 @@ export async function GET(request: NextRequest) {
           nextStart = returnedNextStart
         }
       }
-    }
-
-    if (state.stage === "finalizing") {
-      if (shouldStopForRuntime(runStartedAtMs)) {
-        const checkpointAt = nowIso()
-
-        await patchPipelineState(supabase, {
-          stage: "finalizing",
-          status: "idle",
-          last_run_finished_at: checkpointAt,
-        })
-
-        return NextResponse.json({
-          ok: true,
-          message: "Pipeline checkpointed before finalizing. Continue on next cron run.",
-          stage: "finalizing",
-          results,
-        })
-      }
-
-      const finalizeResult = await runStep(
-        baseUrl,
-        "/api/screen/finalize-candidates",
-        DEFAULT_STEP_TIMEOUT_MS
-      )
-
-      results.push(finalizeResult)
-
-      if (!finalizeResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          finalizeResult,
-          `Finalize step failed: ${String(
-            (finalizeResult.data as any)?.error || finalizeResult.status
-          )}`
-        )
-      }
-
-      state = await patchPipelineState(supabase, {
-        stage: "filings",
-        status: "running",
-      })
     }
 
     if (state.stage === "filings") {
@@ -608,7 +609,6 @@ export async function GET(request: NextRequest) {
         withSearchParams("/api/ingest/signals", {
           limit: DEFAULT_SIGNALS_LIMIT,
           lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
-          rebuildTickerScores: true,
           runRetention: false,
           includeCounts: false,
         }),
@@ -624,6 +624,54 @@ export async function GET(request: NextRequest) {
           signalsResult,
           `Signals step failed: ${String(
             (signalsResult.data as any)?.error || signalsResult.status
+          )}`
+        )
+      }
+
+      state = await patchPipelineState(supabase, {
+        stage: "ticker_scores",
+        status: "running",
+      })
+    }
+
+    if (state.stage === "ticker_scores") {
+      if (shouldStopForRuntime(runStartedAtMs)) {
+        const checkpointAt = nowIso()
+
+        await patchPipelineState(supabase, {
+          stage: "ticker_scores",
+          status: "idle",
+          last_run_finished_at: checkpointAt,
+        })
+
+        return NextResponse.json({
+          ok: true,
+          message: "Pipeline checkpointed before ticker score rebuild. Continue on next cron run.",
+          stage: "ticker_scores",
+          results,
+        })
+      }
+
+      const tickerScoresResult = await runStep(
+        baseUrl,
+        withSearchParams("/api/ingest/ticker-scores", {
+          limit: DEFAULT_TICKER_SCORES_LIMIT,
+          lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
+          runRetention: false,
+          includeCounts: false,
+        }),
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(tickerScoresResult)
+
+      if (!tickerScoresResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          tickerScoresResult,
+          `Ticker scores step failed: ${String(
+            (tickerScoresResult.data as any)?.error || tickerScoresResult.status
           )}`
         )
       }
@@ -678,7 +726,8 @@ export async function GET(request: NextRequest) {
       results,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown pipeline error"
+    const message =
+      error instanceof Error ? error.message : "Unknown pipeline error"
 
     try {
       const supabase = getSupabaseAdmin()
@@ -703,6 +752,13 @@ export async function GET(request: NextRequest) {
       {
         ok: false,
         error: message,
+        debug: {
+          hasAppUrl: Boolean(process.env.APP_URL),
+          hasCronSecret: Boolean(process.env.CRON_SECRET),
+          hasPipelineToken: Boolean(process.env.PIPELINE_TOKEN),
+          hasSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+          hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+        },
       },
       { status: 500 }
     )
