@@ -346,6 +346,34 @@ function calcPercentChange(current: number, prior: number) {
 }
 
 function getBenchmarkReturns(candles: any[]): BenchmarkReturns {
+  const clean = (candles || [])
+    .filter(
+      (c) =>
+        c.close !== null &&
+        c.close !== undefined &&
+        Number.isFinite(Number(c.close))
+    )
+    .sort((a, b) => +new Date(a.date) - +new Date(b.date))
+
+  if (clean.length < 22) {
+    return {
+      return5d: 0,
+      return10d: 0,
+      return20d: 0,
+    }
+  }
+
+  const latest = clean[clean.length - 1]
+  const fiveAgo = clean[clean.length - 6]
+  const tenAgo = clean[clean.length - 11]
+  const twentyAgo = clean[clean.length - 21]
+
+  return {
+    return5d: calcPercentChange(Number(latest.close || 0), Number(fiveAgo?.close || 0)),
+    return10d: calcPercentChange(Number(latest.close || 0), Number(tenAgo?.close || 0)),
+    return20d: calcPercentChange(Number(latest.close || 0), Number(twentyAgo?.close || 0)),
+  }
+}
 
 function calculatePercentile(sortedValues: number[], value: number) {
   if (!sortedValues.length || !Number.isFinite(value)) return 0
