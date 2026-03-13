@@ -79,10 +79,10 @@ type CandidateUniverseRow = {
   updated_at: string
 }
 
-const MAX_FINAL_CANDIDATES = 150
-const STRICT_MIN_SCORE = 60
-const FALLBACK_MIN_SCORE = 45
-const MIN_STRICT_POOL_SIZE = 25
+const MAX_FINAL_CANDIDATES = 75
+const STRICT_MIN_SCORE = 78
+const FALLBACK_MIN_SCORE = 68
+const MIN_STRICT_POOL_SIZE = 15
 const DB_CHUNK_SIZE = 250
 
 function chunkArray<T>(items: T[], size: number) {
@@ -120,9 +120,15 @@ function isStrictEligible(row: CandidateHistoryRow) {
     row.passes_dollar_volume &&
     row.passes_market_cap &&
     row.above_sma_20 &&
-    (row.return_20d ?? -999) > 0 &&
-    (row.relative_strength_20d ?? -999) > 0 &&
-    (row.candidate_score ?? 0) >= STRICT_MIN_SCORE
+    (row.candidate_score ?? 0) >= STRICT_MIN_SCORE &&
+    (row.return_10d ?? -999) >= 3 &&
+    (row.return_20d ?? -999) >= 8 &&
+    (row.relative_strength_20d ?? -999) >= 3 &&
+    (row.volume_ratio ?? 0) >= 1.1 &&
+    ((row.breakout_20d ?? false) || (row.breakout_10d ?? false)) &&
+    (row.breakout_clearance_pct ?? -999) >= 0.15 &&
+    (row.extension_from_sma20_pct ?? 999) <= 14 &&
+    (row.close_in_day_range ?? 0) >= 0.55
   )
 }
 
@@ -132,9 +138,12 @@ function isFallbackEligible(row: CandidateHistoryRow) {
     row.passes_volume &&
     row.passes_dollar_volume &&
     row.passes_market_cap &&
-    (row.return_20d ?? -999) > -2 &&
-    (row.relative_strength_20d ?? -999) > -2 &&
-    (row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE
+    row.above_sma_20 &&
+    (row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE &&
+    (row.return_20d ?? -999) >= 4 &&
+    (row.relative_strength_20d ?? -999) >= 1.5 &&
+    (row.volume_ratio ?? 0) >= 1.0 &&
+    (row.extension_from_sma20_pct ?? 999) <= 16
   )
 }
 
@@ -147,6 +156,9 @@ function compareRows(a: CandidateHistoryRow, b: CandidateHistoryRow) {
   }
   if ((b.return_20d ?? 0) !== (a.return_20d ?? 0)) {
     return (b.return_20d ?? 0) - (a.return_20d ?? 0)
+  }
+  if ((b.volume_ratio ?? 0) !== (a.volume_ratio ?? 0)) {
+    return (b.volume_ratio ?? 0) - (a.volume_ratio ?? 0)
   }
   if ((b.avg_dollar_volume_20d ?? 0) !== (a.avg_dollar_volume_20d ?? 0)) {
     return (b.avg_dollar_volume_20d ?? 0) - (a.avg_dollar_volume_20d ?? 0)
@@ -292,8 +304,8 @@ export async function GET(request: Request) {
       toUniverseRow(
         row,
         selectedSource === "strict"
-          ? `Finalized strict top candidate (${row.candidate_score})`
-          : `Finalized fallback top candidate (${row.candidate_score})`
+          ? `Finalized elite strict candidate (${row.candidate_score})`
+          : `Finalized elite fallback candidate (${row.candidate_score})`
       )
     )
 

@@ -215,24 +215,27 @@ const RETENTION_DAYS = 30
 
 const BENCHMARK_TICKER = "SPY"
 
-const MIN_PRICE = 10
-const MIN_AVG_VOLUME_20D = 750_000
-const MIN_AVG_DOLLAR_VOLUME_20D = 25_000_000
-const MIN_MARKET_CAP = 2_000_000_000
+/**
+ * TIGHTER FLOORS
+ */
+const MIN_PRICE = 15
+const MIN_AVG_VOLUME_20D = 1_000_000
+const MIN_AVG_DOLLAR_VOLUME_20D = 35_000_000
+const MIN_MARKET_CAP = 5_000_000_000
 
-const MIN_STRONG_BUY_SCORE = 78
-const MIN_STRONG_BUY_VOLUME_RATIO = 1.3
-const MIN_STRONG_BUY_RETURN_10D = 3
-const MIN_STRONG_BUY_RETURN_20D = 6
-const MIN_RELATIVE_RETURN_10D = 1
-const MIN_RELATIVE_RETURN_20D = 2.5
-const MAX_STRONG_BUY_RETURN_20D = 32
-const MAX_EXTENSION_FROM_SMA20_PCT = 15
-const MIN_BREAKOUT_CLEARANCE_PCT = 0.1
-const MIN_CLOSE_IN_DAY_RANGE = 0.55
-const MIN_CATALYST_COUNT = 6
+const MIN_STRONG_BUY_SCORE = 85
+const MIN_STRONG_BUY_VOLUME_RATIO = 1.5
+const MIN_STRONG_BUY_RETURN_10D = 5
+const MIN_STRONG_BUY_RETURN_20D = 10
+const MIN_RELATIVE_RETURN_10D = 2
+const MIN_RELATIVE_RETURN_20D = 4
+const MAX_STRONG_BUY_RETURN_20D = 28
+const MAX_EXTENSION_FROM_SMA20_PCT = 12
+const MIN_BREAKOUT_CLEARANCE_PCT = 0.35
+const MIN_CLOSE_IN_DAY_RANGE = 0.65
+const MIN_CATALYST_COUNT = 8
 
-const MIN_STRONG_COMPANY_SCORE = 60
+const MIN_STRONG_COMPANY_SCORE = 70
 
 const TICKER_CONCURRENCY = 6
 const DB_CHUNK_SIZE = 250
@@ -330,11 +333,11 @@ function buildCandidateReason(params: {
   score?: number
 }) {
   if (params.prequalified && params.strongBuyNow) {
-    return `Strong setup (${params.score ?? 0}): ${params.reasons.join(", ")}`
+    return `Institutional-quality strong setup (${params.score ?? 0}): ${params.reasons.join(", ")}`
   }
 
   if (params.prequalified) {
-    return `Prequalified (${params.score ?? 0}): ${params.reasons.join(", ")}`
+    return `Institutional-quality prequalified (${params.score ?? 0}): ${params.reasons.join(", ")}`
   }
 
   if (params.exclusionReason) return params.exclusionReason
@@ -433,8 +436,8 @@ function evaluateStrongCompany(params: {
   let speculativePenalty = 0
 
   const positiveEarnings =
-    (peRatio !== null && peRatio > 0 && peRatio < 80) ||
-    (forwardPe !== null && forwardPe > 0 && forwardPe < 60)
+    (peRatio !== null && peRatio > 0 && peRatio < 65) ||
+    (forwardPe !== null && forwardPe > 0 && forwardPe < 50)
 
   const positiveFreeCashFlow =
     companyProfile.freeCashflow !== null && companyProfile.freeCashflow > 0
@@ -451,29 +454,29 @@ function evaluateStrongCompany(params: {
 
   let score = 0
 
-  if (marketCap >= 2_000_000_000) {
-    score += 18
-    reasons.push("mid/large-cap business")
+  if (marketCap >= 5_000_000_000) {
+    score += 20
+    reasons.push("large established business")
   } else {
-    failures.push("market cap below strong-company floor")
+    failures.push("market cap below elite-company floor")
   }
 
-  if (avgDollarVolume20d >= 25_000_000) {
-    score += 12
-    reasons.push("strong liquidity")
+  if (avgDollarVolume20d >= 35_000_000) {
+    score += 14
+    reasons.push("institutional-grade liquidity")
   } else {
     failures.push("dollar volume too light")
   }
 
   if (positiveEarnings) {
-    score += 16
-    reasons.push("positive earnings profile")
+    score += 18
+    reasons.push("clean positive earnings profile")
   } else {
     failures.push("no reliable positive earnings profile")
   }
 
   if (positiveFreeCashFlow) {
-    score += 14
+    score += 16
     reasons.push("positive free cash flow")
   } else if (positiveOperatingCashFlow) {
     score += 8
@@ -483,63 +486,63 @@ function evaluateStrongCompany(params: {
   }
 
   if (profitMargin !== null) {
-    if (profitMargin >= 8) {
+    if (profitMargin >= 10) {
       score += 12
-      reasons.push("healthy profit margin")
-    } else if (profitMargin >= 0) {
+      reasons.push("double-digit profit margin")
+    } else if (profitMargin >= 4) {
       score += 6
-      reasons.push("profitable")
+      reasons.push("solid profitability")
     } else {
-      failures.push("negative profit margin")
+      failures.push("profit margin too weak")
     }
   }
 
   if (operatingMargin !== null) {
-    if (operatingMargin >= 10) {
+    if (operatingMargin >= 12) {
       score += 10
-      reasons.push("healthy operating margin")
-    } else if (operatingMargin >= 0) {
+      reasons.push("strong operating margin")
+    } else if (operatingMargin >= 5) {
       score += 5
-      reasons.push("positive operating margin")
+      reasons.push("positive operating leverage")
     } else {
-      failures.push("negative operating margin")
+      failures.push("operating margin too weak")
     }
   }
 
-  if (grossMargin !== null && grossMargin >= 35) {
-    score += 5
-    reasons.push("solid gross margin")
+  if (grossMargin !== null && grossMargin >= 40) {
+    score += 6
+    reasons.push("strong gross margin")
   }
 
-  if (roe !== null && roe >= 12) {
-    score += 7
+  if (roe !== null && roe >= 15) {
+    score += 8
     reasons.push("strong return on equity")
   }
 
   if (revenueGrowth !== null) {
-    if (revenueGrowth >= 8) {
-      score += 6
-      reasons.push("solid revenue growth")
-    } else if (revenueGrowth < -5) {
+    if (revenueGrowth >= 10) {
+      score += 7
+      reasons.push("healthy revenue growth")
+    } else if (revenueGrowth < 0) {
       failures.push("revenue shrinking")
     }
   }
 
   if (earningsGrowth !== null) {
-    if (earningsGrowth >= 8) {
-      score += 6
-      reasons.push("solid earnings growth")
-    } else if (earningsGrowth < -10) {
+    if (earningsGrowth >= 10) {
+      score += 7
+      reasons.push("healthy earnings growth")
+    } else if (earningsGrowth < 0) {
       failures.push("earnings shrinking")
     }
   }
 
   if (isDebtMetricApplicable(sector)) {
     if (companyProfile.debtToEquity !== null) {
-      if (companyProfile.debtToEquity <= 120) {
+      if (companyProfile.debtToEquity <= 100) {
         score += 8
         reasons.push("manageable leverage")
-      } else if (companyProfile.debtToEquity > 220) {
+      } else if (companyProfile.debtToEquity > 180) {
         failures.push("leverage too high")
       }
     }
@@ -547,10 +550,10 @@ function evaluateStrongCompany(params: {
 
   if (isLiquidityMetricApplicable(sector)) {
     if (companyProfile.currentRatio !== null) {
-      if (companyProfile.currentRatio >= 1.1) {
+      if (companyProfile.currentRatio >= 1.2) {
         score += 4
         reasons.push("healthy short-term liquidity")
-      } else if (companyProfile.currentRatio < 0.85) {
+      } else if (companyProfile.currentRatio < 1.0) {
         failures.push("weak current ratio")
       }
     }
@@ -558,16 +561,16 @@ function evaluateStrongCompany(params: {
 
   const industryText = `${sector || ""} ${industry || ""}`.toLowerCase()
 
-  if (industryText.includes("biotechnology")) {
+  if (industryText.includes("biotechnology") || industryText.includes("clinical")) {
     if (!positiveEarnings && !positiveFreeCashFlow) {
-      speculativePenalty -= 25
+      speculativePenalty -= 30
       failures.push("speculative biotech profile")
     }
   }
 
-  if (return20d > 28 && volumeRatio > 3.5 && marketCap < 10_000_000_000) {
-    speculativePenalty -= 15
-    failures.push("too extended / momentum spike")
+  if (return20d > 24 && volumeRatio > 3.2 && marketCap < 15_000_000_000) {
+    speculativePenalty -= 18
+    failures.push("too extended after momentum spike")
   }
 
   if (!positiveEarnings && !positiveFreeCashFlow) {
@@ -579,10 +582,11 @@ function evaluateStrongCompany(params: {
     marketCap >= MIN_MARKET_CAP &&
     avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D &&
     positiveEarnings &&
-    (positiveFreeCashFlow || positiveOperatingCashFlow) &&
-    (profitMargin === null || profitMargin >= 0) &&
-    (operatingMargin === null || operatingMargin >= 0) &&
-    speculativePenalty > -30
+    positiveOperatingCashFlow &&
+    (positiveFreeCashFlow || operatingMargin === null || operatingMargin >= 5) &&
+    (profitMargin === null || profitMargin >= 4) &&
+    (operatingMargin === null || operatingMargin >= 5) &&
+    speculativePenalty > -25
 
   return {
     passes,
@@ -743,103 +747,103 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   } = input
 
   const qualityScore =
-    14 *
+    12 *
     (
       0.1 * (passesPrice ? 1 : 0) +
       0.15 * (passesVolume ? 1 : 0) +
       0.25 * (passesDollarVolume ? 1 : 0) +
-      0.25 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 80_000_000) +
-      0.25 * scaleBetween(marketCap, MIN_MARKET_CAP, 25_000_000_000)
+      0.25 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 100_000_000) +
+      0.25 * scaleBetween(marketCap, MIN_MARKET_CAP, 40_000_000_000)
     )
 
   const fundamentalScore =
-    20 *
+    24 *
     (
-      0.45 * scaleBetween(strongCompanyScore, 45, 100) +
-      0.55 * (passesStrongCompanyGate ? 1 : 0)
+      0.4 * scaleBetween(strongCompanyScore, 55, 100) +
+      0.6 * (passesStrongCompanyGate ? 1 : 0)
     )
 
   const momentumScore =
-    16 *
+    14 *
     (
-      0.12 * scaleBetween(oneDayReturn, -1, 4) +
-      0.18 * scaleBetween(return5d, 0, 10) +
-      0.3 * scaleBetween(return10d, 1, 16) +
-      0.4 * scaleBetween(return20d, 3, 24)
+      0.08 * scaleBetween(oneDayReturn, -1, 3) +
+      0.16 * scaleBetween(return5d, 0, 8) +
+      0.3 * scaleBetween(return10d, 2, 14) +
+      0.46 * scaleBetween(return20d, 6, 22)
     )
 
   const relativeStrengthScore =
     18 *
     (
-      0.18 * scaleBetween(relativeReturn5d, -1, 6) +
-      0.32 * scaleBetween(relativeReturn10d, 0, 10) +
-      0.5 * scaleBetween(relativeReturn20d, 1, 15)
+      0.14 * scaleBetween(relativeReturn5d, 0, 5) +
+      0.34 * scaleBetween(relativeReturn10d, 1, 10) +
+      0.52 * scaleBetween(relativeReturn20d, 3, 16)
     )
 
   const leadershipScore =
-    7 *
+    8 *
     (
-      0.2 * scaleBetween(relativeReturn5d, 0, 5) +
-      0.35 * scaleBetween(relativeReturn10d, 1, 8) +
-      0.45 * scaleBetween(relativeReturn20d, 2, 12)
+      0.15 * scaleBetween(relativeReturn5d, 1, 4) +
+      0.35 * scaleBetween(relativeReturn10d, 2, 8) +
+      0.5 * scaleBetween(relativeReturn20d, 4, 12)
     )
 
   const volumeScore =
-    9 *
+    8 *
     (
-      0.7 * scaleBetween(volumeRatio, 0.95, 2.8) +
-      0.3 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 60_000_000)
+      0.75 * scaleBetween(volumeRatio, 1, 2.8) +
+      0.25 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 80_000_000)
     )
 
   const distanceFrom20dHighPct =
     high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
 
   let breakoutQuality = 0
-  if (breakout20d) breakoutQuality += 0.42
+  if (breakout20d) breakoutQuality += 0.46
   if (breakout10d) breakoutQuality += 0.12
   if (nearHigh20) breakoutQuality += 0.16
-  breakoutQuality += 0.14 * scaleBetween(breakoutClearancePct, MIN_BREAKOUT_CLEARANCE_PCT, 2.5)
-  breakoutQuality += 0.1 * scaleBetween(closeInDayRange, MIN_CLOSE_IN_DAY_RANGE, 1)
-  breakoutQuality += 0.06 * scaleBetween(distanceFrom20dHighPct, -1, 3)
+  breakoutQuality += 0.14 * scaleBetween(breakoutClearancePct, MIN_BREAKOUT_CLEARANCE_PCT, 2.0)
+  breakoutQuality += 0.08 * scaleBetween(closeInDayRange, MIN_CLOSE_IN_DAY_RANGE, 1)
+  breakoutQuality += 0.04 * scaleBetween(distanceFrom20dHighPct, -0.5, 2.5)
 
   const breakoutScore = 8 * clamp(breakoutQuality, 0, 1)
 
   const smaSpreadPct = sma20 > 0 ? ((sma10 - sma20) / sma20) * 100 : 0
 
   const trendScore =
-    10 *
+    8 *
     (
-      0.34 * (aboveSma20 ? 1 : 0) +
-      0.22 * (shortTermTrendUp ? 1 : 0) +
-      0.18 * scaleBetween(smaSpreadPct, 0, 3) +
-      0.26 * scaleBetween(-extensionFromSma20Pct, -MAX_EXTENSION_FROM_SMA20_PCT, 0)
+      0.36 * (aboveSma20 ? 1 : 0) +
+      0.24 * (shortTermTrendUp ? 1 : 0) +
+      0.16 * scaleBetween(smaSpreadPct, 0.2, 3) +
+      0.24 * scaleBetween(-extensionFromSma20Pct, -MAX_EXTENSION_FROM_SMA20_PCT, 0)
     )
 
   let penaltyScore = 0
 
-  if (!passesStrongCompanyGate) penaltyScore -= 12
-  if (strongCompanyScore < MIN_STRONG_COMPANY_SCORE) penaltyScore -= 6
-  if (!passesPrice) penaltyScore -= 5
-  if (!passesVolume) penaltyScore -= 4
-  if (!passesDollarVolume) penaltyScore -= 6
-  if (!passesMarketCap) penaltyScore -= 5
-  if (!aboveSma20) penaltyScore -= 4
-  if (!shortTermTrendUp) penaltyScore -= 3
-  if (oneDayReturn < -2) penaltyScore -= 2
-  if (return5d < -2) penaltyScore -= 3
-  if (return10d < 0) penaltyScore -= 3
-  if (return20d < 0) penaltyScore -= 4
-  if (relativeReturn5d < -1) penaltyScore -= 2
-  if (relativeReturn10d < 0) penaltyScore -= 3
-  if (relativeReturn20d < 0) penaltyScore -= 4
-  if (volumeRatio < 0.9) penaltyScore -= 3
-  if (!nearHigh20) penaltyScore -= 2
-  if (closeInDayRange < 0.4) penaltyScore -= 3
-  if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) penaltyScore -= 6
-  if (extensionFromSma20Pct > 18) penaltyScore -= 5
-  if (extensionFromSma20Pct > 22) penaltyScore -= 8
-  if (return20d > MAX_STRONG_BUY_RETURN_20D) penaltyScore -= 5
-  if (return20d > 40) penaltyScore -= 8
+  if (!passesStrongCompanyGate) penaltyScore -= 16
+  if (strongCompanyScore < MIN_STRONG_COMPANY_SCORE) penaltyScore -= 8
+  if (!passesPrice) penaltyScore -= 6
+  if (!passesVolume) penaltyScore -= 5
+  if (!passesDollarVolume) penaltyScore -= 7
+  if (!passesMarketCap) penaltyScore -= 6
+  if (!aboveSma20) penaltyScore -= 6
+  if (!shortTermTrendUp) penaltyScore -= 4
+  if (oneDayReturn < -2) penaltyScore -= 3
+  if (return5d < 0) penaltyScore -= 4
+  if (return10d < 2) penaltyScore -= 5
+  if (return20d < 5) penaltyScore -= 7
+  if (relativeReturn5d < 0) penaltyScore -= 3
+  if (relativeReturn10d < 1) penaltyScore -= 5
+  if (relativeReturn20d < 3) penaltyScore -= 8
+  if (volumeRatio < 1.0) penaltyScore -= 4
+  if (!nearHigh20) penaltyScore -= 3
+  if (!breakout10d && !breakout20d) penaltyScore -= 5
+  if (closeInDayRange < 0.5) penaltyScore -= 4
+  if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) penaltyScore -= 10
+  if (extensionFromSma20Pct > 15) penaltyScore -= 8
+  if (return20d > MAX_STRONG_BUY_RETURN_20D) penaltyScore -= 8
+  if (return20d > 35) penaltyScore -= 10
 
   penaltyScore += speculativePenalty
 
@@ -854,21 +858,21 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     trendScore +
     penaltyScore
 
-  const normalized = clamp((rawScore + 28) / 100, 0, 1)
-  let candidateScore = Math.round(Math.pow(normalized, 1.08) * 100)
+  const normalized = clamp((rawScore + 30) / 100, 0, 1)
+  let candidateScore = Math.round(Math.pow(normalized, 1.12) * 100)
 
   const catalystCount = [
     passesStrongCompanyGate,
     strongCompanyScore >= MIN_STRONG_COMPANY_SCORE,
     oneDayReturn > 0,
-    return5d >= 1,
+    return5d >= 2,
     return10d >= MIN_STRONG_BUY_RETURN_10D,
     return20d >= MIN_STRONG_BUY_RETURN_20D,
     return20d <= MAX_STRONG_BUY_RETURN_20D,
     relativeReturn5d > 0,
     relativeReturn10d >= MIN_RELATIVE_RETURN_10D,
     relativeReturn20d >= MIN_RELATIVE_RETURN_20D,
-    volumeRatio >= 1.1,
+    volumeRatio >= 1.2,
     volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO,
     breakout20d,
     breakout10d,
@@ -878,8 +882,8 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT,
     closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE,
     extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT,
-    avgDollarVolume20d >= 35_000_000,
-    marketCap >= 5_000_000_000,
+    avgDollarVolume20d >= 50_000_000,
+    marketCap >= 10_000_000_000,
   ].filter(Boolean).length
 
   const highConvictionSetup =
@@ -891,6 +895,7 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     breakout20d &&
     aboveSma20 &&
     shortTermTrendUp &&
+    nearHigh20 &&
     return10d >= MIN_STRONG_BUY_RETURN_10D &&
     return20d >= MIN_STRONG_BUY_RETURN_20D &&
     return20d <= MAX_STRONG_BUY_RETURN_20D &&
@@ -903,44 +908,44 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
 
   const eliteSetup =
     highConvictionSetup &&
-    strongCompanyScore >= 76 &&
-    volumeRatio >= 1.8 &&
+    strongCompanyScore >= 80 &&
+    volumeRatio >= 1.9 &&
     return5d >= 3 &&
     return10d >= 7 &&
-    return20d >= 11 &&
+    return20d >= 12 &&
     relativeReturn10d >= 3 &&
-    relativeReturn20d >= 5 &&
-    avgDollarVolume20d >= 40_000_000 &&
-    marketCap >= 5_000_000_000 &&
+    relativeReturn20d >= 6 &&
+    avgDollarVolume20d >= 55_000_000 &&
+    marketCap >= 10_000_000_000 &&
     catalystCount >= MIN_CATALYST_COUNT + 1
 
   if (!passesStrongCompanyGate) {
-    candidateScore = Math.min(candidateScore, 72)
-  } else if (!aboveSma20) {
-    candidateScore = Math.min(candidateScore, 76)
+    candidateScore = Math.min(candidateScore, 68)
+  } else if (!aboveSma20 || !shortTermTrendUp) {
+    candidateScore = Math.min(candidateScore, 74)
   } else if (!highConvictionSetup) {
-    candidateScore = Math.min(candidateScore, 91)
+    candidateScore = Math.min(candidateScore, 88)
   } else if (!eliteSetup) {
-    candidateScore = Math.min(candidateScore, 96)
+    candidateScore = Math.min(candidateScore, 95)
   } else {
     candidateScore = Math.min(candidateScore, 99)
   }
 
   if (
     eliteSetup &&
-    strongCompanyScore >= 84 &&
-    volumeRatio >= 2.3 &&
-    return5d >= 5 &&
-    return10d >= 11 &&
-    return20d >= 15 &&
-    return20d <= 26 &&
+    strongCompanyScore >= 86 &&
+    volumeRatio >= 2.2 &&
+    return5d >= 4 &&
+    return10d >= 10 &&
+    return20d >= 14 &&
+    return20d <= 24 &&
     relativeReturn5d >= 2 &&
     relativeReturn10d >= 5 &&
     relativeReturn20d >= 8 &&
-    avgDollarVolume20d >= 60_000_000 &&
-    marketCap >= 10_000_000_000 &&
+    avgDollarVolume20d >= 70_000_000 &&
+    marketCap >= 15_000_000_000 &&
     catalystCount >= 10 &&
-    closeInDayRange >= 0.78 &&
+    closeInDayRange >= 0.8 &&
     breakoutClearancePct >= 0.7
   ) {
     candidateScore = 100
@@ -1503,15 +1508,16 @@ export async function GET(request: Request) {
 
       const strongBuyNowCandidate =
         metric.passesStrongCompanyGate &&
-        metric.strongCompanyScore >= MIN_STRONG_COMPANY_SCORE &&
+        metric.strongCompanyScore >= 78 &&
         metric.passesPrice &&
         metric.passesVolume &&
         metric.passesDollarVolume &&
         metric.passesMarketCap &&
         metric.breakout20d &&
+        metric.nearHigh20 &&
         metric.aboveSma20 &&
         metric.shortTermTrendUp &&
-        metric.oneDayReturn >= -0.5 &&
+        metric.oneDayReturn >= -0.25 &&
         metric.return10d >= MIN_STRONG_BUY_RETURN_10D &&
         metric.return20d >= MIN_STRONG_BUY_RETURN_20D &&
         metric.return20d <= MAX_STRONG_BUY_RETURN_20D &&
@@ -1525,29 +1531,35 @@ export async function GET(request: Request) {
         catalystCount >= MIN_CATALYST_COUNT
 
       const prequalified =
+        metric.passesStrongCompanyGate &&
+        metric.strongCompanyScore >= MIN_STRONG_COMPANY_SCORE &&
         metric.passesPrice &&
         metric.passesVolume &&
         metric.passesDollarVolume &&
         metric.passesMarketCap &&
         metric.aboveSma20 &&
-        metric.return20d > 0 &&
-        metric.relativeReturn20d > 0 &&
-        score >= 55 &&
-        (
-          metric.passesStrongCompanyGate ||
-          metric.strongCompanyScore >= 55
-        )
+        metric.shortTermTrendUp &&
+        metric.nearHigh20 &&
+        metric.return10d >= 3 &&
+        metric.return20d >= 6 &&
+        metric.relativeReturn10d >= 1 &&
+        metric.relativeReturn20d >= 3 &&
+        metric.volumeRatio >= 1.1 &&
+        metric.breakoutClearancePct >= 0.15 &&
+        metric.closeInDayRange >= 0.55 &&
+        metric.extensionFromSma20Pct <= 14 &&
+        score >= 70
 
       const reasons: string[] = []
 
-      if (metric.passesStrongCompanyGate) reasons.push("strong underlying company")
-      if (metric.strongCompanyScore >= 75) reasons.push("high fundamental quality")
+      if (metric.passesStrongCompanyGate) reasons.push("elite company quality gate passed")
+      if (metric.strongCompanyScore >= 80) reasons.push("high fundamental quality")
       reasons.push(...metric.strongCompanyReasons)
 
       if (metric.passesPrice) reasons.push(`price >= $${MIN_PRICE}`)
-      if (metric.passesVolume) reasons.push("20d avg volume")
-      if (metric.passesDollarVolume) reasons.push("20d dollar volume")
-      if (metric.passesMarketCap) reasons.push("market cap")
+      if (metric.passesVolume) reasons.push("deep average volume")
+      if (metric.passesDollarVolume) reasons.push("deep dollar volume")
+      if (metric.passesMarketCap) reasons.push("institutional market cap")
       if (metric.oneDayReturn > 0) reasons.push("positive day")
       if (metric.return5d >= 2) reasons.push("5d momentum")
       if (metric.return10d >= MIN_STRONG_BUY_RETURN_10D) reasons.push("10d momentum")
@@ -1572,19 +1584,25 @@ export async function GET(request: Request) {
       if (!metric.passesPrice) {
         exclusionReason = `Below $${MIN_PRICE} minimum price`
       } else if (!metric.passesVolume) {
-        exclusionReason = "Below minimum average volume"
+        exclusionReason = "Below institutional volume floor"
       } else if (!metric.passesDollarVolume) {
-        exclusionReason = "Below minimum dollar volume"
+        exclusionReason = "Below institutional dollar volume floor"
       } else if (!metric.passesMarketCap) {
-        exclusionReason = "Below minimum market cap"
-      } else if (!metric.aboveSma20) {
-        exclusionReason = "Below 20-day moving average"
-      } else if (metric.return20d <= 0) {
-        exclusionReason = "Negative 20-day momentum"
-      } else if (metric.relativeReturn20d <= 0) {
-        exclusionReason = "Underperforming SPY over 20d"
-      } else if (score < 55) {
-        exclusionReason = "Score below screening floor"
+        exclusionReason = "Below institutional market cap floor"
+      } else if (!metric.passesStrongCompanyGate) {
+        exclusionReason = "Failed elite company quality gate"
+      } else if (!metric.aboveSma20 || !metric.shortTermTrendUp) {
+        exclusionReason = "Trend is not aligned"
+      } else if (!metric.nearHigh20) {
+        exclusionReason = "Too far from 20-day high"
+      } else if (metric.return20d < 6) {
+        exclusionReason = "Insufficient 20-day momentum"
+      } else if (metric.relativeReturn20d < 3) {
+        exclusionReason = "Not enough relative strength vs SPY"
+      } else if (metric.extensionFromSma20Pct > 14) {
+        exclusionReason = "Too extended from 20-day average"
+      } else if (score < 70) {
+        exclusionReason = "Score below elite screening floor"
       } else {
         exclusionReason = "Did not prequalify"
       }
