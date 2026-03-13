@@ -40,6 +40,10 @@ type CandidateUniverseSignalInput = {
   last_screened_at: string | null
 }
 
+type CandidateHistorySignalInput = CandidateUniverseSignalInput & {
+  screened_on: string
+}
+
 type InsiderParseResult = {
   action: "Buy" | "Sell" | "Mixed" | "Other" | null
   shares: number | null
@@ -173,9 +177,26 @@ type Diagnostics = {
   tickerHistoryInserted: number
   tickerCurrentBuiltFromSignalsTable: number
   unsupportedForms: Record<string, number>
+  candidateUniverseRowsLoaded: number
+  candidateHistoryRowsLoaded: number
   candidateRowsLoaded: number
   candidateTechnicalSignalsBuilt: number
   candidateTechnicalSignalsInserted: number
+  fallbackCandidateSourceUsed: boolean
+}
+
+type ChunkWriteResult = {
+  insertedOrUpdated: number
+  errors: Array<{
+    table: string
+    chunkStart: number
+    chunkSize: number
+    message: string
+    details?: string | null
+    hint?: string | null
+    code?: string | null
+    sampleKeys?: string[]
+  }>
 }
 
 const yahooFinance = new YahooFinance({
@@ -408,22 +429,78 @@ async function mapWithConcurrency<T, R>(
   return results
 }
 
-async function upsertInChunks(
+async function upsertInChunksDetailed(
   table: any,
+  tableName: string,
   rows: any[],
-  onConflict: string
-) {
-  for (const chunk of chunkArray(rows, DB_CHUNK_SIZE)) {
+  onConflict: string,
+  sampleKeyBuilder?: (row: any) => string
+): Promise<ChunkWriteResult> {
+  let insertedOrUpdated = 0
+  const errors: ChunkWriteResult["errors"] = []
+
+  for (let i = 0; i < rows.length; i += DB_CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + DB_CHUNK_SIZE)
     const { error } = await table.upsert(chunk, { onConflict })
-    if (error) throw new Error(error.message)
+
+    if (error) {
+      errors.push({
+        table: tableName,
+        chunkStart: i,
+        chunkSize: chunk.length,
+        message: error.message,
+        details: (error as any)?.details ?? null,
+        hint: (error as any)?.hint ?? null,
+        code: (error as any)?.code ?? null,
+        sampleKeys: sampleKeyBuilder ? chunk.slice(0, 10).map(sampleKeyBuilder) : undefined,
+      })
+    } else {
+      insertedOrUpdated += chunk.length
+    }
+  }
+
+  return {
+    insertedOrUpdated,
+    errors,
   }
 }
 
-async function deleteInChunksByTicker(table: any, tickers: string[]) {
+async function deleteInChunksByTickerDetailed(table: any, tickers: string[]) {
   const unique = uniqueStrings(tickers)
-  for (const chunk of chunkArray(unique, DB_CHUNK_SIZE)) {
+  const errors: Array<{
+    chunkStart: number
+    chunkSize: number
+    message: string
+    details?: string | null
+    hint?: string | null
+    code?: string | null
+    sampleTickers: string[]
+  }> = []
+
+  let deletedRequested = 0
+
+  for (let i = 0; i < unique.length; i += DB_CHUNK_SIZE) {
+    const chunk = unique.slice(i, i + DB_CHUNK_SIZE)
     const { error } = await table.delete().in("ticker", chunk)
-    if (error) throw new Error(error.message)
+
+    if (error) {
+      errors.push({
+        chunkStart: i,
+        chunkSize: chunk.length,
+        message: error.message,
+        details: (error as any)?.details ?? null,
+        hint: (error as any)?.hint ?? null,
+        code: (error as any)?.code ?? null,
+        sampleTickers: chunk.slice(0, 10),
+      })
+    } else {
+      deletedRequested += chunk.length
+    }
+  }
+
+  return {
+    deletedRequested,
+    errors,
   }
 }
 
@@ -2613,6 +2690,122 @@ async function prepareCandidateSignal(
   }
 }
 
+async function loadCandidateInputs(
+  supabase: any,
+  limit: number,
+  candidateCutoffDateString: string
+): Promise<{
+  candidateRows: CandidateUniverseSignalInput[]
+  candidateUniverseRowsLoaded: number
+  candidateHistoryRowsLoaded: number
+  fallbackCandidateSourceUsed: boolean
+}> {
+  const universeQuery = await supabase
+    .from("candidate_universe")
+    .select(
+      "ticker, cik, name, price, market_cap, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, candidate_score, included, screen_reason, last_screened_at"
+    )
+    .or(`included.eq.true,candidate_score.gte.${MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL}`)
+    .gte("last_screened_at", candidateCutoffDateString)
+    .order("candidate_score", { ascending: false })
+    .limit(limit)
+
+  if (universeQuery.error) {
+    throw new Error(`candidate_universe load failed: ${universeQuery.error.message}`)
+  }
+
+  const universeRows = (universeQuery.data || []) as CandidateUniverseSignalInput[]
+
+  if (universeRows.length >= Math.min(10, limit)) {
+    return {
+      candidateRows: universeRows,
+      candidateUniverseRowsLoaded: universeRows.length,
+      candidateHistoryRowsLoaded: 0,
+      fallbackCandidateSourceUsed: false,
+    }
+  }
+
+  const latestScreened = await supabase
+    .from("candidate_screen_history")
+    .select("screened_on")
+    .order("screened_on", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestScreened.error) {
+    throw new Error(`candidate_screen_history latest snapshot lookup failed: ${latestScreened.error.message}`)
+  }
+
+  const screenedOn = latestScreened.data?.screened_on ?? null
+  if (!screenedOn) {
+    return {
+      candidateRows: universeRows,
+      candidateUniverseRowsLoaded: universeRows.length,
+      candidateHistoryRowsLoaded: 0,
+      fallbackCandidateSourceUsed: false,
+    }
+  }
+
+  const historyQuery = await supabase
+    .from("candidate_screen_history")
+    .select(
+      "ticker, cik, name, price, market_cap, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, candidate_score, included, screen_reason, last_screened_at, screened_on"
+    )
+    .eq("screened_on", screenedOn)
+    .or(`included.eq.true,candidate_score.gte.${MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL}`)
+    .order("candidate_score", { ascending: false })
+    .limit(limit)
+
+  if (historyQuery.error) {
+    throw new Error(`candidate_screen_history snapshot load failed: ${historyQuery.error.message}`)
+  }
+
+  const historyRows = (historyQuery.data || []) as CandidateHistorySignalInput[]
+
+  const deduped = new Map<string, CandidateUniverseSignalInput>()
+  for (const row of universeRows) {
+    deduped.set(normalizeTicker(row.ticker), row)
+  }
+  for (const row of historyRows) {
+    const ticker = normalizeTicker(row.ticker)
+    if (!ticker) continue
+    if (!deduped.has(ticker)) {
+      deduped.set(ticker, {
+        ticker: row.ticker,
+        cik: row.cik,
+        name: row.name,
+        price: row.price,
+        market_cap: row.market_cap,
+        avg_volume_20d: row.avg_volume_20d,
+        avg_dollar_volume_20d: row.avg_dollar_volume_20d,
+        one_day_return: row.one_day_return,
+        return_5d: row.return_5d,
+        return_10d: row.return_10d,
+        return_20d: row.return_20d,
+        volume_ratio: row.volume_ratio,
+        breakout_20d: row.breakout_20d,
+        breakout_10d: row.breakout_10d,
+        above_sma_20: row.above_sma_20,
+        breakout_clearance_pct: row.breakout_clearance_pct,
+        extension_from_sma20_pct: row.extension_from_sma20_pct,
+        close_in_day_range: row.close_in_day_range,
+        catalyst_count: row.catalyst_count,
+        candidate_score: row.candidate_score,
+        included: row.included,
+        screen_reason: row.screen_reason,
+        last_screened_at: row.last_screened_at,
+      })
+    }
+  }
+
+  return {
+    candidateRows: [...deduped.values()].slice(0, limit),
+    candidateUniverseRowsLoaded: universeRows.length,
+    candidateHistoryRowsLoaded: historyRows.length,
+    fallbackCandidateSourceUsed: historyRows.length > 0,
+  }
+}
+
 export async function GET(request: Request) {
   const pipelineToken = process.env.PIPELINE_TOKEN
   const suppliedToken = request.headers.get("x-pipeline-token")
@@ -2683,42 +2876,38 @@ export async function GET(request: Request) {
       tickerHistoryInserted: 0,
       tickerCurrentBuiltFromSignalsTable: 0,
       unsupportedForms: {},
+      candidateUniverseRowsLoaded: 0,
+      candidateHistoryRowsLoaded: 0,
       candidateRowsLoaded: 0,
       candidateTechnicalSignalsBuilt: 0,
       candidateTechnicalSignalsInserted: 0,
+      fallbackCandidateSourceUsed: false,
     }
 
-    const [{ data: filings, error }, { data: candidateRows, error: candidateError }] =
-      await Promise.all([
-        supabase
-          .from("raw_filings")
-          .select(
-            "ticker, company_name, form_type, filed_at, filing_url, accession_no, cik, primary_doc, fetched_at"
-          )
-          .gte("filed_at", cutoffDateString)
-          .order("filed_at", { ascending: false })
-          .limit(limit),
-        supabase
-          .from("candidate_universe")
-          .select(
-            "ticker, cik, name, price, market_cap, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, candidate_score, included, screen_reason, last_screened_at"
-          )
-          .or(`included.eq.true,candidate_score.gte.${MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL}`)
-          .gte("last_screened_at", candidateCutoffDateString)
-          .order("candidate_score", { ascending: false })
-          .limit(limit),
-      ])
+    const [filingsResult, candidateLoadResult] = await Promise.all([
+      supabase
+        .from("raw_filings")
+        .select(
+          "ticker, company_name, form_type, filed_at, filing_url, accession_no, cik, primary_doc, fetched_at"
+        )
+        .gte("filed_at", cutoffDateString)
+        .order("filed_at", { ascending: false })
+        .limit(limit),
+      loadCandidateInputs(supabase, limit, candidateCutoffDateString),
+    ])
 
-    if (error) {
-      return Response.json({ ok: false, error: error.message }, { status: 500 })
+    if (filingsResult.error) {
+      return Response.json({ ok: false, error: filingsResult.error.message }, { status: 500 })
     }
 
-    if (candidateError) {
-      return Response.json({ ok: false, error: candidateError.message }, { status: 500 })
-    }
+    const filings = (filingsResult.data || []) as RawFiling[]
+    const candidateRows = candidateLoadResult.candidateRows
 
-    diagnostics.scanned = filings?.length || 0
-    diagnostics.candidateRowsLoaded = candidateRows?.length || 0
+    diagnostics.scanned = filings.length
+    diagnostics.candidateUniverseRowsLoaded = candidateLoadResult.candidateUniverseRowsLoaded
+    diagnostics.candidateHistoryRowsLoaded = candidateLoadResult.candidateHistoryRowsLoaded
+    diagnostics.candidateRowsLoaded = candidateRows.length
+    diagnostics.fallbackCandidateSourceUsed = candidateLoadResult.fallbackCandidateSourceUsed
 
     const caches: SharedCaches = {
       snapshotCache: new Map(),
@@ -2728,14 +2917,14 @@ export async function GET(request: Request) {
     }
 
     const candidateByTicker = new Map<string, CandidateUniverseSignalInput>()
-    for (const candidate of (candidateRows || []) as CandidateUniverseSignalInput[]) {
+    for (const candidate of candidateRows) {
       const ticker = normalizeTicker(candidate.ticker)
       if (!ticker) continue
       candidateByTicker.set(ticker, { ...candidate, ticker })
     }
 
     const filingPreparations = await mapWithConcurrency(
-      (filings || []) as RawFiling[],
+      filings,
       PREPARE_CONCURRENCY,
       async (filing) => prepareFilingSignal(filing, caches, candidateByTicker)
     )
@@ -2763,7 +2952,7 @@ export async function GET(request: Request) {
     }
 
     const candidatePreparations = await mapWithConcurrency(
-      (candidateRows || []) as CandidateUniverseSignalInput[],
+      candidateRows,
       PREPARE_CONCURRENCY,
       async (candidate) => prepareCandidateSignal(candidate, caches, runTimestamp)
     )
@@ -2899,15 +3088,57 @@ export async function GET(request: Request) {
 
     diagnostics.filingSignalsBuilt = signalRows.length
 
-    if (signalRows.length > 0) {
-      await upsertInChunks(supabase.from("signals"), signalRows, "signal_key")
+    const signalWriteResult =
+      signalRows.length > 0
+        ? await upsertInChunksDetailed(
+            supabase.from("signals"),
+            "signals",
+            signalRows,
+            "signal_key",
+            (row) => row.signal_key
+          )
+        : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
+
+    if (signalWriteResult.errors.length > 0) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Failed writing signals rows",
+          debug: {
+            diagnostics,
+            errorSamples: signalWriteResult.errors.slice(0, 5),
+          },
+        },
+        { status: 500 }
+      )
     }
 
-    diagnostics.filingSignalsInserted = signalRows.length
+    diagnostics.filingSignalsInserted = signalWriteResult.insertedOrUpdated
     diagnostics.candidateTechnicalSignalsInserted = diagnostics.candidateTechnicalSignalsBuilt
 
-    if (historyRows.length > 0) {
-      await upsertInChunks(supabase.from("signal_history"), historyRows, "signal_history_key")
+    const historyWriteResult =
+      historyRows.length > 0
+        ? await upsertInChunksDetailed(
+            supabase.from("signal_history"),
+            "signal_history",
+            historyRows,
+            "signal_history_key",
+            (row) => row.signal_history_key
+          )
+        : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
+
+    if (historyWriteResult.errors.length > 0) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Failed writing signal history rows",
+          debug: {
+            diagnostics,
+            errorSamples: historyWriteResult.errors.slice(0, 5),
+          },
+        },
+        { status: 500 }
+      )
     }
 
     let tickerCurrentRows: any[] = []
@@ -2958,8 +3189,29 @@ export async function GET(request: Request) {
 
       tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(supabase, tickerCurrentRows, runDate)
 
-      if (tickerCurrentRows.length > 0) {
-        await upsertInChunks(supabase.from("ticker_scores_current"), tickerCurrentRows, "ticker")
+      const tickerCurrentWriteResult =
+        tickerCurrentRows.length > 0
+          ? await upsertInChunksDetailed(
+              supabase.from("ticker_scores_current"),
+              "ticker_scores_current",
+              tickerCurrentRows,
+              "ticker",
+              (row) => row.ticker
+            )
+          : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
+
+      if (tickerCurrentWriteResult.errors.length > 0) {
+        return Response.json(
+          {
+            ok: false,
+            error: "Failed writing ticker_scores_current rows",
+            debug: {
+              diagnostics,
+              errorSamples: tickerCurrentWriteResult.errors.slice(0, 5),
+            },
+          },
+          { status: 500 }
+        )
       }
 
       const currentTickerSet = new Set(tickerCurrentRows.map((row) => normalizeTicker(row.ticker)))
@@ -2984,23 +3236,55 @@ export async function GET(request: Request) {
           .filter((ticker) => !currentTickerSet.has(ticker))
       )
 
-      if (staleTickerList.length > 0) {
-        await deleteInChunksByTicker(supabase.from("ticker_scores_current"), staleTickerList)
-      }
+      const staleDeleteResult =
+        staleTickerList.length > 0
+          ? await deleteInChunksByTickerDetailed(supabase.from("ticker_scores_current"), staleTickerList)
+          : { deletedRequested: 0, errors: [] as any[] }
 
-      diagnostics.tickerCurrentInserted = tickerCurrentRows.length
-
-      tickerHistoryRows = buildTickerScoreHistoryRows(tickerCurrentRows, runDate, runTimestamp)
-
-      if (tickerHistoryRows.length > 0) {
-        await upsertInChunks(
-          supabase.from("ticker_score_history"),
-          tickerHistoryRows,
-          "ticker,score_date"
+      if (staleDeleteResult.errors.length > 0) {
+        return Response.json(
+          {
+            ok: false,
+            error: "Failed deleting stale ticker_scores_current rows",
+            debug: {
+              diagnostics,
+              errorSamples: staleDeleteResult.errors.slice(0, 5),
+            },
+          },
+          { status: 500 }
         )
       }
 
-      diagnostics.tickerHistoryInserted = tickerHistoryRows.length
+      diagnostics.tickerCurrentInserted = tickerCurrentWriteResult.insertedOrUpdated
+
+      tickerHistoryRows = buildTickerScoreHistoryRows(tickerCurrentRows, runDate, runTimestamp)
+
+      const tickerHistoryWriteResult =
+        tickerHistoryRows.length > 0
+          ? await upsertInChunksDetailed(
+              supabase.from("ticker_score_history"),
+              "ticker_score_history",
+              tickerHistoryRows,
+              "ticker,score_date",
+              (row) => `${row.ticker}:${row.score_date}`
+            )
+          : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
+
+      if (tickerHistoryWriteResult.errors.length > 0) {
+        return Response.json(
+          {
+            ok: false,
+            error: "Failed writing ticker_score_history rows",
+            debug: {
+              diagnostics,
+              errorSamples: tickerHistoryWriteResult.errors.slice(0, 5),
+            },
+          },
+          { status: 500 }
+        )
+      }
+
+      diagnostics.tickerHistoryInserted = tickerHistoryWriteResult.insertedOrUpdated
     }
 
     let retentionMessage = "skipped"
@@ -3034,7 +3318,7 @@ export async function GET(request: Request) {
     let eliteBuyCount: number | null = null
 
     if (includeCounts && rebuildTickerScores) {
-      const [{ count: strongBuy }, { count: eliteBuy }] = await Promise.all([
+      const [strongBuyRes, eliteBuyRes] = await Promise.all([
         supabase
           .from("ticker_scores_current")
           .select("*", { count: "exact", head: true })
@@ -3045,14 +3329,17 @@ export async function GET(request: Request) {
           .gte("app_score", 97),
       ])
 
-      strongBuyCount = strongBuy ?? 0
-      eliteBuyCount = eliteBuy ?? 0
+      strongBuyCount = strongBuyRes.error ? null : strongBuyRes.count ?? 0
+      eliteBuyCount = eliteBuyRes.error ? null : eliteBuyRes.count ?? 0
     }
 
     return Response.json({
       ok: true,
-      scanned: filings?.length || 0,
-      candidateRowsLoaded: candidateRows?.length || 0,
+      scanned: filings.length,
+      candidateUniverseRowsLoaded: diagnostics.candidateUniverseRowsLoaded,
+      candidateHistoryRowsLoaded: diagnostics.candidateHistoryRowsLoaded,
+      candidateRowsLoaded: diagnostics.candidateRowsLoaded,
+      fallbackCandidateSourceUsed: diagnostics.fallbackCandidateSourceUsed,
       filingSignalsInserted: signalRows.length,
       candidateTechnicalSignalsInserted: diagnostics.candidateTechnicalSignalsInserted,
       historyInserted: historyRows.length,
@@ -3072,7 +3359,7 @@ export async function GET(request: Request) {
       eliteBuyCount,
       diagnostics,
       message:
-        "Strong-buy-only signals generated from filings and technical candidate setups. Ticker rebuild, counts, and retention are optional for fast runs.",
+        "Strong-buy-only signals generated from filings and technical candidate setups. Candidate history fallback is used when the finalized universe is too thin.",
     })
   } catch (error: any) {
     return Response.json(
