@@ -212,35 +212,6 @@ export async function GET(request: Request) {
       )
     }
 
-        const activeTickers = dedupedRows.map((row) => row.ticker)
-
-    for (const chunk of chunkArray(activeTickers, UPSERT_CHUNK_SIZE)) {
-      const { error } = await companiesTable
-        .update({
-          is_active: false,
-          updated_at: nowIso,
-        })
-        .not("ticker", "in", `(${chunk.map((t) => `"${t}"`).join(",")})`)
-
-      if (error) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Failed updating inactive company flags",
-            debug: {
-              message: error.message,
-              details: (error as any)?.details ?? null,
-              hint: (error as any)?.hint ?? null,
-              code: (error as any)?.code ?? null,
-            },
-          },
-          { status: 500 }
-        )
-      }
-
-      break
-    }
-
     const [{ count: totalCount }, { count: activeCount }] = await Promise.all([
       companiesTable.select("*", { count: "exact", head: true }),
       companiesTable.select("*", { count: "exact", head: true }).eq("is_active", true),
