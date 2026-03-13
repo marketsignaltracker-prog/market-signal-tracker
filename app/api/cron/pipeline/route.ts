@@ -17,6 +17,7 @@ type PipelineStage =
   | "idle"
   | "companies"
   | "screening"
+  | "finalizing"
   | "filings"
   | "signals"
   | "complete"
@@ -54,13 +55,8 @@ const DEFAULT_SIGNALS_LIMIT = 500
 const DEFAULT_SIGNALS_LOOKBACK_DAYS = 30
 
 const DEFAULT_STEP_TIMEOUT_MS = 240_000
-
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
-
-// IMPORTANT:
-// The old code hard-stopped after 6 batches, which meant only 1800 names max/run.
-// This version removes that cap and lets runtime budget decide how many batches can run.
 const RUN_LOCK_WINDOW_MS = 10 * 60 * 1000
 
 function nowIso() {
@@ -69,11 +65,7 @@ function nowIso() {
 
 function getBaseUrl() {
   const appUrl = process.env.APP_URL?.trim()
-
-  if (!appUrl) {
-    throw new Error("Missing APP_URL environment variable")
-  }
-
+  if (!appUrl) throw new Error("Missing APP_URL environment variable")
   return appUrl.replace(/\/$/, "")
 }
 
@@ -133,10 +125,7 @@ function isRecentRun(dateString: string | null | undefined, windowMs: number) {
 }
 
 function clampScreenBatch(batch: number | null | undefined) {
-  return Math.min(
-    Math.max(1, batch || DEFAULT_SCREEN_BATCH),
-    MAX_SCREEN_BATCH
-  )
+  return Math.min(Math.max(1, batch || DEFAULT_SCREEN_BATCH), MAX_SCREEN_BATCH)
 }
 
 async function runStep(
@@ -145,10 +134,7 @@ async function runStep(
   timeoutMs: number = DEFAULT_STEP_TIMEOUT_MS
 ): Promise<StepResult> {
   const pipelineToken = process.env.PIPELINE_TOKEN
-
-  if (!pipelineToken) {
-    throw new Error("Missing PIPELINE_TOKEN environment variable")
-  }
+  if (!pipelineToken) throw new Error("Missing PIPELINE_TOKEN environment variable")
 
   const url = makeUrl(baseUrl, path)
   const startedAt = Date.now()
@@ -194,7 +180,6 @@ async function runStep(
   const durationMs = Date.now() - startedAt
 
   let data: unknown = null
-
   try {
     data = await response.json()
   } catch {
@@ -223,9 +208,7 @@ async function getPipelineState(supabase: any): Promise<PipelineStateRow> {
     throw new Error(`Failed to load pipeline state: ${JSON.stringify(error)}`)
   }
 
-  if (data) {
-    return data as PipelineStateRow
-  }
+  if (data) return data as PipelineStateRow
 
   const seed = {
     job_name: PIPELINE_JOB_NAME,
@@ -313,13 +296,6 @@ export async function GET(request: NextRequest) {
       {
         ok: false,
         error: "Missing CRON_SECRET environment variable",
-        debug: {
-          hasAppUrl: Boolean(process.env.APP_URL),
-          hasCronSecret: Boolean(process.env.CRON_SECRET),
-          hasPipelineToken: Boolean(process.env.PIPELINE_TOKEN),
-          hasSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
-          hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-        },
       },
       { status: 500 }
     )
@@ -469,11 +445,7 @@ export async function GET(request: NextRequest) {
           runRetention: false,
         })
 
-        const screenResult = await runStep(
-          baseUrl,
-          screenPath,
-          DEFAULT_STEP_TIMEOUT_MS
-        )
+        const screenResult = await runStep(baseUrl, screenPath, DEFAULT_STEP_TIMEOUT_MS)
 
         results.push(screenResult)
         batchesThisRun += 1
@@ -504,7 +476,7 @@ export async function GET(request: NextRequest) {
         screenedCompaniesThisRun += processedCompanies
 
         state = await patchPipelineState(supabase, {
-          stage: returnedNextStart === null ? "filings" : "screening",
+          stage: returnedNextStart === null ? "finalizing" : "screening",
           status: "running",
           screen_start: nextStart,
           screen_batch: batchSize,
@@ -512,25 +484,55 @@ export async function GET(request: NextRequest) {
           screen_next_start: returnedNextStart,
         })
 
-        console.log(
-          JSON.stringify({
-            scope: "pipeline",
-            stage: "screening_batch_complete",
-            batchNumber: batchesThisRun,
-            requestedStart: nextStart,
-            returnedNextStart,
-            processedCompanies,
-            screenedCompaniesThisRun,
-            totalCompanies: returnedTotalCompanies,
-          })
-        )
-
         if (returnedNextStart === null) {
           screeningComplete = true
         } else {
           nextStart = returnedNextStart
         }
       }
+    }
+
+    if (state.stage === "finalizing") {
+      if (shouldStopForRuntime(runStartedAtMs)) {
+        const checkpointAt = nowIso()
+
+        await patchPipelineState(supabase, {
+          stage: "finalizing",
+          status: "idle",
+          last_run_finished_at: checkpointAt,
+        })
+
+        return NextResponse.json({
+          ok: true,
+          message: "Pipeline checkpointed before finalizing. Continue on next cron run.",
+          stage: "finalizing",
+          results,
+        })
+      }
+
+      const finalizeResult = await runStep(
+        baseUrl,
+        "/api/screen/finalize-candidates",
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(finalizeResult)
+
+      if (!finalizeResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          finalizeResult,
+          `Finalize step failed: ${String(
+            (finalizeResult.data as any)?.error || finalizeResult.status
+          )}`
+        )
+      }
+
+      state = await patchPipelineState(supabase, {
+        stage: "filings",
+        status: "running",
+      })
     }
 
     if (state.stage === "filings") {
@@ -676,8 +678,7 @@ export async function GET(request: NextRequest) {
       results,
     })
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown pipeline error"
+    const message = error instanceof Error ? error.message : "Unknown pipeline error"
 
     try {
       const supabase = getSupabaseAdmin()
@@ -702,13 +703,6 @@ export async function GET(request: NextRequest) {
       {
         ok: false,
         error: message,
-        debug: {
-          hasAppUrl: Boolean(process.env.APP_URL),
-          hasCronSecret: Boolean(process.env.CRON_SECRET),
-          hasPipelineToken: Boolean(process.env.PIPELINE_TOKEN),
-          hasSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
-          hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-        },
       },
       { status: 500 }
     )

@@ -39,14 +39,6 @@ function normalizeCik(value: unknown) {
   return digits.length ? digits : null
 }
 
-function chunkArray<T>(items: T[], size: number) {
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
-  }
-  return chunks
-}
-
 async function fetchSecCompanies() {
   const response = await fetch(SEC_COMPANY_TICKERS_URL, {
     method: "GET",
@@ -131,10 +123,7 @@ export async function GET(request: Request) {
   const suppliedToken = request.headers.get("x-pipeline-token")
 
   if (!pipelineToken || suppliedToken !== pipelineToken) {
-    return NextResponse.json(
-      { ok: false, error: "Unauthorized" },
-      { status: 401 }
-    )
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -165,7 +154,6 @@ export async function GET(request: Request) {
     })
 
     const companiesTable = supabase.from("companies") as any
-
     const secRows = await fetchSecCompanies()
 
     const mappedRows = secRows
@@ -233,10 +221,6 @@ export async function GET(request: Request) {
       {
         ok: false,
         error: error?.message || "Unknown ingest companies error",
-        stack:
-          process.env.NODE_ENV !== "production" && error?.stack
-            ? String(error.stack)
-            : undefined,
       },
       { status: 500 }
     )

@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 import YahooFinance from "yahoo-finance2"
 
 type CompanyRow = {
+  id: number
   ticker: string
   cik: string
   name: string | null
@@ -50,59 +51,6 @@ type CandidateHistoryRow = CandidateUniverseRow & {
   screened_on: string
   snapshot_key: string
   created_at: string
-}
-
-type CandidateScoreInput = {
-  latestClose: number
-  marketCap: number
-  avgVolume20d: number
-  avgDollarVolume20d: number
-  return5d: number
-  return10d: number
-  return20d: number
-  relativeReturn5d: number
-  relativeReturn10d: number
-  relativeReturn20d: number
-  rsPercentile5d: number
-  rsPercentile10d: number
-  rsPercentile20d: number
-  oneDayReturn: number
-  volumeRatio: number
-  breakout20d: boolean
-  breakout10d: boolean
-  nearHigh20: boolean
-  aboveSma20: boolean
-  shortTermTrendUp: boolean
-  sma10: number
-  sma20: number
-  high20: number
-  breakoutClearancePct: number
-  extensionFromSma20Pct: number
-  closeInDayRange: number
-  passesPrice: boolean
-  passesVolume: boolean
-  passesDollarVolume: boolean
-  passesMarketCap: boolean
-  strongCompanyScore: number
-  passesStrongCompanyGate: boolean
-  speculativePenalty: number
-}
-
-type CandidateScoreOutput = {
-  candidateScore: number
-  rawScore: number
-  qualityScore: number
-  fundamentalScore: number
-  momentumScore: number
-  relativeStrengthScore: number
-  leadershipScore: number
-  volumeScore: number
-  breakoutScore: number
-  trendScore: number
-  penaltyScore: number
-  catalystCount: number
-  highConvictionSetup: boolean
-  eliteSetup: boolean
 }
 
 type YahooErrorDisposition = {
@@ -183,13 +131,10 @@ type ScreeningPreparationResult =
       kind: "metric"
       metric: CandidateMetricRow
       result?: Record<string, any>
-      removeTicker?: string
     }
   | {
       kind: "final_row"
       row: CandidateUniverseRow
-      includeInUniverse: boolean
-      removeTicker?: string
       result?: Record<string, any>
     }
   | {
@@ -197,7 +142,6 @@ type ScreeningPreparationResult =
       ticker: string | null
       error: string
       errorKind?: string
-      removeTicker?: string
       historyRow?: CandidateUniverseRow
       result?: Record<string, any>
     }
@@ -208,6 +152,56 @@ type StrongCompanyEvaluation = {
   reasons: string[]
   failures: string[]
   speculativePenalty: number
+}
+
+type CandidateScoreInput = {
+  latestClose: number
+  marketCap: number
+  avgVolume20d: number
+  avgDollarVolume20d: number
+  return5d: number
+  return10d: number
+  return20d: number
+  relativeReturn5d: number
+  relativeReturn10d: number
+  relativeReturn20d: number
+  oneDayReturn: number
+  volumeRatio: number
+  breakout20d: boolean
+  breakout10d: boolean
+  nearHigh20: boolean
+  aboveSma20: boolean
+  shortTermTrendUp: boolean
+  sma10: number
+  sma20: number
+  high20: number
+  breakoutClearancePct: number
+  extensionFromSma20Pct: number
+  closeInDayRange: number
+  passesPrice: boolean
+  passesVolume: boolean
+  passesDollarVolume: boolean
+  passesMarketCap: boolean
+  strongCompanyScore: number
+  passesStrongCompanyGate: boolean
+  speculativePenalty: number
+}
+
+type CandidateScoreOutput = {
+  candidateScore: number
+  rawScore: number
+  qualityScore: number
+  fundamentalScore: number
+  momentumScore: number
+  relativeStrengthScore: number
+  leadershipScore: number
+  volumeScore: number
+  breakoutScore: number
+  trendScore: number
+  penaltyScore: number
+  catalystCount: number
+  highConvictionSetup: boolean
+  eliteSetup: boolean
 }
 
 const yahooFinance = new YahooFinance({
@@ -226,7 +220,6 @@ const MIN_AVG_VOLUME_20D = 750_000
 const MIN_AVG_DOLLAR_VOLUME_20D = 25_000_000
 const MIN_MARKET_CAP = 2_000_000_000
 
-const MIN_BOARD_SCORE = 66
 const MIN_STRONG_BUY_SCORE = 78
 const MIN_STRONG_BUY_VOLUME_RATIO = 1.3
 const MIN_STRONG_BUY_RETURN_10D = 3
@@ -238,10 +231,6 @@ const MAX_EXTENSION_FROM_SMA20_PCT = 15
 const MIN_BREAKOUT_CLEARANCE_PCT = 0.1
 const MIN_CLOSE_IN_DAY_RANGE = 0.55
 const MIN_CATALYST_COUNT = 6
-
-const LEADERSHIP_PERCENTILE_MIN = 75
-const LEADERSHIP_PERCENTILE_STRONG = 88
-const LEADERSHIP_PERCENTILE_ELITE = 95
 
 const MIN_STRONG_COMPANY_SCORE = 60
 
@@ -257,16 +246,17 @@ function toIsoDateString(date: Date) {
   return date.toISOString().slice(0, 10)
 }
 
+function snapshotDateString(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
 function round2(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(value)) return null
   return Math.round(value * 100) / 100
 }
 
 function parseInteger(value: string | null | undefined, fallback: number) {
-  if (value === null || value === undefined || value.trim() === "") {
-    return fallback
-  }
-
+  if (value === null || value === undefined || value.trim() === "") return fallback
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) ? parsed : fallback
 }
@@ -285,46 +275,16 @@ function scaleBetween(value: number, min: number, max: number) {
   return clamp((value - min) / (max - min), 0, 1)
 }
 
-function isProbablyCommonStockTicker(ticker: string) {
-  if (!ticker) return false
+function safeNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null
+  const n = Number(String(value).replace(/,/g, ""))
+  return Number.isFinite(n) ? n : null
+}
 
-  const t = ticker.trim().toUpperCase()
-
-  if (/^[A-Z]{1,5}$/.test(t)) {
-    return true
-  }
-
-  if (t.includes("^")) return false
-  if (t.includes("/")) return false
-
-  if (/-P[A-Z0-9]+$/.test(t)) return false
-  if (/\.P[R]?[A-Z0-9]+$/.test(t)) return false
-
-  if (/-WT$/.test(t)) return false
-  if (/-WTS$/.test(t)) return false
-  if (/-WS$/.test(t)) return false
-  if (/\.WT$/.test(t)) return false
-  if (/\.WTS$/.test(t)) return false
-  if (/\.WS$/.test(t)) return false
-
-  if (/-RT$/.test(t)) return false
-  if (/-RIGHT$/.test(t)) return false
-  if (/-RIGHTS$/.test(t)) return false
-  if (/\.RT$/.test(t)) return false
-  if (/\.RGT$/.test(t)) return false
-
-  if (/-U$/.test(t)) return false
-  if (/\.U$/.test(t)) return false
-
-  if (/PREFERRED/i.test(t)) return false
-  if (/PREF/i.test(t)) return false
-  if (/TEST/i.test(t)) return false
-
-  if (/^[A-Z0-9.-]{1,10}$/.test(t)) {
-    return true
-  }
-
-  return false
+function normalizePercent(value: number | null): number | null {
+  if (value === null || !Number.isFinite(value)) return null
+  if (Math.abs(value) <= 1) return value * 100
+  return value
 }
 
 function calcPercentChange(current: number, prior: number) {
@@ -362,87 +322,26 @@ function getBenchmarkReturns(candles: any[]): BenchmarkReturns {
   }
 }
 
-function calculatePercentile(sortedValues: number[], value: number) {
-  if (!sortedValues.length || !Number.isFinite(value)) return 0
-
-  let countLessThanOrEqual = 0
-  for (const v of sortedValues) {
-    if (v <= value) countLessThanOrEqual += 1
-  }
-
-  return Math.round((countLessThanOrEqual / sortedValues.length) * 100)
-}
-
-function buildRelativeStrengthPercentileMap(
-  rows: Array<{
-    ticker: string
-    relativeReturn5d: number
-    relativeReturn10d: number
-    relativeReturn20d: number
-  }>
-) {
-  const valid5d = rows
-    .map((row) => row.relativeReturn5d)
-    .filter((v) => Number.isFinite(v))
-    .sort((a, b) => a - b)
-
-  const valid10d = rows
-    .map((row) => row.relativeReturn10d)
-    .filter((v) => Number.isFinite(v))
-    .sort((a, b) => a - b)
-
-  const valid20d = rows
-    .map((row) => row.relativeReturn20d)
-    .filter((v) => Number.isFinite(v))
-    .sort((a, b) => a - b)
-
-  const byTicker = new Map<
-    string,
-    {
-      rsPercentile5d: number
-      rsPercentile10d: number
-      rsPercentile20d: number
-    }
-  >()
-
-  for (const row of rows) {
-    byTicker.set(row.ticker, {
-      rsPercentile5d: calculatePercentile(valid5d, row.relativeReturn5d),
-      rsPercentile10d: calculatePercentile(valid10d, row.relativeReturn10d),
-      rsPercentile20d: calculatePercentile(valid20d, row.relativeReturn20d),
-    })
-  }
-
-  return byTicker
-}
-
-function snapshotDateString(date: Date) {
-  return date.toISOString().slice(0, 10)
-}
-
 function buildCandidateReason(params: {
-  included: boolean
+  prequalified: boolean
   strongBuyNow: boolean
-  boardCandidate: boolean
   reasons: string[]
   exclusionReason?: string
   score?: number
 }) {
-  if (params.included && params.strongBuyNow) {
-    return `Strong buy now (${params.score ?? 0}): ${params.reasons.join(", ")}`
+  if (params.prequalified && params.strongBuyNow) {
+    return `Strong setup (${params.score ?? 0}): ${params.reasons.join(", ")}`
   }
 
-  if (params.included && params.boardCandidate) {
-    return `Board candidate (${params.score ?? 0}): ${params.reasons.join(", ")}`
+  if (params.prequalified) {
+    return `Prequalified (${params.score ?? 0}): ${params.reasons.join(", ")}`
   }
 
-  if (params.exclusionReason) {
-    return params.exclusionReason
-  }
+  if (params.exclusionReason) return params.exclusionReason
 
   return params.reasons.length
-    ? `Not included: ${params.reasons.join(", ")}`
-    : "No board-worthy factors passed"
+    ? `Not prequalified: ${params.reasons.join(", ")}`
+    : "No significant factors passed"
 }
 
 function sanitizeYahooErrorMessage(raw: unknown) {
@@ -471,43 +370,29 @@ function classifyYahooError(raw: unknown): YahooErrorDisposition {
     }
   }
 
-  if (
-    message.includes("schema validation") ||
-    message.includes("html error page") ||
-    message.includes("bad request") ||
-    message.includes("status 400") ||
-    message.includes("status 401") ||
-    message.includes("status 403") ||
-    message.includes("status 404") ||
-    message.includes("status 429") ||
-    message.includes("timeout") ||
-    message.includes("network") ||
-    message.includes("fetch") ||
-    message.includes("connection") ||
-    message.includes("temporarily unavailable")
-  ) {
-    return {
-      kind: "transient",
-      reason: sanitizeYahooErrorMessage(raw),
-    }
-  }
-
   return {
     kind: "transient",
     reason: sanitizeYahooErrorMessage(raw),
   }
 }
 
-function safeNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null
-  const n = Number(String(value).replace(/,/g, ""))
-  return Number.isFinite(n) ? n : null
-}
+function isProbablyCommonStockTicker(ticker: string) {
+  if (!ticker) return false
 
-function normalizePercent(value: number | null): number | null {
-  if (value === null || !Number.isFinite(value)) return null
-  if (Math.abs(value) <= 1) return value * 100
-  return value
+  const t = ticker.trim().toUpperCase()
+
+  if (t.includes("^")) return false
+  if (t.includes("/")) return false
+  if (/-P[A-Z0-9]+$/.test(t)) return false
+  if (/\.P[R]?[A-Z0-9]+$/.test(t)) return false
+  if (/-WT$/.test(t) || /-WTS$/.test(t) || /-WS$/.test(t)) return false
+  if (/\.WT$/.test(t) || /\.WTS$/.test(t) || /\.WS$/.test(t)) return false
+  if (/-RT$/.test(t) || /-RIGHT$/.test(t) || /-RIGHTS$/.test(t)) return false
+  if (/\.RT$/.test(t) || /\.RGT$/.test(t)) return false
+  if (/-U$/.test(t) || /\.U$/.test(t)) return false
+  if (/PREFERRED/i.test(t) || /PREF/i.test(t) || /TEST/i.test(t)) return false
+
+  return /^[A-Z0-9.-]{1,10}$/.test(t)
 }
 
 function isDebtMetricApplicable(sector: string | null) {
@@ -835,9 +720,6 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     relativeReturn5d,
     relativeReturn10d,
     relativeReturn20d,
-    rsPercentile5d,
-    rsPercentile10d,
-    rsPercentile20d,
     oneDayReturn,
     volumeRatio,
     breakout20d,
@@ -861,45 +743,45 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   } = input
 
   const qualityScore =
-    12 *
+    14 *
     (
       0.1 * (passesPrice ? 1 : 0) +
       0.15 * (passesVolume ? 1 : 0) +
       0.25 * (passesDollarVolume ? 1 : 0) +
       0.25 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 80_000_000) +
-      0.25 * scaleBetween(marketCap, MIN_MARKET_CAP, 20_000_000_000)
+      0.25 * scaleBetween(marketCap, MIN_MARKET_CAP, 25_000_000_000)
     )
 
   const fundamentalScore =
-    18 *
+    20 *
     (
       0.45 * scaleBetween(strongCompanyScore, 45, 100) +
       0.55 * (passesStrongCompanyGate ? 1 : 0)
     )
 
   const momentumScore =
-    15 *
+    16 *
     (
-      0.1 * scaleBetween(oneDayReturn, -1, 4) +
+      0.12 * scaleBetween(oneDayReturn, -1, 4) +
       0.18 * scaleBetween(return5d, 0, 10) +
-      0.32 * scaleBetween(return10d, 1, 16) +
+      0.3 * scaleBetween(return10d, 1, 16) +
       0.4 * scaleBetween(return20d, 3, 24)
     )
 
   const relativeStrengthScore =
-    15 *
+    18 *
     (
       0.18 * scaleBetween(relativeReturn5d, -1, 6) +
-      0.34 * scaleBetween(relativeReturn10d, 0, 10) +
-      0.48 * scaleBetween(relativeReturn20d, 1, 15)
+      0.32 * scaleBetween(relativeReturn10d, 0, 10) +
+      0.5 * scaleBetween(relativeReturn20d, 1, 15)
     )
 
   const leadershipScore =
-    10 *
+    7 *
     (
-      0.15 * scaleBetween(rsPercentile5d, 45, 100) +
-      0.3 * scaleBetween(rsPercentile10d, 70, 100) +
-      0.55 * scaleBetween(rsPercentile20d, 75, 100)
+      0.2 * scaleBetween(relativeReturn5d, 0, 5) +
+      0.35 * scaleBetween(relativeReturn10d, 1, 8) +
+      0.45 * scaleBetween(relativeReturn20d, 2, 12)
     )
 
   const volumeScore =
@@ -920,12 +802,12 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
   breakoutQuality += 0.1 * scaleBetween(closeInDayRange, MIN_CLOSE_IN_DAY_RANGE, 1)
   breakoutQuality += 0.06 * scaleBetween(distanceFrom20dHighPct, -1, 3)
 
-  const breakoutScore = 9 * clamp(breakoutQuality, 0, 1)
+  const breakoutScore = 8 * clamp(breakoutQuality, 0, 1)
 
   const smaSpreadPct = sma20 > 0 ? ((sma10 - sma20) / sma20) * 100 : 0
 
   const trendScore =
-    12 *
+    10 *
     (
       0.34 * (aboveSma20 ? 1 : 0) +
       0.22 * (shortTermTrendUp ? 1 : 0) +
@@ -998,8 +880,6 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT,
     avgDollarVolume20d >= 35_000_000,
     marketCap >= 5_000_000_000,
-    rsPercentile10d >= LEADERSHIP_PERCENTILE_MIN,
-    rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN,
   ].filter(Boolean).length
 
   const highConvictionSetup =
@@ -1030,7 +910,6 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     return20d >= 11 &&
     relativeReturn10d >= 3 &&
     relativeReturn20d >= 5 &&
-    rsPercentile20d >= LEADERSHIP_PERCENTILE_STRONG &&
     avgDollarVolume20d >= 40_000_000 &&
     marketCap >= 5_000_000_000 &&
     catalystCount >= MIN_CATALYST_COUNT + 1
@@ -1043,20 +922,8 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     candidateScore = Math.min(candidateScore, 91)
   } else if (!eliteSetup) {
     candidateScore = Math.min(candidateScore, 96)
-  } else if (
-    !(
-      volumeRatio >= 2.1 &&
-      return10d >= 9 &&
-      return20d >= 14 &&
-      relativeReturn10d >= 4 &&
-      relativeReturn20d >= 7 &&
-      rsPercentile20d >= LEADERSHIP_PERCENTILE_STRONG &&
-      avgDollarVolume20d >= 50_000_000 &&
-      marketCap >= 8_000_000_000 &&
-      strongCompanyScore >= 80
-    )
-  ) {
-    candidateScore = Math.min(candidateScore, 98)
+  } else {
+    candidateScore = Math.min(candidateScore, 99)
   }
 
   if (
@@ -1070,7 +937,6 @@ function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutp
     relativeReturn5d >= 2 &&
     relativeReturn10d >= 5 &&
     relativeReturn20d >= 8 &&
-    rsPercentile20d >= LEADERSHIP_PERCENTILE_ELITE &&
     avgDollarVolume20d >= 60_000_000 &&
     marketCap >= 10_000_000_000 &&
     catalystCount >= 10 &&
@@ -1132,21 +998,6 @@ async function mapWithConcurrency<T, R>(
   return results
 }
 
-async function upsertRowsInChunks(
-  table: any,
-  rows: CandidateUniverseRow[] | CandidateHistoryRow[],
-  onConflict: string
-) {
-  let errorCount = 0
-
-  for (const chunk of chunkArray(rows, DB_CHUNK_SIZE)) {
-    const { error } = await table.upsert(chunk, { onConflict })
-    if (error) errorCount += chunk.length
-  }
-
-  return errorCount
-}
-
 async function upsertRowsInChunksDetailed(
   table: any,
   rows: CandidateUniverseRow[] | CandidateHistoryRow[],
@@ -1157,7 +1008,6 @@ async function upsertRowsInChunksDetailed(
 
   for (const chunk of chunkArray(rows, DB_CHUNK_SIZE)) {
     const { error } = await table.upsert(chunk, { onConflict })
-
     if (error) {
       errorCount += chunk.length
       errors.push(error.message)
@@ -1168,17 +1018,6 @@ async function upsertRowsInChunksDetailed(
     errorCount,
     errors,
   }
-}
-
-async function deleteTickersInChunks(table: any, tickers: string[]) {
-  let errorCount = 0
-
-  for (const chunk of chunkArray([...new Set(tickers)], DB_CHUNK_SIZE)) {
-    const { error } = await table.delete().in("ticker", chunk)
-    if (error) errorCount += chunk.length
-  }
-
-  return errorCount
 }
 
 function makeHistoryRow(
@@ -1259,7 +1098,6 @@ async function prepareTickerForScoring(
       kind: "error",
       ticker: ticker || null,
       error: "Missing ticker or cik",
-      removeTicker: ticker || undefined,
       result: includeResults
         ? {
             ticker: ticker || null,
@@ -1282,13 +1120,12 @@ async function prepareTickerForScoring(
     return {
       kind: "final_row",
       row,
-      includeInUniverse: false,
-      removeTicker: ticker,
       result: includeResults
         ? {
             ticker,
             ok: true,
             included: false,
+            prequalified: false,
             score: 0,
             tier: "excluded",
             reason: row.screen_reason,
@@ -1328,7 +1165,6 @@ async function prepareTickerForScoring(
         disposition.kind === "permanent"
           ? "permanent_yahoo_error"
           : "transient_yahoo_error",
-      removeTicker: disposition.kind === "permanent" ? ticker : undefined,
       historyRow,
       result: includeResults
         ? {
@@ -1339,7 +1175,6 @@ async function prepareTickerForScoring(
               disposition.kind === "permanent"
                 ? "permanent_yahoo_error"
                 : "transient_yahoo_error",
-            removedFromUniverse: disposition.kind === "permanent",
           }
         : undefined,
     }
@@ -1373,13 +1208,12 @@ async function prepareTickerForScoring(
     return {
       kind: "final_row",
       row,
-      includeInUniverse: false,
-      removeTicker: ticker,
       result: includeResults
         ? {
             ticker,
             ok: true,
             included: false,
+            prequalified: false,
             score: 0,
             tier: "not_included",
             reason: row.screen_reason,
@@ -1404,9 +1238,7 @@ async function prepareTickerForScoring(
   const previousClose = Number(previous?.close || latestClose)
 
   const avgVolume20d = avg(prior20.map((c) => Number(c.volume || 0)))
-  const avgDollarVolume20d = avg(
-    prior20.map((c) => Number(c.close || 0) * Number(c.volume || 0))
-  )
+  const avgDollarVolume20d = avg(prior20.map((c) => Number(c.close || 0) * Number(c.volume || 0)))
   const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
   const high10 = Math.max(...prior10.map((c) => Number(c.high || 0)))
   const sma20 = avg(prior20.map((c) => Number(c.close || 0)))
@@ -1428,11 +1260,8 @@ async function prepareTickerForScoring(
   const shortTermTrendUp = sma10 > sma20
   const marketCap = Number((quote as any)?.marketCap || 0)
 
-  const breakoutClearancePct =
-    high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
-
-  const extensionFromSma20Pct =
-    sma20 > 0 ? ((latestClose - sma20) / sma20) * 100 : 0
+  const breakoutClearancePct = high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
+  const extensionFromSma20Pct = sma20 > 0 ? ((latestClose - sma20) / sma20) * 100 : 0
 
   const closeInDayRange =
     latestHigh > latestLow
@@ -1565,13 +1394,13 @@ export async function GET(request: Request) {
     const benchmarkReturns = getBenchmarkReturns(benchmarkCandles)
 
     const companiesTable = supabase.from("companies") as any
-    const candidateUniverseTable = supabase.from("candidate_universe") as any
     const candidateHistoryTable = supabase.from("candidate_screen_history") as any
+    const candidateUniverseTable = supabase.from("candidate_universe") as any
 
     let companyQuery = companiesTable
-      .select("ticker, cik, name, is_active")
+      .select("id, ticker, cik, name, is_active")
       .not("cik", "is", null)
-      .order("ticker", { ascending: true })
+      .order("id", { ascending: true })
       .range(from, to)
 
     let countQuery = companiesTable
@@ -1589,35 +1418,10 @@ export async function GET(request: Request) {
     ] = await Promise.all([companyQuery, countQuery])
 
     if (companiesError) {
-      return Response.json(
-        { ok: false, error: companiesError.message },
-        { status: 500 }
-      )
+      return Response.json({ ok: false, error: companiesError.message }, { status: 500 })
     }
 
     const companyList = (companies || []) as CompanyRow[]
-
-    const batchFirstTicker =
-      companyList.length > 0 ? normalizeTicker(companyList[0]?.ticker) : null
-    const batchLastTicker =
-      companyList.length > 0 ? normalizeTicker(companyList[companyList.length - 1]?.ticker) : null
-
-    console.log(
-      JSON.stringify({
-        scope: "candidates-screen",
-        stage: "batch_start",
-        start: safeStart,
-        batch: safeBatch,
-        from,
-        to,
-        onlyActive,
-        fetchedCompanies: companyList.length,
-        totalCompanies: totalCountError ? null : totalCompanies,
-        batchFirstTicker,
-        batchLastTicker,
-        screenedOn,
-      })
-    )
 
     const preparation = await mapWithConcurrency(
       companyList,
@@ -1628,33 +1432,20 @@ export async function GET(request: Request) {
 
     const results: Array<Record<string, any>> = []
     const metricRows: CandidateMetricRow[] = []
-
+    const historyRows: CandidateHistoryRow[] = []
     let failedInBatch = 0
-    let keptUniverseOnTransientError = 0
-
-    const tickersToDelete: string[] = []
-    const earlyHistoryRows: CandidateHistoryRow[] = []
 
     for (const item of preparation) {
       if (item.kind === "metric") {
         metricRows.push(item.metric)
-        if (item.result && includeResults) results.push(item.result)
         continue
       }
 
       if (item.kind === "error") {
         failedInBatch += 1
 
-        if (item.errorKind === "transient_yahoo_error") {
-          keptUniverseOnTransientError += 1
-        }
-
-        if (item.removeTicker) {
-          tickersToDelete.push(item.removeTicker)
-        }
-
         if (item.historyRow) {
-          earlyHistoryRows.push(makeHistoryRow(item.historyRow, screenedOn, nowIso))
+          historyRows.push(makeHistoryRow(item.historyRow, screenedOn, nowIso))
         }
 
         if (item.result && includeResults) {
@@ -1664,34 +1455,16 @@ export async function GET(request: Request) {
         continue
       }
 
-      if (item.kind === "final_row") {
-        if (item.removeTicker) tickersToDelete.push(item.removeTicker)
-        earlyHistoryRows.push(makeHistoryRow(item.row, screenedOn, nowIso))
-        if (item.result && includeResults) results.push(item.result)
+      historyRows.push(makeHistoryRow(item.row, screenedOn, nowIso))
+      if (item.result && includeResults) {
+        results.push(item.result)
       }
     }
 
-    const percentileMap = buildRelativeStrengthPercentileMap(
-      metricRows.map((row) => ({
-        ticker: row.ticker,
-        relativeReturn5d: row.relativeReturn5d,
-        relativeReturn10d: row.relativeReturn10d,
-        relativeReturn20d: row.relativeReturn20d,
-      }))
-    )
-
-    const universeRowsToUpsert: CandidateUniverseRow[] = []
-    const scoredHistoryRows: CandidateHistoryRow[] = []
-    let includedInBatch = 0
+    let prequalifiedInBatch = 0
     let strongBuyNowInBatch = 0
 
     for (const metric of metricRows) {
-      const pct = percentileMap.get(metric.ticker) ?? {
-        rsPercentile5d: 0,
-        rsPercentile10d: 0,
-        rsPercentile20d: 0,
-      }
-
       const scoreDetails = calculateCandidateScore({
         latestClose: metric.latestClose,
         marketCap: metric.marketCap,
@@ -1703,9 +1476,6 @@ export async function GET(request: Request) {
         relativeReturn5d: metric.relativeReturn5d,
         relativeReturn10d: metric.relativeReturn10d,
         relativeReturn20d: metric.relativeReturn20d,
-        rsPercentile5d: pct.rsPercentile5d,
-        rsPercentile10d: pct.rsPercentile10d,
-        rsPercentile20d: pct.rsPercentile20d,
         oneDayReturn: metric.oneDayReturn,
         volumeRatio: metric.volumeRatio,
         breakout20d: metric.breakout20d,
@@ -1754,7 +1524,7 @@ export async function GET(request: Request) {
         score >= MIN_STRONG_BUY_SCORE &&
         catalystCount >= MIN_CATALYST_COUNT
 
-      const boardCandidate =
+      const prequalified =
         metric.passesPrice &&
         metric.passesVolume &&
         metric.passesDollarVolume &&
@@ -1762,21 +1532,12 @@ export async function GET(request: Request) {
         metric.aboveSma20 &&
         metric.return20d > 0 &&
         metric.relativeReturn20d > 0 &&
+        score >= 55 &&
         (
-          (
-            metric.passesStrongCompanyGate &&
-            metric.strongCompanyScore >= MIN_STRONG_COMPANY_SCORE &&
-            score >= MIN_BOARD_SCORE
-          ) ||
-          (
-            metric.strongCompanyScore >= 55 &&
-            score >= MIN_BOARD_SCORE + 2 &&
-            pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN &&
-            (metric.breakout20d || metric.nearHigh20)
-          )
+          metric.passesStrongCompanyGate ||
+          metric.strongCompanyScore >= 55
         )
 
-      const included = boardCandidate
       const reasons: string[] = []
 
       if (metric.passesStrongCompanyGate) reasons.push("strong underlying company")
@@ -1794,11 +1555,6 @@ export async function GET(request: Request) {
       if (metric.relativeReturn5d > 0) reasons.push("beats SPY over 5d")
       if (metric.relativeReturn10d >= MIN_RELATIVE_RETURN_10D) reasons.push("beats SPY over 10d")
       if (metric.relativeReturn20d >= MIN_RELATIVE_RETURN_20D) reasons.push("beats SPY over 20d")
-      if (pct.rsPercentile10d >= LEADERSHIP_PERCENTILE_MIN) reasons.push("top relative leader over 10d")
-      if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN) reasons.push("top relative leader over 20d")
-      if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_STRONG) reasons.push("strong market leader")
-      if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_ELITE) reasons.push("elite market leader")
-      if (metric.return20d <= MAX_STRONG_BUY_RETURN_20D) reasons.push("not overextended on 20d move")
       if (metric.volumeRatio >= 1.25) reasons.push("volume expansion")
       if (metric.volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO) reasons.push("strong volume expansion")
       if (metric.breakout10d) reasons.push("10d breakout")
@@ -1827,15 +1583,10 @@ export async function GET(request: Request) {
         exclusionReason = "Negative 20-day momentum"
       } else if (metric.relativeReturn20d <= 0) {
         exclusionReason = "Underperforming SPY over 20d"
-      } else if (
-        !metric.passesStrongCompanyGate &&
-        !(metric.strongCompanyScore >= 55 && pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN)
-      ) {
-        exclusionReason = "Failed quality / leadership gate"
-      } else if (score < MIN_BOARD_SCORE) {
-        exclusionReason = `Score below board threshold (${MIN_BOARD_SCORE})`
+      } else if (score < 55) {
+        exclusionReason = "Score below screening floor"
       } else {
-        exclusionReason = "Did not qualify for board"
+        exclusionReason = "Did not prequalify"
       }
 
       const row: CandidateUniverseRow = {
@@ -1870,11 +1621,10 @@ export async function GET(request: Request) {
         passes_dollar_volume: metric.passesDollarVolume,
         passes_market_cap: metric.passesMarketCap,
         candidate_score: score,
-        included,
+        included: false,
         screen_reason: buildCandidateReason({
-          included,
+          prequalified,
           strongBuyNow: strongBuyNowCandidate,
-          boardCandidate,
           reasons,
           exclusionReason,
           score,
@@ -1883,29 +1633,25 @@ export async function GET(request: Request) {
         updated_at: nowIso,
       }
 
-      scoredHistoryRows.push(makeHistoryRow(row, screenedOn, nowIso))
+      historyRows.push(makeHistoryRow(row, screenedOn, nowIso))
 
-      if (included) {
-        universeRowsToUpsert.push(row)
-        includedInBatch += 1
-        if (strongBuyNowCandidate) strongBuyNowInBatch += 1
-      } else {
-        tickersToDelete.push(metric.ticker)
-      }
+      if (prequalified) prequalifiedInBatch += 1
+      if (strongBuyNowCandidate) strongBuyNowInBatch += 1
 
       if (includeResults) {
         results.push({
           ticker: metric.ticker,
           ok: true,
-          included,
+          included: false,
+          prequalified,
           strongBuyNowCandidate,
           score,
           rawScore: round2(scoreDetails.rawScore),
           tier: strongBuyNowCandidate
             ? "strong_buy_now"
-            : included
-              ? "board_candidate"
-              : "not_included",
+            : prequalified
+              ? "prequalified"
+              : "screened",
           reason: row.screen_reason,
           price: round2(metric.latestClose),
           oneDayReturn: round2(metric.oneDayReturn),
@@ -1915,9 +1661,6 @@ export async function GET(request: Request) {
           relativeReturn5d: round2(metric.relativeReturn5d),
           relativeReturn10d: round2(metric.relativeReturn10d),
           relativeReturn20d: round2(metric.relativeReturn20d),
-          rsPercentile5d: pct.rsPercentile5d,
-          rsPercentile10d: pct.rsPercentile10d,
-          rsPercentile20d: pct.rsPercentile20d,
           benchmarkReturn5d: round2(benchmarkReturns.return5d),
           benchmarkReturn10d: round2(benchmarkReturns.return10d),
           benchmarkReturn20d: round2(benchmarkReturns.return20d),
@@ -1928,7 +1671,6 @@ export async function GET(request: Request) {
           strongCompanyScore: round2(metric.strongCompanyScore),
           passesStrongCompanyGate: metric.passesStrongCompanyGate,
           catalystCount,
-          historyWarning: null,
           scoreBreakdown: {
             quality: round2(scoreDetails.qualityScore),
             fundamental: round2(scoreDetails.fundamentalScore),
@@ -1944,23 +1686,28 @@ export async function GET(request: Request) {
       }
     }
 
-    const deleteErrorCount = await deleteTickersInChunks(candidateUniverseTable, tickersToDelete)
-    const universeUpsertErrorCount = await upsertRowsInChunks(
-      candidateUniverseTable,
-      universeRowsToUpsert,
-      "ticker"
-    )
-
-    const historyRows = [...earlyHistoryRows, ...scoredHistoryRows]
     const historyWriteResult = await upsertRowsInChunksDetailed(
       candidateHistoryTable,
       historyRows,
       "snapshot_key"
     )
 
-    const historyWriteErrors = historyWriteResult.errorCount
-    const removedFromUniverseInBatch = Math.max(0, tickersToDelete.length - deleteErrorCount)
-    failedInBatch += deleteErrorCount + universeUpsertErrorCount
+    if (historyWriteResult.errorCount > 0) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Candidate screening had database write failures",
+          debug: {
+            historyWriteErrors: historyWriteResult.errorCount,
+            historyWriteErrorSamples: historyWriteResult.errors.slice(0, 5),
+            batchStart: safeStart,
+            batchSize: safeBatch,
+            processedCompanies: companyList.length,
+          },
+        },
+        { status: 500 }
+      )
+    }
 
     let retentionMessage = "skipped"
     if (runRetention) {
@@ -1983,9 +1730,7 @@ export async function GET(request: Request) {
         { count: candidateCountValue, error: includedCountError },
         { count: historyCountValue, error: historyCountError },
       ] = await Promise.all([
-        candidateUniverseTable
-          .select("*", { count: "exact", head: true })
-          .eq("included", true),
+        candidateUniverseTable.select("*", { count: "exact", head: true }),
         candidateHistoryTable.select("*", { count: "exact", head: true }),
       ])
 
@@ -2000,57 +1745,24 @@ export async function GET(request: Request) {
         ? to + 1
         : null
 
-    const completedAll = nextStart === null
-
-    console.log(
-      JSON.stringify({
-        scope: "candidates-screen",
-        stage: "batch_finish",
-        start: safeStart,
-        batch: safeBatch,
-        processedCompanies: companyList.length,
-        totalCompanies: totalCountError ? null : totalCompanies,
-        batchFirstTicker,
-        batchLastTicker,
-        nextStart,
-        completedAll,
-        includedInBatch,
-        strongBuyNowInBatch,
-        failedInBatch,
-        historyWriteErrors,
-        keptUniverseOnTransientError,
-        removedFromUniverseInBatch,
-        screenedOn,
-      })
-    )
-
     return Response.json({
       ok: true,
       processedCompanies: companyList.length,
       totalCompanies: totalCountError ? null : totalCompanies,
       start: safeStart,
       batch: safeBatch,
-      batchFirstTicker,
-      batchLastTicker,
       nextStart,
-      completedAll,
       onlyActive,
-      includedInBatch,
+      prequalifiedInBatch,
       strongBuyNowInBatch,
       failedInBatch,
-      historyWriteErrors,
-      historyInserted: Math.max(0, historyRows.length - historyWriteErrors),
-      historyWriteErrorSamples: historyWriteResult.errors.slice(0, 3),
-      keptUniverseOnTransientError,
-      removedFromUniverseInBatch,
-      includedCount: candidateCount,
-      historyCount,
+      historyWriteErrors: 0,
+      historyInserted: historyRows.length,
       retentionCleanup: retentionMessage,
       retainedDays: RETENTION_DAYS,
       screenedOn,
       thresholds: {
         benchmarkTicker: BENCHMARK_TICKER,
-        minBoardScore: MIN_BOARD_SCORE,
         minStrongCompanyScore: MIN_STRONG_COMPANY_SCORE,
         minPrice: MIN_PRICE,
         minAvgVolume20d: MIN_AVG_VOLUME_20D,
@@ -2062,9 +1774,6 @@ export async function GET(request: Request) {
         minStrongBuyReturn20d: MIN_STRONG_BUY_RETURN_20D,
         minRelativeReturn10d: MIN_RELATIVE_RETURN_10D,
         minRelativeReturn20d: MIN_RELATIVE_RETURN_20D,
-        leadershipPercentileMin: LEADERSHIP_PERCENTILE_MIN,
-        leadershipPercentileStrong: LEADERSHIP_PERCENTILE_STRONG,
-        leadershipPercentileElite: LEADERSHIP_PERCENTILE_ELITE,
         maxStrongBuyReturn20d: MAX_STRONG_BUY_RETURN_20D,
         maxExtensionFromSma20Pct: MAX_EXTENSION_FROM_SMA20_PCT,
         minBreakoutClearancePct: MIN_BREAKOUT_CLEARANCE_PCT,
