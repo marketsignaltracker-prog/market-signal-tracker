@@ -521,40 +521,54 @@ export async function GET(request: NextRequest) {
       let batchesThisRun = 0
 
       while (true) {
-        if (shouldStopForRuntime(runStartedAtMs)) {
-          return await checkpointPipeline(
-            supabase,
-            {
-              stage: "screening",
-              status: "running",
-              screen_start: nextStart,
-              screen_next_start: nextStart,
-              screen_batch: batchSize,
-            },
-            {
-              message:
-                "Pipeline checkpointed during screening because runtime was nearly exhausted.",
-              results,
-            }
-          )
-        }
+        if (shouldStopForRuntime(startedAtMs)) {
+  const checkpointAt = nowIso()
+
+  const updated = await patchPipelineState(supabase, {
+    stage: "screening",
+    status: "idle",
+    screen_start: nextStart,
+    screen_next_start: nextStart,
+    screen_batch: batchSize,
+    last_run_finished_at: checkpointAt,
+  })
+
+  return NextResponse.json({
+    ok: true,
+    message:
+      "Pipeline checkpointed during screening because runtime was nearly exhausted.",
+    stage: updated.stage,
+    status: updated.status,
+    nextStart: updated.screen_next_start,
+    batchesThisRun,
+    batchSize,
+    results,
+  })
+}
 
         if (batchesThisRun >= MAX_BATCHES_PER_RUN) {
-          return await checkpointPipeline(
-            supabase,
-            {
-              stage: "screening",
-              status: "running",
-              screen_start: nextStart,
-              screen_next_start: nextStart,
-              screen_batch: batchSize,
-            },
-            {
-              message: "Batch limit reached for this run.",
-              results,
-            }
-          )
-        }
+  const checkpointAt = nowIso()
+
+  const updated = await patchPipelineState(supabase, {
+    stage: "screening",
+    status: "idle",
+    screen_start: nextStart,
+    screen_next_start: nextStart,
+    screen_batch: batchSize,
+    last_run_finished_at: checkpointAt,
+  })
+
+  return NextResponse.json({
+    ok: true,
+    message: "Batch limit reached for this run.",
+    stage: updated.stage,
+    status: updated.status,
+    nextStart: updated.screen_next_start,
+    batchesThisRun,
+    batchSize,
+    results,
+  })
+}
 
         const screenPath = withSearchParams("/api/screen/candidates", {
           start: nextStart,
@@ -630,19 +644,22 @@ export async function GET(request: NextRequest) {
     }
 
     if (state.stage === "filings") {
-      if (shouldStopForRuntime(runStartedAtMs)) {
-        return await checkpointPipeline(
-          supabase,
-          {
-            stage: "filings",
-            status: "running",
-          },
-          {
-            message: "Pipeline checkpointed before filings. Continue next run.",
-            results,
-          }
-        )
-      }
+      if (shouldStopForRuntime(startedAtMs)) {
+  const checkpointAt = nowIso()
+
+  await patchPipelineState(supabase, {
+    stage: "filings",
+    status: "idle",
+    last_run_finished_at: checkpointAt,
+  })
+
+  return NextResponse.json({
+    ok: true,
+    message: "Pipeline checkpointed before filings. Continue on next cron run.",
+    stage: "filings",
+    results,
+  })
+}
 
       const filingsResult = await runStep(
         baseUrl,
@@ -674,19 +691,22 @@ export async function GET(request: NextRequest) {
     }
 
     if (state.stage === "signals") {
-      if (shouldStopForRuntime(runStartedAtMs)) {
-        return await checkpointPipeline(
-          supabase,
-          {
-            stage: "signals",
-            status: "running",
-          },
-          {
-            message: "Pipeline checkpointed before signals. Continue next run.",
-            results,
-          }
-        )
-      }
+      if (shouldStopForRuntime(startedAtMs)) {
+  const checkpointAt = nowIso()
+
+  await patchPipelineState(supabase, {
+    stage: "signals",
+    status: "idle",
+    last_run_finished_at: checkpointAt,
+  })
+
+  return NextResponse.json({
+    ok: true,
+    message: "Pipeline checkpointed before signals. Continue on next cron run.",
+    stage: "signals",
+    results,
+  })
+}
 
 const signalsResult = await runStep(
   baseUrl,
