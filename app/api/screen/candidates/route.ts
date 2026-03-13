@@ -1126,6 +1126,29 @@ async function upsertRowsInChunks(
   return errorCount
 }
 
+async function upsertRowsInChunksDetailed(
+  table: any,
+  rows: CandidateUniverseRow[] | CandidateHistoryRow[],
+  onConflict: string
+) {
+  let errorCount = 0
+  const errors: string[] = []
+
+  for (const chunk of chunkArray(rows, DB_CHUNK_SIZE)) {
+    const { error } = await table.upsert(chunk, { onConflict })
+
+    if (error) {
+      errorCount += chunk.length
+      errors.push(error.message)
+    }
+  }
+
+  return {
+    errorCount,
+    errors,
+  }
+}
+
 async function deleteTickersInChunks(table: any, tickers: string[]) {
   let errorCount = 0
 
@@ -1835,13 +1858,15 @@ export async function GET(request: Request) {
       universeRowsToUpsert,
       "ticker"
     )
+
     const historyRows = [...earlyHistoryRows, ...scoredHistoryRows]
-    const historyWriteErrors = await upsertRowsInChunks(
+    const historyWriteResult = await upsertRowsInChunksDetailed(
       candidateHistoryTable,
       historyRows,
       "snapshot_key"
     )
 
+    const historyWriteErrors = historyWriteResult.errorCount
     const removedFromUniverseInBatch = Math.max(0, tickersToDelete.length - deleteErrorCount)
     failedInBatch += deleteErrorCount + universeUpsertErrorCount
 
@@ -1895,10 +1920,11 @@ export async function GET(request: Request) {
       strongBuyNowInBatch,
       failedInBatch,
       historyWriteErrors,
+      historyInserted: Math.max(0, historyRows.length - historyWriteErrors),
+      historyWriteErrorSamples: historyWriteResult.errors.slice(0, 3),
       keptUniverseOnTransientError,
       removedFromUniverseInBatch,
       includedCount: candidateCount,
-      historyInserted: Math.max(0, historyRows.length - historyWriteErrors),
       historyCount,
       retentionCleanup: retentionMessage,
       retainedDays: RETENTION_DAYS,
