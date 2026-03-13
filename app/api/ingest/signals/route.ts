@@ -1464,32 +1464,51 @@ function maybeCreateCandidateTechnicalBase(
 ): BaseSignalData | null {
   const candidateScore = Number(candidate.candidate_score || 0)
   const included = candidate.included === true
-  const hasBreakout = candidate.breakout_20d === true || price.breakout20d || price.breakout52w
-  const hasTrend = candidate.above_sma_20 === true || price.trendAligned || price.above50dma
-  const strongVolume = (candidate.volume_ratio ?? 0) >= 2 || (price.volumeRatio ?? 0) >= 2
+
+  const hasBreakout =
+    candidate.breakout_20d === true ||
+    candidate.breakout_10d === true ||
+    price.breakout20d ||
+    price.breakout52w
+
+  const hasTrend =
+    candidate.above_sma_20 === true ||
+    price.trendAligned ||
+    price.above50dma
+
+  const strongVolume =
+    (candidate.volume_ratio ?? 0) >= 1.5 ||
+    (price.volumeRatio ?? 0) >= 1.5
+
   const strongMomentum =
-    (candidate.return_20d ?? 0) >= 18 ||
-    (candidate.return_5d ?? 0) >= 6 ||
-    (price.return20d ?? 0) >= 18 ||
-    (price.return5d ?? 0) >= 6
+    (candidate.return_20d ?? 0) >= 10 ||
+    (candidate.return_5d ?? 0) >= 3 ||
+    (price.return20d ?? 0) >= 10 ||
+    (price.return5d ?? 0) >= 3
 
-  const technicalSetup =
+  const supportiveSetup =
     included ||
-    (candidateScore >= MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL &&
-      hasBreakout &&
+    candidateScore >= MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL ||
+    (
+      candidateScore >= 72 &&
       hasTrend &&
-      strongVolume &&
-      strongMomentum)
+      (hasBreakout || strongVolume || strongMomentum)
+    )
 
-  if (!technicalSetup) return null
+  if (!supportiveSetup) return null
 
-  let baseScore = included ? 66 : 62
-  if (candidateScore >= 98) baseScore = 74
-  else if (candidateScore >= 95) baseScore = 71
-  else if (candidateScore >= 90) baseScore = 68
+  let baseScore = included ? 68 : 60
 
-  if (hasBreakout) baseScore += 3
-  if (strongVolume) baseScore += 2
+  if (candidateScore >= 98) baseScore = 76
+  else if (candidateScore >= 95) baseScore = 73
+  else if (candidateScore >= 90) baseScore = 70
+  else if (candidateScore >= 85) baseScore = 67
+  else if (candidateScore >= 78) baseScore = 64
+
+  if (hasBreakout) baseScore += 4
+  if (hasTrend) baseScore += 3
+  if (strongVolume) baseScore += 3
+  if (strongMomentum) baseScore += 3
   if (earnings.hasSignal) baseScore += 2
 
   const title =
@@ -1497,13 +1516,16 @@ function maybeCreateCandidateTechnicalBase(
       ? "Elite technical strong-buy setup"
       : candidateScore >= 90
         ? "High-conviction technical strong-buy setup"
-        : "Technical strong-buy setup"
+        : candidateScore >= 80
+          ? "Constructive technical strong-buy setup"
+          : "Technical breakout candidate"
 
   const summaryParts = uniqueStrings([
     candidate.screen_reason,
-    hasBreakout ? "Breakout behavior is present" : null,
-    hasTrend ? "Trend support is intact" : null,
-    strongVolume ? "Volume is elevated" : null,
+    hasBreakout ? "breakout behavior is present" : null,
+    hasTrend ? "trend support is intact" : null,
+    strongVolume ? "volume is elevated" : null,
+    strongMomentum ? "momentum is constructive" : null,
     earnings.hasSignal ? "earnings data also looks supportive" : null,
   ])
 
@@ -1511,11 +1533,11 @@ function maybeCreateCandidateTechnicalBase(
     signal_type: "Technical Strong Buy",
     signal_source: "breakout",
     bias: "Bullish",
-    score: clamp(baseScore, 60, 80),
+    score: clamp(baseScore, 58, 82),
     title,
     summary: summaryParts.length
-      ? `Technical screen is highly constructive: ${summaryParts.join(", ")}.`
-      : "Technical screen and market action point to a highly constructive setup.",
+      ? `Technical screen is constructive: ${summaryParts.join(", ")}.`
+      : "Technical screen and market action point to a constructive setup.",
   }
 }
 
@@ -1819,19 +1841,35 @@ function isEligibleStrongBuySignal(params: {
   const candidateScore = Number(params.candidate?.candidate_score || 0)
   const candidateIncluded = params.candidate?.included === true
   const strongPrice = hasStrongPositivePriceConfirmation(params.price)
+  const decentPrice =
+    (params.price.relativeStrength20d ?? 0) >= 0 &&
+    (params.price.return5d ?? 0) >= -2 &&
+    (
+      params.price.confirmed ||
+      params.price.above50dma ||
+      params.price.trendAligned ||
+      (params.price.volumeRatio ?? 0) >= 1.25
+    )
+
   const freshEnough = (params.ageDays ?? 999) <= MAX_SIGNAL_AGE_DAYS
 
   if (!freshEnough) return false
-  if ((params.price.relativeStrength20d ?? 0) < 2) return false
-  if ((params.price.return5d ?? 0) < -1) return false
 
   if (params.base.signal_source === "breakout") {
     return (
-      strongPrice &&
-      (candidateIncluded ||
-        candidateScore >= MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL ||
-        ((params.candidate?.breakout_20d === true || params.price.breakout20d) &&
-          (params.candidate?.volume_ratio ?? params.price.volumeRatio ?? 0) >= 1.75))
+      candidateIncluded ||
+      candidateScore >= MIN_CANDIDATE_SCORE_FOR_SYNTHETIC_SIGNAL ||
+      (
+        candidateScore >= 72 &&
+        decentPrice &&
+        (
+          params.candidate?.breakout_20d === true ||
+          params.candidate?.breakout_10d === true ||
+          params.price.breakout20d ||
+          params.price.breakout52w ||
+          (params.candidate?.volume_ratio ?? params.price.volumeRatio ?? 0) >= 1.5
+        )
+      )
     )
   }
 
@@ -1840,14 +1878,18 @@ function isEligibleStrongBuySignal(params: {
 
     const buyValue = getInsiderBuyValue(params.insider)
     const hasMeaningfulInsiderSize =
-      (buyValue ?? 0) >= 100_000 || (params.insider.shares ?? 0) >= 10_000
+      (buyValue ?? 0) >= 50_000 || (params.insider.shares ?? 0) >= 5_000
 
     return (
-      strongPrice &&
+      decentPrice &&
       hasMeaningfulInsiderSize &&
-      ((params.clusterInfo?.clusterSize ?? 0) >= 2 ||
-        (buyValue ?? 0) >= 250_000 ||
-        isSeniorRole(params.insider.role))
+      (
+        (params.clusterInfo?.clusterSize ?? 0) >= 2 ||
+        (buyValue ?? 0) >= 100_000 ||
+        isSeniorRole(params.insider.role) ||
+        candidateIncluded ||
+        candidateScore >= 85
+      )
     )
   }
 
@@ -1857,7 +1899,7 @@ function isEligibleStrongBuySignal(params: {
     form === "13D/A" ||
     form === "SC 13D/A"
   ) {
-    return strongPrice
+    return strongPrice || (decentPrice && candidateScore >= 80)
   }
 
   if (
@@ -1866,15 +1908,15 @@ function isEligibleStrongBuySignal(params: {
     form === "13G/A" ||
     form === "SC 13G/A"
   ) {
-    return strongPrice && (candidateIncluded || candidateScore >= 90)
+    return decentPrice && (candidateIncluded || candidateScore >= 80)
   }
 
   if (form === "8-K" || form === "6-K") {
-    return strongPrice && isPositive8kCatalyst(params.catalystType)
+    return isPositive8kCatalyst(params.catalystType) && (strongPrice || decentPrice)
   }
 
   if (form === "10-Q" || form === "10-K" || params.base.signal_source === "earnings") {
-    return strongPrice && params.earnings.hasSignal
+    return params.earnings.hasSignal && (strongPrice || decentPrice || candidateScore >= 80)
   }
 
   return false
