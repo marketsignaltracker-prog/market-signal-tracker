@@ -325,9 +325,21 @@ async function tryAcquireRunLock(
   currentState: PipelineStateRow,
   runStartedIso: string
 ): Promise<{ acquired: boolean; state: PipelineStateRow }> {
+  const runStartedRecently = isRecentRun(
+    currentState.last_run_started_at,
+    RUN_LOCK_WINDOW_MS
+  )
+
+  const finishedAfterStart =
+    currentState.last_run_started_at &&
+    currentState.last_run_finished_at &&
+    new Date(currentState.last_run_finished_at).getTime() >=
+      new Date(currentState.last_run_started_at).getTime()
+
   if (
     currentState.status === "running" &&
-    isRecentRun(currentState.last_run_started_at, RUN_LOCK_WINDOW_MS)
+    runStartedRecently &&
+    !finishedAfterStart
   ) {
     return { acquired: false, state: currentState }
   }
