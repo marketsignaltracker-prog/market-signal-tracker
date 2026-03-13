@@ -289,62 +289,55 @@ function isProbablyCommonStockTicker(ticker: string) {
 
   const t = ticker.trim().toUpperCase()
 
-  // obvious non-common-share / structured symbols
+  // Plain common-stock symbols should always pass.
+  // Examples: R, T, F, AMD, PVH, PTY, PZG
+  if (/^[A-Z]{1,5}$/.test(t)) {
+    return true
+  }
+
+  // obvious structured / non-common-share symbols
   if (t.includes("^")) return false
   if (t.includes("/")) return false
 
-  // preferred shares and series classes like ABC-PA, ABC.PR.A, etc.
-  if (/-P[A-Z0-9]*$/.test(t)) return false
-  if (/\.P[R]?[A-Z0-9]*$/.test(t)) return false
+  // preferred-share style suffixes
+  // examples: ABC-PA, ABC-PB, ABC.PR.A, ABC.PRA
+  if (/-P[A-Z0-9]+$/.test(t)) return false
+  if (/\.P[R]?[A-Z0-9]+$/.test(t)) return false
+
+  // warrants
+  // examples: ABC-WT, ABC-WS, ABC.WT
+  if (/-WT$/.test(t)) return false
+  if (/-WTS$/.test(t)) return false
+  if (/-WS$/.test(t)) return false
+  if (/\.WT$/.test(t)) return false
+  if (/\.WTS$/.test(t)) return false
+  if (/\.WS$/.test(t)) return false
+
+  // rights
+  if (/-RT$/.test(t)) return false
+  if (/-RIGHT$/.test(t)) return false
+  if (/-RIGHTS$/.test(t)) return false
+  if (/\.RT$/.test(t)) return false
+  if (/\.RGT$/.test(t)) return false
+
+  // units
+  if (/-U$/.test(t)) return false
+  if (/\.U$/.test(t)) return false
+
+  // textual preferred indicators
   if (/PREFERRED/i.test(t)) return false
   if (/PREF/i.test(t)) return false
-
-  // warrants / rights / units only when explicitly suffixed
-  if (/-WT$/.test(t) || /-WTS$/.test(t) || /-WS$/.test(t)) return false
-  if (/\.WT$/.test(t) || /\.WTS$/.test(t) || /\.WS$/.test(t)) return false
-  if (/-RT$/.test(t) || /-RIGHT$/.test(t) || /-RIGHTS$/.test(t)) return false
-  if (/\.RT$/.test(t) || /\.RGT$/.test(t)) return false
-  if (/-U$/.test(t) || /\.U$/.test(t)) return false
 
   // test symbols
   if (/TEST/i.test(t)) return false
 
-  return true
-}
-
-function calcPercentChange(current: number, prior: number) {
-  if (!prior || prior <= 0) return 0
-  return ((current - prior) / prior) * 100
-}
-
-function getBenchmarkReturns(candles: any[]): BenchmarkReturns {
-  const clean = (candles || [])
-    .filter(
-      (c) =>
-        c.close !== null &&
-        c.close !== undefined &&
-        Number.isFinite(Number(c.close))
-    )
-    .sort((a, b) => +new Date(a.date) - +new Date(b.date))
-
-  if (clean.length < 22) {
-    return {
-      return5d: 0,
-      return10d: 0,
-      return20d: 0,
-    }
+  // fallback: allow normal-looking tickers that are letters/numbers with optional dash/dot,
+  // but block the obvious structured patterns above
+  if (/^[A-Z0-9.-]{1,10}$/.test(t)) {
+    return true
   }
 
-  const latest = clean[clean.length - 1]
-  const fiveAgo = clean[clean.length - 6]
-  const tenAgo = clean[clean.length - 11]
-  const twentyAgo = clean[clean.length - 21]
-
-  return {
-    return5d: calcPercentChange(Number(latest.close || 0), Number(fiveAgo?.close || 0)),
-    return10d: calcPercentChange(Number(latest.close || 0), Number(tenAgo?.close || 0)),
-    return20d: calcPercentChange(Number(latest.close || 0), Number(twentyAgo?.close || 0)),
-  }
+  return false
 }
 
 function calculatePercentile(sortedValues: number[], value: number) {
