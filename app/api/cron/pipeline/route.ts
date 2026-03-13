@@ -46,15 +46,6 @@ type PipelineStateRow = {
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
-/**
- * Tuning knobs
- *
- * Start here, then tune with real timings:
- * - screening batch: 400-1000
- * - batches per run: 6-12
- * - filings batch: 1000-5000
- * - signals limit: depends on downstream cost
- */
 const DEFAULT_SCREEN_BATCH = 500
 const MAX_SCREEN_BATCH = 1000
 
@@ -62,33 +53,11 @@ const DEFAULT_FILINGS_BATCH = 2000
 const DEFAULT_SIGNALS_LIMIT = 3000
 const DEFAULT_SIGNALS_LOOKBACK_DAYS = 30
 
-/**
- * Allow more useful work per invocation.
- * Keep a buffer so we can checkpoint before platform timeout.
- */
 const MAX_PIPELINE_RUNTIME_MS = 285_000
 const RUNTIME_SAFETY_BUFFER_MS = 12_000
-
-/**
- * Old route only did 2 screening batches, which is a huge reason
- * the whole pipeline drags out over many cron ticks.
- */
 const MAX_BATCHES_PER_RUN = 8
-
-/**
- * Checkpoint every N successful screening batches instead of every batch.
- * This reduces DB writes substantially.
- */
 const SCREENING_CHECKPOINT_EVERY = 3
-
-/**
- * Used to detect active run ownership window.
- */
 const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
-
-/**
- * Guard against a single internal step hanging forever.
- */
 const STEP_TIMEOUT_MS = 120_000
 
 function nowIso() {
@@ -298,11 +267,6 @@ async function getPipelineState(supabase: any): Promise<PipelineStateRow> {
   return inserted as PipelineStateRow
 }
 
-/**
- * Update row and then re-read it.
- * This avoids depending on update(...).select().single()/maybeSingle()
- * response-shape semantics, which are often where 406 weirdness comes from.
- */
 async function patchPipelineState(
   supabase: any,
   patch: Partial<PipelineStateRow>
@@ -331,8 +295,13 @@ async function patchPipelineState(
 }
 
 /**
- * Acquire lock with a conditional update.
- * If no row was updated, treat it as "lock not acquired" rather than failure.
+ * Simple, reliable lock:
+ * 1. Read current row
+ * 2. If still running recently, do not acquire
+ * 3. Otherwise update the row normally
+ *
+ * This avoids the broken .or(...) PATCH filter issue you hit.
+ * If you later want true atomic locking, move this into a DB RPC/function.
  */
 async function tryAcquireRunLock(
   supabase: any,
@@ -353,61 +322,18 @@ async function tryAcquireRunLock(
       ? "companies"
       : currentState.stage
 
-  const staleBefore = new Date(Date.now() - RUN_LOCK_WINDOW_MS).toISOString()
-
-  const { data, error } = await supabase
-    .from("pipeline_state")
-    .update({
-      status: "running",
-      stage: nextStage,
-      last_run_started_at: runStartedIso,
-      last_run_finished_at: null,
-      last_error: null,
-      last_error_at: null,
-      cycle_started_at: currentState.cycle_started_at ?? runStartedIso,
-      screen_batch: clampScreenBatch(currentState.screen_batch),
-    })
-    .eq("job_name", PIPELINE_JOB_NAME)
-    .or(
-      [
-        "status.neq.running",
-        `last_run_started_at.lt.${staleBefore}`,
-        "last_run_started_at.is.null",
-      ].join(",")
-    )
-    .select("job_name")
-
-  if (error) {
-    throw new Error(`Failed to acquire pipeline lock: ${error.message}`)
-  }
-
-  const acquired = Array.isArray(data) && data.length > 0
-  const refreshedState = await getPipelineState(supabase)
-
-  return { acquired, state: refreshedState }
-}
-
-async function failPipeline(
-  supabase: any,
-  message: string
-): Promise<NextResponse> {
-  const failedAt = nowIso()
-
-  await patchPipelineState(supabase, {
-    stage: "error",
-    status: "error",
-    last_error: message,
-    last_error_at: failedAt,
-    last_run_finished_at: failedAt,
+  const updatedState = await patchPipelineState(supabase, {
+    status: "running",
+    stage: nextStage,
+    last_run_started_at: runStartedIso,
+    last_run_finished_at: null,
+    last_error: null,
+    last_error_at: null,
+    cycle_started_at: currentState.cycle_started_at ?? runStartedIso,
+    screen_batch: clampScreenBatch(currentState.screen_batch),
   })
 
-  return NextResponse.json(
-    {
-      ok: false,
-      error: message,
-    },
-    { status: 500 }
-  )
+  return { acquired: true, state: updatedState }
 }
 
 async function failPipelineForStep(
@@ -746,16 +672,18 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      const completedAt = nowIso()
+
       state = await patchPipelineState(supabase, {
         stage: "complete",
         status: "success",
         screen_start: 0,
         screen_next_start: 0,
         screen_batch: clampScreenBatch(state.screen_batch),
-        signals_completed_at: nowIso(),
-        cycle_completed_at: nowIso(),
-        last_success_at: nowIso(),
-        last_run_finished_at: nowIso(),
+        signals_completed_at: completedAt,
+        cycle_completed_at: completedAt,
+        last_success_at: completedAt,
+        last_run_finished_at: completedAt,
       })
     }
 
