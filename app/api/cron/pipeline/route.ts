@@ -58,8 +58,10 @@ const DEFAULT_STEP_TIMEOUT_MS = 240_000
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
 
-const MAX_BATCHES_PER_RUN = 6
-const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
+// IMPORTANT:
+// The old code hard-stopped after 6 batches, which meant only 1800 names max/run.
+// This version removes that cap and lets runtime budget decide how many batches can run.
+const RUN_LOCK_WINDOW_MS = 10 * 60 * 1000
 
 function nowIso() {
   return new Date().toISOString()
@@ -429,6 +431,7 @@ export async function GET(request: NextRequest) {
 
       let screeningComplete = false
       let batchesThisRun = 0
+      let screenedCompaniesThisRun = 0
 
       while (!screeningComplete) {
         if (shouldStopForRuntime(runStartedAtMs)) {
@@ -451,30 +454,7 @@ export async function GET(request: NextRequest) {
             status: updated.status,
             nextStart: updated.screen_next_start,
             batchesThisRun,
-            batchSize,
-            results,
-          })
-        }
-
-        if (batchesThisRun >= MAX_BATCHES_PER_RUN) {
-          const checkpointAt = nowIso()
-
-          const updated = await patchPipelineState(supabase, {
-            stage: "screening",
-            status: "idle",
-            screen_start: nextStart,
-            screen_next_start: nextStart,
-            screen_batch: batchSize,
-            last_run_finished_at: checkpointAt,
-          })
-
-          return NextResponse.json({
-            ok: true,
-            message: "Batch limit reached for this run.",
-            stage: updated.stage,
-            status: updated.status,
-            nextStart: updated.screen_next_start,
-            batchesThisRun,
+            screenedCompaniesThisRun,
             batchSize,
             results,
           })
@@ -516,6 +496,12 @@ export async function GET(request: NextRequest) {
           typeof screenData?.totalCompanies === "number"
             ? screenData.totalCompanies
             : null
+        const processedCompanies =
+          typeof screenData?.processedCompanies === "number"
+            ? screenData.processedCompanies
+            : 0
+
+        screenedCompaniesThisRun += processedCompanies
 
         state = await patchPipelineState(supabase, {
           stage: returnedNextStart === null ? "filings" : "screening",
@@ -525,6 +511,19 @@ export async function GET(request: NextRequest) {
           screen_total: returnedTotalCompanies,
           screen_next_start: returnedNextStart,
         })
+
+        console.log(
+          JSON.stringify({
+            scope: "pipeline",
+            stage: "screening_batch_complete",
+            batchNumber: batchesThisRun,
+            requestedStart: nextStart,
+            returnedNextStart,
+            processedCompanies,
+            screenedCompaniesThisRun,
+            totalCompanies: returnedTotalCompanies,
+          })
+        )
 
         if (returnedNextStart === null) {
           screeningComplete = true
