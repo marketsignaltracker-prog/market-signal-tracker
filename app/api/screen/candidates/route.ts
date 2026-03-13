@@ -340,6 +340,11 @@ function isProbablyCommonStockTicker(ticker: string) {
   return false
 }
 
+function calcPercentChange(current: number, prior: number) {
+  if (!prior || prior <= 0) return 0
+  return ((current - prior) / prior) * 100
+}
+
 function getBenchmarkReturns(candles: any[]): BenchmarkReturns {
 
 function calculatePercentile(sortedValues: number[], value: number) {
