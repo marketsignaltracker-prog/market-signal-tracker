@@ -1537,13 +1537,10 @@ export async function GET(request: Request) {
     const includeCounts = (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
     const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
 
-    // NEW:
-    // processAll=true will keep paging until all companies are screened.
-    // processAll=false preserves your old one-batch behavior.
-    const processAll = (searchParams.get("processAll") || "true").toLowerCase() !== "false"
-
     const safeStart = Math.max(0, start)
     const safeBatch = Math.min(Math.max(1, batch), MAX_BATCH)
+    const from = safeStart
+    const to = safeStart + safeBatch - 1
 
     const now = new Date()
     const nowIso = now.toISOString()
@@ -1571,424 +1568,399 @@ export async function GET(request: Request) {
     const candidateUniverseTable = supabase.from("candidate_universe") as any
     const candidateHistoryTable = supabase.from("candidate_screen_history") as any
 
+    let companyQuery = companiesTable
+      .select("ticker, cik, name, is_active")
+      .not("cik", "is", null)
+      .order("ticker", { ascending: true })
+      .range(from, to)
+
     let countQuery = companiesTable
       .select("*", { count: "exact", head: true })
       .not("cik", "is", null)
 
     if (onlyActive) {
+      companyQuery = companyQuery.eq("is_active", true)
       countQuery = countQuery.eq("is_active", true)
     }
 
-    const { count: totalCompanies, error: totalCountError } = await countQuery
+    const [
+      { data: companies, error: companiesError },
+      { count: totalCompanies, error: totalCountError },
+    ] = await Promise.all([companyQuery, countQuery])
 
-    if (totalCountError) {
+    if (companiesError) {
       return Response.json(
-        { ok: false, error: totalCountError.message },
+        { ok: false, error: companiesError.message },
         { status: 500 }
       )
     }
 
-    const total = totalCompanies ?? 0
+    const companyList = (companies || []) as CompanyRow[]
 
-    let currentStart = safeStart
-    const finalResults: Array<Record<string, any>> = []
+    const batchFirstTicker =
+      companyList.length > 0 ? normalizeTicker(companyList[0]?.ticker) : null
+    const batchLastTicker =
+      companyList.length > 0 ? normalizeTicker(companyList[companyList.length - 1]?.ticker) : null
 
-    let processedCompanies = 0
-    let includedInBatchTotal = 0
-    let strongBuyNowInBatchTotal = 0
-    let failedInBatchTotal = 0
-    let historyWriteErrorsTotal = 0
-    let historyInsertedTotal = 0
-    let keptUniverseOnTransientErrorTotal = 0
-    let removedFromUniverseInBatchTotal = 0
+    console.log(
+      JSON.stringify({
+        scope: "candidates-screen",
+        stage: "batch_start",
+        start: safeStart,
+        batch: safeBatch,
+        from,
+        to,
+        onlyActive,
+        fetchedCompanies: companyList.length,
+        totalCompanies: totalCountError ? null : totalCompanies,
+        batchFirstTicker,
+        batchLastTicker,
+        screenedOn,
+      })
+    )
 
-    while (currentStart < total) {
-      const from = currentStart
-      const to = Math.min(currentStart + safeBatch - 1, total - 1)
+    const preparation = await mapWithConcurrency(
+      companyList,
+      TICKER_CONCURRENCY,
+      async (company) =>
+        prepareTickerForScoring(company, benchmarkReturns, nowIso, includeResults)
+    )
 
-      let companyQuery = companiesTable
-        .select("ticker, cik, name, is_active")
-        .not("cik", "is", null)
-        .order("ticker", { ascending: true })
-        .range(from, to)
+    const results: Array<Record<string, any>> = []
+    const metricRows: CandidateMetricRow[] = []
 
-      if (onlyActive) {
-        companyQuery = companyQuery.eq("is_active", true)
+    let failedInBatch = 0
+    let keptUniverseOnTransientError = 0
+
+    const tickersToDelete: string[] = []
+    const earlyHistoryRows: CandidateHistoryRow[] = []
+
+    for (const item of preparation) {
+      if (item.kind === "metric") {
+        metricRows.push(item.metric)
+        if (item.result && includeResults) results.push(item.result)
+        continue
       }
 
-      const { data: companies, error: companiesError } = await companyQuery
+      if (item.kind === "error") {
+        failedInBatch += 1
 
-      if (companiesError) {
-        return Response.json(
-          { ok: false, error: companiesError.message },
-          { status: 500 }
+        if (item.errorKind === "transient_yahoo_error") {
+          keptUniverseOnTransientError += 1
+        }
+
+        if (item.removeTicker) {
+          tickersToDelete.push(item.removeTicker)
+        }
+
+        if (item.historyRow) {
+          earlyHistoryRows.push(makeHistoryRow(item.historyRow, screenedOn, nowIso))
+        }
+
+        if (item.result && includeResults) {
+          results.push(item.result)
+        }
+
+        continue
+      }
+
+      if (item.kind === "final_row") {
+        if (item.removeTicker) tickersToDelete.push(item.removeTicker)
+        earlyHistoryRows.push(makeHistoryRow(item.row, screenedOn, nowIso))
+        if (item.result && includeResults) results.push(item.result)
+      }
+    }
+
+    const percentileMap = buildRelativeStrengthPercentileMap(
+      metricRows.map((row) => ({
+        ticker: row.ticker,
+        relativeReturn5d: row.relativeReturn5d,
+        relativeReturn10d: row.relativeReturn10d,
+        relativeReturn20d: row.relativeReturn20d,
+      }))
+    )
+
+    const universeRowsToUpsert: CandidateUniverseRow[] = []
+    const scoredHistoryRows: CandidateHistoryRow[] = []
+    let includedInBatch = 0
+    let strongBuyNowInBatch = 0
+
+    for (const metric of metricRows) {
+      const pct = percentileMap.get(metric.ticker) ?? {
+        rsPercentile5d: 0,
+        rsPercentile10d: 0,
+        rsPercentile20d: 0,
+      }
+
+      const scoreDetails = calculateCandidateScore({
+        latestClose: metric.latestClose,
+        marketCap: metric.marketCap,
+        avgVolume20d: metric.avgVolume20d,
+        avgDollarVolume20d: metric.avgDollarVolume20d,
+        return5d: metric.return5d,
+        return10d: metric.return10d,
+        return20d: metric.return20d,
+        relativeReturn5d: metric.relativeReturn5d,
+        relativeReturn10d: metric.relativeReturn10d,
+        relativeReturn20d: metric.relativeReturn20d,
+        rsPercentile5d: pct.rsPercentile5d,
+        rsPercentile10d: pct.rsPercentile10d,
+        rsPercentile20d: pct.rsPercentile20d,
+        oneDayReturn: metric.oneDayReturn,
+        volumeRatio: metric.volumeRatio,
+        breakout20d: metric.breakout20d,
+        breakout10d: metric.breakout10d,
+        nearHigh20: metric.nearHigh20,
+        aboveSma20: metric.aboveSma20,
+        shortTermTrendUp: metric.shortTermTrendUp,
+        sma10: metric.sma10,
+        sma20: metric.sma20,
+        high20: metric.high20,
+        breakoutClearancePct: metric.breakoutClearancePct,
+        extensionFromSma20Pct: metric.extensionFromSma20Pct,
+        closeInDayRange: metric.closeInDayRange,
+        passesPrice: metric.passesPrice,
+        passesVolume: metric.passesVolume,
+        passesDollarVolume: metric.passesDollarVolume,
+        passesMarketCap: metric.passesMarketCap,
+        strongCompanyScore: metric.strongCompanyScore,
+        passesStrongCompanyGate: metric.passesStrongCompanyGate,
+        speculativePenalty: metric.speculativePenalty,
+      })
+
+      const score = scoreDetails.candidateScore
+      const catalystCount = scoreDetails.catalystCount
+
+      const strongBuyNowCandidate =
+        metric.passesStrongCompanyGate &&
+        metric.strongCompanyScore >= MIN_STRONG_COMPANY_SCORE &&
+        metric.passesPrice &&
+        metric.passesVolume &&
+        metric.passesDollarVolume &&
+        metric.passesMarketCap &&
+        metric.breakout20d &&
+        metric.aboveSma20 &&
+        metric.shortTermTrendUp &&
+        metric.oneDayReturn >= -0.5 &&
+        metric.return10d >= MIN_STRONG_BUY_RETURN_10D &&
+        metric.return20d >= MIN_STRONG_BUY_RETURN_20D &&
+        metric.return20d <= MAX_STRONG_BUY_RETURN_20D &&
+        metric.relativeReturn10d >= MIN_RELATIVE_RETURN_10D &&
+        metric.relativeReturn20d >= MIN_RELATIVE_RETURN_20D &&
+        metric.volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO &&
+        metric.breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT &&
+        metric.closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE &&
+        metric.extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT &&
+        score >= MIN_STRONG_BUY_SCORE &&
+        catalystCount >= MIN_CATALYST_COUNT
+
+      const boardCandidate =
+        metric.passesPrice &&
+        metric.passesVolume &&
+        metric.passesDollarVolume &&
+        metric.passesMarketCap &&
+        metric.aboveSma20 &&
+        metric.return20d > 0 &&
+        metric.relativeReturn20d > 0 &&
+        (
+          (
+            metric.passesStrongCompanyGate &&
+            metric.strongCompanyScore >= MIN_STRONG_COMPANY_SCORE &&
+            score >= MIN_BOARD_SCORE
+          ) ||
+          (
+            metric.strongCompanyScore >= 55 &&
+            score >= MIN_BOARD_SCORE + 2 &&
+            pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN &&
+            (metric.breakout20d || metric.nearHigh20)
+          )
         )
+
+      const included = boardCandidate
+      const reasons: string[] = []
+
+      if (metric.passesStrongCompanyGate) reasons.push("strong underlying company")
+      if (metric.strongCompanyScore >= 75) reasons.push("high fundamental quality")
+      reasons.push(...metric.strongCompanyReasons)
+
+      if (metric.passesPrice) reasons.push(`price >= $${MIN_PRICE}`)
+      if (metric.passesVolume) reasons.push("20d avg volume")
+      if (metric.passesDollarVolume) reasons.push("20d dollar volume")
+      if (metric.passesMarketCap) reasons.push("market cap")
+      if (metric.oneDayReturn > 0) reasons.push("positive day")
+      if (metric.return5d >= 2) reasons.push("5d momentum")
+      if (metric.return10d >= MIN_STRONG_BUY_RETURN_10D) reasons.push("10d momentum")
+      if (metric.return20d >= MIN_STRONG_BUY_RETURN_20D) reasons.push("20d momentum")
+      if (metric.relativeReturn5d > 0) reasons.push("beats SPY over 5d")
+      if (metric.relativeReturn10d >= MIN_RELATIVE_RETURN_10D) reasons.push("beats SPY over 10d")
+      if (metric.relativeReturn20d >= MIN_RELATIVE_RETURN_20D) reasons.push("beats SPY over 20d")
+      if (pct.rsPercentile10d >= LEADERSHIP_PERCENTILE_MIN) reasons.push("top relative leader over 10d")
+      if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN) reasons.push("top relative leader over 20d")
+      if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_STRONG) reasons.push("strong market leader")
+      if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_ELITE) reasons.push("elite market leader")
+      if (metric.return20d <= MAX_STRONG_BUY_RETURN_20D) reasons.push("not overextended on 20d move")
+      if (metric.volumeRatio >= 1.25) reasons.push("volume expansion")
+      if (metric.volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO) reasons.push("strong volume expansion")
+      if (metric.breakout10d) reasons.push("10d breakout")
+      if (metric.breakout20d) reasons.push("20d breakout")
+      if (metric.nearHigh20) reasons.push("trading near 20d high")
+      if (metric.breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT) reasons.push("clean breakout clearance")
+      if (metric.aboveSma20) reasons.push("above 20d average")
+      if (metric.shortTermTrendUp) reasons.push("short-term trend acceleration")
+      if (metric.closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE) reasons.push("strong close in daily range")
+      if (metric.extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT) reasons.push("not too extended from 20d average")
+      if (scoreDetails.highConvictionSetup) reasons.push("high-conviction setup")
+      if (scoreDetails.eliteSetup) reasons.push("elite setup")
+
+      let exclusionReason = ""
+      if (!metric.passesPrice) {
+        exclusionReason = `Below $${MIN_PRICE} minimum price`
+      } else if (!metric.passesVolume) {
+        exclusionReason = "Below minimum average volume"
+      } else if (!metric.passesDollarVolume) {
+        exclusionReason = "Below minimum dollar volume"
+      } else if (!metric.passesMarketCap) {
+        exclusionReason = "Below minimum market cap"
+      } else if (!metric.aboveSma20) {
+        exclusionReason = "Below 20-day moving average"
+      } else if (metric.return20d <= 0) {
+        exclusionReason = "Negative 20-day momentum"
+      } else if (metric.relativeReturn20d <= 0) {
+        exclusionReason = "Underperforming SPY over 20d"
+      } else if (
+        !metric.passesStrongCompanyGate &&
+        !(metric.strongCompanyScore >= 55 && pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN)
+      ) {
+        exclusionReason = "Failed quality / leadership gate"
+      } else if (score < MIN_BOARD_SCORE) {
+        exclusionReason = `Score below board threshold (${MIN_BOARD_SCORE})`
+      } else {
+        exclusionReason = "Did not qualify for board"
       }
 
-      const companyList = (companies || []) as CompanyRow[]
-
-      if (!companyList.length) {
-        break
+      const row: CandidateUniverseRow = {
+        ticker: metric.ticker,
+        cik: metric.company.cik,
+        name: metric.company.name,
+        price: round2(metric.latestClose),
+        market_cap: metric.marketCap || null,
+        pe_ratio: round2(metric.snapshot.peRatio),
+        pe_forward: round2(metric.snapshot.forwardPe),
+        pe_type: metric.snapshot.peType,
+        sector: metric.snapshot.sector,
+        industry: metric.snapshot.industry,
+        business_description: metric.snapshot.businessDescription,
+        avg_volume_20d: round2(metric.avgVolume20d),
+        avg_dollar_volume_20d: round2(metric.avgDollarVolume20d),
+        one_day_return: round2(metric.oneDayReturn),
+        return_5d: round2(metric.return5d),
+        return_10d: round2(metric.return10d),
+        return_20d: round2(metric.return20d),
+        relative_strength_20d: round2(metric.relative_strength_20d),
+        volume_ratio: round2(metric.volumeRatio),
+        breakout_20d: metric.breakout20d,
+        breakout_10d: metric.breakout10d,
+        above_sma_20: metric.aboveSma20,
+        breakout_clearance_pct: round2(metric.breakoutClearancePct),
+        extension_from_sma20_pct: round2(metric.extensionFromSma20Pct),
+        close_in_day_range: round2(metric.closeInDayRange),
+        catalyst_count: catalystCount,
+        passes_price: metric.passesPrice,
+        passes_volume: metric.passesVolume,
+        passes_dollar_volume: metric.passesDollarVolume,
+        passes_market_cap: metric.passesMarketCap,
+        candidate_score: score,
+        included,
+        screen_reason: buildCandidateReason({
+          included,
+          strongBuyNow: strongBuyNowCandidate,
+          boardCandidate,
+          reasons,
+          exclusionReason,
+          score,
+        }),
+        last_screened_at: nowIso,
+        updated_at: nowIso,
       }
 
-      processedCompanies += companyList.length
+      scoredHistoryRows.push(makeHistoryRow(row, screenedOn, nowIso))
 
-      const preparation = await mapWithConcurrency(
-        companyList,
-        TICKER_CONCURRENCY,
-        async (company) =>
-          prepareTickerForScoring(company, benchmarkReturns, nowIso, includeResults)
-      )
-
-      const metricRows: CandidateMetricRow[] = []
-
-      let failedInBatch = 0
-      let keptUniverseOnTransientError = 0
-
-      const tickersToDelete: string[] = []
-      const earlyHistoryRows: CandidateHistoryRow[] = []
-
-      for (const item of preparation) {
-        if (item.kind === "metric") {
-          metricRows.push(item.metric)
-          if (item.result && includeResults) finalResults.push(item.result)
-          continue
-        }
-
-        if (item.kind === "error") {
-          failedInBatch += 1
-
-          if (item.errorKind === "transient_yahoo_error") {
-            keptUniverseOnTransientError += 1
-          }
-
-          if (item.removeTicker) {
-            tickersToDelete.push(item.removeTicker)
-          }
-
-          if (item.historyRow) {
-            earlyHistoryRows.push(makeHistoryRow(item.historyRow, screenedOn, nowIso))
-          }
-
-          if (item.result && includeResults) {
-            finalResults.push(item.result)
-          }
-
-          continue
-        }
-
-        if (item.kind === "final_row") {
-          if (item.removeTicker) tickersToDelete.push(item.removeTicker)
-          earlyHistoryRows.push(makeHistoryRow(item.row, screenedOn, nowIso))
-          if (item.result && includeResults) finalResults.push(item.result)
-        }
+      if (included) {
+        universeRowsToUpsert.push(row)
+        includedInBatch += 1
+        if (strongBuyNowCandidate) strongBuyNowInBatch += 1
+      } else {
+        tickersToDelete.push(metric.ticker)
       }
 
-      const percentileMap = buildRelativeStrengthPercentileMap(
-        metricRows.map((row) => ({
-          ticker: row.ticker,
-          relativeReturn5d: row.relativeReturn5d,
-          relativeReturn10d: row.relativeReturn10d,
-          relativeReturn20d: row.relativeReturn20d,
-        }))
-      )
-
-      const universeRowsToUpsert: CandidateUniverseRow[] = []
-      const scoredHistoryRows: CandidateHistoryRow[] = []
-      let includedInBatch = 0
-      let strongBuyNowInBatch = 0
-
-      for (const metric of metricRows) {
-        const pct = percentileMap.get(metric.ticker) ?? {
-          rsPercentile5d: 0,
-          rsPercentile10d: 0,
-          rsPercentile20d: 0,
-        }
-
-        const scoreDetails = calculateCandidateScore({
-          latestClose: metric.latestClose,
-          marketCap: metric.marketCap,
-          avgVolume20d: metric.avgVolume20d,
-          avgDollarVolume20d: metric.avgDollarVolume20d,
-          return5d: metric.return5d,
-          return10d: metric.return10d,
-          return20d: metric.return20d,
-          relativeReturn5d: metric.relativeReturn5d,
-          relativeReturn10d: metric.relativeReturn10d,
-          relativeReturn20d: metric.relativeReturn20d,
+      if (includeResults) {
+        results.push({
+          ticker: metric.ticker,
+          ok: true,
+          included,
+          strongBuyNowCandidate,
+          score,
+          rawScore: round2(scoreDetails.rawScore),
+          tier: strongBuyNowCandidate
+            ? "strong_buy_now"
+            : included
+              ? "board_candidate"
+              : "not_included",
+          reason: row.screen_reason,
+          price: round2(metric.latestClose),
+          oneDayReturn: round2(metric.oneDayReturn),
+          return5d: round2(metric.return5d),
+          return10d: round2(metric.return10d),
+          return20d: round2(metric.return20d),
+          relativeReturn5d: round2(metric.relativeReturn5d),
+          relativeReturn10d: round2(metric.relativeReturn10d),
+          relativeReturn20d: round2(metric.relativeReturn20d),
           rsPercentile5d: pct.rsPercentile5d,
           rsPercentile10d: pct.rsPercentile10d,
           rsPercentile20d: pct.rsPercentile20d,
-          oneDayReturn: metric.oneDayReturn,
-          volumeRatio: metric.volumeRatio,
-          breakout20d: metric.breakout20d,
-          breakout10d: metric.breakout10d,
-          nearHigh20: metric.nearHigh20,
-          aboveSma20: metric.aboveSma20,
-          shortTermTrendUp: metric.shortTermTrendUp,
-          sma10: metric.sma10,
-          sma20: metric.sma20,
-          high20: metric.high20,
-          breakoutClearancePct: metric.breakoutClearancePct,
-          extensionFromSma20Pct: metric.extensionFromSma20Pct,
-          closeInDayRange: metric.closeInDayRange,
-          passesPrice: metric.passesPrice,
-          passesVolume: metric.passesVolume,
-          passesDollarVolume: metric.passesDollarVolume,
-          passesMarketCap: metric.passesMarketCap,
-          strongCompanyScore: metric.strongCompanyScore,
+          benchmarkReturn5d: round2(benchmarkReturns.return5d),
+          benchmarkReturn10d: round2(benchmarkReturns.return10d),
+          benchmarkReturn20d: round2(benchmarkReturns.return20d),
+          volumeRatio: round2(metric.volumeRatio),
+          breakoutClearancePct: round2(metric.breakoutClearancePct),
+          extensionFromSma20Pct: round2(metric.extensionFromSma20Pct),
+          closeInDayRange: round2(metric.closeInDayRange),
+          strongCompanyScore: round2(metric.strongCompanyScore),
           passesStrongCompanyGate: metric.passesStrongCompanyGate,
-          speculativePenalty: metric.speculativePenalty,
+          catalystCount,
+          historyWarning: null,
+          scoreBreakdown: {
+            quality: round2(scoreDetails.qualityScore),
+            fundamental: round2(scoreDetails.fundamentalScore),
+            momentum: round2(scoreDetails.momentumScore),
+            relativeStrength: round2(scoreDetails.relativeStrengthScore),
+            leadership: round2(scoreDetails.leadershipScore),
+            volume: round2(scoreDetails.volumeScore),
+            breakout: round2(scoreDetails.breakoutScore),
+            trend: round2(scoreDetails.trendScore),
+            penalty: round2(scoreDetails.penaltyScore),
+          },
         })
-
-        const score = scoreDetails.candidateScore
-        const catalystCount = scoreDetails.catalystCount
-
-        const strongBuyNowCandidate =
-          metric.passesStrongCompanyGate &&
-          metric.strongCompanyScore >= MIN_STRONG_COMPANY_SCORE &&
-          metric.passesPrice &&
-          metric.passesVolume &&
-          metric.passesDollarVolume &&
-          metric.passesMarketCap &&
-          metric.breakout20d &&
-          metric.aboveSma20 &&
-          metric.shortTermTrendUp &&
-          metric.oneDayReturn >= -0.5 &&
-          metric.return10d >= MIN_STRONG_BUY_RETURN_10D &&
-          metric.return20d >= MIN_STRONG_BUY_RETURN_20D &&
-          metric.return20d <= MAX_STRONG_BUY_RETURN_20D &&
-          metric.relativeReturn10d >= MIN_RELATIVE_RETURN_10D &&
-          metric.relativeReturn20d >= MIN_RELATIVE_RETURN_20D &&
-          metric.volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO &&
-          metric.breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT &&
-          metric.closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE &&
-          metric.extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT &&
-          score >= MIN_STRONG_BUY_SCORE &&
-          catalystCount >= MIN_CATALYST_COUNT
-
-        const boardCandidate =
-          metric.passesPrice &&
-          metric.passesVolume &&
-          metric.passesDollarVolume &&
-          metric.passesMarketCap &&
-          metric.aboveSma20 &&
-          metric.return20d > 0 &&
-          metric.relativeReturn20d > 0 &&
-          (
-            (
-              metric.passesStrongCompanyGate &&
-              metric.strongCompanyScore >= MIN_STRONG_COMPANY_SCORE &&
-              score >= MIN_BOARD_SCORE
-            ) ||
-            (
-              metric.strongCompanyScore >= 55 &&
-              score >= MIN_BOARD_SCORE + 2 &&
-              pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN &&
-              (metric.breakout20d || metric.nearHigh20)
-            )
-          )
-
-        const included = boardCandidate
-        const reasons: string[] = []
-
-        if (metric.passesStrongCompanyGate) reasons.push("strong underlying company")
-        if (metric.strongCompanyScore >= 75) reasons.push("high fundamental quality")
-        reasons.push(...metric.strongCompanyReasons)
-
-        if (metric.passesPrice) reasons.push(`price >= $${MIN_PRICE}`)
-        if (metric.passesVolume) reasons.push("20d avg volume")
-        if (metric.passesDollarVolume) reasons.push("20d dollar volume")
-        if (metric.passesMarketCap) reasons.push("market cap")
-        if (metric.oneDayReturn > 0) reasons.push("positive day")
-        if (metric.return5d >= 2) reasons.push("5d momentum")
-        if (metric.return10d >= MIN_STRONG_BUY_RETURN_10D) reasons.push("10d momentum")
-        if (metric.return20d >= MIN_STRONG_BUY_RETURN_20D) reasons.push("20d momentum")
-        if (metric.relativeReturn5d > 0) reasons.push("beats SPY over 5d")
-        if (metric.relativeReturn10d >= MIN_RELATIVE_RETURN_10D) reasons.push("beats SPY over 10d")
-        if (metric.relativeReturn20d >= MIN_RELATIVE_RETURN_20D) reasons.push("beats SPY over 20d")
-        if (pct.rsPercentile10d >= LEADERSHIP_PERCENTILE_MIN) reasons.push("top relative leader over 10d")
-        if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN) reasons.push("top relative leader over 20d")
-        if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_STRONG) reasons.push("strong market leader")
-        if (pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_ELITE) reasons.push("elite market leader")
-        if (metric.return20d <= MAX_STRONG_BUY_RETURN_20D) reasons.push("not overextended on 20d move")
-        if (metric.volumeRatio >= 1.25) reasons.push("volume expansion")
-        if (metric.volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO) reasons.push("strong volume expansion")
-        if (metric.breakout10d) reasons.push("10d breakout")
-        if (metric.breakout20d) reasons.push("20d breakout")
-        if (metric.nearHigh20) reasons.push("trading near 20d high")
-        if (metric.breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT) reasons.push("clean breakout clearance")
-        if (metric.aboveSma20) reasons.push("above 20d average")
-        if (metric.shortTermTrendUp) reasons.push("short-term trend acceleration")
-        if (metric.closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE) reasons.push("strong close in daily range")
-        if (metric.extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT) reasons.push("not too extended from 20d average")
-        if (scoreDetails.highConvictionSetup) reasons.push("high-conviction setup")
-        if (scoreDetails.eliteSetup) reasons.push("elite setup")
-
-        let exclusionReason = ""
-        if (!metric.passesPrice) {
-          exclusionReason = `Below $${MIN_PRICE} minimum price`
-        } else if (!metric.passesVolume) {
-          exclusionReason = "Below minimum average volume"
-        } else if (!metric.passesDollarVolume) {
-          exclusionReason = "Below minimum dollar volume"
-        } else if (!metric.passesMarketCap) {
-          exclusionReason = "Below minimum market cap"
-        } else if (!metric.aboveSma20) {
-          exclusionReason = "Below 20-day moving average"
-        } else if (metric.return20d <= 0) {
-          exclusionReason = "Negative 20-day momentum"
-        } else if (metric.relativeReturn20d <= 0) {
-          exclusionReason = "Underperforming SPY over 20d"
-        } else if (
-          !metric.passesStrongCompanyGate &&
-          !(metric.strongCompanyScore >= 55 && pct.rsPercentile20d >= LEADERSHIP_PERCENTILE_MIN)
-        ) {
-          exclusionReason = "Failed quality / leadership gate"
-        } else if (score < MIN_BOARD_SCORE) {
-          exclusionReason = `Score below board threshold (${MIN_BOARD_SCORE})`
-        } else {
-          exclusionReason = "Did not qualify for board"
-        }
-
-        const row: CandidateUniverseRow = {
-          ticker: metric.ticker,
-          cik: metric.company.cik,
-          name: metric.company.name,
-          price: round2(metric.latestClose),
-          market_cap: metric.marketCap || null,
-          pe_ratio: round2(metric.snapshot.peRatio),
-          pe_forward: round2(metric.snapshot.forwardPe),
-          pe_type: metric.snapshot.peType,
-          sector: metric.snapshot.sector,
-          industry: metric.snapshot.industry,
-          business_description: metric.snapshot.businessDescription,
-          avg_volume_20d: round2(metric.avgVolume20d),
-          avg_dollar_volume_20d: round2(metric.avgDollarVolume20d),
-          one_day_return: round2(metric.oneDayReturn),
-          return_5d: round2(metric.return5d),
-          return_10d: round2(metric.return10d),
-          return_20d: round2(metric.return20d),
-          relative_strength_20d: round2(metric.relative_strength_20d),
-          volume_ratio: round2(metric.volumeRatio),
-          breakout_20d: metric.breakout20d,
-          breakout_10d: metric.breakout10d,
-          above_sma_20: metric.aboveSma20,
-          breakout_clearance_pct: round2(metric.breakoutClearancePct),
-          extension_from_sma20_pct: round2(metric.extensionFromSma20Pct),
-          close_in_day_range: round2(metric.closeInDayRange),
-          catalyst_count: catalystCount,
-          passes_price: metric.passesPrice,
-          passes_volume: metric.passesVolume,
-          passes_dollar_volume: metric.passesDollarVolume,
-          passes_market_cap: metric.passesMarketCap,
-          candidate_score: score,
-          included,
-          screen_reason: buildCandidateReason({
-            included,
-            strongBuyNow: strongBuyNowCandidate,
-            boardCandidate,
-            reasons,
-            exclusionReason,
-            score,
-          }),
-          last_screened_at: nowIso,
-          updated_at: nowIso,
-        }
-
-        scoredHistoryRows.push(makeHistoryRow(row, screenedOn, nowIso))
-
-        if (included) {
-          universeRowsToUpsert.push(row)
-          includedInBatch += 1
-          if (strongBuyNowCandidate) strongBuyNowInBatch += 1
-        } else {
-          tickersToDelete.push(metric.ticker)
-        }
-
-        if (includeResults) {
-          finalResults.push({
-            ticker: metric.ticker,
-            ok: true,
-            included,
-            strongBuyNowCandidate,
-            score,
-            rawScore: round2(scoreDetails.rawScore),
-            tier: strongBuyNowCandidate
-              ? "strong_buy_now"
-              : included
-                ? "board_candidate"
-                : "not_included",
-            reason: row.screen_reason,
-            price: round2(metric.latestClose),
-            oneDayReturn: round2(metric.oneDayReturn),
-            return5d: round2(metric.return5d),
-            return10d: round2(metric.return10d),
-            return20d: round2(metric.return20d),
-            relativeReturn5d: round2(metric.relativeReturn5d),
-            relativeReturn10d: round2(metric.relativeReturn10d),
-            relativeReturn20d: round2(metric.relativeReturn20d),
-            rsPercentile5d: pct.rsPercentile5d,
-            rsPercentile10d: pct.rsPercentile10d,
-            rsPercentile20d: pct.rsPercentile20d,
-            benchmarkReturn5d: round2(benchmarkReturns.return5d),
-            benchmarkReturn10d: round2(benchmarkReturns.return10d),
-            benchmarkReturn20d: round2(benchmarkReturns.return20d),
-            volumeRatio: round2(metric.volumeRatio),
-            breakoutClearancePct: round2(metric.breakoutClearancePct),
-            extensionFromSma20Pct: round2(metric.extensionFromSma20Pct),
-            closeInDayRange: round2(metric.closeInDayRange),
-            strongCompanyScore: round2(metric.strongCompanyScore),
-            passesStrongCompanyGate: metric.passesStrongCompanyGate,
-            catalystCount,
-            historyWarning: null,
-            scoreBreakdown: {
-              quality: round2(scoreDetails.qualityScore),
-              fundamental: round2(scoreDetails.fundamentalScore),
-              momentum: round2(scoreDetails.momentumScore),
-              relativeStrength: round2(scoreDetails.relativeStrengthScore),
-              leadership: round2(scoreDetails.leadershipScore),
-              volume: round2(scoreDetails.volumeScore),
-              breakout: round2(scoreDetails.breakoutScore),
-              trend: round2(scoreDetails.trendScore),
-              penalty: round2(scoreDetails.penaltyScore),
-            },
-          })
-        }
-      }
-
-      const deleteErrorCount = await deleteTickersInChunks(candidateUniverseTable, tickersToDelete)
-      const universeUpsertErrorCount = await upsertRowsInChunks(
-        candidateUniverseTable,
-        universeRowsToUpsert,
-        "ticker"
-      )
-
-      const historyRows = [...earlyHistoryRows, ...scoredHistoryRows]
-      const historyWriteResult = await upsertRowsInChunksDetailed(
-        candidateHistoryTable,
-        historyRows,
-        "snapshot_key"
-      )
-
-      const historyWriteErrors = historyWriteResult.errorCount
-      const removedFromUniverseInBatch = Math.max(0, tickersToDelete.length - deleteErrorCount)
-      failedInBatch += deleteErrorCount + universeUpsertErrorCount
-
-      includedInBatchTotal += includedInBatch
-      strongBuyNowInBatchTotal += strongBuyNowInBatch
-      failedInBatchTotal += failedInBatch
-      historyWriteErrorsTotal += historyWriteErrors
-      historyInsertedTotal += Math.max(0, historyRows.length - historyWriteErrors)
-      keptUniverseOnTransientErrorTotal += keptUniverseOnTransientError
-      removedFromUniverseInBatchTotal += removedFromUniverseInBatch
-
-      currentStart = to + 1
-
-      if (!processAll) {
-        break
       }
     }
+
+    const deleteErrorCount = await deleteTickersInChunks(candidateUniverseTable, tickersToDelete)
+    const universeUpsertErrorCount = await upsertRowsInChunks(
+      candidateUniverseTable,
+      universeRowsToUpsert,
+      "ticker"
+    )
+
+    const historyRows = [...earlyHistoryRows, ...scoredHistoryRows]
+    const historyWriteResult = await upsertRowsInChunksDetailed(
+      candidateHistoryTable,
+      historyRows,
+      "snapshot_key"
+    )
+
+    const historyWriteErrors = historyWriteResult.errorCount
+    const removedFromUniverseInBatch = Math.max(0, tickersToDelete.length - deleteErrorCount)
+    failedInBatch += deleteErrorCount + universeUpsertErrorCount
 
     let retentionMessage = "skipped"
     if (runRetention) {
@@ -2022,26 +1994,55 @@ export async function GET(request: Request) {
     }
 
     const nextStart =
-      currentStart < total
-        ? currentStart
+      totalCompanies !== null &&
+      totalCompanies !== undefined &&
+      to + 1 < totalCompanies
+        ? to + 1
         : null
+
+    const completedAll = nextStart === null
+
+    console.log(
+      JSON.stringify({
+        scope: "candidates-screen",
+        stage: "batch_finish",
+        start: safeStart,
+        batch: safeBatch,
+        processedCompanies: companyList.length,
+        totalCompanies: totalCountError ? null : totalCompanies,
+        batchFirstTicker,
+        batchLastTicker,
+        nextStart,
+        completedAll,
+        includedInBatch,
+        strongBuyNowInBatch,
+        failedInBatch,
+        historyWriteErrors,
+        keptUniverseOnTransientError,
+        removedFromUniverseInBatch,
+        screenedOn,
+      })
+    )
 
     return Response.json({
       ok: true,
-      processedCompanies,
+      processedCompanies: companyList.length,
       totalCompanies: totalCountError ? null : totalCompanies,
       start: safeStart,
       batch: safeBatch,
+      batchFirstTicker,
+      batchLastTicker,
       nextStart,
+      completedAll,
       onlyActive,
-      processAll,
-      includedInBatch: includedInBatchTotal,
-      strongBuyNowInBatch: strongBuyNowInBatchTotal,
-      failedInBatch: failedInBatchTotal,
-      historyWriteErrors: historyWriteErrorsTotal,
-      historyInserted: historyInsertedTotal,
-      keptUniverseOnTransientError: keptUniverseOnTransientErrorTotal,
-      removedFromUniverseInBatch: removedFromUniverseInBatchTotal,
+      includedInBatch,
+      strongBuyNowInBatch,
+      failedInBatch,
+      historyWriteErrors,
+      historyInserted: Math.max(0, historyRows.length - historyWriteErrors),
+      historyWriteErrorSamples: historyWriteResult.errors.slice(0, 3),
+      keptUniverseOnTransientError,
+      removedFromUniverseInBatch,
       includedCount: candidateCount,
       historyCount,
       retentionCleanup: retentionMessage,
@@ -2070,7 +2071,7 @@ export async function GET(request: Request) {
         minCloseInDayRange: MIN_CLOSE_IN_DAY_RANGE,
         minCatalystCount: MIN_CATALYST_COUNT,
       },
-      results: includeResults ? finalResults : [],
+      results: includeResults ? results : [],
     })
   } catch (error: any) {
     return Response.json(
