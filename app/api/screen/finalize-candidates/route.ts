@@ -98,9 +98,9 @@ type PtrSignalSummary = {
 }
 
 const MAX_FINAL_CANDIDATES = 75
-const STRICT_MIN_SCORE = 78
-const FALLBACK_MIN_SCORE = 68
-const MIN_STRICT_POOL_SIZE = 15
+const STRICT_MIN_SCORE = 74
+const FALLBACK_MIN_SCORE = 66
+const MIN_STRICT_POOL_SIZE = 10
 const DB_CHUNK_SIZE = 250
 
 /**
@@ -379,11 +379,63 @@ export async function GET(request: Request) {
     const candidateHistoryTable = supabase.from("candidate_screen_history") as any
     const candidateUniverseTable = supabase.from("candidate_universe") as any
 
-    const { data: latestRow, error: latestError } = await candidateHistoryTable
-      .select("screened_on")
-      .order("screened_on", { ascending: false })
-      .limit(1)
-      .maybeSingle()
+    const { data: screenedDates, error: screenedDatesError } = await candidateHistoryTable
+  .select("screened_on")
+  .order("screened_on", { ascending: false })
+
+if (screenedDatesError) {
+  return Response.json({ ok: false, error: screenedDatesError.message }, { status: 500 })
+}
+
+const orderedDates = uniqueStrings(
+  (screenedDates || []).map((row: any) => String(row.screened_on || ""))
+)
+
+let screenedOn: string | null = null
+let snapshotRows: CandidateHistoryRow[] = []
+
+for (const candidateDate of orderedDates) {
+  const { data: rows, error: rowsError } = await candidateHistoryTable
+    .select("*")
+    .eq("screened_on", candidateDate)
+
+  if (rowsError) {
+    return Response.json({ ok: false, error: rowsError.message }, { status: 500 })
+  }
+
+  const typedRows = (rows || []) as CandidateHistoryRow[]
+  if (!typedRows.length) continue
+
+  const viableRows = typedRows.filter(
+    (row) =>
+      (row.candidate_score ?? 0) > 0 &&
+      (
+        row.passes_price ||
+        row.passes_volume ||
+        row.passes_dollar_volume ||
+        row.passes_market_cap ||
+        row.above_sma_20 ||
+        row.return_20d !== null ||
+        row.relative_strength_20d !== null
+      )
+  )
+
+  if (viableRows.length >= 25) {
+    screenedOn = candidateDate
+    snapshotRows = typedRows
+    break
+  }
+}
+
+if (!screenedOn || !snapshotRows.length) {
+  return Response.json(
+    {
+      ok: false,
+      error: "No viable candidate history snapshot found to finalize",
+    },
+    { status: 500 }
+  )
+}
 
     if (latestError) {
       return Response.json({ ok: false, error: latestError.message }, { status: 500 })
@@ -396,14 +448,6 @@ export async function GET(request: Request) {
         { ok: false, error: "No candidate history rows available to finalize" },
         { status: 500 }
       )
-    }
-
-    const { data: latestRows, error: rowsError } = await candidateHistoryTable
-      .select("*")
-      .eq("screened_on", screenedOn)
-
-    if (rowsError) {
-      return Response.json({ ok: false, error: rowsError.message }, { status: 500 })
     }
 
     const snapshotRows = (latestRows || []) as CandidateHistoryRow[]
