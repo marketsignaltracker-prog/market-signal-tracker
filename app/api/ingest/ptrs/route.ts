@@ -1,5 +1,4 @@
 import { createClient } from "@supabase/supabase-js"
-import { XMLParser } from "fast-xml-parser"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
@@ -44,6 +43,7 @@ type ChunkWriteResult = {
 type SourceDiagnostic = {
   url: string
   ok: boolean
+  status: number | null
   contentType: string | null
   parser: "json" | "xml" | "csv" | "tsv" | "unknown"
   loadedRows: number
@@ -58,13 +58,6 @@ const MAX_LIMIT = 10000
 const DB_CHUNK_SIZE = 200
 const SOURCE_FETCH_CONCURRENCY = 3
 const SOURCE_TIMEOUT_MS = 12000
-
-const xmlParser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "",
-  parseTagValue: true,
-  trimValues: true,
-})
 
 function parseInteger(value: string | null | undefined, fallback: number) {
   if (value === null || value === undefined || value.trim() === "") {
@@ -284,32 +277,44 @@ function parseDelimitedText(text: string, delimiter: "," | "\t" = ",") {
   return rows
 }
 
-function extractRecordsFromXml(xmlText: string) {
-  const parsed = xmlParser.parse(xmlText)
+async function extractRecordsFromXml(xmlText: string) {
+  try {
+    const mod = await import("fast-xml-parser")
+    const parser = new mod.XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: "",
+      parseTagValue: true,
+      trimValues: true,
+    })
 
-  const candidateCollections = [
-    parsed?.records?.record,
-    parsed?.rows?.row,
-    parsed?.items?.item,
-    parsed?.disclosures?.disclosure,
-    parsed?.trades?.trade,
-    parsed?.data?.row,
-    parsed?.data?.record,
-  ]
+    const parsed = parser.parse(xmlText)
 
-  for (const collection of candidateCollections) {
-    const rows = toArray(collection)
-    if (rows.length) return rows as Record<string, any>[]
-  }
+    const candidateCollections = [
+      parsed?.records?.record,
+      parsed?.rows?.row,
+      parsed?.items?.item,
+      parsed?.disclosures?.disclosure,
+      parsed?.trades?.trade,
+      parsed?.data?.row,
+      parsed?.data?.record,
+    ]
 
-  const flatArrays = Object.values(parsed || {}).filter(Array.isArray)
-  for (const arr of flatArrays) {
-    if (Array.isArray(arr) && arr.length && typeof arr[0] === "object") {
-      return arr as Record<string, any>[]
+    for (const collection of candidateCollections) {
+      const rows = toArray(collection)
+      if (rows.length) return rows as Record<string, any>[]
     }
-  }
 
-  return []
+    const flatArrays = Object.values(parsed || {}).filter(Array.isArray)
+    for (const arr of flatArrays) {
+      if (Array.isArray(arr) && arr.length && typeof arr[0] === "object") {
+        return arr as Record<string, any>[]
+      }
+    }
+
+    return []
+  } catch (error: any) {
+    throw new Error(`XML parse failed: ${error?.message || "missing parser"}`)
+  }
 }
 
 function normalizePtrRow(
@@ -365,6 +370,7 @@ function normalizePtrRow(
   )
 
   const amounts = parseAmountRange(amountRange)
+
   const filer = filerName || null
   if (!filer) return null
   if (!ticker && !assetName) return null
@@ -377,7 +383,8 @@ function normalizePtrRow(
     pickFirst(raw, ["raw_document_url", "document_url", "pdf_url", "xml_url"])
   )
 
-  const chamber = normalizeText(pickFirst(raw, ["chamber", "body"])) ||
+  const chamber =
+    normalizeText(pickFirst(raw, ["chamber", "body"])) ||
     (sourceLabel.toLowerCase().includes("house") ? "House" : null)
 
   const districtOrState = normalizeText(
@@ -458,6 +465,7 @@ async function fetchText(url: string) {
     return {
       text,
       contentType,
+      status: res.status,
     }
   } finally {
     clearTimeout(timeout)
@@ -499,9 +507,9 @@ function detectParser(url: string, text: string, contentType: string | null) {
 }
 
 async function fetchSourceRows(url: string, fetchedAt: string) {
-  const { text, contentType } = await fetchText(url)
-  const parser = detectParser(url, text, contentType)
-  const trimmed = text.trim()
+  const fetched = await fetchText(url)
+  const parser = detectParser(url, fetched.text, fetched.contentType)
+  const trimmed = fetched.text.trim()
 
   let records: Record<string, any>[] = []
 
@@ -522,7 +530,7 @@ async function fetchSourceRows(url: string, fetchedAt: string) {
       records = []
     }
   } else if (parser === "xml") {
-    records = extractRecordsFromXml(trimmed)
+    records = await extractRecordsFromXml(trimmed)
   } else if (parser === "tsv") {
     records = parseDelimitedText(trimmed, "\t")
   } else {
@@ -538,7 +546,8 @@ async function fetchSourceRows(url: string, fetchedAt: string) {
   return {
     rows,
     parser,
-    contentType,
+    contentType: fetched.contentType,
+    status: fetched.status,
   }
 }
 
@@ -702,6 +711,7 @@ export async function GET(request: Request) {
             diagnostic: {
               url,
               ok: true,
+              status: fetched.status,
               contentType: fetched.contentType,
               parser: fetched.parser,
               loadedRows: fetched.rows.length,
@@ -715,6 +725,7 @@ export async function GET(request: Request) {
             diagnostic: {
               url,
               ok: false,
+              status: null,
               contentType: null,
               parser: "unknown",
               loadedRows: 0,
