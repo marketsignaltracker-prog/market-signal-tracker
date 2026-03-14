@@ -16,11 +16,13 @@ type StepResult = {
 type PipelineStage =
   | "idle"
   | "companies"
-  | "screening"
-  | "finalize_candidates"
   | "filings"
+  | "ptrs"
   | "signals"
   | "filing_signals"
+  | "eligible_universe"
+  | "screening"
+  | "finalize_candidates"
   | "ticker_scores"
   | "complete"
   | "error"
@@ -50,16 +52,20 @@ type PipelineStateRow = {
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
 /**
- * Screening must stay small because Yahoo is the bottleneck.
+ * Screening is no longer the first filter.
+ * Since we are only screening the reduced eligible universe,
+ * we can safely run slightly larger batches.
  */
-const DEFAULT_SCREEN_BATCH = 20
-const MAX_SCREEN_BATCH = 25
+const DEFAULT_SCREEN_BATCH = 50
+const MAX_SCREEN_BATCH = 100
 
-const DEFAULT_FILINGS_BATCH = 150
-const DEFAULT_SIGNALS_LIMIT = 75
-const DEFAULT_SIGNALS_LOOKBACK_DAYS = 10
-const DEFAULT_FILING_SIGNALS_LIMIT = 200
-const DEFAULT_FILING_SIGNALS_LOOKBACK_DAYS = 14
+const DEFAULT_FILINGS_BATCH = 500
+const DEFAULT_PTRS_BATCH = 500
+const DEFAULT_SIGNALS_LIMIT = 300
+const DEFAULT_SIGNALS_LOOKBACK_DAYS = 14
+const DEFAULT_FILING_SIGNALS_LIMIT = 500
+const DEFAULT_FILING_SIGNALS_LOOKBACK_DAYS = 21
+const DEFAULT_ELIGIBLE_UNIVERSE_LOOKBACK_DAYS = 30
 const DEFAULT_TICKER_SCORES_LIMIT = 1000
 
 const DEFAULT_STEP_TIMEOUT_MS = 240_000
@@ -68,9 +74,10 @@ const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
 
 /**
- * With small screen batches, this still advances a decent amount per run.
+ * Since the local/db-first stages are much cheaper, allow a few more
+ * stage transitions per run. Screening still checkpoints cleanly.
  */
-const MAX_BATCHES_PER_RUN = 4
+const MAX_BATCHES_PER_RUN = 8
 const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
 
 function nowIso() {
@@ -314,6 +321,29 @@ async function failPipelineForStep(
   )
 }
 
+async function checkpointStage(
+  supabase: any,
+  stage: PipelineStage,
+  results: StepResult[],
+  message: string
+) {
+  const checkpointAt = nowIso()
+
+  const updated = await patchPipelineState(supabase, {
+    stage,
+    status: "idle",
+    last_run_finished_at: checkpointAt,
+  })
+
+  return NextResponse.json({
+    ok: true,
+    message,
+    stage: updated.stage,
+    status: updated.status,
+    results,
+  })
+}
+
 async function checkpointScreening(
   supabase: any,
   nextStart: number,
@@ -448,10 +478,8 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      const transitionAt = nowIso()
-
       state = await patchPipelineState(supabase, {
-        stage: "screening",
+        stage: "filings",
         status: "running",
         screen_start: 0,
         screen_next_start: 0,
@@ -460,180 +488,23 @@ export async function GET(request: NextRequest) {
         filings_completed_at: null,
         signals_completed_at: null,
         cycle_completed_at: null,
-        cycle_started_at: state.cycle_started_at ?? transitionAt,
-      })
-    }
-
-    if (state.stage === "screening") {
-      let nextStart = state.screen_next_start ?? state.screen_start ?? 0
-      const batchSize = clampScreenBatch(
-        parseInteger(String(state.screen_batch), DEFAULT_SCREEN_BATCH)
-      )
-
-      let screeningComplete = false
-      let batchesThisRun = 0
-
-      while (!screeningComplete) {
-        if (shouldStopForRuntime(runStartedAtMs)) {
-          return await checkpointScreening(
-            supabase,
-            nextStart,
-            batchSize,
-            results,
-            "Pipeline checkpointed during screening because runtime was nearly exhausted.",
-            batchesThisRun
-          )
-        }
-
-        if (batchesThisRun >= MAX_BATCHES_PER_RUN) {
-          return await checkpointScreening(
-            supabase,
-            nextStart,
-            batchSize,
-            results,
-            "Batch limit reached for this run.",
-            batchesThisRun
-          )
-        }
-
-        const screenPath = withSearchParams("/api/screen/candidates", {
-          start: nextStart,
-          batch: batchSize,
-          onlyActive: true,
-          includeResults: false,
-          includeCounts: false,
-          runRetention: false,
-        })
-
-        const screenResult = await runStep(
-          baseUrl,
-          screenPath,
-          DEFAULT_STEP_TIMEOUT_MS
-        )
-
-        results.push(screenResult)
-        batchesThisRun += 1
-
-        /**
-         * Important:
-         * candidates can intentionally return 503 when Yahoo transient error rate
-         * is too high. Treat that as a checkpoint/backoff signal, not a fatal failure.
-         */
-        if (!screenResult.ok) {
-          if (screenResult.status === 503) {
-            const transientErrorRate =
-              Number((screenResult.data as any)?.debug?.transientErrorRate ?? 0)
-
-            return await checkpointScreening(
-              supabase,
-              nextStart,
-              batchSize,
-              results,
-              `Screening paused due to Yahoo throttling / transient error rate (${transientErrorRate}). Will resume next run.`,
-              batchesThisRun
-            )
-          }
-
-          return await failPipelineForStep(
-            supabase,
-            results,
-            screenResult,
-            `Screening step failed at start=${nextStart}: ${String(
-              (screenResult.data as any)?.error || screenResult.status
-            )}`
-          )
-        }
-
-        const screenData = screenResult.data as any
-        const returnedNextStart =
-          typeof screenData?.nextStart === "number" ? screenData.nextStart : null
-        const returnedTotalCompanies =
-          typeof screenData?.totalCompanies === "number"
-            ? screenData.totalCompanies
-            : null
-
-        state = await patchPipelineState(supabase, {
-          stage: returnedNextStart === null ? "finalize_candidates" : "screening",
-          status: "running",
-          screen_start: nextStart,
-          screen_batch: batchSize,
-          screen_total: returnedTotalCompanies,
-          screen_next_start: returnedNextStart,
-        })
-
-        if (returnedNextStart === null) {
-          screeningComplete = true
-        } else {
-          nextStart = returnedNextStart
-        }
-      }
-    }
-
-    if (state.stage === "finalize_candidates") {
-      if (shouldStopForRuntime(runStartedAtMs)) {
-        const checkpointAt = nowIso()
-
-        await patchPipelineState(supabase, {
-          stage: "finalize_candidates",
-          status: "idle",
-          last_run_finished_at: checkpointAt,
-        })
-
-        return NextResponse.json({
-          ok: true,
-          message: "Pipeline checkpointed before candidate finalization. Continue on next cron run.",
-          stage: "finalize_candidates",
-          results,
-        })
-      }
-
-      const finalizeResult = await runStep(
-        baseUrl,
-        "/api/screen/finalize-candidates",
-        DEFAULT_STEP_TIMEOUT_MS
-      )
-
-      results.push(finalizeResult)
-
-      if (!finalizeResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          finalizeResult,
-          `Finalize candidates step failed: ${String(
-            (finalizeResult.data as any)?.error || finalizeResult.status
-          )}`
-        )
-      }
-
-      state = await patchPipelineState(supabase, {
-        stage: "filings",
-        status: "running",
       })
     }
 
     if (state.stage === "filings") {
       if (shouldStopForRuntime(runStartedAtMs)) {
-        const checkpointAt = nowIso()
-
-        await patchPipelineState(supabase, {
-          stage: "filings",
-          status: "idle",
-          last_run_finished_at: checkpointAt,
-        })
-
-        return NextResponse.json({
-          ok: true,
-          message: "Pipeline checkpointed before filings. Continue on next cron run.",
-          stage: "filings",
+        return await checkpointStage(
+          supabase,
+          "filings",
           results,
-        })
+          "Pipeline checkpointed before filings. Continue on next cron run."
+        )
       }
 
       const filingsResult = await runStep(
         baseUrl,
         withSearchParams("/api/ingest/filings", {
-          scope: "candidates",
+          scope: "all",
           start: 0,
           batch: DEFAULT_FILINGS_BATCH,
         }),
@@ -653,31 +524,60 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      const completedAt = nowIso()
+      state = await patchPipelineState(supabase, {
+        stage: "ptrs",
+        status: "running",
+        filings_completed_at: nowIso(),
+      })
+    }
+
+    if (state.stage === "ptrs") {
+      if (shouldStopForRuntime(runStartedAtMs)) {
+        return await checkpointStage(
+          supabase,
+          "ptrs",
+          results,
+          "Pipeline checkpointed before PTR ingest. Continue on next cron run."
+        )
+      }
+
+      const ptrsResult = await runStep(
+        baseUrl,
+        withSearchParams("/api/ingest/ptrs", {
+          scope: "all",
+          start: 0,
+          batch: DEFAULT_PTRS_BATCH,
+        }),
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(ptrsResult)
+
+      if (!ptrsResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          ptrsResult,
+          `PTR step failed: ${String(
+            (ptrsResult.data as any)?.error || ptrsResult.status
+          )}`
+        )
+      }
 
       state = await patchPipelineState(supabase, {
         stage: "signals",
         status: "running",
-        filings_completed_at: completedAt,
       })
     }
 
     if (state.stage === "signals") {
       if (shouldStopForRuntime(runStartedAtMs)) {
-        const checkpointAt = nowIso()
-
-        await patchPipelineState(supabase, {
-          stage: "signals",
-          status: "idle",
-          last_run_finished_at: checkpointAt,
-        })
-
-        return NextResponse.json({
-          ok: true,
-          message: "Pipeline checkpointed before signals. Continue on next cron run.",
-          stage: "signals",
+        return await checkpointStage(
+          supabase,
+          "signals",
           results,
-        })
+          "Pipeline checkpointed before signals. Continue on next cron run."
+        )
       }
 
       const signalsResult = await runStep(
@@ -713,20 +613,12 @@ export async function GET(request: NextRequest) {
 
     if (state.stage === "filing_signals") {
       if (shouldStopForRuntime(runStartedAtMs)) {
-        const checkpointAt = nowIso()
-
-        await patchPipelineState(supabase, {
-          stage: "filing_signals",
-          status: "idle",
-          last_run_finished_at: checkpointAt,
-        })
-
-        return NextResponse.json({
-          ok: true,
-          message: "Pipeline checkpointed before filing signals. Continue on next cron run.",
-          stage: "filing_signals",
+        return await checkpointStage(
+          supabase,
+          "filing_signals",
           results,
-        })
+          "Pipeline checkpointed before filing signals. Continue on next cron run."
+        )
       }
 
       const filingSignalsResult = await runStep(
@@ -754,6 +646,174 @@ export async function GET(request: NextRequest) {
       }
 
       state = await patchPipelineState(supabase, {
+        stage: "eligible_universe",
+        status: "running",
+      })
+    }
+
+    if (state.stage === "eligible_universe") {
+      if (shouldStopForRuntime(runStartedAtMs)) {
+        return await checkpointStage(
+          supabase,
+          "eligible_universe",
+          results,
+          "Pipeline checkpointed before eligible universe build. Continue on next cron run."
+        )
+      }
+
+      const eligibleUniverseResult = await runStep(
+        baseUrl,
+        withSearchParams("/api/screen/eligible-universe", {
+          lookbackDays: DEFAULT_ELIGIBLE_UNIVERSE_LOOKBACK_DAYS,
+          onlyActive: true,
+          includeCounts: true,
+        }),
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(eligibleUniverseResult)
+
+      if (!eligibleUniverseResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          eligibleUniverseResult,
+          `Eligible universe step failed: ${String(
+            (eligibleUniverseResult.data as any)?.error ||
+              eligibleUniverseResult.status
+          )}`
+        )
+      }
+
+      state = await patchPipelineState(supabase, {
+        stage: "screening",
+        status: "running",
+        screen_start: 0,
+        screen_next_start: 0,
+        screen_total:
+          typeof (eligibleUniverseResult.data as any)?.eligibleCount === "number"
+            ? Number((eligibleUniverseResult.data as any).eligibleCount)
+            : null,
+      })
+    }
+
+    if (state.stage === "screening") {
+      let nextStart = state.screen_next_start ?? state.screen_start ?? 0
+      const batchSize = clampScreenBatch(
+        parseInteger(String(state.screen_batch), DEFAULT_SCREEN_BATCH)
+      )
+
+      let screeningComplete = false
+      let batchesThisRun = 0
+
+      while (!screeningComplete) {
+        if (shouldStopForRuntime(runStartedAtMs)) {
+          return await checkpointScreening(
+            supabase,
+            nextStart,
+            batchSize,
+            results,
+            "Pipeline checkpointed during screening because runtime was nearly exhausted.",
+            batchesThisRun
+          )
+        }
+
+        if (batchesThisRun >= MAX_BATCHES_PER_RUN) {
+          return await checkpointScreening(
+            supabase,
+            nextStart,
+            batchSize,
+            results,
+            "Batch limit reached for this screening run.",
+            batchesThisRun
+          )
+        }
+
+        const screenPath = withSearchParams("/api/screen/candidates", {
+          universe: "eligible",
+          start: nextStart,
+          batch: batchSize,
+          onlyActive: true,
+          includeResults: false,
+          includeCounts: false,
+          runRetention: false,
+        })
+
+        const screenResult = await runStep(
+          baseUrl,
+          screenPath,
+          DEFAULT_STEP_TIMEOUT_MS
+        )
+
+        results.push(screenResult)
+        batchesThisRun += 1
+
+        if (!screenResult.ok) {
+          return await failPipelineForStep(
+            supabase,
+            results,
+            screenResult,
+            `Screening step failed at start=${nextStart}: ${String(
+              (screenResult.data as any)?.error || screenResult.status
+            )}`
+          )
+        }
+
+        const screenData = screenResult.data as any
+        const returnedNextStart =
+          typeof screenData?.nextStart === "number" ? screenData.nextStart : null
+        const returnedTotalCompanies =
+          typeof screenData?.totalCompanies === "number"
+            ? screenData.totalCompanies
+            : state.screen_total
+
+        state = await patchPipelineState(supabase, {
+          stage: returnedNextStart === null ? "finalize_candidates" : "screening",
+          status: "running",
+          screen_start: nextStart,
+          screen_batch: batchSize,
+          screen_total: returnedTotalCompanies,
+          screen_next_start: returnedNextStart,
+        })
+
+        if (returnedNextStart === null) {
+          screeningComplete = true
+        } else {
+          nextStart = returnedNextStart
+        }
+      }
+    }
+
+    if (state.stage === "finalize_candidates") {
+      if (shouldStopForRuntime(runStartedAtMs)) {
+        return await checkpointStage(
+          supabase,
+          "finalize_candidates",
+          results,
+          "Pipeline checkpointed before candidate finalization. Continue on next cron run."
+        )
+      }
+
+      const finalizeResult = await runStep(
+        baseUrl,
+        "/api/screen/finalize-candidates",
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(finalizeResult)
+
+      if (!finalizeResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          finalizeResult,
+          `Finalize candidates step failed: ${String(
+            (finalizeResult.data as any)?.error || finalizeResult.status
+          )}`
+        )
+      }
+
+      state = await patchPipelineState(supabase, {
         stage: "ticker_scores",
         status: "running",
       })
@@ -761,20 +821,12 @@ export async function GET(request: NextRequest) {
 
     if (state.stage === "ticker_scores") {
       if (shouldStopForRuntime(runStartedAtMs)) {
-        const checkpointAt = nowIso()
-
-        await patchPipelineState(supabase, {
-          stage: "ticker_scores",
-          status: "idle",
-          last_run_finished_at: checkpointAt,
-        })
-
-        return NextResponse.json({
-          ok: true,
-          message: "Pipeline checkpointed before ticker score rebuild. Continue on next cron run.",
-          stage: "ticker_scores",
+        return await checkpointStage(
+          supabase,
+          "ticker_scores",
           results,
-        })
+          "Pipeline checkpointed before ticker score rebuild. Continue on next cron run."
+        )
       }
 
       const tickerScoresResult = await runStep(

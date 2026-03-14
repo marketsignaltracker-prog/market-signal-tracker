@@ -1443,35 +1443,63 @@ export async function GET(request: Request) {
 
     const benchmarkReturns = getBenchmarkReturns(benchmarkCandles)
 
-    const companiesTable = supabase.from("companies") as any
-    const candidateHistoryTable = supabase.from("candidate_screen_history") as any
-    const candidateUniverseTable = supabase.from("candidate_universe") as any
+    const universe = (searchParams.get("universe") || "all").toLowerCase()
 
-    let companyQuery = companiesTable
-      .select("id, ticker, cik, name, is_active")
-      .not("cik", "is", null)
-      .order("id", { ascending: true })
-      .range(from, to)
+const sourceTableName =
+  universe === "eligible" ? "candidate_universe" : "companies"
 
-    let countQuery = companiesTable
-      .select("*", { count: "exact", head: true })
-      .not("cik", "is", null)
+const sourceTable = supabase.from(sourceTableName) as any
+const candidateHistoryTable = supabase.from("candidate_screen_history") as any
+const candidateUniverseTable = supabase.from("candidate_universe") as any
 
-    if (onlyActive) {
-      companyQuery = companyQuery.eq("is_active", true)
-      countQuery = countQuery.eq("is_active", true)
-    }
+let companyQuery =
+  universe === "eligible"
+    ? sourceTable
+        .select("company_id, ticker, cik, name, is_active, is_eligible")
+        .eq("is_eligible", true)
+        .not("cik", "is", null)
+        .order("ticker", { ascending: true })
+        .range(from, to)
+    : sourceTable
+        .select("id, ticker, cik, name, is_active")
+        .not("cik", "is", null)
+        .order("id", { ascending: true })
+        .range(from, to)
 
-    const [
-      { data: companies, error: companiesError },
-      { count: totalCompanies, error: totalCountError },
-    ] = await Promise.all([companyQuery, countQuery])
+let countQuery =
+  universe === "eligible"
+    ? sourceTable
+        .select("*", { count: "exact", head: true })
+        .eq("is_eligible", true)
+        .not("cik", "is", null)
+    : sourceTable
+        .select("*", { count: "exact", head: true })
+        .not("cik", "is", null)
 
-    if (companiesError) {
-      return Response.json({ ok: false, error: companiesError.message }, { status: 500 })
-    }
+if (onlyActive) {
+  companyQuery = companyQuery.eq("is_active", true)
+  countQuery = countQuery.eq("is_active", true)
+}
 
-    const companyList = (companies || []) as CompanyRow[]
+const [
+  { data: companies, error: companiesError },
+  { count: totalCompanies, error: totalCountError },
+] = await Promise.all([companyQuery, countQuery])
+
+if (companiesError) {
+  return Response.json(
+    { ok: false, error: companiesError.message },
+    { status: 500 }
+  )
+}
+
+const companyList: CompanyRow[] = ((companies || []) as any[]).map((row) => ({
+  id: row.company_id ?? row.id,
+  ticker: row.ticker,
+  cik: row.cik,
+  name: row.name ?? null,
+  is_active: row.is_active ?? true,
+}))
 
     const preparation = await mapWithConcurrency(
       companyList,
