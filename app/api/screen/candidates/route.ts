@@ -13,9 +13,16 @@ type CompanyRow = {
 }
 
 type CandidateUniverseRow = {
+  company_id?: number | null
   ticker: string
   cik: string
   name: string | null
+  is_active?: boolean | null
+  is_eligible?: boolean | null
+  has_insider_trades?: boolean | null
+  has_ptr_forms?: boolean | null
+  has_clusters?: boolean | null
+  eligibility_reason?: string | null
   price: number | null
   market_cap: number | null
   pe_ratio: number | null
