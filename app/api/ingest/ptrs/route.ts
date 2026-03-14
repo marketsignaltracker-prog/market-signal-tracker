@@ -41,11 +41,20 @@ type ChunkWriteResult = {
   }>
 }
 
+type SourceDiagnostic = {
+  url: string
+  loadedRows: number
+  keptRows: number
+  error: string | null
+}
+
 const DEFAULT_LOOKBACK_DAYS = 30
 const MAX_LOOKBACK_DAYS = 180
 const DEFAULT_LIMIT = 1000
 const MAX_LIMIT = 10000
 const DB_CHUNK_SIZE = 200
+const SOURCE_FETCH_CONCURRENCY = 4
+const SOURCE_TIMEOUT_MS = 12000
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -101,14 +110,6 @@ function normalizeDate(value: unknown): string | null {
 
 function uniqueStrings(values: (string | null | undefined)[]) {
   return Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean)))
-}
-
-function chunkArray<T>(items: T[], size: number) {
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
-  }
-  return chunks
 }
 
 function safeNumber(value: unknown): number | null {
@@ -471,21 +472,30 @@ function normalizePtrRow(
 }
 
 async function fetchText(url: string) {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent":
-        process.env.PTR_USER_AGENT ||
-        "Market Signal Tracker ptr ingest marketsignaltracker@gmail.com",
-      Accept: "application/json,text/csv,text/tab-separated-values,application/xml,text/xml,text/plain;q=0.9,*/*;q=0.8",
-    },
-    cache: "no-store",
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), SOURCE_TIMEOUT_MS)
 
-  if (!res.ok) {
-    throw new Error(`Failed fetching PTR source: ${url} (${res.status})`)
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          process.env.PTR_USER_AGENT ||
+          "Market Signal Tracker ptr ingest marketsignaltracker@gmail.com",
+        Accept:
+          "application/json,text/csv,text/tab-separated-values,application/xml,text/xml,text/plain;q=0.9,*/*;q=0.8",
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    })
+
+    if (!res.ok) {
+      throw new Error(`Failed fetching PTR source: ${url} (${res.status})`)
+    }
+
+    return await res.text()
+  } finally {
+    clearTimeout(timeout)
   }
-
-  return await res.text()
 }
 
 async function fetchSourceRows(url: string, fetchedAt: string) {
@@ -495,7 +505,11 @@ async function fetchSourceRows(url: string, fetchedAt: string) {
 
   let records: Record<string, any>[] = []
 
-  if (lowerUrl.endsWith(".json") || trimmed.startsWith("[") || trimmed.startsWith("{")) {
+  if (
+    lowerUrl.endsWith(".json") ||
+    trimmed.startsWith("[") ||
+    trimmed.startsWith("{")
+  ) {
     const parsed = JSON.parse(trimmed)
 
     if (Array.isArray(parsed)) {
@@ -516,14 +530,42 @@ async function fetchSourceRows(url: string, fetchedAt: string) {
   ) {
     records = extractRecordsFromXml(trimmed)
   } else {
-    const delimiter: "," | "\t" = trimmed.includes("\t") && !trimmed.includes(",") ? "\t" : ","
+    const delimiter: "," | "\t" =
+      trimmed.includes("\t") && !trimmed.includes(",") ? "\t" : ","
     records = parseDelimitedText(trimmed, delimiter)
   }
 
   const sourceLabel = lowerUrl.includes("house") ? "House PTR" : "PTR"
+
   return records
     .map((record) => normalizePtrRow(record, sourceLabel, fetchedAt))
     .filter((row): row is RawPtrTradeRow => row !== null)
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  async function runner() {
+    while (true) {
+      const current = nextIndex
+      nextIndex += 1
+      if (current >= items.length) return
+      results[current] = await worker(items[current], current)
+    }
+  }
+
+  const runners = Array.from(
+    { length: Math.min(concurrency, Math.max(items.length, 1)) },
+    () => runner()
+  )
+
+  await Promise.all(runners)
+  return results
 }
 
 async function upsertInChunksDetailed(
@@ -606,18 +648,33 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
 
+    const scopeParam = (searchParams.get("scope") || "all").toLowerCase()
+    const start = Math.max(0, parseInteger(searchParams.get("start"), 0))
+    const batch = Math.max(1, parseInteger(searchParams.get("batch"), 100))
     const lookbackDays = Math.min(
       Math.max(1, parseInteger(searchParams.get("lookbackDays"), DEFAULT_LOOKBACK_DAYS)),
       MAX_LOOKBACK_DAYS
     )
-
     const limit = Math.min(
       Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT)),
       MAX_LIMIT
     )
+    const runRetention =
+      (searchParams.get("runRetention") || "false").toLowerCase() === "true"
+    const includeCounts =
+      (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
 
-    const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
-    const includeCounts = (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
+    if (!["all", "eligible", "candidates"].includes(scopeParam)) {
+      return Response.json(
+        {
+          ok: false,
+          error: `Invalid scope "${scopeParam}". Expected one of: all, eligible, candidates`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const scope = scopeParam as "all" | "eligible" | "candidates"
 
     const now = new Date()
     const fetchedAt = now.toISOString()
@@ -626,39 +683,50 @@ export async function GET(request: Request) {
     cutoffDate.setDate(cutoffDate.getDate() - lookbackDays)
     const cutoffDateString = toIsoDateString(cutoffDate)
 
-    const allRows: RawPtrTradeRow[] = []
-    const sourceDiagnostics: Array<{
-      url: string
-      loadedRows: number
-      keptRows: number
-      error: string | null
-    }> = []
+    const sourceResults = await mapWithConcurrency(
+      houseFeedUrls,
+      SOURCE_FETCH_CONCURRENCY,
+      async (url): Promise<{
+        diagnostic: SourceDiagnostic
+        rows: RawPtrTradeRow[]
+      }> => {
+        try {
+          const sourceRows = await fetchSourceRows(url, fetchedAt)
 
-    for (const url of houseFeedUrls) {
-      try {
-        const sourceRows = await fetchSourceRows(url, fetchedAt)
+          const filtered = sourceRows.filter((row) => {
+            const tradeDate = row.transaction_date || row.report_date
+            return tradeDate ? tradeDate >= cutoffDateString : true
+          })
 
-        const filtered = sourceRows.filter((row) => {
-          const tradeDate = row.transaction_date || row.report_date
-          return tradeDate ? tradeDate >= cutoffDateString : true
-        })
-
-        allRows.push(...filtered)
-
-        sourceDiagnostics.push({
-          url,
-          loadedRows: sourceRows.length,
-          keptRows: filtered.length,
-          error: null,
-        })
-      } catch (error: any) {
-        sourceDiagnostics.push({
-          url,
-          loadedRows: 0,
-          keptRows: 0,
-          error: error?.message || "Unknown source error",
-        })
+          return {
+            diagnostic: {
+              url,
+              loadedRows: sourceRows.length,
+              keptRows: filtered.length,
+              error: null,
+            },
+            rows: filtered,
+          }
+        } catch (error: any) {
+          return {
+            diagnostic: {
+              url,
+              loadedRows: 0,
+              keptRows: 0,
+              error: error?.message || "Unknown source error",
+            },
+            rows: [],
+          }
+        }
       }
+    )
+
+    const allRows: RawPtrTradeRow[] = []
+    const sourceDiagnostics: SourceDiagnostic[] = []
+
+    for (const result of sourceResults) {
+      sourceDiagnostics.push(result.diagnostic)
+      allRows.push(...result.rows)
     }
 
     const dedupedMap = new Map<string, RawPtrTradeRow>()
@@ -668,6 +736,11 @@ export async function GET(request: Request) {
       }
     }
 
+    const effectiveLimit =
+      scope === "all"
+        ? limit
+        : Math.min(limit, Math.max(batch * 10, 200))
+
     const dedupedRows = Array.from(dedupedMap.values())
       .sort((a, b) => {
         const aDate = a.transaction_date || a.report_date || ""
@@ -675,7 +748,7 @@ export async function GET(request: Request) {
         if (aDate !== bDate) return bDate.localeCompare(aDate)
         return a.trade_key.localeCompare(b.trade_key)
       })
-      .slice(0, limit)
+      .slice(0, effectiveLimit)
 
     const writeResult =
       dedupedRows.length > 0
@@ -696,6 +769,13 @@ export async function GET(request: Request) {
           debug: {
             errorSamples: writeResult.errors.slice(0, 5),
             sourceDiagnostics,
+            request: {
+              scope,
+              start,
+              batch,
+              lookbackDays,
+              limit,
+            },
           },
         },
         { status: 500 }
@@ -711,7 +791,9 @@ export async function GET(request: Request) {
       const { error: retentionError } = await supabase
         .from("raw_ptr_trades")
         .delete()
-        .lt("transaction_date", retentionCutoffString)
+        .or(
+          `transaction_date.lt.${retentionCutoffString},and(transaction_date.is.null,report_date.lt.${retentionCutoffString})`
+        )
 
       retentionMessage = retentionError ? retentionError.message : "ok"
     }
@@ -725,19 +807,25 @@ export async function GET(request: Request) {
       ptrCount = error ? null : count ?? 0
     }
 
+    const failedSources = sourceDiagnostics.filter((s) => s.error).length
+
     return Response.json({
       ok: true,
+      scope,
+      start,
+      batch,
       fetchedSources: houseFeedUrls.length,
+      failedSources,
       scannedRows: allRows.length,
       insertedOrUpdated: writeResult.insertedOrUpdated,
       dedupedRows: dedupedRows.length,
       lookbackDays,
-      limit,
+      limit: effectiveLimit,
       retentionCleanup: retentionMessage,
       ptrCount,
       sourceDiagnostics,
       message:
-        "House PTR trades ingested successfully. This route is House-first and expects PTR_HOUSE_FEED_URLS to point to official downloadable House disclosure feeds.",
+        "House PTR trades ingested successfully. This route is feed-based, accepts pipeline scope parameters, and writes deduped rows into raw_ptr_trades.",
     })
   } catch (error: any) {
     return Response.json(
