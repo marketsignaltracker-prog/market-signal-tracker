@@ -43,6 +43,9 @@ type ChunkWriteResult = {
 
 type SourceDiagnostic = {
   url: string
+  ok: boolean
+  contentType: string | null
+  parser: "json" | "xml" | "csv" | "tsv" | "unknown"
   loadedRows: number
   keptRows: number
   error: string | null
@@ -53,7 +56,7 @@ const MAX_LOOKBACK_DAYS = 180
 const DEFAULT_LIMIT = 1000
 const MAX_LIMIT = 10000
 const DB_CHUNK_SIZE = 200
-const SOURCE_FETCH_CONCURRENCY = 4
+const SOURCE_FETCH_CONCURRENCY = 3
 const SOURCE_TIMEOUT_MS = 12000
 
 const xmlParser = new XMLParser({
@@ -189,21 +192,11 @@ function normalizeAction(value: string | null) {
   const v = (value || "").trim().toLowerCase()
   if (!v) return null
 
-  if (
-    v === "purchase" ||
-    v === "buy" ||
-    v === "purchased" ||
-    v === "partial purchase"
-  ) {
+  if (v === "purchase" || v === "buy" || v === "purchased" || v === "partial purchase") {
     return "Buy"
   }
 
-  if (
-    v === "sale" ||
-    v === "sell" ||
-    v === "sold" ||
-    v === "partial sale"
-  ) {
+  if (v === "sale" || v === "sell" || v === "sold" || v === "partial sale") {
     return "Sell"
   }
 
@@ -264,13 +257,10 @@ function parseCsvLine(line: string) {
 }
 
 function parseDelimitedText(text: string, delimiter: "," | "\t" = ",") {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
+  const rawLines = text.split(/\r?\n/).filter((line) => line.trim().length > 0)
+  if (!rawLines.length) return []
 
-  if (!lines.length) return []
-
+  const lines = rawLines.map((line) => line.replace(/^\uFEFF/, "").trim())
   const header =
     delimiter === ","
       ? parseCsvLine(lines[0])
@@ -344,74 +334,39 @@ function normalizePtrRow(
         "senator",
         "reporting_individual",
       ])
-    ) || [filerFirst, filerLast].filter(Boolean).join(" ").trim() || null
+    ) ||
+    [filerFirst, filerLast].filter(Boolean).join(" ").trim() ||
+    null
 
   const ticker = normalizeTicker(
     normalizeText(
-      pickFirst(raw, [
-        "ticker",
-        "symbol",
-        "asset_ticker",
-        "stock",
-        "stock_symbol",
-      ])
+      pickFirst(raw, ["ticker", "symbol", "asset_ticker", "stock", "stock_symbol"])
     )
   )
 
   const assetName = normalizeText(
-    pickFirst(raw, [
-      "asset_name",
-      "asset",
-      "description",
-      "description_of_asset",
-      "security",
-    ])
+    pickFirst(raw, ["asset_name", "asset", "description", "description_of_asset", "security"])
   )
 
   const transactionDate = normalizeDate(
-    pickFirst(raw, [
-      "transaction_date",
-      "tx_date",
-      "date_of_transaction",
-      "trade_date",
-    ])
+    pickFirst(raw, ["transaction_date", "tx_date", "date_of_transaction", "trade_date"])
   )
 
   const reportDate = normalizeDate(
-    pickFirst(raw, [
-      "report_date",
-      "disclosure_date",
-      "filed_date",
-      "filing_date",
-      "date_received",
-    ])
+    pickFirst(raw, ["report_date", "disclosure_date", "filed_date", "filing_date", "date_received"])
   )
 
   const action = normalizeAction(
-    normalizeText(
-      pickFirst(raw, [
-        "action",
-        "transaction_type",
-        "type",
-        "transaction",
-      ])
-    )
+    normalizeText(pickFirst(raw, ["action", "transaction_type", "type", "transaction"]))
   )
 
   const amountRange = normalizeText(
-    pickFirst(raw, [
-      "amount_range",
-      "amount",
-      "range",
-      "value_range",
-    ])
+    pickFirst(raw, ["amount_range", "amount", "range", "value_range"])
   )
 
   const amounts = parseAmountRange(amountRange)
-
   const filer = filerName || null
   if (!filer) return null
-
   if (!ticker && !assetName) return null
 
   const ptrUrl = normalizeText(
@@ -422,9 +377,8 @@ function normalizePtrRow(
     pickFirst(raw, ["raw_document_url", "document_url", "pdf_url", "xml_url"])
   )
 
-  const chamber = normalizeText(
-    pickFirst(raw, ["chamber", "body"])
-  ) || (sourceLabel.toLowerCase().includes("house") ? "House" : null)
+  const chamber = normalizeText(pickFirst(raw, ["chamber", "body"])) ||
+    (sourceLabel.toLowerCase().includes("house") ? "House" : null)
 
   const districtOrState = normalizeText(
     pickFirst(raw, ["district_or_state", "district", "state", "office"])
@@ -488,28 +442,70 @@ async function fetchText(url: string) {
       signal: controller.signal,
     })
 
+    const contentType = res.headers.get("content-type")
+    const text = await res.text()
+
     if (!res.ok) {
-      throw new Error(`Failed fetching PTR source: ${url} (${res.status})`)
+      throw new Error(
+        `Failed fetching PTR source: ${url} (${res.status}) body=${text.slice(0, 300)}`
+      )
     }
 
-    return await res.text()
+    if (!text.trim()) {
+      throw new Error(`PTR source returned empty body: ${url}`)
+    }
+
+    return {
+      text,
+      contentType,
+    }
   } finally {
     clearTimeout(timeout)
   }
 }
 
-async function fetchSourceRows(url: string, fetchedAt: string) {
-  const text = await fetchText(url)
-  const trimmed = text.trim()
+function detectParser(url: string, text: string, contentType: string | null) {
   const lowerUrl = url.toLowerCase()
-
-  let records: Record<string, any>[] = []
+  const lowerType = (contentType || "").toLowerCase()
+  const trimmed = text.trim()
 
   if (
     lowerUrl.endsWith(".json") ||
+    lowerType.includes("application/json") ||
     trimmed.startsWith("[") ||
     trimmed.startsWith("{")
   ) {
+    return "json" as const
+  }
+
+  if (
+    lowerUrl.endsWith(".xml") ||
+    lowerType.includes("xml") ||
+    trimmed.startsWith("<?xml") ||
+    trimmed.startsWith("<")
+  ) {
+    return "xml" as const
+  }
+
+  if (trimmed.includes("\t") && !trimmed.includes(",")) {
+    return "tsv" as const
+  }
+
+  if (trimmed.includes(",")) {
+    return "csv" as const
+  }
+
+  return "unknown" as const
+}
+
+async function fetchSourceRows(url: string, fetchedAt: string) {
+  const { text, contentType } = await fetchText(url)
+  const parser = detectParser(url, text, contentType)
+  const trimmed = text.trim()
+
+  let records: Record<string, any>[] = []
+
+  if (parser === "json") {
     const parsed = JSON.parse(trimmed)
 
     if (Array.isArray(parsed)) {
@@ -520,26 +516,30 @@ async function fetchSourceRows(url: string, fetchedAt: string) {
       records = (parsed as any).data
     } else if (Array.isArray((parsed as any)?.items)) {
       records = (parsed as any).items
+    } else if (Array.isArray((parsed as any)?.results)) {
+      records = (parsed as any).results
     } else {
       records = []
     }
-  } else if (
-    lowerUrl.endsWith(".xml") ||
-    trimmed.startsWith("<?xml") ||
-    trimmed.startsWith("<")
-  ) {
+  } else if (parser === "xml") {
     records = extractRecordsFromXml(trimmed)
+  } else if (parser === "tsv") {
+    records = parseDelimitedText(trimmed, "\t")
   } else {
-    const delimiter: "," | "\t" =
-      trimmed.includes("\t") && !trimmed.includes(",") ? "\t" : ","
-    records = parseDelimitedText(trimmed, delimiter)
+    records = parseDelimitedText(trimmed, ",")
   }
 
-  const sourceLabel = lowerUrl.includes("house") ? "House PTR" : "PTR"
+  const sourceLabel = url.toLowerCase().includes("house") ? "House PTR" : "PTR"
 
-  return records
+  const rows = records
     .map((record) => normalizePtrRow(record, sourceLabel, fetchedAt))
     .filter((row): row is RawPtrTradeRow => row !== null)
+
+  return {
+    rows,
+    parser,
+    contentType,
+  }
 }
 
 async function mapWithConcurrency<T, R>(
@@ -622,10 +622,9 @@ export async function GET(request: Request) {
     )
   }
 
+  const ptrHouseFeedUrlsRaw = process.env.PTR_HOUSE_FEED_URLS || ""
   const houseFeedUrls = uniqueStrings(
-    (process.env.PTR_HOUSE_FEED_URLS || "")
-      .split(",")
-      .map((v) => v.trim())
+    ptrHouseFeedUrlsRaw.split(",").map((v) => v.trim())
   )
 
   if (!houseFeedUrls.length) {
@@ -633,6 +632,10 @@ export async function GET(request: Request) {
       {
         ok: false,
         error: "Missing PTR_HOUSE_FEED_URLS environment variable",
+        debug: {
+          hasPtrHouseFeedUrls: Boolean(process.env.PTR_HOUSE_FEED_URLS),
+          ptrHouseFeedUrlsLength: ptrHouseFeedUrlsRaw.length,
+        },
       },
       { status: 500 }
     )
@@ -686,14 +689,11 @@ export async function GET(request: Request) {
     const sourceResults = await mapWithConcurrency(
       houseFeedUrls,
       SOURCE_FETCH_CONCURRENCY,
-      async (url): Promise<{
-        diagnostic: SourceDiagnostic
-        rows: RawPtrTradeRow[]
-      }> => {
+      async (url): Promise<{ diagnostic: SourceDiagnostic; rows: RawPtrTradeRow[] }> => {
         try {
-          const sourceRows = await fetchSourceRows(url, fetchedAt)
+          const fetched = await fetchSourceRows(url, fetchedAt)
 
-          const filtered = sourceRows.filter((row) => {
+          const filtered = fetched.rows.filter((row) => {
             const tradeDate = row.transaction_date || row.report_date
             return tradeDate ? tradeDate >= cutoffDateString : true
           })
@@ -701,7 +701,10 @@ export async function GET(request: Request) {
           return {
             diagnostic: {
               url,
-              loadedRows: sourceRows.length,
+              ok: true,
+              contentType: fetched.contentType,
+              parser: fetched.parser,
+              loadedRows: fetched.rows.length,
               keptRows: filtered.length,
               error: null,
             },
@@ -711,6 +714,9 @@ export async function GET(request: Request) {
           return {
             diagnostic: {
               url,
+              ok: false,
+              contentType: null,
+              parser: "unknown",
               loadedRows: 0,
               keptRows: 0,
               error: error?.message || "Unknown source error",
@@ -728,6 +734,9 @@ export async function GET(request: Request) {
       sourceDiagnostics.push(result.diagnostic)
       allRows.push(...result.rows)
     }
+
+    const successfulSources = sourceDiagnostics.filter((s) => s.ok).length
+    const failedSources = sourceDiagnostics.filter((s) => !s.ok).length
 
     const dedupedMap = new Map<string, RawPtrTradeRow>()
     for (const row of allRows) {
@@ -807,14 +816,13 @@ export async function GET(request: Request) {
       ptrCount = error ? null : count ?? 0
     }
 
-    const failedSources = sourceDiagnostics.filter((s) => s.error).length
-
     return Response.json({
       ok: true,
       scope,
       start,
       batch,
       fetchedSources: houseFeedUrls.length,
+      successfulSources,
       failedSources,
       scannedRows: allRows.length,
       insertedOrUpdated: writeResult.insertedOrUpdated,
@@ -825,13 +833,19 @@ export async function GET(request: Request) {
       ptrCount,
       sourceDiagnostics,
       message:
-        "House PTR trades ingested successfully. This route is feed-based, accepts pipeline scope parameters, and writes deduped rows into raw_ptr_trades.",
+        successfulSources === 0
+          ? "No PTR feeds were successfully parsed. Check sourceDiagnostics for feed-specific errors."
+          : "House PTR trades ingested successfully. Partial source failures are tolerated and returned in sourceDiagnostics.",
     })
   } catch (error: any) {
     return Response.json(
       {
         ok: false,
         error: error?.message || "Unknown PTR ingest error",
+        debug: {
+          hasPtrHouseFeedUrls: Boolean(process.env.PTR_HOUSE_FEED_URLS),
+          hasPtrUserAgent: Boolean(process.env.PTR_USER_AGENT),
+        },
       },
       { status: 500 }
     )
