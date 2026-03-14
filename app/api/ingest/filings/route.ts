@@ -3,13 +3,17 @@ import { createClient } from "@supabase/supabase-js"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
-type CandidateTickerRow = {
+type CompanyTickerRow = {
+  id?: number | null
+  company_id?: number | null
   ticker: string
   cik: string | null
   name: string | null
+  is_active?: boolean | null
   candidate_score?: number | null
   included?: boolean | null
   last_screened_at?: string | null
+  is_eligible?: boolean | null
 }
 
 type CandidateHistoryTickerRow = {
@@ -65,8 +69,10 @@ type ChunkWriteResult = {
 }
 
 type Diagnostics = {
+  sourceScope: "all" | "eligible" | "candidates"
   candidateUniverseRowsLoaded: number
   candidateHistoryRowsLoaded: number
+  companyRowsLoaded: number
   candidateRowsLoaded: number
   fallbackCandidateSourceUsed: boolean
   candidateRowsWithoutCik: number
@@ -150,14 +156,6 @@ function parseInteger(value: string | null | undefined, fallback: number) {
 
 function toIsoDateString(date: Date) {
   return date.toISOString().slice(0, 10)
-}
-
-function chunkArray<T>(items: T[], size: number) {
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
-  }
-  return chunks
 }
 
 function uniqueStrings(values: (string | null | undefined)[]) {
@@ -322,14 +320,14 @@ async function loadCandidateContext(
   batch: number,
   candidateCutoffDateString: string
 ): Promise<{
-  candidateRows: CandidateTickerRow[]
+  candidateRows: CompanyTickerRow[]
   candidateUniverseRowsLoaded: number
   candidateHistoryRowsLoaded: number
   fallbackCandidateSourceUsed: boolean
 }> {
   const universeQuery = await supabase
     .from("candidate_universe")
-    .select("ticker, cik, name, candidate_score, included, last_screened_at")
+    .select("company_id, ticker, cik, name, is_active, candidate_score, included, last_screened_at")
     .gte("candidate_score", MIN_CANDIDATE_SCORE)
     .gte("last_screened_at", candidateCutoffDateString)
     .order("candidate_score", { ascending: false })
@@ -339,7 +337,7 @@ async function loadCandidateContext(
     throw new Error(`candidate_universe load failed: ${universeQuery.error.message}`)
   }
 
-  const universeRows = (universeQuery.data || []) as CandidateTickerRow[]
+  const universeRows = (universeQuery.data || []) as CompanyTickerRow[]
 
   if (universeRows.length >= Math.min(25, batch)) {
     return {
@@ -389,7 +387,7 @@ async function loadCandidateContext(
 
   const historyRows = (historyQuery.data || []) as CandidateHistoryTickerRow[]
 
-  const deduped = new Map<string, CandidateTickerRow>()
+  const deduped = new Map<string, CompanyTickerRow>()
   for (const row of universeRows) {
     const ticker = normalizeTicker(row.ticker)
     if (!ticker) continue
@@ -416,6 +414,89 @@ async function loadCandidateContext(
     candidateUniverseRowsLoaded: universeRows.length,
     candidateHistoryRowsLoaded: historyRows.length,
     fallbackCandidateSourceUsed: historyRows.length > 0,
+  }
+}
+
+async function loadAllCompaniesContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  onlyActive: boolean
+): Promise<{
+  rows: CompanyTickerRow[]
+  companyRowsLoaded: number
+}> {
+  let query = supabase
+    .from("companies")
+    .select("id, ticker, cik, name, is_active")
+    .not("cik", "is", null)
+    .order("id", { ascending: true })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    query = query.eq("is_active", true)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    throw new Error(`companies load failed: ${error.message}`)
+  }
+
+  const rows = ((data || []) as CompanyTickerRow[]).map((row) => ({
+    id: row.id ?? null,
+    ticker: row.ticker,
+    cik: row.cik,
+    name: row.name,
+    is_active: row.is_active ?? true,
+  }))
+
+  return {
+    rows,
+    companyRowsLoaded: rows.length,
+  }
+}
+
+async function loadEligibleContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  onlyActive: boolean
+): Promise<{
+  rows: CompanyTickerRow[]
+  candidateUniverseRowsLoaded: number
+}> {
+  let query = supabase
+    .from("candidate_universe")
+    .select("company_id, ticker, cik, name, is_active, is_eligible")
+    .eq("is_eligible", true)
+    .not("cik", "is", null)
+    .order("ticker", { ascending: true })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    query = query.eq("is_active", true)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    throw new Error(`candidate_universe eligible load failed: ${error.message}`)
+  }
+
+  const rows = ((data || []) as CompanyTickerRow[]).map((row) => ({
+    id: row.company_id ?? null,
+    company_id: row.company_id ?? null,
+    ticker: row.ticker,
+    cik: row.cik,
+    name: row.name,
+    is_active: row.is_active ?? true,
+    is_eligible: true,
+  }))
+
+  return {
+    rows,
+    candidateUniverseRowsLoaded: rows.length,
   }
 }
 
@@ -447,17 +528,26 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
 
-    const scope = (searchParams.get("scope") || "candidates").toLowerCase()
+    const scopeParam = (searchParams.get("scope") || "candidates").toLowerCase()
     const start = Math.max(0, parseInteger(searchParams.get("start"), DEFAULT_START))
-    const batch = Math.min(Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)), MAX_BATCH)
+    const batch = Math.min(
+      Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)),
+      MAX_BATCH
+    )
     const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
+    const onlyActive = (searchParams.get("onlyActive") || "true").toLowerCase() !== "false"
 
-    if (scope !== "candidates") {
+    if (!["all", "eligible", "candidates"].includes(scopeParam)) {
       return Response.json(
-        { ok: false, error: "Only scope=candidates is supported in this route" },
+        {
+          ok: false,
+          error: `Invalid scope "${scopeParam}". Expected one of: all, eligible, candidates`,
+        },
         { status: 400 }
       )
     }
+
+    const scope = scopeParam as "all" | "eligible" | "candidates"
 
     const now = new Date()
     const nowIso = now.toISOString()
@@ -467,8 +557,10 @@ export async function GET(request: Request) {
     const candidateCutoffDateString = candidateCutoffDate.toISOString()
 
     const diagnostics: Diagnostics = {
+      sourceScope: scope,
       candidateUniverseRowsLoaded: 0,
       candidateHistoryRowsLoaded: 0,
+      companyRowsLoaded: 0,
       candidateRowsLoaded: 0,
       fallbackCandidateSourceUsed: false,
       candidateRowsWithoutCik: 0,
@@ -480,21 +572,50 @@ export async function GET(request: Request) {
       duplicateRowsCollapsed: 0,
     }
 
-    const candidateContext = await loadCandidateContext(
-      supabase,
-      start,
-      batch,
-      candidateCutoffDateString
-    )
+    let sourceRows: CompanyTickerRow[] = []
 
-    diagnostics.candidateUniverseRowsLoaded = candidateContext.candidateUniverseRowsLoaded
-    diagnostics.candidateHistoryRowsLoaded = candidateContext.candidateHistoryRowsLoaded
-    diagnostics.candidateRowsLoaded = candidateContext.candidateRows.length
-    diagnostics.fallbackCandidateSourceUsed = candidateContext.fallbackCandidateSourceUsed
+    if (scope === "all") {
+      const allContext = await loadAllCompaniesContext(
+        supabase,
+        start,
+        batch,
+        onlyActive
+      )
+      sourceRows = allContext.rows
+      diagnostics.companyRowsLoaded = allContext.companyRowsLoaded
+      diagnostics.candidateRowsLoaded = allContext.rows.length
+    }
+
+    if (scope === "eligible") {
+      const eligibleContext = await loadEligibleContext(
+        supabase,
+        start,
+        batch,
+        onlyActive
+      )
+      sourceRows = eligibleContext.rows
+      diagnostics.candidateUniverseRowsLoaded = eligibleContext.candidateUniverseRowsLoaded
+      diagnostics.candidateRowsLoaded = eligibleContext.rows.length
+    }
+
+    if (scope === "candidates") {
+      const candidateContext = await loadCandidateContext(
+        supabase,
+        start,
+        batch,
+        candidateCutoffDateString
+      )
+
+      sourceRows = candidateContext.candidateRows
+      diagnostics.candidateUniverseRowsLoaded = candidateContext.candidateUniverseRowsLoaded
+      diagnostics.candidateHistoryRowsLoaded = candidateContext.candidateHistoryRowsLoaded
+      diagnostics.candidateRowsLoaded = candidateContext.candidateRows.length
+      diagnostics.fallbackCandidateSourceUsed = candidateContext.fallbackCandidateSourceUsed
+    }
 
     const rawRows: RawFilingInsertRow[] = []
 
-    for (const candidate of candidateContext.candidateRows) {
+    for (const candidate of sourceRows) {
       const ticker = normalizeTicker(candidate.ticker)
       const cik = normalizeCik(candidate.cik)
 
@@ -540,16 +661,16 @@ export async function GET(request: Request) {
     const dedupedRows = dedupeFilings(rawRows)
     diagnostics.duplicateRowsCollapsed = rawRows.length - dedupedRows.length
 
-   const writeResult =
-  dedupedRows.length > 0
-    ? await upsertInChunksDetailed(
-        supabase.from("raw_filings"),
-        "raw_filings",
-        dedupedRows,
-        "accession_no",
-        (row) => row.accession_no
-      )
-    : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
+    const writeResult =
+      dedupedRows.length > 0
+        ? await upsertInChunksDetailed(
+            supabase.from("raw_filings"),
+            "raw_filings",
+            dedupedRows,
+            "accession_no",
+            (row) => row.accession_no
+          )
+        : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
 
     if (writeResult.errors.length > 0) {
       return Response.json(
@@ -581,8 +702,7 @@ export async function GET(request: Request) {
       retentionMessage = retentionError ? retentionError.message : "ok"
     }
 
-    const nextStart =
-      candidateContext.candidateRows.length < batch ? null : start + batch
+    const nextStart = sourceRows.length < batch ? null : start + batch
 
     return Response.json({
       ok: true,
@@ -595,7 +715,11 @@ export async function GET(request: Request) {
       retentionCleanup: retentionMessage,
       diagnostics,
       message:
-        "Raw filing metadata ingested for candidate tickers only. Filing parsing and scoring are handled in a separate filing-signals route.",
+        scope === "all"
+          ? "Raw filing metadata ingested for all companies in the requested batch."
+          : scope === "eligible"
+            ? "Raw filing metadata ingested for eligible-universe companies in the requested batch."
+            : "Raw filing metadata ingested for candidate tickers only. Filing parsing and scoring are handled in a separate filing-signals route.",
     })
   } catch (error: any) {
     return Response.json(
