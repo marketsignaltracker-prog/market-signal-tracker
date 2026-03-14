@@ -212,8 +212,8 @@ const yahooFinance = new YahooFinance({
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
-const MAX_BATCH = 250
-const DEFAULT_BATCH = 200
+const MAX_BATCH = 150
+const DEFAULT_BATCH = 100
 const RETENTION_DAYS = 30
 
 const BENCHMARK_TICKER = "SPY"
