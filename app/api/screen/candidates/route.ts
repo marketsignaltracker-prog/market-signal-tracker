@@ -1,6 +1,9 @@
 import { createClient } from "@supabase/supabase-js"
 import YahooFinance from "yahoo-finance2"
 
+export const dynamic = "force-dynamic"
+export const maxDuration = 300
+
 type CompanyRow = {
   id: number
   ticker: string
@@ -209,8 +212,8 @@ const yahooFinance = new YahooFinance({
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
-const MAX_BATCH = 350
-const DEFAULT_BATCH = 300
+const MAX_BATCH = 250
+const DEFAULT_BATCH = 200
 const RETENTION_DAYS = 30
 
 const BENCHMARK_TICKER = "SPY"
