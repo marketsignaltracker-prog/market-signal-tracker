@@ -84,14 +84,15 @@ type Diagnostics = {
   duplicateRowsCollapsed: number
 }
 
-const DEFAULT_BATCH = 150
-const MAX_BATCH = 300
+const DEFAULT_BATCH = 100
+const MAX_BATCH = 150
 const DEFAULT_START = 0
 const RETENTION_DAYS = 30
 const CANDIDATE_LOOKBACK_DAYS = 10
 const MIN_CANDIDATE_SCORE = 65
-const SEC_TIMEOUT_MS = 8000
+const SEC_TIMEOUT_MS = 5000
 const DB_CHUNK_SIZE = 100
+const SEC_FETCH_CONCURRENCY = 6
 
 const ALLOWED_FORMS = new Set([
   "4",
@@ -158,11 +159,11 @@ function toIsoDateString(date: Date) {
   return date.toISOString().slice(0, 10)
 }
 
-function uniqueStrings(values: (string | null | undefined)[]) {
-  return Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean)))
-}
-
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number) {
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number
+) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -200,7 +201,9 @@ async function upsertInChunksDetailed(
         details: (error as any)?.details ?? null,
         hint: (error as any)?.hint ?? null,
         code: (error as any)?.code ?? null,
-        sampleKeys: sampleKeyBuilder ? chunk.slice(0, 10).map(sampleKeyBuilder) : undefined,
+        sampleKeys: sampleKeyBuilder
+          ? chunk.slice(0, 10).map(sampleKeyBuilder)
+          : undefined,
       })
     } else {
       insertedOrUpdated += chunk.length
@@ -213,12 +216,43 @@ async function upsertInChunksDetailed(
   }
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  async function runner() {
+    while (true) {
+      const current = nextIndex
+      nextIndex += 1
+
+      if (current >= items.length) return
+      results[current] = await worker(items[current], current)
+    }
+  }
+
+  const runners = Array.from(
+    { length: Math.min(concurrency, Math.max(1, items.length)) },
+    () => runner()
+  )
+
+  await Promise.all(runners)
+  return results
+}
+
 function buildSubmissionUrl(cik: string) {
   const padded = cik.padStart(10, "0")
   return `https://data.sec.gov/submissions/CIK${padded}.json`
 }
 
-function buildFilingUrl(cik: string, accessionNo: string, primaryDoc: string | null) {
+function buildFilingUrl(
+  cik: string,
+  accessionNo: string,
+  primaryDoc: string | null
+) {
   const normalizedCik = String(Number(cik))
   const accessionNoNoDash = accessionNo.replace(/-/g, "")
 
@@ -229,7 +263,9 @@ function buildFilingUrl(cik: string, accessionNo: string, primaryDoc: string | n
   return `https://www.sec.gov/Archives/edgar/data/${normalizedCik}/${accessionNoNoDash}/${primaryDoc}`
 }
 
-async function fetchSecSubmission(cik: string): Promise<SecSubmissionResponse | null> {
+async function fetchSecSubmission(
+  cik: string
+): Promise<SecSubmissionResponse | null> {
   try {
     const url = buildSubmissionUrl(cik)
     const res = await fetchWithTimeout(
@@ -257,7 +293,8 @@ function extractRecentFilingsFromSubmission(params: {
   fallbackCik: string
   nowIso: string
 }) {
-  const { submission, fallbackTicker, fallbackCompanyName, fallbackCik, nowIso } = params
+  const { submission, fallbackTicker, fallbackCompanyName, fallbackCik, nowIso } =
+    params
 
   const recent = submission.filings?.recent
   if (!recent) return []
@@ -327,14 +364,18 @@ async function loadCandidateContext(
 }> {
   const universeQuery = await supabase
     .from("candidate_universe")
-    .select("company_id, ticker, cik, name, is_active, candidate_score, included, last_screened_at")
+    .select(
+      "company_id, ticker, cik, name, is_active, candidate_score, included, last_screened_at"
+    )
     .gte("candidate_score", MIN_CANDIDATE_SCORE)
     .gte("last_screened_at", candidateCutoffDateString)
     .order("candidate_score", { ascending: false })
     .range(start, start + batch - 1)
 
   if (universeQuery.error) {
-    throw new Error(`candidate_universe load failed: ${universeQuery.error.message}`)
+    throw new Error(
+      `candidate_universe load failed: ${universeQuery.error.message}`
+    )
   }
 
   const universeRows = (universeQuery.data || []) as CompanyTickerRow[]
@@ -373,7 +414,9 @@ async function loadCandidateContext(
 
   const historyQuery = await supabase
     .from("candidate_screen_history")
-    .select("ticker, cik, name, candidate_score, included, last_screened_at, screened_on")
+    .select(
+      "ticker, cik, name, candidate_score, included, last_screened_at, screened_on"
+    )
     .eq("screened_on", screenedOn)
     .gte("candidate_score", MIN_CANDIDATE_SCORE)
     .order("candidate_score", { ascending: false })
@@ -534,8 +577,10 @@ export async function GET(request: Request) {
       Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)),
       MAX_BATCH
     )
-    const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
-    const onlyActive = (searchParams.get("onlyActive") || "true").toLowerCase() !== "false"
+    const runRetention =
+      (searchParams.get("runRetention") || "false").toLowerCase() === "true"
+    const onlyActive =
+      (searchParams.get("onlyActive") || "true").toLowerCase() !== "false"
 
     if (!["all", "eligible", "candidates"].includes(scopeParam)) {
       return Response.json(
@@ -553,7 +598,9 @@ export async function GET(request: Request) {
     const nowIso = now.toISOString()
 
     const candidateCutoffDate = new Date(now)
-    candidateCutoffDate.setDate(candidateCutoffDate.getDate() - CANDIDATE_LOOKBACK_DAYS)
+    candidateCutoffDate.setDate(
+      candidateCutoffDate.getDate() - CANDIDATE_LOOKBACK_DAYS
+    )
     const candidateCutoffDateString = candidateCutoffDate.toISOString()
 
     const diagnostics: Diagnostics = {
@@ -594,7 +641,8 @@ export async function GET(request: Request) {
         onlyActive
       )
       sourceRows = eligibleContext.rows
-      diagnostics.candidateUniverseRowsLoaded = eligibleContext.candidateUniverseRowsLoaded
+      diagnostics.candidateUniverseRowsLoaded =
+        eligibleContext.candidateUniverseRowsLoaded
       diagnostics.candidateRowsLoaded = eligibleContext.rows.length
     }
 
@@ -607,55 +655,89 @@ export async function GET(request: Request) {
       )
 
       sourceRows = candidateContext.candidateRows
-      diagnostics.candidateUniverseRowsLoaded = candidateContext.candidateUniverseRowsLoaded
-      diagnostics.candidateHistoryRowsLoaded = candidateContext.candidateHistoryRowsLoaded
+      diagnostics.candidateUniverseRowsLoaded =
+        candidateContext.candidateUniverseRowsLoaded
+      diagnostics.candidateHistoryRowsLoaded =
+        candidateContext.candidateHistoryRowsLoaded
       diagnostics.candidateRowsLoaded = candidateContext.candidateRows.length
-      diagnostics.fallbackCandidateSourceUsed = candidateContext.fallbackCandidateSourceUsed
+      diagnostics.fallbackCandidateSourceUsed =
+        candidateContext.fallbackCandidateSourceUsed
     }
+
+    const filingFetchResults = await mapWithConcurrency(
+      sourceRows,
+      SEC_FETCH_CONCURRENCY,
+      async (candidate) => {
+        const ticker = normalizeTicker(candidate.ticker)
+        const cik = normalizeCik(candidate.cik)
+
+        if (!ticker || !cik) {
+          return {
+            missingCik: true,
+            fetched: false,
+            rows: [] as RawFilingInsertRow[],
+            unsupportedFormsSkipped: 0,
+          }
+        }
+
+        const submission = await fetchSecSubmission(cik)
+
+        if (!submission) {
+          return {
+            missingCik: false,
+            fetched: false,
+            rows: [] as RawFilingInsertRow[],
+            unsupportedFormsSkipped: 0,
+          }
+        }
+
+        const extracted = extractRecentFilingsFromSubmission({
+          submission,
+          fallbackTicker: ticker,
+          fallbackCompanyName: candidate.name,
+          fallbackCik: cik,
+          nowIso,
+        })
+
+        let unsupportedForThisSubmission = 0
+        const recent = submission.filings?.recent
+
+        if (recent?.form?.length) {
+          for (const rawForm of recent.form) {
+            const normalized = normalizeFormType(
+              String(rawForm || "").trim() || null
+            )
+            if (!normalized) continue
+            if (!ALLOWED_FORMS.has(normalized)) unsupportedForThisSubmission += 1
+          }
+        }
+
+        return {
+          missingCik: false,
+          fetched: true,
+          rows: extracted,
+          unsupportedFormsSkipped: unsupportedForThisSubmission,
+        }
+      }
+    )
 
     const rawRows: RawFilingInsertRow[] = []
 
-    for (const candidate of sourceRows) {
-      const ticker = normalizeTicker(candidate.ticker)
-      const cik = normalizeCik(candidate.cik)
-
-      if (!ticker || !cik) {
+    for (const result of filingFetchResults) {
+      if (result.missingCik) {
         diagnostics.candidateRowsWithoutCik += 1
         continue
       }
 
-      const submission = await fetchSecSubmission(cik)
-
-      if (!submission) {
+      if (!result.fetched) {
         diagnostics.secSubmissionsFailed += 1
         continue
       }
 
       diagnostics.secSubmissionsFetched += 1
-
-      const extracted = extractRecentFilingsFromSubmission({
-        submission,
-        fallbackTicker: ticker,
-        fallbackCompanyName: candidate.name,
-        fallbackCik: cik,
-        nowIso,
-      })
-
-      const supportedCount = extracted.length
-      rawRows.push(...extracted)
-
-      const recent = submission.filings?.recent
-      if (recent?.form?.length) {
-        let unsupportedForThisSubmission = 0
-        for (const rawForm of recent.form) {
-          const normalized = normalizeFormType(String(rawForm || "").trim() || null)
-          if (!normalized) continue
-          if (!ALLOWED_FORMS.has(normalized)) unsupportedForThisSubmission += 1
-        }
-        diagnostics.unsupportedFormsSkipped += unsupportedForThisSubmission
-      }
-
-      diagnostics.filingRowsBuilt += supportedCount
+      diagnostics.unsupportedFormsSkipped += result.unsupportedFormsSkipped
+      diagnostics.filingRowsBuilt += result.rows.length
+      rawRows.push(...result.rows)
     }
 
     const dedupedRows = dedupeFilings(rawRows)
