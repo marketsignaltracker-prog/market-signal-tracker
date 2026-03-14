@@ -1,5 +1,8 @@
 import { createClient } from "@supabase/supabase-js"
 
+export const dynamic = "force-dynamic"
+export const maxDuration = 300
+
 type CandidateHistoryRow = {
   ticker: string
   cik: string
@@ -98,15 +101,11 @@ type PtrSignalSummary = {
 }
 
 const MAX_FINAL_CANDIDATES = 75
-const STRICT_MIN_SCORE = 74
-const FALLBACK_MIN_SCORE = 66
+const STRICT_MIN_SCORE = 72
+const FALLBACK_MIN_SCORE = 62
 const MIN_STRICT_POOL_SIZE = 10
 const DB_CHUNK_SIZE = 250
 
-/**
- * PTRs should help rank already-strong names,
- * not rescue weak ones.
- */
 const PTR_LOOKBACK_DAYS = 45
 const PTR_RECENT_DAYS = 14
 const MAX_PTR_BONUS = 8
@@ -135,8 +134,7 @@ function daysAgo(isoDate: string | null) {
   if (!isoDate) return null
   const ts = new Date(isoDate).getTime()
   if (Number.isNaN(ts)) return null
-  const diff = Date.now() - ts
-  return Math.max(0, Math.floor(diff / (24 * 60 * 60 * 1000)))
+  return Math.max(0, Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000)))
 }
 
 async function upsertUniverseInChunks(table: any, rows: CandidateUniverseRow[]) {
@@ -167,14 +165,18 @@ function isStrictEligible(row: CandidateHistoryRow) {
     row.passes_market_cap &&
     row.above_sma_20 &&
     (row.candidate_score ?? 0) >= STRICT_MIN_SCORE &&
-    (row.return_10d ?? -999) >= 3 &&
-    (row.return_20d ?? -999) >= 8 &&
-    (row.relative_strength_20d ?? -999) >= 3 &&
-    (row.volume_ratio ?? 0) >= 1.1 &&
-    ((row.breakout_20d ?? false) || (row.breakout_10d ?? false)) &&
-    (row.breakout_clearance_pct ?? -999) >= 0.15 &&
-    (row.extension_from_sma20_pct ?? 999) <= 14 &&
-    (row.close_in_day_range ?? 0) >= 0.55
+    (row.return_10d ?? -999) >= 2 &&
+    (row.return_20d ?? -999) >= 5 &&
+    (row.relative_strength_20d ?? -999) >= 2 &&
+    (row.volume_ratio ?? 0) >= 0.95 &&
+    (
+      (row.breakout_20d ?? false) ||
+      (row.breakout_10d ?? false) ||
+      (row.relative_strength_20d ?? -999) >= 4
+    ) &&
+    (row.breakout_clearance_pct ?? -999) >= 0.05 &&
+    (row.extension_from_sma20_pct ?? 999) <= 16 &&
+    (row.close_in_day_range ?? 0) >= 0.45
   )
 }
 
@@ -186,10 +188,10 @@ function isFallbackEligible(row: CandidateHistoryRow) {
     row.passes_market_cap &&
     row.above_sma_20 &&
     (row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE &&
-    (row.return_20d ?? -999) >= 4 &&
-    (row.relative_strength_20d ?? -999) >= 1.5 &&
-    (row.volume_ratio ?? 0) >= 1.0 &&
-    (row.extension_from_sma20_pct ?? 999) <= 16
+    (row.return_20d ?? -999) >= 2 &&
+    (row.relative_strength_20d ?? -999) >= 0.5 &&
+    (row.volume_ratio ?? 0) >= 0.85 &&
+    (row.extension_from_sma20_pct ?? 999) <= 18
   )
 }
 
@@ -227,13 +229,10 @@ function buildPtrSignalMap(rows: RawPtrTradeRow[]) {
     if (buyTradeCount >= 1) ptrBonus += 2
     if (buyTradeCount >= 2) ptrBonus += 1
     if (buyTradeCount >= 3) ptrBonus += 1
-
     if (uniqueFilers >= 2) ptrBonus += 1
     if (uniqueFilers >= 3) ptrBonus += 1
-
     if (recentBuyCount >= 1) ptrBonus += 1
     if (recentBuyCount >= 2) ptrBonus += 1
-
     if (totalAmountLow >= 100_001) ptrBonus += 1
     if (totalAmountLow >= 250_001) ptrBonus += 1
     if (totalAmountLow >= 500_001) ptrBonus += 1
@@ -380,81 +379,59 @@ export async function GET(request: Request) {
     const candidateUniverseTable = supabase.from("candidate_universe") as any
 
     const { data: screenedDates, error: screenedDatesError } = await candidateHistoryTable
-  .select("screened_on")
-  .order("screened_on", { ascending: false })
+      .select("screened_on")
+      .order("screened_on", { ascending: false })
 
-if (screenedDatesError) {
-  return Response.json({ ok: false, error: screenedDatesError.message }, { status: 500 })
-}
-
-const orderedDates = uniqueStrings(
-  (screenedDates || []).map((row: any) => String(row.screened_on || ""))
-)
-
-let screenedOn: string | null = null
-let snapshotRows: CandidateHistoryRow[] = []
-
-for (const candidateDate of orderedDates) {
-  const { data: rows, error: rowsError } = await candidateHistoryTable
-    .select("*")
-    .eq("screened_on", candidateDate)
-
-  if (rowsError) {
-    return Response.json({ ok: false, error: rowsError.message }, { status: 500 })
-  }
-
-  const typedRows = (rows || []) as CandidateHistoryRow[]
-  if (!typedRows.length) continue
-
-  const viableRows = typedRows.filter(
-    (row) =>
-      (row.candidate_score ?? 0) > 0 &&
-      (
-        row.passes_price ||
-        row.passes_volume ||
-        row.passes_dollar_volume ||
-        row.passes_market_cap ||
-        row.above_sma_20 ||
-        row.return_20d !== null ||
-        row.relative_strength_20d !== null
-      )
-  )
-
-  if (viableRows.length >= 25) {
-    screenedOn = candidateDate
-    snapshotRows = typedRows
-    break
-  }
-}
-
-if (!screenedOn || !snapshotRows.length) {
-  return Response.json(
-    {
-      ok: false,
-      error: "No viable candidate history snapshot found to finalize",
-    },
-    { status: 500 }
-  )
-}
-
-    if (latestError) {
-      return Response.json({ ok: false, error: latestError.message }, { status: 500 })
+    if (screenedDatesError) {
+      return Response.json({ ok: false, error: screenedDatesError.message }, { status: 500 })
     }
 
-    const screenedOn = latestRow?.screened_on ?? null
+    const orderedDates = uniqueStrings(
+      (screenedDates || []).map((row: any) => String(row.screened_on || ""))
+    )
 
-    if (!screenedOn) {
-      return Response.json(
-        { ok: false, error: "No candidate history rows available to finalize" },
-        { status: 500 }
+    let screenedOn: string | null = null
+    let snapshotRows: CandidateHistoryRow[] = []
+
+    for (const candidateDate of orderedDates) {
+      const { data: rows, error: rowsError } = await candidateHistoryTable
+        .select("*")
+        .eq("screened_on", candidateDate)
+
+      if (rowsError) {
+        return Response.json({ ok: false, error: rowsError.message }, { status: 500 })
+      }
+
+      const typedRows = (rows || []) as CandidateHistoryRow[]
+      if (!typedRows.length) continue
+
+      const viableRows = typedRows.filter(
+        (row) =>
+          (row.candidate_score ?? 0) > 0 &&
+          (
+            row.passes_price ||
+            row.passes_volume ||
+            row.passes_dollar_volume ||
+            row.passes_market_cap ||
+            row.above_sma_20 ||
+            row.return_20d !== null ||
+            row.relative_strength_20d !== null
+          )
       )
+
+      if (viableRows.length >= 25) {
+        screenedOn = candidateDate
+        snapshotRows = typedRows
+        break
+      }
     }
 
-    const snapshotRows = (latestRows || []) as CandidateHistoryRow[]
-
-    if (!snapshotRows.length) {
+    if (!screenedOn || !snapshotRows.length) {
       return Response.json(
-        { ok: false, error: "Latest screened snapshot contains no rows" },
+        {
+          ok: false,
+          error: "No viable candidate history snapshot found to finalize",
+        },
         { status: 500 }
       )
     }
@@ -463,10 +440,6 @@ if (!screenedOn || !snapshotRows.length) {
       (row) => row.candidate_score !== null && row.candidate_score !== undefined
     )
 
-    /**
-     * Optional PTR overlay.
-     * If raw_ptr_trades is unavailable or query fails, finalization still proceeds.
-     */
     const snapshotTickers = uniqueStrings(scoredRows.map((row) => row.ticker))
     const ptrCutoff = new Date()
     ptrCutoff.setDate(ptrCutoff.getDate() - PTR_LOOKBACK_DAYS)
@@ -539,10 +512,13 @@ if (!screenedOn || !snapshotRows.length) {
 
     const universeRows = selectedRows.map((row) => {
       const ptrSummary = ptrMap.get(normalizeTicker(row.ticker)) ?? null
-      const baseReason =
-        selectedSource === "strict"
-          ? `Finalized elite strict candidate (${row.candidate_score}${ptrSummary ? ` + PTR ${ptrSummary.ptrBonus}` : ""})`
-          : `Finalized elite fallback candidate (${row.candidate_score}${ptrSummary ? ` + PTR ${ptrSummary.ptrBonus}` : ""})`
+      const rowIsStrictEligible = isStrictEligible(row)
+
+      const baseReason = rowIsStrictEligible
+        ? `Finalized elite strict-quality candidate (${row.candidate_score}${ptrSummary ? ` + PTR ${ptrSummary.ptrBonus}` : ""})`
+        : selectedSource === "strict"
+          ? `Finalized elite strict-pool candidate (${row.candidate_score}${ptrSummary ? ` + PTR ${ptrSummary.ptrBonus}` : ""})`
+          : `Finalized elite fallback-pool candidate (${row.candidate_score}${ptrSummary ? ` + PTR ${ptrSummary.ptrBonus}` : ""})`
 
       return toUniverseRow(row, baseReason, ptrSummary)
     })
