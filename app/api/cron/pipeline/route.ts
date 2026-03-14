@@ -49,8 +49,11 @@ type PipelineStateRow = {
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
-const DEFAULT_SCREEN_BATCH = 300
-const MAX_SCREEN_BATCH = 350
+/**
+ * Screening must stay small because Yahoo is the bottleneck.
+ */
+const DEFAULT_SCREEN_BATCH = 20
+const MAX_SCREEN_BATCH = 25
 
 const DEFAULT_FILINGS_BATCH = 150
 const DEFAULT_SIGNALS_LIMIT = 75
@@ -64,7 +67,10 @@ const DEFAULT_STEP_TIMEOUT_MS = 240_000
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
 
-const MAX_BATCHES_PER_RUN = 6
+/**
+ * With small screen batches, this still advances a decent amount per run.
+ */
+const MAX_BATCHES_PER_RUN = 4
 const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
 
 function nowIso() {
@@ -308,6 +314,37 @@ async function failPipelineForStep(
   )
 }
 
+async function checkpointScreening(
+  supabase: any,
+  nextStart: number,
+  batchSize: number,
+  results: StepResult[],
+  message: string,
+  batchesThisRun: number
+) {
+  const checkpointAt = nowIso()
+
+  const updated = await patchPipelineState(supabase, {
+    stage: "screening",
+    status: "idle",
+    screen_start: nextStart,
+    screen_next_start: nextStart,
+    screen_batch: batchSize,
+    last_run_finished_at: checkpointAt,
+  })
+
+  return NextResponse.json({
+    ok: true,
+    message,
+    stage: updated.stage,
+    status: updated.status,
+    nextStart: updated.screen_next_start,
+    batchesThisRun,
+    batchSize,
+    results,
+  })
+}
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization")
   const cronSecret = process.env.CRON_SECRET
@@ -438,52 +475,25 @@ export async function GET(request: NextRequest) {
 
       while (!screeningComplete) {
         if (shouldStopForRuntime(runStartedAtMs)) {
-          const checkpointAt = nowIso()
-
-          const updated = await patchPipelineState(supabase, {
-            stage: "screening",
-            status: "idle",
-            screen_start: nextStart,
-            screen_next_start: nextStart,
-            screen_batch: batchSize,
-            last_run_finished_at: checkpointAt,
-          })
-
-          return NextResponse.json({
-            ok: true,
-            message:
-              "Pipeline checkpointed during screening because runtime was nearly exhausted.",
-            stage: updated.stage,
-            status: updated.status,
-            nextStart: updated.screen_next_start,
-            batchesThisRun,
+          return await checkpointScreening(
+            supabase,
+            nextStart,
             batchSize,
             results,
-          })
+            "Pipeline checkpointed during screening because runtime was nearly exhausted.",
+            batchesThisRun
+          )
         }
 
         if (batchesThisRun >= MAX_BATCHES_PER_RUN) {
-          const checkpointAt = nowIso()
-
-          const updated = await patchPipelineState(supabase, {
-            stage: "screening",
-            status: "idle",
-            screen_start: nextStart,
-            screen_next_start: nextStart,
-            screen_batch: batchSize,
-            last_run_finished_at: checkpointAt,
-          })
-
-          return NextResponse.json({
-            ok: true,
-            message: "Batch limit reached for this run.",
-            stage: updated.stage,
-            status: updated.status,
-            nextStart: updated.screen_next_start,
-            batchesThisRun,
+          return await checkpointScreening(
+            supabase,
+            nextStart,
             batchSize,
             results,
-          })
+            "Batch limit reached for this run.",
+            batchesThisRun
+          )
         }
 
         const screenPath = withSearchParams("/api/screen/candidates", {
@@ -504,7 +514,26 @@ export async function GET(request: NextRequest) {
         results.push(screenResult)
         batchesThisRun += 1
 
+        /**
+         * Important:
+         * candidates can intentionally return 503 when Yahoo transient error rate
+         * is too high. Treat that as a checkpoint/backoff signal, not a fatal failure.
+         */
         if (!screenResult.ok) {
+          if (screenResult.status === 503) {
+            const transientErrorRate =
+              Number((screenResult.data as any)?.debug?.transientErrorRate ?? 0)
+
+            return await checkpointScreening(
+              supabase,
+              nextStart,
+              batchSize,
+              results,
+              `Screening paused due to Yahoo throttling / transient error rate (${transientErrorRate}). Will resume next run.`,
+              batchesThisRun
+            )
+          }
+
           return await failPipelineForStep(
             supabase,
             results,
