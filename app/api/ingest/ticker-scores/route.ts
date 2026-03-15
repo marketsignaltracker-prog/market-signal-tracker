@@ -403,10 +403,11 @@ function buildTickerScoresCurrentRows(
     if (sorted.length >= 4) stackedScore += 1
     if (sorted.length >= 5) stackedScore += 1
 
-    if (ptr) {
+        if (ptr) {
       stackedScore += ptr.ptrBonus + 4
       stackedScore += ptr.ptrPenalty
-      scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) + ptr.ptrBonus + 4 + ptr.ptrPenalty) ?? 0
+      scoreBreakdown.ptr =
+        round2((scoreBreakdown.ptr || 0) + ptr.ptrBonus + 4 + ptr.ptrPenalty) ?? 0
       scoreCapsApplied.add("ptr-priority-bonus")
 
       if (ptr.buyCluster) {
@@ -439,7 +440,10 @@ function buildTickerScoresCurrentRows(
         scoreCapsApplied.add("ptr-selling-headwind")
       }
 
-      signalReasons.add(...ptr.notes)
+      for (const note of ptr.notes) {
+        signalReasons.add(note)
+      }
+
       signalTags.add("ptr-priority")
       if (ptr.strongBuying) signalTags.add("ptr-strong-buying")
       if (ptr.buyCluster) signalTags.add("ptr-buy-cluster")
