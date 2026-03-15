@@ -414,7 +414,9 @@ function buildTickerScoresCurrentRows(
       }
 
       if ((universe as any).breakout_20d === true) scoreBreakdown.breakout = 4
-      if ((universe as any).breakout_10d === true) scoreBreakdown.breakout = (scoreBreakdown.breakout || 0) + 1
+      if ((universe as any).breakout_10d === true) {
+        scoreBreakdown.breakout = (scoreBreakdown.breakout || 0) + 1
+      }
       if ((universe as any).above_sma_20 === true) scoreBreakdown.trend = 3
       if (Number((universe as any).relative_strength_20d || 0) > 0) {
         scoreBreakdown.relative_strength = clamp(
@@ -475,7 +477,8 @@ function buildTickerScoresCurrentRows(
       if (ptr.latestTradeDate && dateDiffDays(ptr.latestTradeDate, runDate) !== null) {
         const ageDays = dateDiffDays(ptr.latestTradeDate, runDate) || 0
         if (ageDays <= 7) {
-          scoreBreakdown.freshness = round2((scoreBreakdown.freshness || 0) + 1.5) ?? 0
+          scoreBreakdown.freshness =
+            round2((scoreBreakdown.freshness || 0) + 1.5) ?? 0
         }
       }
     }
@@ -678,7 +681,7 @@ function buildTickerScoresCurrentRows(
         ptr?.latestTradeDate ??
         ptr?.latestReportDate ??
         runDate,
-      signal_keys,
+      signal_keys: signalKeys,
       accession_nos: accessionNos,
       source_forms: uniqueStrings(sourceForms),
       pe_ratio: (referencePrimary as any).pe_ratio ?? (universe as any).pe_ratio ?? null,
@@ -833,8 +836,10 @@ export async function GET(request: Request) {
       Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT)),
       MAX_LIMIT
     )
-    const includeCounts = (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
-    const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
+    const includeCounts =
+      (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
+    const runRetention =
+      (searchParams.get("runRetention") || "false").toLowerCase() === "true"
 
     const now = new Date()
     const runDate = toIsoDateString(now)
@@ -911,9 +916,6 @@ export async function GET(request: Request) {
       .from("raw_ptr_trades")
       .select("*")
       .in("ticker", universeTickers)
-      .or(
-        `transaction_date.gte.${cutoffDateString},report_date.gte.${cutoffDateString}`
-      )
       .order("transaction_date", { ascending: false })
       .order("report_date", { ascending: false })
       .limit(limit)
@@ -929,7 +931,15 @@ export async function GET(request: Request) {
     }
 
     const signalRows = (allSignalRows || []) as any[]
-    const ptrRows = (allPtrRows || []) as any[]
+    const ptrRows = ((allPtrRows || []) as any[]).filter((row) => {
+      const transactionDate = String((row as any).transaction_date || "")
+      const reportDate = String((row as any).report_date || "")
+      return (
+        (transactionDate && transactionDate >= cutoffDateString) ||
+        (reportDate && reportDate >= cutoffDateString)
+      )
+    })
+
     const ptrByTicker = aggregatePtrRowsByTicker(ptrRows, runDate)
 
     const tickerCurrentRowsBase = buildTickerScoresCurrentRows(
