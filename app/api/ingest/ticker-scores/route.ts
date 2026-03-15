@@ -44,6 +44,7 @@ type PtrSummary = {
   latestTradeDate: string | null
   latestReportDate: string | null
   notes: string[]
+  summary: string | null
 }
 
 const DEFAULT_LOOKBACK_DAYS = 14
@@ -327,8 +328,8 @@ function buildPtrSummaryMap(rows: PtrTradeRow[]) {
       latestTradeDate: allDates[0] ?? null,
       latestReportDate: allDates[0] ?? null,
       notes,
+      summary: summaryParts.length ? `PTR support: ${summaryParts.join(", ")}` : null,
     })
-  }
 
   return output
 }
