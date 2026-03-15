@@ -199,12 +199,28 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    /**
+     * Priority stack:
+     * 1. PTR
+     * 2. Insider / ownership / catalyst filings
+     * 3. Signals
+     */
     const insiderTradeTickers = new Set<string>()
+    const highPriorityFilingTickers = new Set<string>()
     const ptrTickers = new Set<string>()
-    const clusterTickers = new Set<string>()
+    const signalTickers = new Set<string>()
 
     for (const filing of (filings || []) as FilingRow[]) {
-      const formType = String(filing?.form_type || "").toUpperCase()
+      const formType = String(filing?.form_type || "").toUpperCase().trim()
+
+      const ticker =
+        filing?.ticker
+          ? normalizeTicker(filing.ticker)
+          : filing?.company_id && companyById.get(Number(filing.company_id))?.ticker
+            ? normalizeTicker(companyById.get(Number(filing.company_id))?.ticker || "")
+            : null
+
+      if (!ticker) continue
 
       const isInsiderTradeForm =
         formType === "3" ||
@@ -217,16 +233,22 @@ export async function GET(request: NextRequest) {
         formType === "FORM 4" ||
         formType === "FORM 5"
 
-      if (!isInsiderTradeForm) continue
+      const isHighPriorityFiling =
+        formType === "13D" ||
+        formType === "13D/A" ||
+        formType === "13G" ||
+        formType === "13G/A" ||
+        formType === "SC 13D" ||
+        formType === "SC 13D/A" ||
+        formType === "SC 13G" ||
+        formType === "SC 13G/A" ||
+        formType === "8-K" ||
+        formType === "6-K" ||
+        formType === "10-Q" ||
+        formType === "10-K"
 
-      const ticker =
-        filing?.ticker
-          ? normalizeTicker(filing.ticker)
-          : filing?.company_id && companyById.get(Number(filing.company_id))?.ticker
-            ? normalizeTicker(companyById.get(Number(filing.company_id))?.ticker || "")
-            : null
-
-      if (ticker) insiderTradeTickers.add(ticker)
+      if (isInsiderTradeForm) insiderTradeTickers.add(ticker)
+      if (isHighPriorityFiling) highPriorityFilingTickers.add(ticker)
     }
 
     for (const ptr of (ptrs || []) as PtrRow[]) {
@@ -235,18 +257,6 @@ export async function GET(request: NextRequest) {
     }
 
     for (const signal of (signals || []) as SignalRow[]) {
-      const signalType = String(signal?.signal_type || "").toLowerCase()
-      const signalSource = String(signal?.signal_source || "").toLowerCase()
-      const signalCategory = String(signal?.signal_category || "").toLowerCase()
-
-      const looksLikeCluster =
-        signalType.includes("cluster") ||
-        signalType.includes("filing_cluster") ||
-        signalSource.includes("cluster") ||
-        signalCategory.includes("cluster")
-
-      if (!looksLikeCluster) continue
-
       const ticker =
         signal?.ticker
           ? normalizeTicker(signal.ticker)
@@ -254,7 +264,8 @@ export async function GET(request: NextRequest) {
             ? normalizeTicker(companyById.get(Number(signal.company_id))?.ticker || "")
             : null
 
-      if (ticker) clusterTickers.add(ticker)
+      if (!ticker) continue
+      signalTickers.add(ticker)
     }
 
     const eligibleRows: Array<Record<string, any>> = []
@@ -264,16 +275,23 @@ export async function GET(request: NextRequest) {
       if (!ticker) continue
 
       const hasInsiderTrades = insiderTradeTickers.has(ticker)
+      const hasHighPriorityFilings = highPriorityFilingTickers.has(ticker)
       const hasPtrForms = ptrTickers.has(ticker)
-      const hasClusters = clusterTickers.has(ticker)
+      const hasSignals = signalTickers.has(ticker)
 
-      const isEligible = hasInsiderTrades || hasPtrForms || hasClusters
+      const isEligible =
+        hasPtrForms ||
+        hasInsiderTrades ||
+        hasHighPriorityFilings ||
+        hasSignals
+
       if (!isEligible) continue
 
       const reasons: string[] = []
-      if (hasInsiderTrades) reasons.push("insider_trades")
       if (hasPtrForms) reasons.push("ptr_forms")
-      if (hasClusters) reasons.push("clusters")
+      if (hasInsiderTrades) reasons.push("insider_trades")
+      if (hasHighPriorityFilings) reasons.push("high_priority_filings")
+      if (hasSignals) reasons.push("signals")
 
       eligibleRows.push({
         company_id: company.id,
@@ -283,7 +301,7 @@ export async function GET(request: NextRequest) {
         is_active: company.is_active ?? true,
         has_insider_trades: hasInsiderTrades,
         has_ptr_forms: hasPtrForms,
-        has_clusters: hasClusters,
+        has_clusters: hasSignals,
         is_eligible: true,
         eligibility_reason: reasons.join(","),
         updated_at: updatedAt,
@@ -320,8 +338,9 @@ export async function GET(request: NextRequest) {
         ? {
             companies: typedCompanies.length,
             insiderTradeTickers: insiderTradeTickers.size,
+            highPriorityFilingTickers: highPriorityFilingTickers.size,
             ptrTickers: ptrTickers.size,
-            clusterTickers: clusterTickers.size,
+            signalTickers: signalTickers.size,
             eligibleRows: eligibleRows.length,
           }
         : undefined,

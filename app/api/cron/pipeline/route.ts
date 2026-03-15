@@ -17,12 +17,12 @@ type PipelineStage =
   | "idle"
   | "companies"
   | "filings"
+  | "ptrs"
   | "signals"
   | "filing_signals"
   | "eligible_universe"
   | "screening"
   | "finalize_candidates"
-  | "ptrs"
   | "ticker_scores"
   | "complete"
   | "error"
@@ -52,18 +52,14 @@ type PipelineStateRow = {
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
 /**
- * Screening is now against a reduced eligible universe,
- * so batches can be moderately larger than the old Yahoo-first flow.
+ * Reduced-universe screening means we can process a little more per run,
+ * but we still want checkpoint-safe batches.
  */
 const DEFAULT_SCREEN_BATCH = 50
 const MAX_SCREEN_BATCH = 100
 
-/**
- * Keep network-heavy stages conservative.
- * PTRs are especially expensive when they are live API / per-ticker.
- */
-const DEFAULT_FILINGS_BATCH = 100
-const DEFAULT_PTRS_BATCH = 25
+const DEFAULT_FILINGS_BATCH = 200
+const DEFAULT_PTRS_BATCH = 200
 const DEFAULT_SIGNALS_LIMIT = 250
 const DEFAULT_SIGNALS_LOOKBACK_DAYS = 14
 const DEFAULT_FILING_SIGNALS_LIMIT = 200
@@ -76,9 +72,6 @@ const DEFAULT_STEP_TIMEOUT_MS = 240_000
 const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
 
-/**
- * Screening can checkpoint cleanly, so allow a few batches per run.
- */
 const MAX_BATCHES_PER_RUN = 8
 const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
 
@@ -377,6 +370,13 @@ async function checkpointScreening(
   })
 }
 
+function extractStepCount(data: any, possibleKeys: string[]) {
+  for (const key of possibleKeys) {
+    if (typeof data?.[key] === "number") return Number(data[key])
+  }
+  return null
+}
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization")
   const cronSecret = process.env.CRON_SECRET
@@ -509,7 +509,6 @@ export async function GET(request: NextRequest) {
           scope: "all",
           start: 0,
           batch: DEFAULT_FILINGS_BATCH,
-          onlyActive: true,
         }),
         DEFAULT_STEP_TIMEOUT_MS
       )
@@ -528,9 +527,48 @@ export async function GET(request: NextRequest) {
       }
 
       state = await patchPipelineState(supabase, {
-        stage: "signals",
+        stage: "ptrs",
         status: "running",
         filings_completed_at: nowIso(),
+      })
+    }
+
+    if (state.stage === "ptrs") {
+      if (shouldStopForRuntime(runStartedAtMs)) {
+        return await checkpointStage(
+          supabase,
+          "ptrs",
+          results,
+          "Pipeline checkpointed before PTR ingest. Continue on next cron run."
+        )
+      }
+
+      const ptrsResult = await runStep(
+        baseUrl,
+        withSearchParams("/api/ingest/ptrs", {
+          scope: "all",
+          start: 0,
+          batch: DEFAULT_PTRS_BATCH,
+        }),
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(ptrsResult)
+
+      if (!ptrsResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          ptrsResult,
+          `PTR step failed: ${String(
+            (ptrsResult.data as any)?.error || ptrsResult.status
+          )}`
+        )
+      }
+
+      state = await patchPipelineState(supabase, {
+        stage: "signals",
+        status: "running",
       })
     }
 
@@ -625,6 +663,10 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      /**
+       * PTR → filings → signals priority starts here.
+       * The eligible-universe route is now the main reducer before Yahoo work.
+       */
       const eligibleUniverseResult = await runStep(
         baseUrl,
         withSearchParams("/api/screen/eligible-universe", {
@@ -643,8 +685,7 @@ export async function GET(request: NextRequest) {
           results,
           eligibleUniverseResult,
           `Eligible universe step failed: ${String(
-            (eligibleUniverseResult.data as any)?.error ||
-              eligibleUniverseResult.status
+            (eligibleUniverseResult.data as any)?.error || eligibleUniverseResult.status
           )}`
         )
       }
@@ -693,6 +734,11 @@ export async function GET(request: NextRequest) {
           )
         }
 
+        /**
+         * Critical change:
+         * Always screen the reduced eligible universe, not the full companies table.
+         * That keeps the whole stack aligned with PTR → filings → signals priority.
+         */
         const screenPath = withSearchParams("/api/screen/candidates", {
           universe: "eligible",
           start: nextStart,
@@ -726,10 +772,9 @@ export async function GET(request: NextRequest) {
         const screenData = screenResult.data as any
         const returnedNextStart =
           typeof screenData?.nextStart === "number" ? screenData.nextStart : null
+
         const returnedTotalCompanies =
-          typeof screenData?.totalCompanies === "number"
-            ? screenData.totalCompanies
-            : state.screen_total
+          extractStepCount(screenData, ["totalCompanies"]) ?? state.screen_total
 
         state = await patchPipelineState(supabase, {
           stage: returnedNextStart === null ? "finalize_candidates" : "screening",
@@ -773,48 +818,6 @@ export async function GET(request: NextRequest) {
           finalizeResult,
           `Finalize candidates step failed: ${String(
             (finalizeResult.data as any)?.error || finalizeResult.status
-          )}`
-        )
-      }
-
-      state = await patchPipelineState(supabase, {
-        stage: "ptrs",
-        status: "running",
-      })
-    }
-
-    if (state.stage === "ptrs") {
-      if (shouldStopForRuntime(runStartedAtMs)) {
-        return await checkpointStage(
-          supabase,
-          "ptrs",
-          results,
-          "Pipeline checkpointed before PTR ingest. Continue on next cron run."
-        )
-      }
-
-      const ptrsResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/ingest/ptrs", {
-          scope: "eligible",
-          start: 0,
-          batch: DEFAULT_PTRS_BATCH,
-          onlyActive: true,
-          includeCounts: false,
-          limit: 10,
-        }),
-        DEFAULT_STEP_TIMEOUT_MS
-      )
-
-      results.push(ptrsResult)
-
-      if (!ptrsResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          ptrsResult,
-          `PTR step failed: ${String(
-            (ptrsResult.data as any)?.error || ptrsResult.status
           )}`
         )
       }
@@ -916,10 +919,7 @@ export async function GET(request: NextRequest) {
       const supabase = getSupabaseAdmin()
       const currentState = await getPipelineState(supabase)
 
-      if (
-        currentState.last_error !== message ||
-        currentState.status !== "error"
-      ) {
+      if (currentState.last_error !== message || currentState.status !== "error") {
         const failedAt = nowIso()
 
         await patchPipelineState(supabase, {

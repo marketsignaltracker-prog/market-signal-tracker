@@ -160,10 +160,6 @@ function daysAgo(isoDate: string | null) {
   return Math.max(0, Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000)))
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value))
-}
-
 async function upsertUniverseInChunks(table: any, rows: CandidateUniverseRow[]) {
   let errorCount = 0
   const errors: string[] = []
@@ -307,6 +303,31 @@ function getSelectionScore(
   let score = Number(row.candidate_score ?? 0)
   const reasons: string[] = []
 
+  /**
+   * Priority stack:
+   * PTR > insider / filings > signals / clusters > technical refinement
+   */
+
+  if (ptr?.ptrBonus) {
+    score += ptr.ptrBonus + 4
+    reasons.push(`PTR priority +${ptr.ptrBonus + 4}`)
+  }
+
+  if (row.has_insider_trades) {
+    score += 4
+    reasons.push("insider filing support")
+  }
+
+  if ((row.eligibility_reason || "").includes("high_priority_filings")) {
+    score += 3
+    reasons.push("high-priority filing support")
+  }
+
+  if (row.has_clusters) {
+    score += 1
+    reasons.push("signal support")
+  }
+
   if (row.above_sma_20) {
     score += 2
     reasons.push("above 20dma")
@@ -343,13 +364,13 @@ function getSelectionScore(
   }
 
   if (row.breakout_20d) {
-    score += 3
+    score += 2.5
     reasons.push("20d breakout")
   } else if (row.breakout_10d) {
-    score += 2
+    score += 1.5
     reasons.push("10d breakout")
   } else if ((row.breakout_clearance_pct ?? -999) >= -0.5) {
-    score += 1
+    score += 0.75
     reasons.push("near breakout")
   }
 
@@ -373,22 +394,6 @@ function getSelectionScore(
     reasons.push("strong liquidity")
   } else if ((row.avg_dollar_volume_20d ?? 0) >= 35_000_000) {
     score += 0.5
-  }
-
-  if ((row.market_cap ?? 0) >= 10_000_000_000) {
-    score += 1
-  }
-
-  if ((row.catalyst_count ?? 0) >= 8) {
-    score += 1.5
-    reasons.push("multiple catalysts")
-  } else if ((row.catalyst_count ?? 0) >= 6) {
-    score += 0.5
-  }
-
-  if (ptr?.ptrBonus) {
-    score += ptr.ptrBonus
-    reasons.push(`PTR +${ptr.ptrBonus}`)
   }
 
   return {

@@ -139,6 +139,9 @@ type CandidateMetricRow = {
   passesStrongCompanyGate: boolean
   strongCompanyReasons: string[]
   speculativePenalty: number
+  ptrPriorityBonus: number
+  filingPriorityBonus: number
+  signalPriorityBonus: number
 }
 
 type ScreeningPreparationResult =
@@ -230,9 +233,6 @@ const RETENTION_DAYS = 30
 
 const BENCHMARK_TICKER = "SPY"
 
-/**
- * Broad elite pool, not the final shortlist.
- */
 const MIN_PRICE = 15
 const MIN_AVG_VOLUME_20D = 1_000_000
 const MIN_AVG_DOLLAR_VOLUME_20D = 35_000_000
@@ -1420,6 +1420,14 @@ async function prepareTickerForScoring(
       passesStrongCompanyGate: strongCompanyEval.passes,
       strongCompanyReasons: strongCompanyEval.reasons,
       speculativePenalty: strongCompanyEval.speculativePenalty,
+      ptrPriorityBonus: company.has_ptr_forms ? 6 : 0,
+      filingPriorityBonus:
+        company.has_insider_trades
+          ? 4
+          : (company.eligibility_reason || "").includes("high_priority_filings")
+            ? 3
+            : 0,
+      signalPriorityBonus: company.has_clusters ? 1 : 0,
     },
   }
 }
@@ -1635,7 +1643,16 @@ export async function GET(request: Request) {
         speculativePenalty: metric.speculativePenalty,
       })
 
-      const score = scoreDetails.candidateScore
+      const adjustedScore = clamp(
+        scoreDetails.candidateScore +
+          metric.ptrPriorityBonus +
+          metric.filingPriorityBonus +
+          metric.signalPriorityBonus,
+        0,
+        100
+      )
+
+      const score = adjustedScore
       const catalystCount = scoreDetails.catalystCount
 
       const strongBuyNowCandidate =
@@ -1683,6 +1700,13 @@ export async function GET(request: Request) {
         score >= 70
 
       const reasons: string[] = []
+
+      if (metric.company.has_ptr_forms) reasons.push("PTR priority")
+      if (metric.company.has_insider_trades) reasons.push("insider filing priority")
+      if ((metric.company.eligibility_reason || "").includes("high_priority_filings")) {
+        reasons.push("high-priority filing support")
+      }
+      if (metric.company.has_clusters) reasons.push("signal support")
 
       if (metric.passesStrongCompanyGate) reasons.push("strong underlying company")
       if (metric.strongCompanyScore >= 75) reasons.push("high fundamental quality")
@@ -1822,6 +1846,11 @@ export async function GET(request: Request) {
           strongCompanyScore: round2(metric.strongCompanyScore),
           passesStrongCompanyGate: metric.passesStrongCompanyGate,
           catalystCount,
+          priorityBonuses: {
+            ptr: metric.ptrPriorityBonus,
+            filings: metric.filingPriorityBonus,
+            signals: metric.signalPriorityBonus,
+          },
           scoreBreakdown: {
             quality: round2(scoreDetails.qualityScore),
             fundamental: round2(scoreDetails.fundamentalScore),
