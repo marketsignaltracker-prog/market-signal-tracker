@@ -114,10 +114,19 @@ type PtrSignalSummary = {
   summary: string | null
 }
 
-const MAX_FINAL_CANDIDATES = 75
-const STRICT_MIN_SCORE = 72
-const FALLBACK_MIN_SCORE = 62
-const MIN_STRICT_POOL_SIZE = 10
+type RankedRow = {
+  row: CandidateHistoryRow
+  ptrSummary: PtrSignalSummary | null
+  selectionScore: number
+  bucket: "strict" | "balanced" | "fallback"
+  reasons: string[]
+}
+
+const MAX_FINAL_CANDIDATES = 24
+const TARGET_MIN_FINAL_CANDIDATES = 10
+const STRICT_MIN_SCORE = 68
+const BALANCED_MIN_SCORE = 62
+const FALLBACK_MIN_SCORE = 56
 const DB_CHUNK_SIZE = 250
 
 const PTR_LOOKBACK_DAYS = 45
@@ -151,6 +160,10 @@ function daysAgo(isoDate: string | null) {
   return Math.max(0, Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000)))
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
 async function upsertUniverseInChunks(table: any, rows: CandidateUniverseRow[]) {
   let errorCount = 0
   const errors: string[] = []
@@ -179,18 +192,33 @@ function isStrictEligible(row: CandidateHistoryRow) {
     row.passes_market_cap &&
     row.above_sma_20 &&
     (row.candidate_score ?? 0) >= STRICT_MIN_SCORE &&
-    (row.return_10d ?? -999) >= 2 &&
-    (row.return_20d ?? -999) >= 5 &&
-    (row.relative_strength_20d ?? -999) >= 2 &&
-    (row.volume_ratio ?? 0) >= 0.95 &&
+    (row.return_10d ?? -999) >= 1 &&
+    (row.return_20d ?? -999) >= 4 &&
+    (row.relative_strength_20d ?? -999) >= 1.5 &&
+    (row.volume_ratio ?? 0) >= 0.8 &&
     (
       (row.breakout_20d ?? false) ||
       (row.breakout_10d ?? false) ||
       (row.relative_strength_20d ?? -999) >= 4
     ) &&
-    (row.breakout_clearance_pct ?? -999) >= 0.05 &&
+    (row.breakout_clearance_pct ?? -999) >= -1 &&
     (row.extension_from_sma20_pct ?? 999) <= 16 &&
-    (row.close_in_day_range ?? 0) >= 0.45
+    (row.close_in_day_range ?? 0) >= 0.4
+  )
+}
+
+function isBalancedEligible(row: CandidateHistoryRow) {
+  return (
+    row.passes_price &&
+    row.passes_volume &&
+    row.passes_dollar_volume &&
+    row.passes_market_cap &&
+    row.above_sma_20 &&
+    (row.candidate_score ?? 0) >= BALANCED_MIN_SCORE &&
+    (row.return_20d ?? -999) >= 2 &&
+    (row.relative_strength_20d ?? -999) >= 0.5 &&
+    (row.volume_ratio ?? 0) >= 0.75 &&
+    (row.extension_from_sma20_pct ?? 999) <= 18
   )
 }
 
@@ -202,10 +230,10 @@ function isFallbackEligible(row: CandidateHistoryRow) {
     row.passes_market_cap &&
     row.above_sma_20 &&
     (row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE &&
-    (row.return_20d ?? -999) >= 2 &&
-    (row.relative_strength_20d ?? -999) >= 0.5 &&
-    (row.volume_ratio ?? 0) >= 0.85 &&
-    (row.extension_from_sma20_pct ?? 999) <= 18
+    (row.return_20d ?? -999) >= 1 &&
+    (row.relative_strength_20d ?? -999) >= 0 &&
+    (row.volume_ratio ?? 0) >= 0.65 &&
+    (row.extension_from_sma20_pct ?? 999) <= 20
   )
 }
 
@@ -272,56 +300,194 @@ function buildPtrSignalMap(rows: RawPtrTradeRow[]) {
   return out
 }
 
-function getAdjustedSelectionScore(
+function getSelectionScore(
   row: CandidateHistoryRow,
   ptr: PtrSignalSummary | null | undefined
 ) {
-  return (row.candidate_score ?? 0) + (ptr?.ptrBonus ?? 0)
+  let score = Number(row.candidate_score ?? 0)
+  const reasons: string[] = []
+
+  if (row.above_sma_20) {
+    score += 2
+    reasons.push("above 20dma")
+  }
+
+  if ((row.return_10d ?? 0) >= 2) {
+    score += 2
+    reasons.push("10d momentum")
+  } else if ((row.return_10d ?? 0) > 0) {
+    score += 1
+  }
+
+  if ((row.return_20d ?? 0) >= 5) {
+    score += 3
+    reasons.push("20d momentum")
+  } else if ((row.return_20d ?? 0) >= 2) {
+    score += 1.5
+  }
+
+  if ((row.relative_strength_20d ?? 0) >= 4) {
+    score += 3
+    reasons.push("strong relative strength")
+  } else if ((row.relative_strength_20d ?? 0) >= 2) {
+    score += 2
+  } else if ((row.relative_strength_20d ?? 0) >= 0.5) {
+    score += 1
+  }
+
+  if ((row.volume_ratio ?? 0) >= 1.5) {
+    score += 2
+    reasons.push("volume expansion")
+  } else if ((row.volume_ratio ?? 0) >= 1.0) {
+    score += 1
+  }
+
+  if (row.breakout_20d) {
+    score += 3
+    reasons.push("20d breakout")
+  } else if (row.breakout_10d) {
+    score += 2
+    reasons.push("10d breakout")
+  } else if ((row.breakout_clearance_pct ?? -999) >= -0.5) {
+    score += 1
+    reasons.push("near breakout")
+  }
+
+  if ((row.close_in_day_range ?? 0) >= 0.65) {
+    score += 1.5
+    reasons.push("strong close")
+  } else if ((row.close_in_day_range ?? 0) >= 0.5) {
+    score += 0.5
+  }
+
+  if ((row.extension_from_sma20_pct ?? 999) <= 12) {
+    score += 1
+    reasons.push("not too extended")
+  } else if ((row.extension_from_sma20_pct ?? 999) > 18) {
+    score -= 2
+    reasons.push("too extended")
+  }
+
+  if ((row.avg_dollar_volume_20d ?? 0) >= 50_000_000) {
+    score += 1.5
+    reasons.push("strong liquidity")
+  } else if ((row.avg_dollar_volume_20d ?? 0) >= 35_000_000) {
+    score += 0.5
+  }
+
+  if ((row.market_cap ?? 0) >= 10_000_000_000) {
+    score += 1
+  }
+
+  if ((row.catalyst_count ?? 0) >= 8) {
+    score += 1.5
+    reasons.push("multiple catalysts")
+  } else if ((row.catalyst_count ?? 0) >= 6) {
+    score += 0.5
+  }
+
+  if (ptr?.ptrBonus) {
+    score += ptr.ptrBonus
+    reasons.push(`PTR +${ptr.ptrBonus}`)
+  }
+
+  return {
+    selectionScore: Math.round(score * 100) / 100,
+    reasons,
+  }
 }
 
-function compareRows(
-  a: CandidateHistoryRow,
-  b: CandidateHistoryRow,
+function buildRankedRows(
+  rows: CandidateHistoryRow[],
   ptrMap: Map<string, PtrSignalSummary>
-) {
-  const ptrA = ptrMap.get(normalizeTicker(a.ticker))
-  const ptrB = ptrMap.get(normalizeTicker(b.ticker))
+): RankedRow[] {
+  return rows
+    .map((row) => {
+      const ptrSummary = ptrMap.get(normalizeTicker(row.ticker)) ?? null
+      const { selectionScore, reasons } = getSelectionScore(row, ptrSummary)
 
-  const adjustedA = getAdjustedSelectionScore(a, ptrA)
-  const adjustedB = getAdjustedSelectionScore(b, ptrB)
+      let bucket: "strict" | "balanced" | "fallback" = "fallback"
+      if (isStrictEligible(row)) bucket = "strict"
+      else if (isBalancedEligible(row)) bucket = "balanced"
+      else if (isFallbackEligible(row)) bucket = "fallback"
+      else return null
 
-  if (adjustedB !== adjustedA) {
-    return adjustedB - adjustedA
+      return {
+        row,
+        ptrSummary,
+        selectionScore,
+        bucket,
+        reasons,
+      }
+    })
+    .filter((item): item is RankedRow => item !== null)
+    .sort((a, b) => {
+      const bucketRank = { strict: 3, balanced: 2, fallback: 1 }
+      if (bucketRank[b.bucket] !== bucketRank[a.bucket]) {
+        return bucketRank[b.bucket] - bucketRank[a.bucket]
+      }
+
+      if (b.selectionScore !== a.selectionScore) {
+        return b.selectionScore - a.selectionScore
+      }
+
+      if ((b.row.candidate_score ?? 0) !== (a.row.candidate_score ?? 0)) {
+        return (b.row.candidate_score ?? 0) - (a.row.candidate_score ?? 0)
+      }
+
+      if ((b.row.relative_strength_20d ?? 0) !== (a.row.relative_strength_20d ?? 0)) {
+        return (b.row.relative_strength_20d ?? 0) - (a.row.relative_strength_20d ?? 0)
+      }
+
+      if ((b.row.return_20d ?? 0) !== (a.row.return_20d ?? 0)) {
+        return (b.row.return_20d ?? 0) - (a.row.return_20d ?? 0)
+      }
+
+      if ((b.row.volume_ratio ?? 0) !== (a.row.volume_ratio ?? 0)) {
+        return (b.row.volume_ratio ?? 0) - (a.row.volume_ratio ?? 0)
+      }
+
+      return (b.row.market_cap ?? 0) - (a.row.market_cap ?? 0)
+    })
+}
+
+function selectFinalRows(ranked: RankedRow[]) {
+  const strictRows = ranked.filter((item) => item.bucket === "strict")
+  const balancedRows = ranked.filter((item) => item.bucket === "balanced")
+  const fallbackRows = ranked.filter((item) => item.bucket === "fallback")
+
+  let selected: RankedRow[] = []
+
+  selected.push(...strictRows.slice(0, 12))
+
+  if (selected.length < TARGET_MIN_FINAL_CANDIDATES) {
+    const needed = TARGET_MIN_FINAL_CANDIDATES - selected.length
+    selected.push(...balancedRows.slice(0, Math.max(needed, 6)))
+  } else {
+    selected.push(...balancedRows.slice(0, 6))
   }
 
-  if ((b.candidate_score ?? 0) !== (a.candidate_score ?? 0)) {
-    return (b.candidate_score ?? 0) - (a.candidate_score ?? 0)
+  if (selected.length < TARGET_MIN_FINAL_CANDIDATES) {
+    const stillNeeded = TARGET_MIN_FINAL_CANDIDATES - selected.length
+    selected.push(...fallbackRows.slice(0, stillNeeded))
   }
 
-  if ((b.relative_strength_20d ?? 0) !== (a.relative_strength_20d ?? 0)) {
-    return (b.relative_strength_20d ?? 0) - (a.relative_strength_20d ?? 0)
-  }
+  const seen = new Set<string>()
+  const deduped = [...selected, ...strictRows, ...balancedRows, ...fallbackRows].filter((item) => {
+    const ticker = normalizeTicker(item.row.ticker)
+    if (!ticker || seen.has(ticker)) return false
+    seen.add(ticker)
+    return true
+  })
 
-  if ((b.return_20d ?? 0) !== (a.return_20d ?? 0)) {
-    return (b.return_20d ?? 0) - (a.return_20d ?? 0)
-  }
-
-  if ((b.volume_ratio ?? 0) !== (a.volume_ratio ?? 0)) {
-    return (b.volume_ratio ?? 0) - (a.volume_ratio ?? 0)
-  }
-
-  if ((b.avg_dollar_volume_20d ?? 0) !== (a.avg_dollar_volume_20d ?? 0)) {
-    return (b.avg_dollar_volume_20d ?? 0) - (a.avg_dollar_volume_20d ?? 0)
-  }
-
-  return (b.market_cap ?? 0) - (a.market_cap ?? 0)
+  return deduped.slice(0, MAX_FINAL_CANDIDATES)
 }
 
 function toUniverseRow(
-  row: CandidateHistoryRow,
-  reason: string,
-  ptrSummary: PtrSignalSummary | null
+  ranked: RankedRow,
+  selectedSource: string
 ): CandidateUniverseRow {
+  const { row, ptrSummary, selectionScore, bucket, reasons } = ranked
   const ptrReason = ptrSummary?.summary ? `; ${ptrSummary.summary}` : ""
 
   return {
@@ -364,7 +530,7 @@ function toUniverseRow(
     passes_market_cap: row.passes_market_cap,
     candidate_score: row.candidate_score,
     included: true,
-    screen_reason: `${reason}${ptrReason}`,
+    screen_reason: `Finalized ${selectedSource} ${bucket} candidate (${row.candidate_score}, selection ${selectionScore}): ${reasons.join(", ")}${ptrReason}`,
     last_screened_at: row.last_screened_at,
     updated_at: new Date().toISOString(),
   }
@@ -440,7 +606,7 @@ export async function GET(request: Request) {
           )
       )
 
-      if (viableRows.length >= 25) {
+      if (viableRows.length >= 20) {
         screenedOn = candidateDate
         snapshotRows = typedRows
         break
@@ -499,19 +665,14 @@ export async function GET(request: Request) {
       }
     }
 
-    const strictPool = scoredRows
-      .filter(isStrictEligible)
-      .sort((a, b) => compareRows(a, b, ptrMap))
+    const rankedRows = buildRankedRows(scoredRows, ptrMap)
+    const strictCount = rankedRows.filter((item) => item.bucket === "strict").length
+    const balancedCount = rankedRows.filter((item) => item.bucket === "balanced").length
+    const fallbackCount = rankedRows.filter((item) => item.bucket === "fallback").length
 
-    const fallbackPool = scoredRows
-      .filter(isFallbackEligible)
-      .sort((a, b) => compareRows(a, b, ptrMap))
+    const selectedRankedRows = selectFinalRows(rankedRows)
 
-    const selectedSource = strictPool.length >= MIN_STRICT_POOL_SIZE ? "strict" : "fallback"
-    const selectedPool = selectedSource === "strict" ? strictPool : fallbackPool
-    const selectedRows = selectedPool.slice(0, MAX_FINAL_CANDIDATES)
-
-    if (!selectedRows.length) {
+    if (!selectedRankedRows.length) {
       return Response.json(
         {
           ok: false,
@@ -520,8 +681,9 @@ export async function GET(request: Request) {
             screenedOn,
             snapshotRowCount: snapshotRows.length,
             scoredRowCount: scoredRows.length,
-            strictEligibleCount: strictPool.length,
-            fallbackEligibleCount: fallbackPool.length,
+            strictCount,
+            balancedCount,
+            fallbackCount,
             ptrDiagnostics,
           },
         },
@@ -529,20 +691,17 @@ export async function GET(request: Request) {
       )
     }
 
-    const selectedTickers = new Set(selectedRows.map((row) => row.ticker))
+    const selectedTickers = new Set(selectedRankedRows.map((item) => item.row.ticker))
+    const selectedSource =
+      strictCount >= TARGET_MIN_FINAL_CANDIDATES
+        ? "strict-led"
+        : balancedCount > 0
+          ? "balanced-led"
+          : "fallback-led"
 
-    const universeRows = selectedRows.map((row) => {
-      const ptrSummary = ptrMap.get(normalizeTicker(row.ticker)) ?? null
-      const rowIsStrictEligible = isStrictEligible(row)
-
-      const baseReason = rowIsStrictEligible
-        ? `Finalized elite strict-quality candidate (${row.candidate_score}${ptrSummary ? ` + PTR ${ptrSummary.ptrBonus}` : ""})`
-        : selectedSource === "strict"
-          ? `Finalized elite strict-pool candidate (${row.candidate_score}${ptrSummary ? ` + PTR ${ptrSummary.ptrBonus}` : ""})`
-          : `Finalized elite fallback-pool candidate (${row.candidate_score}${ptrSummary ? ` + PTR ${ptrSummary.ptrBonus}` : ""})`
-
-      return toUniverseRow(row, baseReason, ptrSummary)
-    })
+    const universeRows = selectedRankedRows.map((item) =>
+      toUniverseRow(item, selectedSource)
+    )
 
     const deleteError = await deleteAllUniverseRows(candidateUniverseTable)
     if (deleteError) {
@@ -608,8 +767,8 @@ export async function GET(request: Request) {
       }
     }
 
-    const ptrSelectedCount = selectedRows.filter((row) =>
-      ptrMap.has(normalizeTicker(row.ticker))
+    const ptrSelectedCount = selectedRankedRows.filter((item) =>
+      ptrMap.has(normalizeTicker(item.row.ticker))
     ).length
 
     return Response.json({
@@ -617,8 +776,9 @@ export async function GET(request: Request) {
       screenedOn,
       snapshotRowCount: snapshotRows.length,
       scoredRowCount: scoredRows.length,
-      strictEligibleCount: strictPool.length,
-      fallbackEligibleCount: fallbackPool.length,
+      strictCount,
+      balancedCount,
+      fallbackCount,
       selectedSource,
       finalizedCount: universeRows.length,
       ptrDiagnostics,
