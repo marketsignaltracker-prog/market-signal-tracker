@@ -17,12 +17,12 @@ type PipelineStage =
   | "idle"
   | "companies"
   | "filings"
-  | "ptrs"
   | "signals"
   | "filing_signals"
   | "eligible_universe"
   | "screening"
   | "finalize_candidates"
+  | "ptrs"
   | "ticker_scores"
   | "complete"
   | "error"
@@ -52,15 +52,18 @@ type PipelineStateRow = {
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
 /**
- * Screening is no longer the first filter.
- * Since we are only screening the reduced eligible universe,
- * we can safely run slightly larger batches.
+ * Screening is now against a reduced eligible universe,
+ * so batches can be moderately larger than the old Yahoo-first flow.
  */
 const DEFAULT_SCREEN_BATCH = 50
 const MAX_SCREEN_BATCH = 100
 
-const DEFAULT_FILINGS_BATCH = 200
-const DEFAULT_PTRS_BATCH = 200
+/**
+ * Keep network-heavy stages conservative.
+ * PTRs are especially expensive when they are live API / per-ticker.
+ */
+const DEFAULT_FILINGS_BATCH = 100
+const DEFAULT_PTRS_BATCH = 25
 const DEFAULT_SIGNALS_LIMIT = 250
 const DEFAULT_SIGNALS_LOOKBACK_DAYS = 14
 const DEFAULT_FILING_SIGNALS_LIMIT = 200
@@ -74,8 +77,7 @@ const MAX_PIPELINE_RUNTIME_MS = 210_000
 const RUNTIME_SAFETY_BUFFER_MS = 15_000
 
 /**
- * Since the local/db-first stages are much cheaper, allow a few more
- * stage transitions per run. Screening still checkpoints cleanly.
+ * Screening can checkpoint cleanly, so allow a few batches per run.
  */
 const MAX_BATCHES_PER_RUN = 8
 const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
@@ -507,6 +509,7 @@ export async function GET(request: NextRequest) {
           scope: "all",
           start: 0,
           batch: DEFAULT_FILINGS_BATCH,
+          onlyActive: true,
         }),
         DEFAULT_STEP_TIMEOUT_MS
       )
@@ -525,48 +528,9 @@ export async function GET(request: NextRequest) {
       }
 
       state = await patchPipelineState(supabase, {
-        stage: "ptrs",
-        status: "running",
-        filings_completed_at: nowIso(),
-      })
-    }
-
-    if (state.stage === "ptrs") {
-      if (shouldStopForRuntime(runStartedAtMs)) {
-        return await checkpointStage(
-          supabase,
-          "ptrs",
-          results,
-          "Pipeline checkpointed before PTR ingest. Continue on next cron run."
-        )
-      }
-
-      const ptrsResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/ingest/ptrs", {
-          scope: "all",
-          start: 0,
-          batch: DEFAULT_PTRS_BATCH,
-        }),
-        DEFAULT_STEP_TIMEOUT_MS
-      )
-
-      results.push(ptrsResult)
-
-      if (!ptrsResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          ptrsResult,
-          `PTR step failed: ${String(
-            (ptrsResult.data as any)?.error || ptrsResult.status
-          )}`
-        )
-      }
-
-      state = await patchPipelineState(supabase, {
         stage: "signals",
         status: "running",
+        filings_completed_at: nowIso(),
       })
     }
 
@@ -814,6 +778,48 @@ export async function GET(request: NextRequest) {
       }
 
       state = await patchPipelineState(supabase, {
+        stage: "ptrs",
+        status: "running",
+      })
+    }
+
+    if (state.stage === "ptrs") {
+      if (shouldStopForRuntime(runStartedAtMs)) {
+        return await checkpointStage(
+          supabase,
+          "ptrs",
+          results,
+          "Pipeline checkpointed before PTR ingest. Continue on next cron run."
+        )
+      }
+
+      const ptrsResult = await runStep(
+        baseUrl,
+        withSearchParams("/api/ingest/ptrs", {
+          scope: "eligible",
+          start: 0,
+          batch: DEFAULT_PTRS_BATCH,
+          onlyActive: true,
+          includeCounts: false,
+          limit: 10,
+        }),
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(ptrsResult)
+
+      if (!ptrsResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          ptrsResult,
+          `PTR step failed: ${String(
+            (ptrsResult.data as any)?.error || ptrsResult.status
+          )}`
+        )
+      }
+
+      state = await patchPipelineState(supabase, {
         stage: "ticker_scores",
         status: "running",
       })
@@ -910,7 +916,10 @@ export async function GET(request: NextRequest) {
       const supabase = getSupabaseAdmin()
       const currentState = await getPipelineState(supabase)
 
-      if (currentState.last_error !== message || currentState.status !== "error") {
+      if (
+        currentState.last_error !== message ||
+        currentState.status !== "error"
+      ) {
         const failedAt = nowIso()
 
         await patchPipelineState(supabase, {
