@@ -4,6 +4,36 @@ import { createClient } from "@supabase/supabase-js"
 export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
+type CompanyRow = {
+  id: number
+  ticker: string
+  cik: string | null
+  name: string | null
+  is_active: boolean | null
+}
+
+type FilingRow = {
+  company_id?: number | null
+  ticker?: string | null
+  filed_at?: string | null
+  form_type?: string | null
+}
+
+type PtrRow = {
+  ticker?: string | null
+  transaction_date?: string | null
+  report_date?: string | null
+}
+
+type SignalRow = {
+  company_id?: number | null
+  ticker?: string | null
+  created_at?: string | null
+  signal_type?: string | null
+  signal_source?: string | null
+  signal_category?: string | null
+}
+
 function getSupabaseAdmin(): any {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -80,82 +110,100 @@ export async function GET(request: NextRequest) {
       request.nextUrl.searchParams.get("includeCounts") === "true"
 
     const sinceDate = toIsoDateStringDaysAgo(lookbackDays)
-
-    /**
-     * Assumptions in this fixed version:
-     *
-     * companies:
-     * - id, ticker, cik, is_active
-     *
-     * raw_filings:
-     * - company_id, ticker, filed_at, form_type
-     *
-     * raw_ptr_trades:
-     * - ticker, report_date, transaction_date
-     *
-     * signals:
-     * - company_id, ticker, created_at, signal_type, cluster_id
-     *
-     * candidate_universe must support these columns:
-     * - company_id, ticker, cik, is_active,
-     *   has_insider_trades, has_ptr_forms, has_clusters,
-     *   is_eligible, eligibility_reason, updated_at
-     */
+    const updatedAt = new Date().toISOString()
 
     let companiesQuery = (supabase.from("companies") as any)
-      .select("id,ticker,cik,is_active")
+      .select("id,ticker,cik,name,is_active")
 
     if (onlyActive) {
       companiesQuery = companiesQuery.eq("is_active", true)
     }
 
-    const [
-      { data: companies, error: companiesError },
-      { data: filings, error: filingsError },
-      { data: ptrs, error: ptrsError },
-      { data: signals, error: signalsError },
-    ] = await Promise.all([
-      companiesQuery,
-      (supabase.from("raw_filings") as any)
-        .select("company_id,ticker,filed_at,form_type")
-        .gte("filed_at", sinceDate),
-      (supabase.from("raw_ptr_trades") as any)
-        .select("ticker,report_date,transaction_date")
-        .or(`report_date.gte.${sinceDate},transaction_date.gte.${sinceDate}`),
-      (supabase.from("signals") as any)
-        .select("company_id,ticker,created_at,signal_type,cluster_id")
-        .gte("created_at", sinceDate),
-    ])
+    const { data: companies, error: companiesError } = await companiesQuery
 
     if (companiesError) {
-      throw new Error(`Failed to load companies: ${companiesError.message}`)
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Failed to load companies: ${companiesError.message}`,
+          debug: {
+            step: "companies",
+            sinceDate,
+            onlyActive,
+          },
+        },
+        { status: 500 }
+      )
     }
 
-    if (filingsError) {
-      throw new Error(`Failed to load filings: ${filingsError.message}`)
-    }
+    const typedCompanies = (companies || []) as CompanyRow[]
 
-    if (ptrsError) {
-      throw new Error(`Failed to load ptr trades: ${ptrsError.message}`)
-    }
-
-    if (signalsError) {
-      throw new Error(`Failed to load signals: ${signalsError.message}`)
-    }
-
-    const companyById = new Map<string | number, any>()
-
-    for (const company of companies || []) {
+    const companyById = new Map<number, CompanyRow>()
+    for (const company of typedCompanies) {
       if (company?.id !== null && company?.id !== undefined) {
         companyById.set(company.id, company)
       }
+    }
+
+    const { data: filings, error: filingsError } = await (supabase.from("raw_filings") as any)
+      .select("company_id,ticker,filed_at,form_type")
+      .gte("filed_at", sinceDate)
+
+    if (filingsError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Failed to load filings: ${filingsError.message}`,
+          debug: {
+            step: "raw_filings",
+            sinceDate,
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    const { data: ptrs, error: ptrsError } = await (supabase.from("raw_ptr_trades") as any)
+      .select("ticker,transaction_date,report_date")
+      .or(`transaction_date.gte.${sinceDate},report_date.gte.${sinceDate}`)
+
+    if (ptrsError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Failed to load ptr trades: ${ptrsError.message}`,
+          debug: {
+            step: "raw_ptr_trades",
+            sinceDate,
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    const { data: signals, error: signalsError } = await (supabase.from("signals") as any)
+      .select("company_id,ticker,created_at,signal_type,signal_source,signal_category")
+      .gte("created_at", sinceDate)
+
+    if (signalsError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Failed to load signals: ${signalsError.message}`,
+          debug: {
+            step: "signals",
+            sinceDate,
+          },
+        },
+        { status: 500 }
+      )
     }
 
     const insiderTradeTickers = new Set<string>()
     const ptrTickers = new Set<string>()
     const clusterTickers = new Set<string>()
 
-    for (const filing of filings || []) {
+    for (const filing of (filings || []) as FilingRow[]) {
       const formType = String(filing?.form_type || "").toUpperCase()
 
       const isInsiderTradeForm =
@@ -173,47 +221,46 @@ export async function GET(request: NextRequest) {
 
       const ticker =
         filing?.ticker
-          ? normalizeTicker(String(filing.ticker))
-          : companyById.get(filing?.company_id)?.ticker
-            ? normalizeTicker(String(companyById.get(filing.company_id).ticker))
+          ? normalizeTicker(filing.ticker)
+          : filing?.company_id && companyById.get(Number(filing.company_id))?.ticker
+            ? normalizeTicker(companyById.get(Number(filing.company_id))?.ticker || "")
             : null
 
       if (ticker) insiderTradeTickers.add(ticker)
     }
 
-    for (const ptr of ptrs || []) {
-      const ticker = ptr?.ticker ? normalizeTicker(String(ptr.ticker)) : null
+    for (const ptr of (ptrs || []) as PtrRow[]) {
+      const ticker = ptr?.ticker ? normalizeTicker(ptr.ticker) : null
       if (ticker) ptrTickers.add(ticker)
     }
 
-    for (const signal of signals || []) {
-      const hasCluster =
-        signal?.cluster_id !== null && signal?.cluster_id !== undefined
-
+    for (const signal of (signals || []) as SignalRow[]) {
       const signalType = String(signal?.signal_type || "").toLowerCase()
+      const signalSource = String(signal?.signal_source || "").toLowerCase()
+      const signalCategory = String(signal?.signal_category || "").toLowerCase()
 
       const looksLikeCluster =
-        hasCluster ||
         signalType.includes("cluster") ||
-        signalType.includes("filing_cluster")
+        signalType.includes("filing_cluster") ||
+        signalSource.includes("cluster") ||
+        signalCategory.includes("cluster")
 
       if (!looksLikeCluster) continue
 
       const ticker =
         signal?.ticker
-          ? normalizeTicker(String(signal.ticker))
-          : companyById.get(signal?.company_id)?.ticker
-            ? normalizeTicker(String(companyById.get(signal.company_id).ticker))
+          ? normalizeTicker(signal.ticker)
+          : signal?.company_id && companyById.get(Number(signal.company_id))?.ticker
+            ? normalizeTicker(companyById.get(Number(signal.company_id))?.ticker || "")
             : null
 
       if (ticker) clusterTickers.add(ticker)
     }
 
     const eligibleRows: Array<Record<string, any>> = []
-    const updatedAt = new Date().toISOString()
 
-    for (const company of companies || []) {
-      const ticker = company?.ticker ? normalizeTicker(String(company.ticker)) : null
+    for (const company of typedCompanies) {
+      const ticker = normalizeTicker(company?.ticker)
       if (!ticker) continue
 
       const hasInsiderTrades = insiderTradeTickers.has(ticker)
@@ -232,6 +279,7 @@ export async function GET(request: NextRequest) {
         company_id: company.id,
         ticker,
         cik: company.cik ?? null,
+        name: company.name ?? null,
         is_active: company.is_active ?? true,
         has_insider_trades: hasInsiderTrades,
         has_ptr_forms: hasPtrForms,
@@ -243,15 +291,23 @@ export async function GET(request: NextRequest) {
     }
 
     if (eligibleRows.length > 0) {
-      const { error: upsertError } = await (supabase.from(
-        "candidate_universe"
-      ) as any).upsert(eligibleRows, {
-        onConflict: "ticker",
-      })
+      const { error: upsertError } = await (supabase.from("candidate_universe") as any).upsert(
+        eligibleRows,
+        { onConflict: "ticker" }
+      )
 
       if (upsertError) {
-        throw new Error(
-          `Failed to upsert candidate universe: ${upsertError.message}`
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Failed to upsert candidate universe: ${upsertError.message}`,
+            debug: {
+              step: "candidate_universe_upsert",
+              sampleRow: eligibleRows[0] ?? null,
+              eligibleCount: eligibleRows.length,
+            },
+          },
+          { status: 500 }
         )
       }
     }
@@ -262,7 +318,7 @@ export async function GET(request: NextRequest) {
       eligibleCount: eligibleRows.length,
       counts: includeCounts
         ? {
-            companies: (companies || []).length,
+            companies: typedCompanies.length,
             insiderTradeTickers: insiderTradeTickers.size,
             ptrTickers: ptrTickers.size,
             clusterTickers: clusterTickers.size,
