@@ -52,10 +52,14 @@ function requirePipelineToken(request: NextRequest) {
   return null
 }
 
-function toIsoDaysAgo(days: number) {
+function toIsoDateStringDaysAgo(days: number) {
   const d = new Date()
   d.setUTCDate(d.getUTCDate() - days)
-  return d.toISOString()
+  return d.toISOString().slice(0, 10)
+}
+
+function normalizeTicker(ticker: string | null | undefined) {
+  return (ticker || "").trim().toUpperCase()
 }
 
 export async function GET(request: NextRequest) {
@@ -75,42 +79,53 @@ export async function GET(request: NextRequest) {
     const includeCounts =
       request.nextUrl.searchParams.get("includeCounts") === "true"
 
-    const sinceIso = toIsoDaysAgo(lookbackDays)
+    const sinceDate = toIsoDateStringDaysAgo(lookbackDays)
 
     /**
-     * IMPORTANT:
-     * Replace the selected column names below if your schema uses different names.
+     * Assumptions in this fixed version:
      *
-     * Assumed columns:
-     * - companies: id, ticker, cik, is_active
-     * - raw_filings: company_id, ticker, filed_at, form_type
-     * - raw_ptr_trades: company_id, ticker, filed_at
-     * - signals: company_id, ticker, created_at, signal_type, cluster_id
-     * - candidate_universe: company_id, ticker, cik, is_active,
-     *   has_insider_trades, has_ptr_forms, has_clusters, is_eligible,
-     *   eligibility_reason, updated_at
+     * companies:
+     * - id, ticker, cik, is_active
+     *
+     * raw_filings:
+     * - company_id, ticker, filed_at, form_type
+     *
+     * raw_ptr_trades:
+     * - ticker, report_date, transaction_date
+     *
+     * signals:
+     * - company_id, ticker, created_at, signal_type, cluster_id
+     *
+     * candidate_universe must support these columns:
+     * - company_id, ticker, cik, is_active,
+     *   has_insider_trades, has_ptr_forms, has_clusters,
+     *   is_eligible, eligibility_reason, updated_at
      */
 
-    const companiesQuery = (supabase.from("companies") as any)
+    let companiesQuery = (supabase.from("companies") as any)
       .select("id,ticker,cik,is_active")
 
     if (onlyActive) {
-      companiesQuery.eq("is_active", true)
+      companiesQuery = companiesQuery.eq("is_active", true)
     }
 
-    const [{ data: companies, error: companiesError }, { data: filings, error: filingsError }, { data: ptrs, error: ptrsError }, { data: signals, error: signalsError }] =
-      await Promise.all([
-        companiesQuery,
-        (supabase.from("raw_filings") as any)
-          .select("company_id,ticker,filed_at,form_type")
-          .gte("filed_at", sinceIso),
-        (supabase.from("raw_ptr_trades") as any)
-          .select("company_id,ticker,filed_at")
-          .gte("filed_at", sinceIso),
-        (supabase.from("signals") as any)
-          .select("company_id,ticker,created_at,signal_type,cluster_id")
-          .gte("created_at", sinceIso),
-      ])
+    const [
+      { data: companies, error: companiesError },
+      { data: filings, error: filingsError },
+      { data: ptrs, error: ptrsError },
+      { data: signals, error: signalsError },
+    ] = await Promise.all([
+      companiesQuery,
+      (supabase.from("raw_filings") as any)
+        .select("company_id,ticker,filed_at,form_type")
+        .gte("filed_at", sinceDate),
+      (supabase.from("raw_ptr_trades") as any)
+        .select("ticker,report_date,transaction_date")
+        .or(`report_date.gte.${sinceDate},transaction_date.gte.${sinceDate}`),
+      (supabase.from("signals") as any)
+        .select("company_id,ticker,created_at,signal_type,cluster_id")
+        .gte("created_at", sinceDate),
+    ])
 
     if (companiesError) {
       throw new Error(`Failed to load companies: ${companiesError.message}`)
@@ -128,13 +143,9 @@ export async function GET(request: NextRequest) {
       throw new Error(`Failed to load signals: ${signalsError.message}`)
     }
 
-    const companyByTicker = new Map<string, any>()
     const companyById = new Map<string | number, any>()
 
     for (const company of companies || []) {
-      if (company?.ticker) {
-        companyByTicker.set(String(company.ticker).toUpperCase(), company)
-      }
       if (company?.id !== null && company?.id !== undefined) {
         companyById.set(company.id, company)
       }
@@ -146,10 +157,14 @@ export async function GET(request: NextRequest) {
 
     for (const filing of filings || []) {
       const formType = String(filing?.form_type || "").toUpperCase()
+
       const isInsiderTradeForm =
         formType === "3" ||
         formType === "4" ||
         formType === "5" ||
+        formType === "3/A" ||
+        formType === "4/A" ||
+        formType === "5/A" ||
         formType === "FORM 3" ||
         formType === "FORM 4" ||
         formType === "FORM 5"
@@ -158,29 +173,25 @@ export async function GET(request: NextRequest) {
 
       const ticker =
         filing?.ticker
-          ? String(filing.ticker).toUpperCase()
+          ? normalizeTicker(String(filing.ticker))
           : companyById.get(filing?.company_id)?.ticker
-          ? String(companyById.get(filing.company_id).ticker).toUpperCase()
-          : null
+            ? normalizeTicker(String(companyById.get(filing.company_id).ticker))
+            : null
 
       if (ticker) insiderTradeTickers.add(ticker)
     }
 
     for (const ptr of ptrs || []) {
-      const ticker =
-        ptr?.ticker
-          ? String(ptr.ticker).toUpperCase()
-          : companyById.get(ptr?.company_id)?.ticker
-          ? String(companyById.get(ptr.company_id).ticker).toUpperCase()
-          : null
-
+      const ticker = ptr?.ticker ? normalizeTicker(String(ptr.ticker)) : null
       if (ticker) ptrTickers.add(ticker)
     }
 
     for (const signal of signals || []) {
       const hasCluster =
         signal?.cluster_id !== null && signal?.cluster_id !== undefined
+
       const signalType = String(signal?.signal_type || "").toLowerCase()
+
       const looksLikeCluster =
         hasCluster ||
         signalType.includes("cluster") ||
@@ -190,10 +201,10 @@ export async function GET(request: NextRequest) {
 
       const ticker =
         signal?.ticker
-          ? String(signal.ticker).toUpperCase()
+          ? normalizeTicker(String(signal.ticker))
           : companyById.get(signal?.company_id)?.ticker
-          ? String(companyById.get(signal.company_id).ticker).toUpperCase()
-          : null
+            ? normalizeTicker(String(companyById.get(signal.company_id).ticker))
+            : null
 
       if (ticker) clusterTickers.add(ticker)
     }
@@ -202,7 +213,7 @@ export async function GET(request: NextRequest) {
     const updatedAt = new Date().toISOString()
 
     for (const company of companies || []) {
-      const ticker = company?.ticker ? String(company.ticker).toUpperCase() : null
+      const ticker = company?.ticker ? normalizeTicker(String(company.ticker)) : null
       if (!ticker) continue
 
       const hasInsiderTrades = insiderTradeTickers.has(ticker)
@@ -231,10 +242,6 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    /**
-     * If your candidate_universe table has different columns,
-     * replace the object shape above and the onConflict key below.
-     */
     if (eligibleRows.length > 0) {
       const { error: upsertError } = await (supabase.from(
         "candidate_universe"
@@ -243,7 +250,9 @@ export async function GET(request: NextRequest) {
       })
 
       if (upsertError) {
-        throw new Error(`Failed to upsert candidate universe: ${upsertError.message}`)
+        throw new Error(
+          `Failed to upsert candidate universe: ${upsertError.message}`
+        )
       }
     }
 
