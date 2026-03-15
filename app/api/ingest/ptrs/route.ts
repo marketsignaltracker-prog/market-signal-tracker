@@ -3,6 +3,38 @@ import { createClient } from "@supabase/supabase-js"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
+type SourceRow = {
+  id?: number | null
+  company_id?: number | null
+  ticker: string
+  cik: string | null
+  name: string | null
+  is_active?: boolean | null
+  is_eligible?: boolean | null
+  candidate_score?: number | null
+  included?: boolean | null
+  last_screened_at?: string | null
+}
+
+type AInvestTradeRow = {
+  name?: string
+  party?: string
+  state?: string
+  trade_date?: string
+  filing_date?: string
+  reporting_gap?: string
+  trade_type?: string
+  size?: string
+}
+
+type AInvestResponse = {
+  data?: {
+    data?: AInvestTradeRow[]
+  }
+  status_code?: number
+  status_msg?: string
+}
+
 type RawPtrTradeRow = {
   disclosure_source: string
   filer_name: string
@@ -22,7 +54,6 @@ type RawPtrTradeRow = {
   raw_document_url: string | null
   trade_key: string
   fetched_at: string
-  created_at?: string
   updated_at?: string
 }
 
@@ -40,92 +71,56 @@ type ChunkWriteResult = {
   }>
 }
 
-type SourceDiagnostic = {
-  url: string
-  ok: boolean
-  status: number | null
-  contentType: string | null
-  parser: "json" | "xml" | "csv" | "tsv" | "unknown"
-  loadedRows: number
-  keptRows: number
-  error: string | null
+const DEFAULT_BATCH = 50
+const MAX_BATCH = 100
+const DEFAULT_START = 0
+const DEFAULT_LIMIT_PER_TICKER = 10
+const MAX_LIMIT_PER_TICKER = 50
+const DB_CHUNK_SIZE = 200
+const API_TIMEOUT_MS = 12000
+const API_CONCURRENCY = 4
+const CANDIDATE_LOOKBACK_DAYS = 10
+const MIN_CANDIDATE_SCORE = 65
+
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Missing Supabase environment variables")
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  })
 }
 
-const DEFAULT_LOOKBACK_DAYS = 30
-const MAX_LOOKBACK_DAYS = 180
-const DEFAULT_LIMIT = 1000
-const MAX_LIMIT = 10000
-const DB_CHUNK_SIZE = 200
-const SOURCE_FETCH_CONCURRENCY = 3
-const SOURCE_TIMEOUT_MS = 12000
-
 function parseInteger(value: string | null | undefined, fallback: number) {
-  if (value === null || value === undefined || value.trim() === "") {
-    return fallback
-  }
+  if (!value || value.trim() === "") return fallback
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
 function normalizeTicker(ticker: string | null | undefined) {
   const t = (ticker || "").trim().toUpperCase()
-  if (!t) return null
-  if (!/^[A-Z.\-]{1,10}$/.test(t)) return null
-  return t
-}
-
-function normalizeText(value: unknown) {
-  const s = String(value ?? "").trim()
-  return s.length ? s : null
-}
-
-function toIsoDateString(date: Date) {
-  return date.toISOString().slice(0, 10)
+  return t || null
 }
 
 function normalizeDate(value: unknown): string | null {
   const raw = String(value ?? "").trim()
   if (!raw) return null
 
-  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (isoMatch) return raw
-
-  const usMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (usMatch) {
-    const [, mm, dd, yyyy] = usMatch
-    return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`
-  }
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`
 
   const parsed = new Date(raw)
   if (!Number.isNaN(parsed.getTime())) {
     return parsed.toISOString().slice(0, 10)
   }
 
-  return null
-}
-
-function uniqueStrings(values: (string | null | undefined)[]) {
-  return Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean)))
-}
-
-function safeNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null
-  const n = Number(String(value).replace(/[$,]/g, "").trim())
-  return Number.isFinite(n) ? n : null
-}
-
-function toArray<T>(value: T | T[] | undefined | null): T[] {
-  if (value === undefined || value === null) return []
-  return Array.isArray(value) ? value : [value]
-}
-
-function pickFirst(obj: Record<string, any>, keys: string[]) {
-  for (const key of keys) {
-    const value = obj[key]
-    if (value !== undefined && value !== null && String(value).trim() !== "") {
-      return value
-    }
-  }
   return null
 }
 
@@ -162,15 +157,15 @@ function parseAmountRange(range: string | null) {
   const rangeMatch = cleaned.match(/\$?([\d,]+)\s*-\s*\$?([\d,]+)/)
   if (rangeMatch) {
     return {
-      amount_low: safeNumber(rangeMatch[1]),
-      amount_high: safeNumber(rangeMatch[2]),
+      amount_low: Number(rangeMatch[1].replace(/,/g, "")) || null,
+      amount_high: Number(rangeMatch[2].replace(/,/g, "")) || null,
     }
   }
 
   const plusMatch = cleaned.match(/\$?([\d,]+)\s*\+/)
   if (plusMatch) {
     return {
-      amount_low: safeNumber(plusMatch[1]),
+      amount_low: Number(plusMatch[1].replace(/,/g, "")) || null,
       amount_high: null,
     }
   }
@@ -181,20 +176,15 @@ function parseAmountRange(range: string | null) {
   }
 }
 
-function normalizeAction(value: string | null) {
+function normalizeAction(value: string | null | undefined) {
   const v = (value || "").trim().toLowerCase()
   if (!v) return null
 
-  if (v === "purchase" || v === "buy" || v === "purchased" || v === "partial purchase") {
-    return "Buy"
-  }
-
-  if (v === "sale" || v === "sell" || v === "sold" || v === "partial sale") {
-    return "Sell"
-  }
-
+  if (v.includes("buy") || v.includes("purchase")) return "Buy"
+  if (v.includes("sell") || v.includes("sale")) return "Sell"
   if (v.includes("exchange")) return "Exchange"
-  return value
+
+  return value || null
 }
 
 function buildTradeKey(row: {
@@ -217,337 +207,21 @@ function buildTradeKey(row: {
   ].join("::")
 }
 
-function parseCsvLine(line: string) {
-  const out: string[] = []
-  let current = ""
-  let inQuotes = false
-
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i]
-    const next = i + 1 < line.length ? line[i + 1] : ""
-
-    if (ch === '"') {
-      if (inQuotes && next === '"') {
-        current += '"'
-        i += 1
-      } else {
-        inQuotes = !inQuotes
-      }
-      continue
-    }
-
-    if (ch === "," && !inQuotes) {
-      out.push(current)
-      current = ""
-      continue
-    }
-
-    current += ch
-  }
-
-  out.push(current)
-  return out.map((v) => v.trim())
-}
-
-function parseDelimitedText(text: string, delimiter: "," | "\t" = ",") {
-  const rawLines = text.split(/\r?\n/).filter((line) => line.trim().length > 0)
-  if (!rawLines.length) return []
-
-  const lines = rawLines.map((line) => line.replace(/^\uFEFF/, "").trim())
-  const header =
-    delimiter === ","
-      ? parseCsvLine(lines[0])
-      : lines[0].split("\t").map((v) => v.trim())
-
-  const rows: Record<string, string>[] = []
-
-  for (const line of lines.slice(1)) {
-    const values =
-      delimiter === ","
-        ? parseCsvLine(line)
-        : line.split("\t").map((v) => v.trim())
-
-    const row: Record<string, string> = {}
-    for (let i = 0; i < header.length; i += 1) {
-      row[header[i]] = values[i] ?? ""
-    }
-    rows.push(row)
-  }
-
-  return rows
-}
-
-async function extractRecordsFromXml(xmlText: string) {
-  try {
-    const mod = await import("fast-xml-parser")
-    const parser = new mod.XMLParser({
-      ignoreAttributes: false,
-      attributeNamePrefix: "",
-      parseTagValue: true,
-      trimValues: true,
-    })
-
-    const parsed = parser.parse(xmlText)
-
-    const candidateCollections = [
-      parsed?.records?.record,
-      parsed?.rows?.row,
-      parsed?.items?.item,
-      parsed?.disclosures?.disclosure,
-      parsed?.trades?.trade,
-      parsed?.data?.row,
-      parsed?.data?.record,
-    ]
-
-    for (const collection of candidateCollections) {
-      const rows = toArray(collection)
-      if (rows.length) return rows as Record<string, any>[]
-    }
-
-    const flatArrays = Object.values(parsed || {}).filter(Array.isArray)
-    for (const arr of flatArrays) {
-      if (Array.isArray(arr) && arr.length && typeof arr[0] === "object") {
-        return arr as Record<string, any>[]
-      }
-    }
-
-    return []
-  } catch (error: any) {
-    throw new Error(`XML parse failed: ${error?.message || "missing parser"}`)
-  }
-}
-
-function normalizePtrRow(
-  raw: Record<string, any>,
-  sourceLabel: string,
-  fetchedAt: string
-): RawPtrTradeRow | null {
-  const filerFirst = normalizeText(
-    pickFirst(raw, ["first_name", "firstname", "filer_first_name", "member_first_name"])
-  )
-  const filerLast = normalizeText(
-    pickFirst(raw, ["last_name", "lastname", "filer_last_name", "member_last_name"])
-  )
-  const filerName =
-    normalizeText(
-      pickFirst(raw, [
-        "filer_name",
-        "member",
-        "member_name",
-        "name",
-        "representative",
-        "senator",
-        "reporting_individual",
-      ])
-    ) ||
-    [filerFirst, filerLast].filter(Boolean).join(" ").trim() ||
-    null
-
-  const ticker = normalizeTicker(
-    normalizeText(
-      pickFirst(raw, ["ticker", "symbol", "asset_ticker", "stock", "stock_symbol"])
-    )
-  )
-
-  const assetName = normalizeText(
-    pickFirst(raw, ["asset_name", "asset", "description", "description_of_asset", "security"])
-  )
-
-  const transactionDate = normalizeDate(
-    pickFirst(raw, ["transaction_date", "tx_date", "date_of_transaction", "trade_date"])
-  )
-
-  const reportDate = normalizeDate(
-    pickFirst(raw, ["report_date", "disclosure_date", "filed_date", "filing_date", "date_received"])
-  )
-
-  const action = normalizeAction(
-    normalizeText(pickFirst(raw, ["action", "transaction_type", "type", "transaction"]))
-  )
-
-  const amountRange = normalizeText(
-    pickFirst(raw, ["amount_range", "amount", "range", "value_range"])
-  )
-
-  const amounts = parseAmountRange(amountRange)
-
-  const filer = filerName || null
-  if (!filer) return null
-  if (!ticker && !assetName) return null
-
-  const ptrUrl = normalizeText(
-    pickFirst(raw, ["ptr_url", "report_url", "url", "disclosure_url"])
-  )
-
-  const rawDocumentUrl = normalizeText(
-    pickFirst(raw, ["raw_document_url", "document_url", "pdf_url", "xml_url"])
-  )
-
-  const chamber =
-    normalizeText(pickFirst(raw, ["chamber", "body"])) ||
-    (sourceLabel.toLowerCase().includes("house") ? "House" : null)
-
-  const districtOrState = normalizeText(
-    pickFirst(raw, ["district_or_state", "district", "state", "office"])
-  )
-
-  const assetType = normalizeText(
-    pickFirst(raw, ["asset_type", "type_of_asset", "holding_type"])
-  )
-
-  const owner = normalizeText(
-    pickFirst(raw, ["owner", "owner_type", "held_by"])
-  )
-
-  const tradeKey = buildTradeKey({
-    disclosure_source: sourceLabel,
-    filer_name: filer,
-    transaction_date: transactionDate,
-    ticker,
-    asset_name: assetName,
-    action,
-    amount_range: amountRange,
-  })
-
-  return {
-    disclosure_source: sourceLabel,
-    filer_name: filer,
-    chamber,
-    district_or_state: districtOrState,
-    report_date: reportDate,
-    transaction_date: transactionDate,
-    ticker,
-    asset_name: assetName,
-    asset_type: assetType,
-    action,
-    amount_range: amountRange,
-    amount_low: amounts.amount_low,
-    amount_high: amounts.amount_high,
-    owner,
-    ptr_url: ptrUrl,
-    raw_document_url: rawDocumentUrl,
-    trade_key: tradeKey,
-    fetched_at: fetchedAt,
-    updated_at: fetchedAt,
-  }
-}
-
-async function fetchText(url: string) {
+async function fetchWithTimeout(url: string, token: string) {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), SOURCE_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS)
 
   try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          process.env.PTR_USER_AGENT ||
-          "Market Signal Tracker ptr ingest marketsignaltracker@gmail.com",
-        Accept:
-          "application/json,text/csv,text/tab-separated-values,application/xml,text/xml,text/plain;q=0.9,*/*;q=0.8",
-      },
+    return await fetch(url, {
       cache: "no-store",
       signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
     })
-
-    const contentType = res.headers.get("content-type")
-    const text = await res.text()
-
-    if (!res.ok) {
-      throw new Error(
-        `Failed fetching PTR source: ${url} (${res.status}) body=${text.slice(0, 300)}`
-      )
-    }
-
-    if (!text.trim()) {
-      throw new Error(`PTR source returned empty body: ${url}`)
-    }
-
-    return {
-      text,
-      contentType,
-      status: res.status,
-    }
   } finally {
     clearTimeout(timeout)
-  }
-}
-
-function detectParser(url: string, text: string, contentType: string | null) {
-  const lowerUrl = url.toLowerCase()
-  const lowerType = (contentType || "").toLowerCase()
-  const trimmed = text.trim()
-
-  if (
-    lowerUrl.endsWith(".json") ||
-    lowerType.includes("application/json") ||
-    trimmed.startsWith("[") ||
-    trimmed.startsWith("{")
-  ) {
-    return "json" as const
-  }
-
-  if (
-    lowerUrl.endsWith(".xml") ||
-    lowerType.includes("xml") ||
-    trimmed.startsWith("<?xml") ||
-    trimmed.startsWith("<")
-  ) {
-    return "xml" as const
-  }
-
-  if (trimmed.includes("\t") && !trimmed.includes(",")) {
-    return "tsv" as const
-  }
-
-  if (trimmed.includes(",")) {
-    return "csv" as const
-  }
-
-  return "unknown" as const
-}
-
-async function fetchSourceRows(url: string, fetchedAt: string) {
-  const fetched = await fetchText(url)
-  const parser = detectParser(url, fetched.text, fetched.contentType)
-  const trimmed = fetched.text.trim()
-
-  let records: Record<string, any>[] = []
-
-  if (parser === "json") {
-    const parsed = JSON.parse(trimmed)
-
-    if (Array.isArray(parsed)) {
-      records = parsed as Record<string, any>[]
-    } else if (Array.isArray((parsed as any)?.records)) {
-      records = (parsed as any).records
-    } else if (Array.isArray((parsed as any)?.data)) {
-      records = (parsed as any).data
-    } else if (Array.isArray((parsed as any)?.items)) {
-      records = (parsed as any).items
-    } else if (Array.isArray((parsed as any)?.results)) {
-      records = (parsed as any).results
-    } else {
-      records = []
-    }
-  } else if (parser === "xml") {
-    records = await extractRecordsFromXml(trimmed)
-  } else if (parser === "tsv") {
-    records = parseDelimitedText(trimmed, "\t")
-  } else {
-    records = parseDelimitedText(trimmed, ",")
-  }
-
-  const sourceLabel = url.toLowerCase().includes("house") ? "House PTR" : "PTR"
-
-  const rows = records
-    .map((record) => normalizePtrRow(record, sourceLabel, fetchedAt))
-    .filter((row): row is RawPtrTradeRow => row !== null)
-
-  return {
-    rows,
-    parser,
-    contentType: fetched.contentType,
-    status: fetched.status,
   }
 }
 
@@ -613,71 +287,141 @@ async function upsertInChunksDetailed(
   }
 }
 
+async function loadSourceRows(
+  supabase: any,
+  scope: "all" | "eligible" | "candidates",
+  start: number,
+  batch: number,
+  onlyActive: boolean
+) {
+  if (scope === "all") {
+    let query = supabase
+      .from("companies")
+      .select("id, ticker, cik, name, is_active")
+      .not("ticker", "is", null)
+      .order("id", { ascending: true })
+      .range(start, start + batch - 1)
+
+    if (onlyActive) query = query.eq("is_active", true)
+
+    const { data, error } = await query
+    if (error) throw new Error(`companies load failed: ${error.message}`)
+    return (data || []) as SourceRow[]
+  }
+
+  if (scope === "eligible") {
+    let query = supabase
+      .from("candidate_universe")
+      .select("company_id, ticker, cik, name, is_active, is_eligible")
+      .eq("is_eligible", true)
+      .not("ticker", "is", null)
+      .order("ticker", { ascending: true })
+      .range(start, start + batch - 1)
+
+    if (onlyActive) query = query.eq("is_active", true)
+
+    const { data, error } = await query
+    if (error) throw new Error(`candidate_universe eligible load failed: ${error.message}`)
+    return (data || []) as SourceRow[]
+  }
+
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - CANDIDATE_LOOKBACK_DAYS)
+
+  let query = supabase
+    .from("candidate_universe")
+    .select("company_id, ticker, cik, name, is_active, candidate_score, included, last_screened_at")
+    .gte("candidate_score", MIN_CANDIDATE_SCORE)
+    .gte("last_screened_at", cutoff.toISOString())
+    .not("ticker", "is", null)
+    .order("candidate_score", { ascending: false })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) query = query.eq("is_active", true)
+
+  const { data, error } = await query
+  if (error) throw new Error(`candidate_universe candidates load failed: ${error.message}`)
+  return (data || []) as SourceRow[]
+}
+
+function normalizeAInvestTrade(ticker: string, row: AInvestTradeRow, fetchedAt: string): RawPtrTradeRow | null {
+  const filer_name = String(row.name || "").trim()
+  if (!filer_name) return null
+
+  const transaction_date = normalizeDate(row.trade_date)
+  const report_date = normalizeDate(row.filing_date)
+  const action = normalizeAction(row.trade_type)
+  const amount_range = String(row.size || "").trim() || null
+  const amounts = parseAmountRange(amount_range)
+
+  const normalized: RawPtrTradeRow = {
+    disclosure_source: "AInvest Congress",
+    filer_name,
+    chamber: null,
+    district_or_state: String(row.state || "").trim() || null,
+    report_date,
+    transaction_date,
+    ticker,
+    asset_name: ticker,
+    asset_type: "Stock",
+    action,
+    amount_range,
+    amount_low: amounts.amount_low,
+    amount_high: amounts.amount_high,
+    owner: null,
+    ptr_url: null,
+    raw_document_url: null,
+    trade_key: buildTradeKey({
+      disclosure_source: "AInvest Congress",
+      filer_name,
+      transaction_date,
+      ticker,
+      asset_name: ticker,
+      action,
+      amount_range,
+    }),
+    fetched_at: fetchedAt,
+    updated_at: fetchedAt,
+  }
+
+  return normalized
+}
+
 export async function GET(request: Request) {
   const pipelineToken = process.env.PIPELINE_TOKEN
   const suppliedToken = request.headers.get("x-pipeline-token")
 
   if (!pipelineToken || suppliedToken !== pipelineToken) {
-    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    return Response.json(
-      { ok: false, error: "Missing Supabase environment variables" },
-      { status: 500 }
-    )
-  }
-
-  const ptrHouseFeedUrlsRaw = process.env.PTR_HOUSE_FEED_URLS || ""
-  const houseFeedUrls = uniqueStrings(
-    ptrHouseFeedUrlsRaw.split(",").map((v) => v.trim())
-  )
-
-  if (!houseFeedUrls.length) {
-    return Response.json(
-      {
-        ok: false,
-        error: "Missing PTR_HOUSE_FEED_URLS environment variable",
-        debug: {
-          hasPtrHouseFeedUrls: Boolean(process.env.PTR_HOUSE_FEED_URLS),
-          ptrHouseFeedUrlsLength: ptrHouseFeedUrlsRaw.length,
-        },
-      },
+  const ainvestToken = process.env.AINVEST_API_TOKEN?.trim()
+  if (!ainvestToken) {
+    return NextResponse.json(
+      { ok: false, error: "Missing AINVEST_API_TOKEN environment variable" },
       { status: 500 }
     )
   }
 
   try {
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    })
-
+    const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
 
-    const scopeParam = (searchParams.get("scope") || "all").toLowerCase()
-    const start = Math.max(0, parseInteger(searchParams.get("start"), 0))
-    const batch = Math.max(1, parseInteger(searchParams.get("batch"), 100))
-    const lookbackDays = Math.min(
-      Math.max(1, parseInteger(searchParams.get("lookbackDays"), DEFAULT_LOOKBACK_DAYS)),
-      MAX_LOOKBACK_DAYS
+    const scopeParam = (searchParams.get("scope") || "eligible").toLowerCase()
+    const start = Math.max(0, parseInteger(searchParams.get("start"), DEFAULT_START))
+    const batch = Math.min(
+      Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)),
+      MAX_BATCH
     )
-    const limit = Math.min(
-      Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT)),
-      MAX_LIMIT
+    const perTickerLimit = Math.min(
+      Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT_PER_TICKER)),
+      MAX_LIMIT_PER_TICKER
     )
-    const runRetention =
-      (searchParams.get("runRetention") || "false").toLowerCase() === "true"
-    const includeCounts =
-      (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
+    const includeCounts = (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
+    const onlyActive = (searchParams.get("onlyActive") || "true").toLowerCase() !== "false"
 
     if (!["all", "eligible", "candidates"].includes(scopeParam)) {
-      return Response.json(
+      return NextResponse.json(
         {
           ok: false,
           error: `Invalid scope "${scopeParam}". Expected one of: all, eligible, candidates`,
@@ -687,135 +431,98 @@ export async function GET(request: Request) {
     }
 
     const scope = scopeParam as "all" | "eligible" | "candidates"
+    const sourceRows = await loadSourceRows(supabase, scope, start, batch, onlyActive)
+    const nowIso = new Date().toISOString()
 
-    const now = new Date()
-    const fetchedAt = now.toISOString()
+    const fetchResults = await mapWithConcurrency(
+      sourceRows,
+      API_CONCURRENCY,
+      async (row) => {
+        const ticker = normalizeTicker(row.ticker)
+        if (!ticker) {
+          return {
+            ticker: null,
+            ok: false,
+            rows: [] as RawPtrTradeRow[],
+            error: "Missing ticker",
+          }
+        }
 
-    const cutoffDate = new Date(now)
-    cutoffDate.setDate(cutoffDate.getDate() - lookbackDays)
-    const cutoffDateString = toIsoDateString(cutoffDate)
+        const url = new URL("https://openapi.ainvest.com/open/ownership/congress")
+        url.searchParams.set("ticker", ticker)
+        url.searchParams.set("page", "1")
+        url.searchParams.set("size", String(perTickerLimit))
 
-    const sourceResults = await mapWithConcurrency(
-      houseFeedUrls,
-      SOURCE_FETCH_CONCURRENCY,
-      async (url): Promise<{ diagnostic: SourceDiagnostic; rows: RawPtrTradeRow[] }> => {
         try {
-          const fetched = await fetchSourceRows(url, fetchedAt)
+          const res = await fetchWithTimeout(url.toString(), ainvestToken)
+          const body = await res.text()
 
-          const filtered = fetched.rows.filter((row) => {
-            const tradeDate = row.transaction_date || row.report_date
-            return tradeDate ? tradeDate >= cutoffDateString : true
-          })
+          if (!res.ok) {
+            return {
+              ticker,
+              ok: false,
+              rows: [] as RawPtrTradeRow[],
+              error: `AInvest ${res.status}: ${body.slice(0, 300)}`,
+            }
+          }
+
+          const parsed = JSON.parse(body) as AInvestResponse
+          const dataRows = parsed?.data?.data || []
+
+          const normalizedRows = dataRows
+            .map((trade) => normalizeAInvestTrade(ticker, trade, nowIso))
+            .filter((trade): trade is RawPtrTradeRow => trade !== null)
 
           return {
-            diagnostic: {
-              url,
-              ok: true,
-              status: fetched.status,
-              contentType: fetched.contentType,
-              parser: fetched.parser,
-              loadedRows: fetched.rows.length,
-              keptRows: filtered.length,
-              error: null,
-            },
-            rows: filtered,
+            ticker,
+            ok: true,
+            rows: normalizedRows,
+            error: null,
           }
         } catch (error: any) {
           return {
-            diagnostic: {
-              url,
-              ok: false,
-              status: null,
-              contentType: null,
-              parser: "unknown",
-              loadedRows: 0,
-              keptRows: 0,
-              error: error?.message || "Unknown source error",
-            },
-            rows: [],
+            ticker,
+            ok: false,
+            rows: [] as RawPtrTradeRow[],
+            error: error?.message || "Unknown AInvest error",
           }
         }
       }
     )
 
-    const allRows: RawPtrTradeRow[] = []
-    const sourceDiagnostics: SourceDiagnostic[] = []
+    const allRows = fetchResults.flatMap((r) => r.rows)
 
-    for (const result of sourceResults) {
-      sourceDiagnostics.push(result.diagnostic)
-      allRows.push(...result.rows)
-    }
-
-    const successfulSources = sourceDiagnostics.filter((s) => s.ok).length
-    const failedSources = sourceDiagnostics.filter((s) => !s.ok).length
-
-    const dedupedMap = new Map<string, RawPtrTradeRow>()
+    const deduped = new Map<string, RawPtrTradeRow>()
     for (const row of allRows) {
-      if (!dedupedMap.has(row.trade_key)) {
-        dedupedMap.set(row.trade_key, row)
+      if (!deduped.has(row.trade_key)) {
+        deduped.set(row.trade_key, row)
       }
     }
 
-    const effectiveLimit =
-      scope === "all"
-        ? limit
-        : Math.min(limit, Math.max(batch * 10, 200))
-
-    const dedupedRows = Array.from(dedupedMap.values())
-      .sort((a, b) => {
-        const aDate = a.transaction_date || a.report_date || ""
-        const bDate = b.transaction_date || b.report_date || ""
-        if (aDate !== bDate) return bDate.localeCompare(aDate)
-        return a.trade_key.localeCompare(b.trade_key)
-      })
-      .slice(0, effectiveLimit)
+    const finalRows = Array.from(deduped.values())
 
     const writeResult =
-      dedupedRows.length > 0
+      finalRows.length > 0
         ? await upsertInChunksDetailed(
             supabase.from("raw_ptr_trades"),
             "raw_ptr_trades",
-            dedupedRows,
+            finalRows,
             "trade_key",
             (row) => row.trade_key
           )
         : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
 
     if (writeResult.errors.length > 0) {
-      return Response.json(
+      return NextResponse.json(
         {
           ok: false,
           error: "Failed writing PTR rows",
           debug: {
             errorSamples: writeResult.errors.slice(0, 5),
-            sourceDiagnostics,
-            request: {
-              scope,
-              start,
-              batch,
-              lookbackDays,
-              limit,
-            },
           },
         },
         { status: 500 }
       )
-    }
-
-    let retentionMessage = "skipped"
-    if (runRetention) {
-      const retentionCutoff = new Date(now)
-      retentionCutoff.setDate(retentionCutoff.getDate() - 30)
-      const retentionCutoffString = toIsoDateString(retentionCutoff)
-
-      const { error: retentionError } = await supabase
-        .from("raw_ptr_trades")
-        .delete()
-        .or(
-          `transaction_date.lt.${retentionCutoffString},and(transaction_date.is.null,report_date.lt.${retentionCutoffString})`
-        )
-
-      retentionMessage = retentionError ? retentionError.message : "ok"
     }
 
     let ptrCount: number | null = null
@@ -827,36 +534,31 @@ export async function GET(request: Request) {
       ptrCount = error ? null : count ?? 0
     }
 
-    return Response.json({
+    return NextResponse.json({
       ok: true,
       scope,
       start,
       batch,
-      fetchedSources: houseFeedUrls.length,
-      successfulSources,
-      failedSources,
-      scannedRows: allRows.length,
+      perTickerLimit,
+      processedTickers: sourceRows.length,
+      successfulTickerFetches: fetchResults.filter((r) => r.ok).length,
+      failedTickerFetches: fetchResults.filter((r) => !r.ok).length,
       insertedOrUpdated: writeResult.insertedOrUpdated,
-      dedupedRows: dedupedRows.length,
-      lookbackDays,
-      limit: effectiveLimit,
-      retentionCleanup: retentionMessage,
+      dedupedRows: finalRows.length,
       ptrCount,
-      sourceDiagnostics,
-      message:
-        successfulSources === 0
-          ? "No PTR feeds were successfully parsed. Check sourceDiagnostics for feed-specific errors."
-          : "House PTR trades ingested successfully. Partial source failures are tolerated and returned in sourceDiagnostics.",
+      diagnostics: fetchResults.map((r) => ({
+        ticker: r.ticker,
+        ok: r.ok,
+        rows: r.rows.length,
+        error: r.error,
+      })),
+      message: "Congress trades ingested from AInvest by ticker.",
     })
   } catch (error: any) {
-    return Response.json(
+    return NextResponse.json(
       {
         ok: false,
         error: error?.message || "Unknown PTR ingest error",
-        debug: {
-          hasPtrHouseFeedUrls: Boolean(process.env.PTR_HOUSE_FEED_URLS),
-          hasPtrUserAgent: Boolean(process.env.PTR_USER_AGENT),
-        },
       },
       { status: 500 }
     )
