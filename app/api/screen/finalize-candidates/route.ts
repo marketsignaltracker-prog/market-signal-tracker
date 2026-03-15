@@ -4,9 +4,16 @@ export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
 type CandidateHistoryRow = {
+  company_id?: number | null
   ticker: string
   cik: string
   name: string | null
+  is_active?: boolean | null
+  is_eligible?: boolean | null
+  has_insider_trades?: boolean | null
+  has_ptr_forms?: boolean | null
+  has_clusters?: boolean | null
+  eligibility_reason?: string | null
   price: number | null
   market_cap: number | null
   pe_ratio: number | null
@@ -45,9 +52,16 @@ type CandidateHistoryRow = {
 }
 
 type CandidateUniverseRow = {
+  company_id?: number | null
   ticker: string
   cik: string
   name: string | null
+  is_active?: boolean | null
+  is_eligible?: boolean | null
+  has_insider_trades?: boolean | null
+  has_ptr_forms?: boolean | null
+  has_clusters?: boolean | null
+  eligibility_reason?: string | null
   price: number | null
   market_cap: number | null
   pe_ratio: number | null
@@ -311,9 +325,16 @@ function toUniverseRow(
   const ptrReason = ptrSummary?.summary ? `; ${ptrSummary.summary}` : ""
 
   return {
+    company_id: row.company_id ?? null,
     ticker: row.ticker,
     cik: row.cik,
     name: row.name,
+    is_active: row.is_active ?? true,
+    is_eligible: row.is_eligible ?? null,
+    has_insider_trades: row.has_insider_trades ?? null,
+    has_ptr_forms: row.has_ptr_forms ?? null,
+    has_clusters: row.has_clusters ?? null,
+    eligibility_reason: row.eligibility_reason ?? null,
     price: row.price,
     market_cap: row.market_cap,
     pe_ratio: row.pe_ratio,

@@ -10,6 +10,11 @@ type CompanyRow = {
   cik: string
   name: string | null
   is_active?: boolean | null
+  is_eligible?: boolean | null
+  has_insider_trades?: boolean | null
+  has_ptr_forms?: boolean | null
+  has_clusters?: boolean | null
+  eligibility_reason?: string | null
 }
 
 type CandidateUniverseRow = {
@@ -1089,9 +1094,16 @@ function makeHistoryRow(
 }
 
 function makeExcludedRow(params: {
+  companyId?: number | null
   ticker: string
   cik: string
   name: string | null
+  isActive?: boolean | null
+  isEligible?: boolean | null
+  hasInsiderTrades?: boolean | null
+  hasPtrForms?: boolean | null
+  hasClusters?: boolean | null
+  eligibilityReason?: string | null
   peRatio?: number | null
   forwardPe?: number | null
   peType?: string | null
@@ -1102,9 +1114,16 @@ function makeExcludedRow(params: {
   nowIso: string
 }): CandidateUniverseRow {
   return {
+    company_id: params.companyId ?? null,
     ticker: params.ticker,
     cik: params.cik,
     name: params.name,
+    is_active: params.isActive ?? true,
+    is_eligible: params.isEligible ?? null,
+    has_insider_trades: params.hasInsiderTrades ?? null,
+    has_ptr_forms: params.hasPtrForms ?? null,
+    has_clusters: params.hasClusters ?? null,
+    eligibility_reason: params.eligibilityReason ?? null,
     price: null,
     market_cap: null,
     pe_ratio: round2(params.peRatio ?? null),
@@ -1165,9 +1184,16 @@ async function prepareTickerForScoring(
 
   if (!isProbablyCommonStockTicker(ticker)) {
     const row = makeExcludedRow({
+      companyId: company.id,
       ticker,
       cik: company.cik,
       name: company.name,
+      isActive: company.is_active,
+      isEligible: company.is_eligible,
+      hasInsiderTrades: company.has_insider_trades,
+      hasPtrForms: company.has_ptr_forms,
+      hasClusters: company.has_clusters,
+      eligibilityReason: company.eligibility_reason,
       screenReason: "Excluded likely non-common-share ticker",
       nowIso,
     })
@@ -1202,9 +1228,16 @@ async function prepareTickerForScoring(
     const disposition = classifyYahooError(err)
 
     const historyRow = makeExcludedRow({
+      companyId: company.id,
       ticker,
       cik: company.cik,
       name: company.name,
+      isActive: company.is_active,
+      isEligible: company.is_eligible,
+      hasInsiderTrades: company.has_insider_trades,
+      hasPtrForms: company.has_ptr_forms,
+      hasClusters: company.has_clusters,
+      eligibilityReason: company.eligibility_reason,
       screenReason:
         disposition.kind === "permanent"
           ? `Permanent Yahoo error: ${disposition.reason}`
@@ -1247,9 +1280,16 @@ async function prepareTickerForScoring(
 
   if (clean.length < 22) {
     const row = makeExcludedRow({
+      companyId: company.id,
       ticker,
       cik: company.cik,
       name: company.name,
+      isActive: company.is_active,
+      isEligible: company.is_eligible,
+      hasInsiderTrades: company.has_insider_trades,
+      hasPtrForms: company.has_ptr_forms,
+      hasClusters: company.has_clusters,
+      eligibilityReason: company.eligibility_reason,
       peRatio: snapshot.peRatio,
       forwardPe: snapshot.forwardPe,
       peType: snapshot.peType,
@@ -1452,61 +1492,68 @@ export async function GET(request: Request) {
 
     const universe = (searchParams.get("universe") || "all").toLowerCase()
 
-const sourceTableName =
-  universe === "eligible" ? "candidate_universe" : "companies"
+    const sourceTableName =
+      universe === "eligible" ? "candidate_universe" : "companies"
 
-const sourceTable = supabase.from(sourceTableName) as any
-const candidateHistoryTable = supabase.from("candidate_screen_history") as any
-const candidateUniverseTable = supabase.from("candidate_universe") as any
+    const sourceTable = supabase.from(sourceTableName) as any
+    const candidateHistoryTable = supabase.from("candidate_screen_history") as any
+    const candidateUniverseTable = supabase.from("candidate_universe") as any
 
-let companyQuery =
-  universe === "eligible"
-    ? sourceTable
-        .select("company_id, ticker, cik, name, is_active, is_eligible")
-        .eq("is_eligible", true)
-        .not("cik", "is", null)
-        .order("ticker", { ascending: true })
-        .range(from, to)
-    : sourceTable
-        .select("id, ticker, cik, name, is_active")
-        .not("cik", "is", null)
-        .order("id", { ascending: true })
-        .range(from, to)
+    let companyQuery =
+      universe === "eligible"
+        ? sourceTable
+            .select(
+              "company_id, ticker, cik, name, is_active, is_eligible, has_insider_trades, has_ptr_forms, has_clusters, eligibility_reason"
+            )
+            .eq("is_eligible", true)
+            .not("cik", "is", null)
+            .order("ticker", { ascending: true })
+            .range(from, to)
+        : sourceTable
+            .select("id, ticker, cik, name, is_active")
+            .not("cik", "is", null)
+            .order("id", { ascending: true })
+            .range(from, to)
 
-let countQuery =
-  universe === "eligible"
-    ? sourceTable
-        .select("*", { count: "exact", head: true })
-        .eq("is_eligible", true)
-        .not("cik", "is", null)
-    : sourceTable
-        .select("*", { count: "exact", head: true })
-        .not("cik", "is", null)
+    let countQuery =
+      universe === "eligible"
+        ? sourceTable
+            .select("*", { count: "exact", head: true })
+            .eq("is_eligible", true)
+            .not("cik", "is", null)
+        : sourceTable
+            .select("*", { count: "exact", head: true })
+            .not("cik", "is", null)
 
-if (onlyActive) {
-  companyQuery = companyQuery.eq("is_active", true)
-  countQuery = countQuery.eq("is_active", true)
-}
+    if (onlyActive) {
+      companyQuery = companyQuery.eq("is_active", true)
+      countQuery = countQuery.eq("is_active", true)
+    }
 
-const [
-  { data: companies, error: companiesError },
-  { count: totalCompanies, error: totalCountError },
-] = await Promise.all([companyQuery, countQuery])
+    const [
+      { data: companies, error: companiesError },
+      { count: totalCompanies, error: totalCountError },
+    ] = await Promise.all([companyQuery, countQuery])
 
-if (companiesError) {
-  return Response.json(
-    { ok: false, error: companiesError.message },
-    { status: 500 }
-  )
-}
+    if (companiesError) {
+      return Response.json(
+        { ok: false, error: companiesError.message },
+        { status: 500 }
+      )
+    }
 
-const companyList: CompanyRow[] = ((companies || []) as any[]).map((row) => ({
-  id: row.company_id ?? row.id,
-  ticker: row.ticker,
-  cik: row.cik,
-  name: row.name ?? null,
-  is_active: row.is_active ?? true,
-}))
+    const companyList: CompanyRow[] = ((companies || []) as any[]).map((row) => ({
+      id: row.company_id ?? row.id,
+      ticker: row.ticker,
+      cik: row.cik,
+      name: row.name ?? null,
+      is_active: row.is_active ?? true,
+      is_eligible: row.is_eligible ?? null,
+      has_insider_trades: row.has_insider_trades ?? null,
+      has_ptr_forms: row.has_ptr_forms ?? null,
+      has_clusters: row.has_clusters ?? null,
+      eligibility_reason: row.eligibility_reason ?? null,
+    }))
 
     const preparation = await mapWithConcurrency(
       companyList,
@@ -1687,9 +1734,16 @@ const companyList: CompanyRow[] = ((companies || []) as any[]).map((row) => ({
       }
 
       const row: CandidateUniverseRow = {
+        company_id: metric.company.id,
         ticker: metric.ticker,
         cik: metric.company.cik,
         name: metric.company.name,
+        is_active: metric.company.is_active ?? true,
+        is_eligible: metric.company.is_eligible ?? null,
+        has_insider_trades: metric.company.has_insider_trades ?? null,
+        has_ptr_forms: metric.company.has_ptr_forms ?? null,
+        has_clusters: metric.company.has_clusters ?? null,
+        eligibility_reason: metric.company.eligibility_reason ?? null,
         price: round2(metric.latestClose),
         market_cap: metric.marketCap || null,
         pe_ratio: round2(metric.snapshot.peRatio),
@@ -1871,6 +1925,7 @@ const companyList: CompanyRow[] = ((companies || []) as any[]).map((row) => ({
       batch: safeBatch,
       nextStart,
       onlyActive,
+      universe,
       prequalifiedInBatch,
       strongBuyNowInBatch,
       failedInBatch,
@@ -1902,6 +1957,12 @@ const companyList: CompanyRow[] = ((companies || []) as any[]).map((row) => ({
         yahooRetryAttempts: YAHOO_RETRY_ATTEMPTS,
         maxTransientErrorRate: MAX_TRANSIENT_ERROR_RATE,
       },
+      counts: includeCounts
+        ? {
+            candidateUniverse: candidateCount,
+            history: historyCount,
+          }
+        : undefined,
       results: includeResults ? results : [],
     })
   } catch (error: any) {
