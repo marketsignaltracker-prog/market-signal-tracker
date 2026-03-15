@@ -528,8 +528,11 @@ export async function GET(request: Request) {
     let ptrCount: number | null = null
     if (includeCounts) {
       const { count, error } = await supabase
-        .from("raw_ptr_trades")
-        .select("*", { count: "exact", head: true })
+  .from("raw_ptr_trades")
+  .upsert(rows, {
+    onConflict: "trade_key",
+    ignoreDuplicates: false
+  })
 
       ptrCount = error ? null : count ?? 0
     }
