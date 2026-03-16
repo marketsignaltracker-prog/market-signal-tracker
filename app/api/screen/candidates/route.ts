@@ -1639,29 +1639,23 @@ export async function GET(request: Request) {
       const score = scoreDetails.candidateScore
       const catalystCount = scoreDetails.catalystCount
 
-      const highPriorityCandidate = Boolean
-        metric.passesStrongCompanyGate &&
-        metric.strongCompanyScore >= 72 &&
-        metric.passesPrice &&
-        metric.passesVolume &&
-        metric.passesDollarVolume &&
-        metric.passesMarketCap &&
-        metric.aboveSma20 &&
-        metric.shortTermTrendUp &&
-        metric.return10d >= MIN_STRONG_BUY_RETURN_10D &&
-        metric.return20d >= MIN_STRONG_BUY_RETURN_20D &&
-        metric.relativeReturn10d >= MIN_RELATIVE_RETURN_10D &&
-        metric.relativeReturn20d >= MIN_RELATIVE_RETURN_20D &&
-        metric.volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO &&
-        score >= MIN_STRONG_BUY_SCORE &&
-        catalystCount >= MIN_CATALYST_COUNT &&
+            const highPriorityCandidate = Boolean(
         (
           metric.company.has_ptr_forms ||
           metric.company.has_insider_trades ||
+          (metric.company.eligibility_reason || "").includes("high_priority_filings") ||
           metric.company.has_clusters
+        ) &&
+        (
+          metric.breakout_20d ||
+          metric.breakout_10d ||
+          metric.aboveSma20 ||
+          (metric.relativeReturn20d ?? 0) >= MIN_RELATIVE_RETURN_20D ||
+          (metric.volumeRatio ?? 0) >= MIN_STRONG_BUY_VOLUME_RATIO
         )
+      )
 
-      const passed = boolean
+      const passed = Boolean(
         metric.passesStrongCompanyGate &&
         metric.passesPrice &&
         metric.passesVolume &&
@@ -1669,67 +1663,14 @@ export async function GET(request: Request) {
         metric.passesMarketCap &&
         metric.aboveSma20 &&
         metric.shortTermTrendUp &&
-        metric.return10d >= 2 &&
-        metric.return20d >= 4 &&
-        metric.relativeReturn20d >= 1 &&
-        score >= MIN_PREQUALIFIED_SCORE
-
-      const reasons: string[] = []
-
-      if (metric.company.has_ptr_forms) reasons.push("PTR support")
-      if (metric.company.has_insider_trades) reasons.push("insider filing support")
-      if (metric.company.has_clusters) reasons.push("cluster activity support")
-      if ((metric.company.eligibility_reason || "").includes("high_priority_filings")) {
-        reasons.push("high-priority filing support")
-      }
-
-      if (metric.passesStrongCompanyGate) reasons.push("strong underlying company")
-      if (metric.strongCompanyScore >= 75) reasons.push("high fundamental quality")
-      reasons.push(...metric.strongCompanyReasons)
-
-      if (metric.passesPrice) reasons.push(`price >= $${MIN_PRICE}`)
-      if (metric.passesVolume) reasons.push("20d avg volume")
-      if (metric.passesDollarVolume) reasons.push("20d dollar volume")
-      if (metric.passesMarketCap) reasons.push("market cap")
-      if (metric.oneDayReturn > 0) reasons.push("positive day")
-      if (metric.return5d >= 1.5) reasons.push("5d momentum")
-      if (metric.return10d >= MIN_STRONG_BUY_RETURN_10D) reasons.push("10d momentum")
-      if (metric.return20d >= MIN_STRONG_BUY_RETURN_20D) reasons.push("20d momentum")
-      if (metric.relativeReturn10d >= MIN_RELATIVE_RETURN_10D) reasons.push("beats SPY over 10d")
-      if (metric.relativeReturn20d >= MIN_RELATIVE_RETURN_20D) reasons.push("beats SPY over 20d")
-      if (metric.volumeRatio >= 1.2) reasons.push("volume expansion")
-      if (metric.volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO) reasons.push("strong volume expansion")
-      if (metric.breakout10d) reasons.push("10d breakout")
-      if (metric.breakout20d) reasons.push("20d breakout")
-      if (metric.nearHigh20) reasons.push("trading near 20d high")
-      if (metric.breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT) reasons.push("clean breakout clearance")
-      if (metric.aboveSma20) reasons.push("above 20d average")
-      if (metric.shortTermTrendUp) reasons.push("short-term trend acceleration")
-      if (metric.closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE) reasons.push("strong close in daily range")
-      if (metric.extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT) reasons.push("not too extended from 20d average")
-      if (scoreDetails.highConvictionSetup) reasons.push("high-conviction setup")
-      if (scoreDetails.eliteSetup) reasons.push("elite setup")
-
-      let exclusionReason = ""
-      if (!metric.passesPrice) {
-        exclusionReason = `Below $${MIN_PRICE} minimum price`
-      } else if (!metric.passesVolume) {
-        exclusionReason = "Below minimum average volume"
-      } else if (!metric.passesDollarVolume) {
-        exclusionReason = "Below minimum dollar volume"
-      } else if (!metric.passesMarketCap) {
-        exclusionReason = "Below minimum market cap"
-      } else if (!metric.aboveSma20) {
-        exclusionReason = "Below 20-day moving average"
-      } else if (metric.return20d <= 0) {
-        exclusionReason = "Negative 20-day momentum"
-      } else if (metric.relativeReturn20d <= 0) {
-        exclusionReason = "Underperforming SPY over 20d"
-      } else if (score < MIN_CANDIDATE_SCORE) {
-        exclusionReason = "Score below candidate floor"
-      } else {
-        exclusionReason = "Did not pass candidate screen"
-      }
+        (
+          metric.breakout20d ||
+          metric.breakout10d ||
+          metric.nearHigh20 ||
+          (metric.relativeReturn20d ?? 0) >= MIN_RELATIVE_RETURN_20D
+        ) &&
+        score >= 70
+      )
 
       const row: CandidateUniverseRow = {
         company_id: metric.company.id,
@@ -1770,17 +1711,15 @@ export async function GET(request: Request) {
         passes_dollar_volume: metric.passesDollarVolume,
         passes_market_cap: metric.passesMarketCap,
         candidate_score: score,
-        included: passed,
-        passed,
+        included: passed || highPriorityCandidate || strongBuyNowCandidate,
         screen_reason: buildCandidateReason({
           prequalified: passed,
-          strongBuyNow: highPriorityCandidate,
+          strongBuyNow: Boolean(highPriorityCandidate || strongBuyNowCandidate),
           reasons,
           exclusionReason,
           score,
         }),
         last_screened_at: nowIso,
-        as_of_date: nowIso,
         updated_at: nowIso,
       }
 
