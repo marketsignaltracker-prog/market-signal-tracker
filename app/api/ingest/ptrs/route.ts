@@ -137,12 +137,12 @@ type Diagnostics = {
 const DB_CHUNK_SIZE = 200
 const API_TIMEOUT_MS = 12000
 const API_CONCURRENCY = 4
-const DEFAULT_BATCH = 25
+const DEFAULT_BATCH = 50
 const MAX_BATCH = 100
 const DEFAULT_START = 0
-const DEFAULT_LIMIT_PER_TICKER = 10
+const DEFAULT_LIMIT_PER_TICKER = 20
 const MAX_LIMIT_PER_TICKER = 50
-const CANDIDATE_LOOKBACK_DAYS = 10
+const CANDIDATE_LOOKBACK_DAYS = 60
 const AINVEST_CONGRESS_URL =
   "https://openapi.ainvest.com/open/ownership/congress"
 

@@ -99,11 +99,11 @@ type Diagnostics = {
   duplicateRowsCollapsed: number
 }
 
-const DEFAULT_BATCH = 100
-const MAX_BATCH = 150
+const DEFAULT_BATCH = 50
+const MAX_BATCH = 100
 const DEFAULT_START = 0
 const RETENTION_DAYS = 30
-const CANDIDATE_LOOKBACK_DAYS = 10
+const CANDIDATE_LOOKBACK_DAYS = 60
 const SEC_TIMEOUT_MS = 5000
 const DB_CHUNK_SIZE = 100
 const SEC_FETCH_CONCURRENCY = 6
