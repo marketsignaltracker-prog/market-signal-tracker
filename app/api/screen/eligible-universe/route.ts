@@ -17,51 +17,21 @@ type FilingRow = {
   ticker?: string | null
   filed_at?: string | null
   form_type?: string | null
-  accession_no?: string | null
 }
 
 type PtrRow = {
   ticker?: string | null
-  trade_date?: string | null
-  disclosure_date?: string | null
   transaction_date?: string | null
   report_date?: string | null
-  transaction_type?: string | null
-  action?: string | null
-  amount_low?: number | null
-  amount_high?: number | null
-  filer_name?: string | null
-  politician_name?: string | null
 }
 
 type SignalRow = {
   company_id?: number | null
   ticker?: string | null
   created_at?: string | null
-  as_of_date?: string | null
   signal_type?: string | null
-  source_type?: string | null
   signal_source?: string | null
   signal_category?: string | null
-  strength?: number | null
-}
-
-type EligibleUniverseRow = {
-  company_id: number
-  ticker: string
-  cik: string | null
-  name: string | null
-  is_active: boolean
-  is_eligible: boolean
-  included: boolean
-  passed: boolean
-  has_insider_trades: boolean
-  has_ptr_forms: boolean
-  has_clusters: boolean
-  eligibility_reason: string
-  as_of_date: string
-  last_screened_at: string
-  updated_at: string
 }
 
 function getSupabaseAdmin(): any {
@@ -122,37 +92,6 @@ function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
 }
 
-function uniqueStrings(values: Array<string | null | undefined>) {
-  return Array.from(
-    new Set(values.map((value) => (value || "").trim()).filter(Boolean))
-  )
-}
-
-function isPositivePtrTrade(row: PtrRow) {
-  const transactionType = String(row.transaction_type || "")
-    .trim()
-    .toLowerCase()
-  const action = String(row.action || "")
-    .trim()
-    .toLowerCase()
-
-  return (
-    transactionType === "buy" ||
-    transactionType === "exchange" ||
-    action.includes("buy") ||
-    action.includes("purchase") ||
-    action.includes("exchange")
-  )
-}
-
-function upsertReason(
-  reasons: string[],
-  reason: string,
-  condition: boolean
-) {
-  if (condition) reasons.push(reason)
-}
-
 export async function GET(request: NextRequest) {
   const authError = requirePipelineToken(request)
   if (authError) return authError
@@ -201,13 +140,13 @@ export async function GET(request: NextRequest) {
 
     const companyById = new Map<number, CompanyRow>()
     for (const company of typedCompanies) {
-      companyById.set(company.id, company)
+      if (company?.id !== null && company?.id !== undefined) {
+        companyById.set(company.id, company)
+      }
     }
 
-    const { data: filings, error: filingsError } = await (supabase.from(
-      "raw_filings"
-    ) as any)
-      .select("company_id,ticker,filed_at,form_type,accession_no")
+    const { data: filings, error: filingsError } = await (supabase.from("raw_filings") as any)
+      .select("company_id,ticker,filed_at,form_type")
       .gte("filed_at", sinceDate)
 
     if (filingsError) {
@@ -224,15 +163,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { data: ptrs, error: ptrsError } = await (supabase.from(
-      "raw_ptr_trades"
-    ) as any)
-      .select(
-        "ticker,trade_date,disclosure_date,transaction_date,report_date,transaction_type,action,amount_low,amount_high,filer_name,politician_name"
-      )
-      .or(
-        `trade_date.gte.${sinceDate},disclosure_date.gte.${sinceDate},transaction_date.gte.${sinceDate},report_date.gte.${sinceDate}`
-      )
+    const { data: ptrs, error: ptrsError } = await (supabase.from("raw_ptr_trades") as any)
+      .select("ticker,transaction_date,report_date")
+      .or(`transaction_date.gte.${sinceDate},report_date.gte.${sinceDate}`)
 
     if (ptrsError) {
       return NextResponse.json(
@@ -248,13 +181,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { data: signals, error: signalsError } = await (supabase.from(
-      "signals"
-    ) as any)
-      .select(
-        "company_id,ticker,created_at,as_of_date,signal_type,source_type,signal_source,signal_category,strength"
-      )
-      .or(`created_at.gte.${sinceDate},as_of_date.gte.${updatedAt.slice(0, 10)}`)
+    const { data: signals, error: signalsError } = await (supabase.from("signals") as any)
+      .select("company_id,ticker,created_at,signal_type,signal_source,signal_category")
+      .gte("created_at", sinceDate)
 
     if (signalsError) {
       return NextResponse.json(
@@ -270,17 +199,16 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    /**
+     * Priority stack:
+     * 1. PTR
+     * 2. Insider / ownership / catalyst filings
+     * 3. Signals
+     */
     const insiderTradeTickers = new Set<string>()
     const highPriorityFilingTickers = new Set<string>()
-    const filingClusterTickers = new Set<string>()
     const ptrTickers = new Set<string>()
-    const ptrPositiveTickers = new Set<string>()
-    const ptrClusterTickers = new Set<string>()
     const signalTickers = new Set<string>()
-    const highStrengthSignalTickers = new Set<string>()
-
-    const filingCountByTicker = new Map<string, number>()
-    const form4CountByTicker = new Map<string, number>()
 
     for (const filing of (filings || []) as FilingRow[]) {
       const formType = String(filing?.form_type || "").toUpperCase().trim()
@@ -289,14 +217,10 @@ export async function GET(request: NextRequest) {
         filing?.ticker
           ? normalizeTicker(filing.ticker)
           : filing?.company_id && companyById.get(Number(filing.company_id))?.ticker
-            ? normalizeTicker(
-                companyById.get(Number(filing.company_id))?.ticker || ""
-              )
+            ? normalizeTicker(companyById.get(Number(filing.company_id))?.ticker || "")
             : null
 
       if (!ticker) continue
-
-      filingCountByTicker.set(ticker, (filingCountByTicker.get(ticker) || 0) + 1)
 
       const isInsiderTradeForm =
         formType === "3" ||
@@ -323,58 +247,13 @@ export async function GET(request: NextRequest) {
         formType === "10-Q" ||
         formType === "10-K"
 
-      if (isInsiderTradeForm) {
-        insiderTradeTickers.add(ticker)
-        form4CountByTicker.set(ticker, (form4CountByTicker.get(ticker) || 0) + 1)
-      }
-
-      if (isHighPriorityFiling) {
-        highPriorityFilingTickers.add(ticker)
-      }
+      if (isInsiderTradeForm) insiderTradeTickers.add(ticker)
+      if (isHighPriorityFiling) highPriorityFilingTickers.add(ticker)
     }
-
-    for (const [ticker, count] of form4CountByTicker.entries()) {
-      if (count >= 2) {
-        filingClusterTickers.add(ticker)
-      }
-    }
-
-    for (const [ticker, count] of filingCountByTicker.entries()) {
-      if (count >= 4) {
-        filingClusterTickers.add(ticker)
-      }
-    }
-
-    const ptrBuyersByTicker = new Map<string, Set<string>>()
-    const ptrBuyCountByTicker = new Map<string, number>()
 
     for (const ptr of (ptrs || []) as PtrRow[]) {
       const ticker = ptr?.ticker ? normalizeTicker(ptr.ticker) : null
-      if (!ticker) continue
-
-      ptrTickers.add(ticker)
-
-      if (isPositivePtrTrade(ptr)) {
-        ptrPositiveTickers.add(ticker)
-        ptrBuyCountByTicker.set(ticker, (ptrBuyCountByTicker.get(ticker) || 0) + 1)
-
-        const buyer =
-          String(ptr.politician_name || ptr.filer_name || "").trim()
-
-        if (buyer) {
-          if (!ptrBuyersByTicker.has(ticker)) {
-            ptrBuyersByTicker.set(ticker, new Set<string>())
-          }
-          ptrBuyersByTicker.get(ticker)!.add(buyer)
-        }
-      }
-    }
-
-    for (const [ticker, count] of ptrBuyCountByTicker.entries()) {
-      const uniqueBuyers = ptrBuyersByTicker.get(ticker)?.size || 0
-      if (count >= 2 || uniqueBuyers >= 2) {
-        ptrClusterTickers.add(ticker)
-      }
+      if (ticker) ptrTickers.add(ticker)
     }
 
     for (const signal of (signals || []) as SignalRow[]) {
@@ -382,21 +261,14 @@ export async function GET(request: NextRequest) {
         signal?.ticker
           ? normalizeTicker(signal.ticker)
           : signal?.company_id && companyById.get(Number(signal.company_id))?.ticker
-            ? normalizeTicker(
-                companyById.get(Number(signal.company_id))?.ticker || ""
-              )
+            ? normalizeTicker(companyById.get(Number(signal.company_id))?.ticker || "")
             : null
 
       if (!ticker) continue
       signalTickers.add(ticker)
-
-      const strength = Number(signal.strength || 0)
-      if (Number.isFinite(strength) && strength >= 55) {
-        highStrengthSignalTickers.add(ticker)
-      }
     }
 
-    const eligibleRows: EligibleUniverseRow[] = []
+    const eligibleRows: Array<Record<string, any>> = []
 
     for (const company of typedCompanies) {
       const ticker = normalizeTicker(company?.ticker)
@@ -405,11 +277,7 @@ export async function GET(request: NextRequest) {
       const hasInsiderTrades = insiderTradeTickers.has(ticker)
       const hasHighPriorityFilings = highPriorityFilingTickers.has(ticker)
       const hasPtrForms = ptrTickers.has(ticker)
-      const hasPositivePtrs = ptrPositiveTickers.has(ticker)
       const hasSignals = signalTickers.has(ticker)
-      const hasHighStrengthSignals = highStrengthSignalTickers.has(ticker)
-      const hasClusters =
-        filingClusterTickers.has(ticker) || ptrClusterTickers.has(ticker)
 
       const isEligible =
         hasPtrForms ||
@@ -420,13 +288,10 @@ export async function GET(request: NextRequest) {
       if (!isEligible) continue
 
       const reasons: string[] = []
-      upsertReason(reasons, "ptr_forms", hasPtrForms)
-      upsertReason(reasons, "ptr_positive", hasPositivePtrs)
-      upsertReason(reasons, "insider_trades", hasInsiderTrades)
-      upsertReason(reasons, "high_priority_filings", hasHighPriorityFilings)
-      upsertReason(reasons, "clusters", hasClusters)
-      upsertReason(reasons, "signals", hasSignals)
-      upsertReason(reasons, "high_strength_signals", hasHighStrengthSignals)
+      if (hasPtrForms) reasons.push("ptr_forms")
+      if (hasInsiderTrades) reasons.push("insider_trades")
+      if (hasHighPriorityFilings) reasons.push("high_priority_filings")
+      if (hasSignals) reasons.push("signals")
 
       eligibleRows.push({
         company_id: company.id,
@@ -434,23 +299,20 @@ export async function GET(request: NextRequest) {
         cik: company.cik ?? null,
         name: company.name ?? null,
         is_active: company.is_active ?? true,
-        is_eligible: true,
-        included: true,
-        passed: true,
-        has_insider_trades: hasInsiderTrades || hasHighPriorityFilings,
+        has_insider_trades: hasInsiderTrades,
         has_ptr_forms: hasPtrForms,
-        has_clusters: hasClusters,
-        eligibility_reason: uniqueStrings(reasons).join(","),
-        as_of_date: updatedAt,
-        last_screened_at: updatedAt,
+        has_clusters: hasSignals,
+        is_eligible: true,
+        eligibility_reason: reasons.join(","),
         updated_at: updatedAt,
       })
     }
 
     if (eligibleRows.length > 0) {
-      const { error: upsertError } = await (supabase.from(
-        "candidate_universe"
-      ) as any).upsert(eligibleRows, { onConflict: "ticker" })
+      const { error: upsertError } = await (supabase.from("candidate_universe") as any).upsert(
+        eligibleRows,
+        { onConflict: "ticker" }
+      )
 
       if (upsertError) {
         return NextResponse.json(
@@ -470,8 +332,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      stage: "eligible_universe",
-      targetTable: "candidate_universe",
       lookbackDays,
       eligibleCount: eligibleRows.length,
       counts: includeCounts
@@ -479,17 +339,11 @@ export async function GET(request: NextRequest) {
             companies: typedCompanies.length,
             insiderTradeTickers: insiderTradeTickers.size,
             highPriorityFilingTickers: highPriorityFilingTickers.size,
-            filingClusterTickers: filingClusterTickers.size,
             ptrTickers: ptrTickers.size,
-            ptrPositiveTickers: ptrPositiveTickers.size,
-            ptrClusterTickers: ptrClusterTickers.size,
             signalTickers: signalTickers.size,
-            highStrengthSignalTickers: highStrengthSignalTickers.size,
             eligibleRows: eligibleRows.length,
           }
         : undefined,
-      message:
-        "Eligible universe rebuilt from recent insider filings, PTR activity, cluster-style evidence, and current signals.",
     })
   } catch (error) {
     return NextResponse.json(
