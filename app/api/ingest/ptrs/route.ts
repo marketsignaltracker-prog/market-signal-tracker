@@ -25,14 +25,6 @@ type RawPtrTradeRow = {
   trade_key: string
   fetched_at: string
   updated_at: string
-
-  // New-model compatibility columns
-  politician_name: string
-  transaction_type: "buy" | "sell" | "exchange" | "unknown"
-  trade_date: string | null
-  disclosure_date: string | null
-  source_url: string | null
-  ptr_id: string
 }
 
 type CompanyRow = {
@@ -49,8 +41,8 @@ type CandidateUniverseRow = {
   cik?: string | null
   name?: string | null
   is_active?: boolean | null
-  passed?: boolean | null
-  as_of_date?: string | null
+  included?: boolean | null
+  last_screened_at?: string | null
 }
 
 type CandidateScreenHistoryRow = {
@@ -58,8 +50,9 @@ type CandidateScreenHistoryRow = {
   ticker: string
   cik?: string | null
   name?: string | null
-  passed?: boolean | null
-  as_of_date?: string | null
+  included?: boolean | null
+  screened_on?: string | null
+  last_screened_at?: string | null
 }
 
 type SourceRow = CompanyRow | CandidateUniverseRow | CandidateScreenHistoryRow
@@ -262,20 +255,7 @@ function normalizeAction(value: string | null | undefined) {
   if (v.includes("sell") || v.includes("sale")) return "Sell"
   if (v.includes("exchange")) return "Exchange"
 
-  return value || null
-}
-
-function normalizeTransactionType(
-  value: string | null | undefined
-): "buy" | "sell" | "exchange" | "unknown" {
-  const v = (value || "").trim().toLowerCase()
-
-  if (!v) return "unknown"
-  if (v.includes("buy") || v.includes("purchase")) return "buy"
-  if (v.includes("sell") || v.includes("sale")) return "sell"
-  if (v.includes("exchange")) return "exchange"
-
-  return "unknown"
+  return value?.trim() || null
 }
 
 function buildTradeKey(row: {
@@ -402,8 +382,8 @@ async function loadEligibleContext(
 }> {
   let query = supabase
     .from("candidate_universe")
-    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
-    .eq("passed", true)
+    .select("company_id, ticker, cik, name, is_active, included, last_screened_at")
+    .eq("included", true)
     .not("ticker", "is", null)
     .order("ticker", { ascending: true })
     .range(start, start + batch - 1)
@@ -437,11 +417,11 @@ async function loadCandidatesContext(
 
   let universeQuery = supabase
     .from("candidate_universe")
-    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
-    .eq("passed", true)
-    .gte("as_of_date", cutoff.toISOString())
+    .select("company_id, ticker, cik, name, is_active, included, last_screened_at")
+    .eq("included", true)
+    .gte("last_screened_at", cutoff.toISOString())
     .not("ticker", "is", null)
-    .order("as_of_date", { ascending: false })
+    .order("last_screened_at", { ascending: false })
     .range(start, start + batch - 1)
 
   if (onlyActive) {
@@ -464,28 +444,28 @@ async function loadCandidatesContext(
 
   const latestSnapshot = await supabase
     .from("candidate_screen_history")
-    .select("as_of_date")
-    .order("as_of_date", { ascending: false })
+    .select("screened_on")
+    .order("screened_on", { ascending: false })
     .limit(1)
     .maybeSingle()
 
   if (latestSnapshot.error) throw latestSnapshot.error
 
-  const latestAsOfDate = latestSnapshot.data?.as_of_date ?? null
-  if (!latestAsOfDate) {
+  const latestScreenedOn = latestSnapshot.data?.screened_on ?? null
+  if (!latestScreenedOn) {
     return {
       candidateRows: universeRows,
       candidateUniverseRowsLoaded: universeRows.length,
       candidateScreenHistoryRowsLoaded: 0,
-      fallbackCandidateHistoryUsed: false,
-    }
+      fallbackCandidateSourceUsed: false,
+    } as any
   }
 
   let historyQuery = supabase
     .from("candidate_screen_history")
-    .select("company_id, ticker, cik, name, passed, as_of_date, is_active")
-    .eq("as_of_date", latestAsOfDate)
-    .eq("passed", true)
+    .select("company_id, ticker, cik, name, included, screened_on, last_screened_at, is_active")
+    .eq("screened_on", latestScreenedOn)
+    .eq("included", true)
     .not("ticker", "is", null)
     .order("ticker", { ascending: true })
     .range(start, start + batch - 1)
@@ -560,9 +540,6 @@ function normalizeAInvestTrade(
   const normalizedAction = normalizeAction(
     row.trade_type || row.type || row.action
   )
-  const transactionType = normalizeTransactionType(
-    row.trade_type || row.type || row.action
-  )
   const amountRange =
     String(row.size || row.amount || row.amount_range || "").trim() || null
   const amounts = parseAmountRange(amountRange)
@@ -598,13 +575,6 @@ function normalizeAInvestTrade(
     trade_key: tradeKey,
     fetched_at: fetchedAt,
     updated_at: fetchedAt,
-
-    politician_name: filerName,
-    transaction_type: transactionType,
-    trade_date: transactionDate,
-    disclosure_date: reportDate,
-    source_url: ptrUrl,
-    ptr_id: tradeKey,
   }
 }
 
