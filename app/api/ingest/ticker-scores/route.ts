@@ -3,8 +3,6 @@ import { createClient } from "@supabase/supabase-js"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
-type Scope = "all" | "eligible" | "candidates"
-
 type ChunkWriteResult = {
   insertedOrUpdated: number
   errors: Array<{
@@ -20,80 +18,77 @@ type ChunkWriteResult = {
 }
 
 type SignalRow = {
-  run_id?: string | null
-  ticker: string | null
-  company_id?: number | null
-  signal_type?: string | null
-  source_type?: string | null
-  strength?: number | null
-  direction?: string | null
-  summary?: string | null
-  metadata?: Record<string, unknown> | null
-  as_of_date?: string | null
-}
-
-type RawFilingRow = {
-  company_id?: number | null
-  ticker: string | null
-  company_name?: string | null
-  form_type?: string | null
-  filed_at?: string | null
-  filing_url?: string | null
-  accession_no?: string | null
-  cik?: string | null
-}
-
-type RawPtrTradeRow = {
-  ticker: string | null
-  politician_name?: string | null
-  filer_name?: string | null
-  transaction_type?: string | null
-  action?: string | null
-  trade_date?: string | null
-  disclosure_date?: string | null
-  amount_low?: number | null
-  amount_high?: number | null
-  source_url?: string | null
-  ptr_url?: string | null
-  trade_key?: string | null
-}
-
-type CandidateTechRow = {
-  company_id?: number | null
   ticker: string
-  name?: string | null
+  company_name?: string | null
+  business_description?: string | null
+  app_score?: number | null
+  raw_score?: number | null
+  bias?: string | null
+  board_bucket?: string | null
+  signal_strength_bucket?: string | null
+  score_version?: string | null
+  score_updated_at?: string | null
+  stacked_signal_count?: number | null
+  score_breakdown?: Record<string, number> | null
+  signal_reasons?: string[] | null
+  score_caps_applied?: string[] | null
+  signal_tags?: string[] | null
+  primary_signal_key?: string | null
+  primary_signal_type?: string | null
+  primary_signal_source?: string | null
+  primary_signal_category?: string | null
+  primary_title?: string | null
+  primary_summary?: string | null
+  filed_at?: string | null
+  accession_no?: string | null
+  source_form?: string | null
+  pe_ratio?: number | null
+  pe_forward?: number | null
+  pe_type?: string | null
   market_cap?: number | null
   sector?: string | null
   industry?: string | null
-  candidate_score?: number | null
-  passed?: boolean | null
-  as_of_date?: string | null
-  breakout_20d?: boolean | null
-  breakout_10d?: boolean | null
-  above_sma_20?: boolean | null
+  insider_action?: string | null
+  insider_shares?: number | null
+  insider_avg_price?: number | null
+  insider_buy_value?: number | null
+  cluster_buyers?: number | null
+  cluster_shares?: number | null
+  price_return_5d?: number | null
+  price_return_20d?: number | null
   volume_ratio?: number | null
-  return_20d?: number | null
+  breakout_20d?: boolean | null
+  breakout_52w?: boolean | null
+  above_50dma?: boolean | null
+  trend_aligned?: boolean | null
+  price_confirmed?: boolean | null
   relative_strength_20d?: number | null
-  has_insider_trades?: boolean | null
-  has_ptr_forms?: boolean | null
-  has_clusters?: boolean | null
+  earnings_surprise_pct?: number | null
+  revenue_growth_pct?: number | null
+  guidance_flag?: boolean | null
+  age_days?: number | null
+  freshness_bucket?: string | null
+  ticker_score_change_1d?: number | null
+  ticker_score_change_7d?: number | null
+  updated_at?: string | null
+  created_at?: string | null
 }
 
-type FilingSummary = {
-  ticker: string
-  filingCount: number
-  form4Count: number
-  ownershipCount: number
-  recentForm4Count: number
-  clusterBuyProxy: boolean
-  latestFiledAt: string | null
-  latestAccessionNo: string | null
-  latestFilingUrl: string | null
-  notes: string[]
+type PtrTradeRow = {
+  ticker?: string | null
+  filer_name?: string | null
+  action?: string | null
+  transaction_date?: string | null
+  report_date?: string | null
+  amount_low?: number | null
+  amount_high?: number | null
+  amount_range?: string | null
 }
 
 type PtrSummary = {
   ticker: string
+  ptrBonus: number
+  ptrPenalty: number
   buyTradeCount: number
   sellTradeCount: number
   uniqueBuyFilers: number
@@ -102,73 +97,24 @@ type PtrSummary = {
   recentSellCount: number
   totalBuyAmountLow: number
   totalSellAmountLow: number
-  biggestBuyAmountLow: number
-  latestTradeDate: string | null
-  latestDisclosureDate: string | null
   buyCluster: boolean
   strongBuying: boolean
   strongSelling: boolean
-  notes: string[]
+  latestTradeDate: string | null
+  summary: string | null
 }
 
-type ScoreBreakdown = {
-  filingBase: number
-  filingBonus: number
-  ptrBase: number
-  ptrBonus: number
-  technical: number
-  overlap: number
-}
-
-type TickerScoreRow = {
-  run_id: string
-  ticker: string
-  company_id: number | null
-  filing_signal_score: number
-  ptr_signal_score: number
-  combined_score: number
-  rank: number | null
-  confidence_label: "low" | "medium" | "high"
-  as_of_date: string
-  created_at: string
-  updated_at: string
-}
-
-type RankedTicker = {
-  ticker: string
-  companyId: number | null
-  filingSignalScore: number
-  ptrSignalScore: number
-  technicalScore: number
-  combinedScore: number
-  confidenceLabel: "low" | "medium" | "high"
-  breakdown: ScoreBreakdown
-  reasons: string[]
-}
-
-type Diagnostics = {
-  scope: Scope
-  signalsLoaded: number
-  rawFilingsLoaded: number
-  rawPtrTradesLoaded: number
-  candidateRowsLoaded: number
-  filingTickersScored: number
-  ptrTickersScored: number
-  rankedTickersBuilt: number
-  tickerScoresInserted: number
-  filteredBelowMinCombinedScore: number
-}
-
-const DEFAULT_LOOKBACK_DAYS = 21
-const MAX_LOOKBACK_DAYS = 60
+const DEFAULT_LOOKBACK_DAYS = 31
+const MAX_LOOKBACK_DAYS = 90
 const DEFAULT_LIMIT = 1000
 const MAX_LIMIT = 3000
-const DEFAULT_MIN_COMBINED_SCORE = 35
 const DEFAULT_PTR_LOOKBACK_DAYS = 60
 const DEFAULT_PTR_RECENT_DAYS = 14
+const MIN_SIGNAL_APP_SCORE = 20
+const MIN_COMBINED_SCORE = 35
+const RETENTION_DAYS = 30
+const SCORE_VERSION = "v9-ticker-scores-priority"
 const DB_CHUNK_SIZE = 100
-const QUERY_CHUNK_SIZE = 200
-const SCORE_VERSION = "v9-insider-ptr-tech-blended"
 
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
@@ -187,41 +133,24 @@ function toIsoDateString(date: Date) {
   return date.toISOString().slice(0, 10)
 }
 
+function round2(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return null
+  return Math.round(value * 100) / 100
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
 
-function round2(value: number) {
-  return Math.round(value * 100) / 100
+function uniqueStrings(values: (string | null | undefined)[]) {
+  return Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean)))
 }
 
-function uniqueStrings(values: Array<string | null | undefined>) {
-  return Array.from(
-    new Set(values.map((value) => (value || "").trim()).filter(Boolean))
-  )
-}
-
-function chunkArray<T>(items: T[], size: number) {
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
-  }
-  return chunks
-}
-
-function daysAgo(dateValue: string | null | undefined) {
-  if (!dateValue) return null
-  const parsed = new Date(dateValue)
-  if (Number.isNaN(parsed.getTime())) return null
-  return Math.max(
-    0,
-    Math.floor((Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24))
-  )
-}
-
-function safeNumber(value: unknown) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : 0
+function daysAgo(isoDate: string | null | undefined) {
+  if (!isoDate) return null
+  const ts = new Date(isoDate).getTime()
+  if (Number.isNaN(ts)) return null
+  return Math.max(0, Math.floor((Date.now() - ts) / (24 * 60 * 60 * 1000)))
 }
 
 async function upsertInChunksDetailed(
@@ -262,220 +191,66 @@ async function upsertInChunksDetailed(
   }
 }
 
-async function loadSignals(
-  supabase: any,
-  limit: number
-): Promise<SignalRow[]> {
-  const { data, error } = await supabase
-    .from("signals")
-    .select(
-      "run_id, ticker, company_id, signal_type, source_type, strength, direction, summary, metadata, as_of_date"
-    )
-    .order("as_of_date", { ascending: false })
-    .limit(limit * 4)
+async function deleteInChunksByTickerDetailed(table: any, tickers: string[]) {
+  const unique = uniqueStrings(tickers)
+  const errors: Array<{
+    chunkStart: number
+    chunkSize: number
+    message: string
+    details?: string | null
+    hint?: string | null
+    code?: string | null
+    sampleTickers: string[]
+  }> = []
 
-  if (error) {
-    throw new Error(`signals load failed: ${error.message}`)
-  }
+  let deletedRequested = 0
 
-  return (data || []) as SignalRow[]
-}
-
-async function loadRecentFilings(
-  supabase: any,
-  cutoffIso: string
-): Promise<RawFilingRow[]> {
-  const { data, error } = await supabase
-    .from("raw_filings")
-    .select(
-      "company_id, ticker, company_name, form_type, filed_at, filing_url, accession_no, cik"
-    )
-    .gte("filed_at", cutoffIso)
-    .order("filed_at", { ascending: false })
-
-  if (error) {
-    throw new Error(`raw_filings load failed: ${error.message}`)
-  }
-
-  return (data || []) as RawFilingRow[]
-}
-
-async function loadRecentPtrTrades(
-  supabase: any,
-  ptrCutoffDate: string
-): Promise<RawPtrTradeRow[]> {
-  const { data, error } = await supabase
-    .from("raw_ptr_trades")
-    .select(
-      "ticker, politician_name, filer_name, transaction_type, action, trade_date, disclosure_date, amount_low, amount_high, source_url, ptr_url, trade_key"
-    )
-    .or(`trade_date.gte.${ptrCutoffDate},disclosure_date.gte.${ptrCutoffDate}`)
-
-  if (error) {
-    throw new Error(`raw_ptr_trades load failed: ${error.message}`)
-  }
-
-  return (data || []) as RawPtrTradeRow[]
-}
-
-async function loadCandidateContextForTickers(
-  supabase: any,
-  tickers: string[],
-  scope: Scope
-): Promise<CandidateTechRow[]> {
-  if (!tickers.length) return []
-
-  const allRows: CandidateTechRow[] = []
-
-  for (const tickerChunk of chunkArray(tickers, QUERY_CHUNK_SIZE)) {
-    let query = supabase
-      .from("candidate_universe")
-      .select(
-        "company_id, ticker, name, market_cap, sector, industry, candidate_score, passed, as_of_date, breakout_20d, breakout_10d, above_sma_20, volume_ratio, return_20d, relative_strength_20d, has_insider_trades, has_ptr_forms, has_clusters"
-      )
-      .in("ticker", tickerChunk)
-
-    if (scope === "eligible" || scope === "candidates") {
-      query = query.eq("passed", true)
-    }
-
-    const { data, error } = await query
+  for (let i = 0; i < unique.length; i += DB_CHUNK_SIZE) {
+    const chunk = unique.slice(i, i + DB_CHUNK_SIZE)
+    const { error } = await table.delete().in("ticker", chunk)
 
     if (error) {
-      throw new Error(`candidate_universe load failed: ${error.message}`)
-    }
-
-    allRows.push(...((data || []) as CandidateTechRow[]))
-  }
-
-  const byTicker = new Map<string, CandidateTechRow>()
-  for (const row of allRows) {
-    const ticker = normalizeTicker(row.ticker)
-    if (!ticker) continue
-
-    const current = byTicker.get(ticker)
-    if (!current) {
-      byTicker.set(ticker, row)
-      continue
-    }
-
-    const currentScore = safeNumber(current.candidate_score)
-    const nextScore = safeNumber(row.candidate_score)
-    if (nextScore > currentScore) {
-      byTicker.set(ticker, row)
+      errors.push({
+        chunkStart: i,
+        chunkSize: chunk.length,
+        message: error.message,
+        details: (error as any)?.details ?? null,
+        hint: (error as any)?.hint ?? null,
+        code: (error as any)?.code ?? null,
+        sampleTickers: chunk.slice(0, 10),
+      })
+    } else {
+      deletedRequested += chunk.length
     }
   }
 
-  return [...byTicker.values()]
-}
-
-function getPositivePtrTrade(row: RawPtrTradeRow) {
-  const transactionType = String(row.transaction_type || "")
-    .trim()
-    .toLowerCase()
-  const action = String(row.action || "")
-    .trim()
-    .toLowerCase()
-
-  return (
-    transactionType === "buy" ||
-    transactionType === "exchange" ||
-    action.includes("buy") ||
-    action.includes("purchase") ||
-    action.includes("exchange")
-  )
-}
-
-function getNegativePtrTrade(row: RawPtrTradeRow) {
-  const transactionType = String(row.transaction_type || "")
-    .trim()
-    .toLowerCase()
-  const action = String(row.action || "")
-    .trim()
-    .toLowerCase()
-
-  return (
-    transactionType === "sell" ||
-    action.includes("sell") ||
-    action.includes("sale")
-  )
-}
-
-function buildFilingSummaryMap(rows: RawFilingRow[]) {
-  const byTicker = new Map<string, RawFilingRow[]>()
-
-  for (const row of rows) {
-    const ticker = normalizeTicker(row.ticker)
-    if (!ticker) continue
-    if (!byTicker.has(ticker)) byTicker.set(ticker, [])
-    byTicker.get(ticker)!.push(row)
+  return {
+    deletedRequested,
+    errors,
   }
-
-  const summaryMap = new Map<string, FilingSummary>()
-
-  for (const [ticker, filingRows] of byTicker.entries()) {
-    const sorted = [...filingRows].sort((a, b) => {
-      return String(b.filed_at || "").localeCompare(String(a.filed_at || ""))
-    })
-
-    const form4Rows = sorted.filter((row) => {
-      const form = String(row.form_type || "").trim().toUpperCase()
-      return form === "4" || form === "4/A"
-    })
-
-    const ownershipRows = sorted.filter((row) => {
-      const form = String(row.form_type || "").trim().toUpperCase()
-      return (
-        form === "13D" ||
-        form === "13D/A" ||
-        form === "13G" ||
-        form === "13G/A" ||
-        form === "SC 13D" ||
-        form === "SC 13D/A" ||
-        form === "SC 13G" ||
-        form === "SC 13G/A"
-      )
-    })
-
-    const recentForm4Count = form4Rows.filter((row) => {
-      const age = daysAgo(row.filed_at)
-      return age !== null && age <= 14
-    }).length
-
-    const clusterBuyProxy = form4Rows.length >= 2 || recentForm4Count >= 2
-
-    const notes = uniqueStrings([
-      form4Rows.length > 0
-        ? `${form4Rows.length} recent Form 4 filing${form4Rows.length === 1 ? "" : "s"}`
-        : null,
-      ownershipRows.length > 0
-        ? `${ownershipRows.length} ownership filing${ownershipRows.length === 1 ? "" : "s"}`
-        : null,
-      clusterBuyProxy ? "possible insider cluster activity" : null,
-    ])
-
-    summaryMap.set(ticker, {
-      ticker,
-      filingCount: sorted.length,
-      form4Count: form4Rows.length,
-      ownershipCount: ownershipRows.length,
-      recentForm4Count,
-      clusterBuyProxy,
-      latestFiledAt: sorted[0]?.filed_at || null,
-      latestAccessionNo: sorted[0]?.accession_no || null,
-      latestFilingUrl: sorted[0]?.filing_url || null,
-      notes,
-    })
-  }
-
-  return summaryMap
 }
 
-function buildPtrSummaryMap(
-  rows: RawPtrTradeRow[],
-  ptrRecentDays: number
-) {
-  const byTicker = new Map<string, RawPtrTradeRow[]>()
+function getStrengthBucket(score: number): "Buy" | "Strong Buy" | "Elite Buy" {
+  if (score >= 97) return "Elite Buy"
+  if (score >= 90) return "Strong Buy"
+  return "Buy"
+}
+
+function countPositiveEvidencePillars(breakdown: Record<string, number>) {
+  return [
+    (breakdown.base || 0) > 0,
+    (breakdown.ptr || 0) > 0,
+    (breakdown.filings || 0) > 0,
+    (breakdown.candidate_score || 0) > 0 || (breakdown.included || 0) > 0,
+    (breakdown.breakout || 0) > 0 || (breakdown.trend || 0) > 0,
+    (breakdown.volume || 0) > 0,
+    (breakdown.relative_strength || 0) > 0,
+    (breakdown.freshness || 0) > 0 || (breakdown.momentum || 0) > 0,
+  ].filter(Boolean).length
+}
+
+function buildPtrSummaryMap(rows: PtrTradeRow[], ptrRecentDays: number) {
+  const byTicker = new Map<string, PtrTradeRow[]>()
 
   for (const row of rows) {
     const ticker = normalizeTicker(row.ticker)
@@ -487,84 +262,130 @@ function buildPtrSummaryMap(
   const output = new Map<string, PtrSummary>()
 
   for (const [ticker, trades] of byTicker.entries()) {
-    const buys = trades.filter(getPositivePtrTrade)
-    const sells = trades.filter(getNegativePtrTrade)
+    const buys = trades.filter((row) => {
+      const action = String(row.action || "").trim().toLowerCase()
+      return action === "buy" || action === "purchase" || action === "purchased"
+    })
+
+    const sells = trades.filter((row) => {
+      const action = String(row.action || "").trim().toLowerCase()
+      return action === "sell" || action === "sale" || action === "sold"
+    })
 
     const uniqueBuyFilers = new Set(
-      buys
-        .map((row) => String(row.politician_name || row.filer_name || "").trim())
-        .filter(Boolean)
+      buys.map((row) => String(row.filer_name || "").trim()).filter(Boolean)
     ).size
 
     const uniqueSellFilers = new Set(
-      sells
-        .map((row) => String(row.politician_name || row.filer_name || "").trim())
-        .filter(Boolean)
+      sells.map((row) => String(row.filer_name || "").trim()).filter(Boolean)
     ).size
 
     const recentBuyCount = buys.filter((row) => {
-      const age = daysAgo(row.trade_date || row.disclosure_date)
+      const age = daysAgo(row.transaction_date || row.report_date)
       return age !== null && age <= ptrRecentDays
     }).length
 
     const recentSellCount = sells.filter((row) => {
-      const age = daysAgo(row.trade_date || row.disclosure_date)
+      const age = daysAgo(row.transaction_date || row.report_date)
       return age !== null && age <= ptrRecentDays
     }).length
 
     const totalBuyAmountLow = buys.reduce(
-      (sum, row) => sum + safeNumber(row.amount_low),
+      (sum, row) => sum + Number(row.amount_low || 0),
       0
     )
     const totalSellAmountLow = sells.reduce(
-      (sum, row) => sum + safeNumber(row.amount_low),
-      0
-    )
-    const biggestBuyAmountLow = buys.reduce(
-      (max, row) => Math.max(max, safeNumber(row.amount_low)),
+      (sum, row) => sum + Number(row.amount_low || 0),
       0
     )
 
-    const sortedTradeDates = trades
-      .map((row) => String(row.trade_date || "").trim())
+    const allDates = trades
+      .map((row) => String(row.transaction_date || row.report_date || "").trim())
       .filter(Boolean)
       .sort((a, b) => b.localeCompare(a))
 
-    const sortedDisclosureDates = trades
-      .map((row) => String(row.disclosure_date || "").trim())
-      .filter(Boolean)
-      .sort((a, b) => b.localeCompare(a))
+    let ptrBonus = 0
+    let ptrPenalty = 0
+    const notes: string[] = []
+
+    if (buys.length >= 1) {
+      ptrBonus += 2
+      notes.push("at least one PTR buy")
+    }
+    if (buys.length >= 2) {
+      ptrBonus += 1
+      notes.push("multiple PTR buys")
+    }
+    if (buys.length >= 3) {
+      ptrBonus += 1
+      notes.push("three or more PTR buys")
+    }
+
+    if (uniqueBuyFilers >= 2) {
+      ptrBonus += 1
+      notes.push("multiple PTR buyers")
+    }
+    if (uniqueBuyFilers >= 3) {
+      ptrBonus += 1
+      notes.push("broad PTR participation")
+    }
+
+    if (recentBuyCount >= 1) {
+      ptrBonus += 1
+      notes.push("recent PTR buy")
+    }
+    if (recentBuyCount >= 2) {
+      ptrBonus += 1
+      notes.push("multiple recent PTR buys")
+    }
+
+    if (totalBuyAmountLow >= 100_001) {
+      ptrBonus += 1
+      notes.push("meaningful disclosed buy size")
+    }
+    if (totalBuyAmountLow >= 250_001) {
+      ptrBonus += 1
+      notes.push("strong disclosed buy size")
+    }
+    if (totalBuyAmountLow >= 500_001) {
+      ptrBonus += 1
+      notes.push("very strong disclosed buy size")
+    }
+
+    if (sells.length >= 2 && totalSellAmountLow > totalBuyAmountLow) {
+      ptrPenalty -= 1
+      notes.push("PTR selling headwind")
+    }
+    if (recentSellCount >= 2 && recentBuyCount === 0) {
+      ptrPenalty -= 1
+      notes.push("recent PTR selling")
+    }
 
     const buyCluster = uniqueBuyFilers >= 2 || buys.length >= 3
     const strongBuying =
       recentBuyCount >= 1 &&
-      (uniqueBuyFilers >= 2 ||
-        totalBuyAmountLow >= 250001 ||
-        biggestBuyAmountLow >= 100001 ||
-        buys.length >= 2)
+      (uniqueBuyFilers >= 2 || totalBuyAmountLow >= 250_001 || buys.length >= 2)
 
     const strongSelling =
       sells.length >= 2 &&
-      (recentSellCount >= 1 || totalSellAmountLow >= 250001)
+      (recentSellCount >= 1 || totalSellAmountLow >= 250_001)
 
-    const notes = uniqueStrings([
-      buys.length > 0
-        ? `${buys.length} PTR buy${buys.length === 1 ? "" : "s"}`
-        : null,
-      uniqueBuyFilers >= 2 ? "multiple PTR buyers" : null,
-      recentBuyCount >= 1 ? `${recentBuyCount} recent PTR buy${recentBuyCount === 1 ? "" : "s"}` : null,
-      totalBuyAmountLow >= 100001
-        ? `meaningful disclosed buy size $${totalBuyAmountLow.toLocaleString()}+`
-        : null,
-      totalBuyAmountLow >= 500001
-        ? "large disclosed PTR buying"
-        : null,
-      buyCluster ? "PTR buy cluster" : null,
-      strongSelling ? "PTR selling headwind" : null,
-    ])
+    const summaryParts: string[] = []
+    if (buys.length > 0) summaryParts.push(`${buys.length} buy${buys.length === 1 ? "" : "s"}`)
+    if (uniqueBuyFilers > 0) {
+      summaryParts.push(`${uniqueBuyFilers} buyer${uniqueBuyFilers === 1 ? "" : "s"}`)
+    }
+    if (recentBuyCount > 0) {
+      summaryParts.push(`${recentBuyCount} recent`)
+    }
+    if (totalBuyAmountLow > 0) {
+      summaryParts.push(`min disclosed $${totalBuyAmountLow.toLocaleString()}`)
+    }
 
     output.set(ticker, {
       ticker,
+      ptrBonus,
+      ptrPenalty,
       buyTradeCount: buys.length,
       sellTradeCount: sells.length,
       uniqueBuyFilers,
@@ -573,483 +394,405 @@ function buildPtrSummaryMap(
       recentSellCount,
       totalBuyAmountLow,
       totalSellAmountLow,
-      biggestBuyAmountLow,
-      latestTradeDate: sortedTradeDates[0] || null,
-      latestDisclosureDate: sortedDisclosureDates[0] || null,
       buyCluster,
       strongBuying,
       strongSelling,
-      notes,
+      latestTradeDate: allDates[0] ?? null,
+      summary: summaryParts.length ? `PTR support: ${summaryParts.join(", ")}` : null,
     })
   }
 
   return output
 }
 
-function buildSignalMap(rows: SignalRow[]) {
+function buildTickerScoresCurrentRows(
+  signalRows: SignalRow[],
+  runTimestamp: string,
+  ptrMap: Map<string, PtrSummary>,
+  minCombinedScore: number
+) {
   const byTicker = new Map<string, SignalRow[]>()
 
-  for (const row of rows) {
+  for (const row of signalRows) {
     const ticker = normalizeTicker(row.ticker)
     if (!ticker) continue
     if (!byTicker.has(ticker)) byTicker.set(ticker, [])
     byTicker.get(ticker)!.push(row)
   }
 
-  return byTicker
-}
+  const rows: any[] = []
 
-function getMaxSignalStrength(rows: SignalRow[], sourceType: "filing" | "ptr") {
-  return rows
-    .filter((row) => String(row.source_type || "").trim().toLowerCase() === sourceType)
-    .reduce((max, row) => Math.max(max, safeNumber(row.strength)), 0)
-}
+  for (const [ticker, tickerSignalRows] of byTicker.entries()) {
+    const sorted = [...tickerSignalRows].sort((a, b) => {
+      const scoreDiff = Number(b.app_score ?? 0) - Number(a.app_score ?? 0)
+      if (scoreDiff !== 0) return scoreDiff
 
-function scoreTechnicalContext(context: CandidateTechRow | null) {
-  if (!context) return 0
+      const filedAtDiff =
+        new Date(b.filed_at || 0).getTime() - new Date(a.filed_at || 0).getTime()
+      if (filedAtDiff !== 0) return filedAtDiff
 
-  let score = 0
-
-  const candidateScore = safeNumber(context.candidate_score)
-  if (candidateScore >= 90) score += 22
-  else if (candidateScore >= 80) score += 18
-  else if (candidateScore >= 70) score += 14
-  else if (candidateScore >= 60) score += 10
-  else if (candidateScore >= 50) score += 6
-
-  if (context.passed) score += 5
-  if (context.breakout_20d) score += 14
-  else if (context.breakout_10d) score += 9
-
-  if (context.above_sma_20) score += 8
-
-  const volumeRatio = safeNumber(context.volume_ratio)
-  if (volumeRatio >= 2.2) score += 12
-  else if (volumeRatio >= 1.6) score += 8
-  else if (volumeRatio >= 1.2) score += 4
-
-  const relativeStrength = safeNumber(context.relative_strength_20d)
-  if (relativeStrength >= 8) score += 12
-  else if (relativeStrength >= 4) score += 8
-  else if (relativeStrength >= 1) score += 4
-
-  const return20d = safeNumber(context.return_20d)
-  if (return20d >= 15) score += 12
-  else if (return20d >= 8) score += 8
-  else if (return20d >= 3) score += 4
-
-  return clamp(Math.round(score), 0, 100)
-}
-
-function scoreFilingComponent(
-  signalRows: SignalRow[],
-  filingSummary: FilingSummary | null,
-  context: CandidateTechRow | null
-) {
-  let score = getMaxSignalStrength(signalRows, "filing")
-  let bonus = 0
-  const reasons: string[] = []
-
-  if (filingSummary) {
-    if (filingSummary.form4Count >= 1) {
-      bonus += 10
-      reasons.push("recent Form 4 activity")
-    }
-    if (filingSummary.form4Count >= 2) {
-      bonus += 8
-      reasons.push("multiple Form 4 filings")
-    }
-    if (filingSummary.recentForm4Count >= 2) {
-      bonus += 8
-      reasons.push("recent insider filing cluster")
-    }
-    if (filingSummary.ownershipCount >= 1) {
-      bonus += 4
-      reasons.push("ownership filing present")
-    }
-    if (filingSummary.ownershipCount >= 2) {
-      bonus += 4
-      reasons.push("multiple ownership filings")
-    }
-    if (filingSummary.filingCount >= 4) {
-      bonus += 6
-      reasons.push("heavy recent filing activity")
-    }
-    if (filingSummary.clusterBuyProxy) {
-      bonus += 10
-      reasons.push("possible cluster-buy behavior")
-    }
-  }
-
-  if (context?.has_clusters) {
-    bonus += 8
-    reasons.push("screening flagged cluster activity")
-  }
-
-  if (context?.has_insider_trades) {
-    bonus += 5
-    reasons.push("screening flagged insider activity")
-  }
-
-  return {
-    score: clamp(Math.round(score + bonus), 0, 100),
-    bonus,
-    reasons: uniqueStrings(reasons),
-  }
-}
-
-function scorePtrComponent(
-  signalRows: SignalRow[],
-  ptrSummary: PtrSummary | null,
-  context: CandidateTechRow | null
-) {
-  let score = getMaxSignalStrength(signalRows, "ptr")
-  let bonus = 0
-  const reasons: string[] = []
-
-  if (ptrSummary) {
-    if (ptrSummary.buyTradeCount >= 1) {
-      bonus += 8
-      reasons.push("at least one PTR buy")
-    }
-    if (ptrSummary.buyTradeCount >= 2) {
-      bonus += 8
-      reasons.push("multiple PTR buys")
-    }
-    if (ptrSummary.buyTradeCount >= 3) {
-      bonus += 6
-      reasons.push("three or more PTR buys")
-    }
-
-    if (ptrSummary.uniqueBuyFilers >= 2) {
-      bonus += 8
-      reasons.push("multiple PTR buyers")
-    }
-    if (ptrSummary.uniqueBuyFilers >= 3) {
-      bonus += 6
-      reasons.push("broad PTR participation")
-    }
-
-    if (ptrSummary.recentBuyCount >= 1) {
-      bonus += 6
-      reasons.push("recent PTR buying")
-    }
-    if (ptrSummary.recentBuyCount >= 2) {
-      bonus += 6
-      reasons.push("multiple recent PTR buys")
-    }
-
-    if (ptrSummary.totalBuyAmountLow >= 100001) {
-      bonus += 6
-      reasons.push("meaningful disclosed PTR amount")
-    }
-    if (ptrSummary.totalBuyAmountLow >= 250001) {
-      bonus += 8
-      reasons.push("strong disclosed PTR amount")
-    }
-    if (ptrSummary.totalBuyAmountLow >= 500001) {
-      bonus += 10
-      reasons.push("large disclosed PTR amount")
-    }
-    if (ptrSummary.totalBuyAmountLow >= 1000001) {
-      bonus += 8
-      reasons.push("very large disclosed PTR amount")
-    }
-
-    if (ptrSummary.buyCluster) {
-      bonus += 10
-      reasons.push("PTR buy cluster")
-    }
-
-    if (ptrSummary.strongBuying) {
-      bonus += 8
-      reasons.push("strong PTR buying pattern")
-    }
-
-    if (ptrSummary.strongSelling) {
-      bonus -= 8
-      reasons.push("PTR selling headwind")
-    }
-  }
-
-  if (context?.has_ptr_forms) {
-    bonus += 4
-    reasons.push("screening flagged PTR activity")
-  }
-
-  return {
-    score: clamp(Math.round(score + bonus), 0, 100),
-    bonus,
-    reasons: uniqueStrings(reasons),
-  }
-}
-
-function buildCombinedScore(params: {
-  filingSignalScore: number
-  ptrSignalScore: number
-  technicalScore: number
-  filingSummary: FilingSummary | null
-  ptrSummary: PtrSummary | null
-  context: CandidateTechRow | null
-}) {
-  const {
-    filingSignalScore,
-    ptrSignalScore,
-    technicalScore,
-    filingSummary,
-    ptrSummary,
-    context,
-  } = params
-
-  let overlap = 0
-  const reasons: string[] = []
-
-  if (filingSignalScore >= 60 && ptrSignalScore >= 60) {
-    overlap += 10
-    reasons.push("both insider and PTR evidence are strong")
-  }
-
-  if (filingSignalScore >= 55 && technicalScore >= 60) {
-    overlap += 5
-    reasons.push("insider evidence aligns with technical confirmation")
-  }
-
-  if (ptrSignalScore >= 55 && technicalScore >= 60) {
-    overlap += 5
-    reasons.push("PTR evidence aligns with technical confirmation")
-  }
-
-  if (filingSummary?.clusterBuyProxy && ptrSummary?.buyCluster) {
-    overlap += 8
-    reasons.push("cluster activity appears on both insider and PTR sides")
-  }
-
-  if (filingSummary?.form4Count && filingSummary.form4Count >= 2 && ptrSummary?.buyTradeCount && ptrSummary.buyTradeCount >= 2) {
-    overlap += 5
-    reasons.push("multiple insider filings plus multiple PTR buys")
-  }
-
-  if (ptrSummary?.totalBuyAmountLow && ptrSummary.totalBuyAmountLow >= 250001 && context?.breakout_20d) {
-    overlap += 4
-    reasons.push("big PTR buying aligns with breakout setup")
-  }
-
-  if (filingSummary?.form4Count && filingSummary.form4Count >= 2 && context?.breakout_20d) {
-    overlap += 4
-    reasons.push("insider filing cluster aligns with breakout setup")
-  }
-
-  if (context?.has_clusters && ptrSummary?.uniqueBuyFilers && ptrSummary.uniqueBuyFilers >= 2) {
-    overlap += 3
-    reasons.push("screened cluster activity plus broad PTR participation")
-  }
-
-  if (
-    filingSignalScore >= 50 &&
-    ptrSignalScore >= 50 &&
-    technicalScore >= 50
-  ) {
-    overlap += 6
-    reasons.push("all three pillars are constructive")
-  }
-
-  const weighted =
-    filingSignalScore * 0.42 +
-    ptrSignalScore * 0.33 +
-    technicalScore * 0.25 +
-    overlap
-
-  const combined = clamp(Math.round(weighted), 0, 100)
-
-  return {
-    combined,
-    overlap,
-    reasons: uniqueStrings(reasons),
-  }
-}
-
-function getConfidenceLabel(params: {
-  filingSignalScore: number
-  ptrSignalScore: number
-  technicalScore: number
-  combinedScore: number
-}) {
-  const { filingSignalScore, ptrSignalScore, technicalScore, combinedScore } =
-    params
-
-  const strongPillars = [
-    filingSignalScore >= 60,
-    ptrSignalScore >= 60,
-    technicalScore >= 60,
-  ].filter(Boolean).length
-
-  if (combinedScore >= 80 && strongPillars >= 2) return "high"
-  if (combinedScore >= 60) return "medium"
-  return "low"
-}
-
-function buildTickerScoreRows(params: {
-  signals: SignalRow[]
-  filings: RawFilingRow[]
-  ptrTrades: RawPtrTradeRow[]
-  candidateRows: CandidateTechRow[]
-  runId: string
-  runTimestamp: string
-  minCombinedScore: number
-  ptrRecentDays: number
-  limit: number
-}) {
-  const {
-    signals,
-    filings,
-    ptrTrades,
-    candidateRows,
-    runId,
-    runTimestamp,
-    minCombinedScore,
-    ptrRecentDays,
-    limit,
-  } = params
-
-  const signalMap = buildSignalMap(signals)
-  const filingSummaryMap = buildFilingSummaryMap(filings)
-  const ptrSummaryMap = buildPtrSummaryMap(ptrTrades, ptrRecentDays)
-
-  const candidateMap = new Map<string, CandidateTechRow>()
-  for (const row of candidateRows) {
-    const ticker = normalizeTicker(row.ticker)
-    if (!ticker) continue
-    candidateMap.set(ticker, row)
-  }
-
-  const tickerSet = new Set<string>([
-    ...signalMap.keys(),
-    ...filingSummaryMap.keys(),
-    ...ptrSummaryMap.keys(),
-  ])
-
-  const ranked: RankedTicker[] = []
-  let filingTickersScored = 0
-  let ptrTickersScored = 0
-  let filteredBelowMinCombinedScore = 0
-
-  for (const ticker of tickerSet) {
-    const tickerSignals = signalMap.get(ticker) || []
-    const filingSummary = filingSummaryMap.get(ticker) || null
-    const ptrSummary = ptrSummaryMap.get(ticker) || null
-    const context = candidateMap.get(ticker) || null
-
-    const filingComponent = scoreFilingComponent(
-      tickerSignals,
-      filingSummary,
-      context
-    )
-    const ptrComponent = scorePtrComponent(tickerSignals, ptrSummary, context)
-    const technicalScore = scoreTechnicalContext(context)
-
-    if (filingComponent.score > 0) filingTickersScored += 1
-    if (ptrComponent.score > 0) ptrTickersScored += 1
-
-    const combined = buildCombinedScore({
-      filingSignalScore: filingComponent.score,
-      ptrSignalScore: ptrComponent.score,
-      technicalScore,
-      filingSummary,
-      ptrSummary,
-      context,
+      return String(a.signal_key || "").localeCompare(String(b.signal_key || ""))
     })
 
-    if (combined.combined < minCombinedScore) {
-      filteredBelowMinCombinedScore += 1
-      continue
+    const primary = sorted[0]
+    const primaryScore = Number(primary.app_score || 0)
+    const ptr = ptrMap.get(ticker) ?? null
+
+    const scoreBreakdown: Record<string, number> = {}
+    const signalReasons = new Set<string>()
+    const scoreCapsApplied = new Set<string>()
+    const signalTags = new Set<string>()
+    const accessionNos: string[] = []
+    const signalKeys: string[] = []
+    const sourceForms: string[] = []
+    const signalSources = new Set<string>()
+    const signalCategories = new Set<string>()
+
+    for (const row of sorted) {
+      signalKeys.push(String((row as any).signal_key || ""))
+      if (row.accession_no) accessionNos.push(String(row.accession_no))
+      if (row.source_form) sourceForms.push(String(row.source_form))
+      if (row.signal_source) signalSources.add(String(row.signal_source).toLowerCase())
+      if (row.signal_category) signalCategories.add(String(row.signal_category))
+
+      for (const tag of row.signal_tags || []) signalTags.add(tag)
+      for (const reason of row.signal_reasons || []) signalReasons.add(reason)
+      for (const cap of row.score_caps_applied || []) scoreCapsApplied.add(cap)
+
+      const breakdown = (row.score_breakdown || {}) as Record<string, number>
+      for (const [key, value] of Object.entries(breakdown)) {
+        scoreBreakdown[key] = round2((scoreBreakdown[key] || 0) + Number(value || 0)) ?? 0
+      }
     }
 
-    const reasons = uniqueStrings([
-      ...filingComponent.reasons,
-      ...ptrComponent.reasons,
-      ...combined.reasons,
-      filingSummary?.notes?.[0] || null,
-      filingSummary?.notes?.[1] || null,
-      ptrSummary?.notes?.[0] || null,
-      ptrSummary?.notes?.[1] || null,
-      context?.breakout_20d ? "20-day breakout is present" : null,
-      context?.breakout_10d ? "10-day breakout is present" : null,
-      context?.above_sma_20 ? "price is above the 20-day average" : null,
-      safeNumber(context?.volume_ratio) >= 1.6 ? "volume is elevated" : null,
-      safeNumber(context?.relative_strength_20d) >= 4
-        ? "relative strength is constructive"
-        : null,
-    ])
+    let stackedScore = primaryScore
 
-    const companyId = Number(context?.company_id ?? null)
-    const confidenceLabel = getConfidenceLabel({
-      filingSignalScore: filingComponent.score,
-      ptrSignalScore: ptrComponent.score,
-      technicalScore,
-      combinedScore: combined.combined,
-    })
+    if (sorted.length >= 2) stackedScore += 2
+    if (sorted.length >= 3) stackedScore += 2
+    if (sorted.length >= 4) stackedScore += 1
+    if (sorted.length >= 5) stackedScore += 1
 
-    ranked.push({
+    if (ptr) {
+      stackedScore += ptr.ptrBonus + 4
+      stackedScore += ptr.ptrPenalty
+      scoreBreakdown.ptr =
+        round2((scoreBreakdown.ptr || 0) + ptr.ptrBonus + 4 + ptr.ptrPenalty) ?? 0
+      scoreCapsApplied.add("ptr-priority-bonus")
+
+      if (ptr.buyCluster) {
+        stackedScore += 2
+        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) + 2) ?? 0
+        scoreCapsApplied.add("ptr-cluster-bonus")
+      }
+
+      if (ptr.strongBuying) {
+        stackedScore += 2
+        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) + 2) ?? 0
+        scoreCapsApplied.add("ptr-strong-buying-bonus")
+      }
+
+      if (ptr.buyCluster && signalSources.has("breakout")) {
+        stackedScore += 2
+        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) + 2) ?? 0
+        scoreCapsApplied.add("ptr-plus-breakout-bonus")
+      }
+
+      if (ptr.strongBuying && signalSources.has("form4")) {
+        stackedScore += 2
+        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) + 2) ?? 0
+        scoreCapsApplied.add("ptr-plus-insider-bonus")
+      }
+
+      if (ptr.strongSelling) {
+        stackedScore -= 1
+        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) - 1) ?? 0
+        scoreCapsApplied.add("ptr-selling-headwind")
+      }
+
+      signalTags.add("ptr-priority")
+      if (ptr.strongBuying) signalTags.add("ptr-strong-buying")
+      if (ptr.buyCluster) signalTags.add("ptr-buy-cluster")
+
+      const ptrSummaryText = ptr.summary
+      if (ptrSummaryText) signalReasons.add(ptrSummaryText)
+    }
+
+    if (signalSources.has("form4")) {
+      stackedScore += 3
+      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 3) ?? 0
+      scoreCapsApplied.add("insider-filing-priority-bonus")
+    }
+
+    if (signalSources.has("13d") || signalSources.has("13g")) {
+      stackedScore += 3
+      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 3) ?? 0
+      scoreCapsApplied.add("ownership-filing-priority-bonus")
+    }
+
+    if (signalSources.has("8k") || signalSources.has("earnings")) {
+      stackedScore += 2
+      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 2) ?? 0
+      scoreCapsApplied.add("catalyst-filing-priority-bonus")
+    }
+
+    if (signalSources.has("breakout") && signalSources.has("form4")) {
+      stackedScore += 2
+      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 2) ?? 0
+      scoreCapsApplied.add("technical-plus-insider-bonus")
+    }
+
+    if (signalSources.has("breakout") && (signalSources.has("13d") || signalSources.has("13g"))) {
+      stackedScore += 2
+      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 2) ?? 0
+      scoreCapsApplied.add("technical-plus-ownership-bonus")
+    }
+
+    if (signalSources.has("breakout") && signalSources.has("8k")) {
+      stackedScore += 1
+      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 1) ?? 0
+      scoreCapsApplied.add("technical-plus-catalyst-bonus")
+    }
+
+    const positivePillars = countPositiveEvidencePillars(scoreBreakdown)
+
+    if (positivePillars < 3) {
+      stackedScore = Math.min(stackedScore, 88)
+      scoreCapsApplied.add("stacked-limited-evidence-cap")
+    }
+
+    if (positivePillars < 4) {
+      stackedScore = Math.min(stackedScore, 93)
+      scoreCapsApplied.add("stacked-broad-confirmation-cap")
+    }
+
+    const hasBreakoutSupport =
+      (scoreBreakdown.breakout || 0) > 0 || primary.breakout_20d === true
+
+    const hasHeavyVolume =
+      (primary.volume_ratio ?? 0) >= 2 || (scoreBreakdown.volume || 0) >= 5
+
+    const hasFilingConfirmation =
+      signalSources.has("form4") ||
+      signalSources.has("13d") ||
+      signalSources.has("13g") ||
+      signalSources.has("8k") ||
+      signalSources.has("earnings") ||
+      Boolean(ptr?.buyTradeCount)
+
+    const hasMultipleSignalTypes = signalSources.size >= 2 || Boolean(ptr?.buyTradeCount)
+    const hasThreeSignals = sorted.length >= 3 || Boolean(ptr?.strongBuying)
+    const hasFourSignals = sorted.length >= 4 || Boolean(ptr?.buyCluster)
+
+    if (!hasMultipleSignalTypes) {
+      stackedScore = Math.min(stackedScore, 94)
+      scoreCapsApplied.add("multi-source-required-cap")
+    }
+
+    if (!(hasBreakoutSupport && hasHeavyVolume && positivePillars >= 4)) {
+      stackedScore = Math.min(stackedScore, 97)
+      scoreCapsApplied.add("stacked-elite-confirmation-cap")
+    }
+
+    if (!(hasThreeSignals && hasMultipleSignalTypes && hasFilingConfirmation)) {
+      stackedScore = Math.min(stackedScore, 98)
+      scoreCapsApplied.add("stacked-top-tier-confirmation-cap")
+    }
+
+    if (
+      !(
+        hasFourSignals &&
+        hasBreakoutSupport &&
+        hasHeavyVolume &&
+        positivePillars >= 5 &&
+        hasFilingConfirmation &&
+        primaryScore >= 95
+      )
+    ) {
+      stackedScore = Math.min(stackedScore, 99)
+      scoreCapsApplied.add("stacked-no-perfect-score-cap")
+    }
+
+    const finalScore = clamp(Math.round(stackedScore), 0, 100)
+
+    if (finalScore < minCombinedScore) continue
+
+    const perfectTickerSetup =
+      (sorted.length >= 4 || Boolean(ptr?.buyCluster)) &&
+      (signalSources.size >= 3 || Boolean(ptr?.strongBuying)) &&
+      hasBreakoutSupport &&
+      hasHeavyVolume &&
+      hasFilingConfirmation &&
+      positivePillars >= 5 &&
+      primaryScore >= 95 &&
+      (primary.relative_strength_20d ?? 0) >= 8 &&
+      (primary.price_return_20d ?? 0) >= 12 &&
+      (primary.volume_ratio ?? 0) >= 2.2
+
+    const finalTickerScore = perfectTickerSetup ? 100 : finalScore
+
+    const primaryTitle =
+      sorted.length >= 2 || ptr?.buyTradeCount
+        ? `Priority-stacked setup (${sorted.length} signals${ptr?.buyTradeCount ? ` + ${ptr.buyTradeCount} PTR buys` : ""})`
+        : primary.primary_title || primary.title || "Priority setup"
+
+    const primarySummary =
+      sorted.length >= 2 || ptr?.buyTradeCount
+        ? `Priority evidence is lining up for this ticker. Sources: ${Array.from(signalSources).join(", ")}${ptr?.summary ? `. ${ptr.summary}` : ""}. Primary setup: ${primary.primary_title || primary.title || "Priority setup"}`
+        : primary.primary_summary || primary.summary || "Priority setup"
+
+    rows.push({
       ticker,
-      companyId: Number.isFinite(companyId) ? companyId : null,
-      filingSignalScore: filingComponent.score,
-      ptrSignalScore: ptrComponent.score,
-      technicalScore,
-      combinedScore: combined.combined,
-      confidenceLabel,
-      breakdown: {
-        filingBase: filingComponent.score - filingComponent.bonus,
-        filingBonus: filingComponent.bonus,
-        ptrBase: ptrComponent.score - ptrComponent.bonus,
-        ptrBonus: ptrComponent.bonus,
-        technical: technicalScore,
-        overlap: combined.overlap,
-      },
-      reasons,
+      company_name: primary.company_name,
+      business_description: primary.business_description,
+      app_score: finalTickerScore,
+      raw_score: finalTickerScore,
+      bias: "Bullish",
+      board_bucket: "Buy",
+      signal_strength_bucket: getStrengthBucket(finalTickerScore),
+      score_version: SCORE_VERSION,
+      score_updated_at: runTimestamp,
+      stacked_signal_count: sorted.length,
+      score_breakdown: scoreBreakdown,
+      signal_reasons: Array.from(signalReasons).slice(0, 16),
+      score_caps_applied: Array.from(scoreCapsApplied),
+      signal_tags: Array.from(signalTags),
+      primary_signal_key: (primary as any).signal_key ?? null,
+      primary_signal_type:
+        sorted.length >= 2 || ptr?.buyTradeCount
+          ? "Priority Multi-Signal Buy"
+          : primary.primary_signal_type || primary.signal_type || "Priority Signal",
+      primary_signal_source:
+        ptr?.buyTradeCount
+          ? "ptr+signals"
+          : sorted.length >= 2
+            ? "multi"
+            : primary.primary_signal_source || primary.signal_source || "signal",
+      primary_signal_category:
+        sorted.length >= 2 || ptr?.buyTradeCount
+          ? "PTR / Filings / Signals Priority Buy"
+          : primary.primary_signal_category || primary.signal_category || "Priority Buy",
+      primary_title: primaryTitle,
+      primary_summary: primarySummary,
+      filed_at: ptr?.latestTradeDate ?? primary.filed_at ?? null,
+      signal_keys: signalKeys,
+      accession_nos: uniqueStrings(accessionNos),
+      source_forms: uniqueStrings(sourceForms),
+      pe_ratio: primary.pe_ratio,
+      pe_forward: primary.pe_forward,
+      pe_type: primary.pe_type,
+      market_cap: primary.market_cap,
+      sector: primary.sector,
+      industry: primary.industry,
+      insider_action: primary.insider_action,
+      insider_shares: primary.insider_shares,
+      insider_avg_price: primary.insider_avg_price,
+      insider_buy_value: primary.insider_buy_value,
+      cluster_buyers: primary.cluster_buyers,
+      cluster_shares: primary.cluster_shares,
+      price_return_5d: primary.price_return_5d,
+      price_return_20d: primary.price_return_20d,
+      volume_ratio: primary.volume_ratio,
+      breakout_20d: primary.breakout_20d,
+      breakout_52w: primary.breakout_52w,
+      above_50dma: primary.above_50dma,
+      trend_aligned: primary.trend_aligned,
+      price_confirmed: primary.price_confirmed,
+      relative_strength_20d: primary.relative_strength_20d,
+      earnings_surprise_pct: primary.earnings_surprise_pct,
+      revenue_growth_pct: primary.revenue_growth_pct,
+      guidance_flag: primary.guidance_flag,
+      age_days: primary.age_days,
+      freshness_bucket: primary.freshness_bucket,
+      ticker_score_change_1d: null,
+      ticker_score_change_7d: null,
+      updated_at: runTimestamp,
     })
   }
 
-  ranked.sort((a, b) => {
-    if (b.combinedScore !== a.combinedScore) {
-      return b.combinedScore - a.combinedScore
-    }
-    if (b.filingSignalScore !== a.filingSignalScore) {
-      return b.filingSignalScore - a.filingSignalScore
-    }
-    if (b.ptrSignalScore !== a.ptrSignalScore) {
-      return b.ptrSignalScore - a.ptrSignalScore
-    }
-    if (b.technicalScore !== a.technicalScore) {
-      return b.technicalScore - a.technicalScore
-    }
-    return a.ticker.localeCompare(b.ticker)
-  })
+  return rows
+}
 
-  const limited = ranked.slice(0, limit)
+async function attachTickerScoreChangesToCurrentRows(
+  supabase: any,
+  currentRows: any[],
+  runDate: string
+) {
+  const tickers = uniqueStrings(currentRows.map((row) => row.ticker))
+  if (!tickers.length) return currentRows
 
-  const rows: TickerScoreRow[] = limited.map((row, index) => ({
-    run_id: runId,
-    ticker: row.ticker,
-    company_id: row.companyId,
-    filing_signal_score: row.filingSignalScore,
-    ptr_signal_score: row.ptrSignalScore,
-    combined_score: row.combinedScore,
-    rank: index + 1,
-    confidence_label: row.confidenceLabel,
-    as_of_date: runTimestamp,
-    created_at: runTimestamp,
-    updated_at: runTimestamp,
-  }))
+  const earliestNeededDate = new Date(`${runDate}T00:00:00.000Z`)
+  earliestNeededDate.setUTCDate(earliestNeededDate.getUTCDate() - 14)
+  const earliestNeededDateString = earliestNeededDate.toISOString().slice(0, 10)
 
-  return {
-    rows,
-    ranked,
-    diagnostics: {
-      filingTickersScored,
-      ptrTickersScored,
-      filteredBelowMinCombinedScore,
-    },
+  const { data: historyRows, error } = await supabase
+    .from("ticker_score_history")
+    .select("ticker, score_date, app_score")
+    .in("ticker", tickers)
+    .gte("score_date", earliestNeededDateString)
+    .lt("score_date", runDate)
+    .order("score_date", { ascending: false })
+
+  if (error) return currentRows
+
+  const byTicker = new Map<string, Map<string, number>>()
+
+  for (const row of historyRows || []) {
+    const ticker = normalizeTicker((row as any).ticker)
+    if (!byTicker.has(ticker)) byTicker.set(ticker, new Map<string, number>())
+    byTicker.get(ticker)!.set(
+      String((row as any).score_date),
+      Number((row as any).app_score || 0)
+    )
   }
+
+  return currentRows.map((row) => {
+    const ticker = normalizeTicker(row.ticker)
+    const series = byTicker.get(ticker) || new Map<string, number>()
+    const currentScore = Number(row.app_score || 0)
+
+    const oneDayDate = new Date(`${runDate}T00:00:00.000Z`)
+    oneDayDate.setUTCDate(oneDayDate.getUTCDate() - 1)
+
+    const sevenDayDate = new Date(`${runDate}T00:00:00.000Z`)
+    sevenDayDate.setUTCDate(sevenDayDate.getUTCDate() - 7)
+
+    const oneDayDateString = oneDayDate.toISOString().slice(0, 10)
+    const sevenDayDateString = sevenDayDate.toISOString().slice(0, 10)
+
+    const prev1d = series.has(oneDayDateString) ? series.get(oneDayDateString)! : null
+    const prev7d = series.has(sevenDayDateString) ? series.get(sevenDayDateString)! : null
+
+    return {
+      ...row,
+      ticker_score_change_1d: prev1d === null ? null : round2(currentScore - prev1d),
+      ticker_score_change_7d: prev7d === null ? null : round2(currentScore - prev7d),
+    }
+  })
+}
+
+function buildTickerScoreHistoryRows(
+  currentRows: any[],
+  runDate: string,
+  runTimestamp: string
+) {
+  return currentRows.map((row) => ({
+    ticker: row.ticker,
+    company_name: row.company_name,
+    score_date: runDate,
+    score_timestamp: runTimestamp,
+    app_score: row.app_score,
+    raw_score: row.raw_score,
+    bias: row.bias,
+    board_bucket: row.board_bucket,
+    score_version: row.score_version,
+    stacked_signal_count: row.stacked_signal_count,
+    score_breakdown: row.score_breakdown,
+    signal_reasons: row.signal_reasons,
+    score_caps_applied: row.score_caps_applied,
+    source_accession_nos: row.accession_nos,
+    source_signal_keys: row.signal_keys,
+    created_at: runTimestamp,
+  }))
 }
 
 export async function GET(request: Request) {
@@ -1080,167 +823,251 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
 
-    const scopeParam = (searchParams.get("scope") || "eligible").toLowerCase()
     const lookbackDays = Math.min(
       Math.max(1, parseInteger(searchParams.get("lookbackDays"), DEFAULT_LOOKBACK_DAYS)),
       MAX_LOOKBACK_DAYS
-    )
-    const ptrLookbackDays = Math.max(
-      7,
-      parseInteger(searchParams.get("ptrLookbackDays"), DEFAULT_PTR_LOOKBACK_DAYS)
-    )
-    const ptrRecentDays = Math.max(
-      3,
-      parseInteger(searchParams.get("ptrRecentDays"), DEFAULT_PTR_RECENT_DAYS)
     )
     const limit = Math.min(
       Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT)),
       MAX_LIMIT
     )
-    const minCombinedScore = clamp(
-      parseInteger(searchParams.get("minCombinedScore"), DEFAULT_MIN_COMBINED_SCORE),
-      0,
-      100
+    const ptrLookbackDays = Math.max(
+      1,
+      parseInteger(searchParams.get("ptrLookbackDays"), DEFAULT_PTR_LOOKBACK_DAYS)
     )
-    const includePreview =
-      (searchParams.get("includePreview") || "false").toLowerCase() === "true"
+    const ptrRecentDays = Math.max(
+      1,
+      parseInteger(searchParams.get("ptrRecentDays"), DEFAULT_PTR_RECENT_DAYS)
+    )
+    const minCombinedScore = Math.max(
+      0,
+      parseInteger(searchParams.get("minCombinedScore"), MIN_COMBINED_SCORE)
+    )
+    const includeCounts =
+      (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
+    const runRetention =
+      (searchParams.get("runRetention") || "false").toLowerCase() === "true"
 
-    if (!["all", "eligible", "candidates"].includes(scopeParam)) {
-      return Response.json(
-        {
-          ok: false,
-          error: `Invalid scope "${scopeParam}". Expected one of: all, eligible, candidates`,
-        },
-        { status: 400 }
-      )
-    }
-
-    const scope = scopeParam as Scope
     const now = new Date()
+    const runDate = toIsoDateString(now)
     const runTimestamp = now.toISOString()
-    const runId = `ticker_scores_${runTimestamp}`
 
-    const filingCutoff = new Date(now)
-    filingCutoff.setDate(filingCutoff.getDate() - lookbackDays)
-    const filingCutoffIso = filingCutoff.toISOString()
+    const cutoffDate = new Date(now)
+    cutoffDate.setDate(cutoffDate.getDate() - lookbackDays)
+    const cutoffDateString = toIsoDateString(cutoffDate)
 
     const ptrCutoff = new Date(now)
     ptrCutoff.setDate(ptrCutoff.getDate() - ptrLookbackDays)
-    const ptrCutoffDate = toIsoDateString(ptrCutoff)
+    const ptrCutoffString = toIsoDateString(ptrCutoff)
 
-    const diagnostics: Diagnostics = {
-      scope,
-      signalsLoaded: 0,
-      rawFilingsLoaded: 0,
-      rawPtrTradesLoaded: 0,
-      candidateRowsLoaded: 0,
-      filingTickersScored: 0,
-      ptrTickersScored: 0,
-      rankedTickersBuilt: 0,
-      tickerScoresInserted: 0,
-      filteredBelowMinCombinedScore: 0,
+    const [{ data: allSignalRows, error: allSignalsError }, { data: ptrRows, error: ptrError }] =
+      await Promise.all([
+        supabase
+          .from("signals")
+          .select("*")
+          .gte("filed_at", cutoffDateString)
+          .gte("app_score", MIN_SIGNAL_APP_SCORE)
+          .order("app_score", { ascending: false })
+          .order("filed_at", { ascending: false })
+          .limit(limit),
+        supabase
+          .from("raw_ptr_trades")
+          .select("ticker, filer_name, action, transaction_date, report_date, amount_low, amount_high, amount_range")
+          .or(`transaction_date.gte.${ptrCutoffString},report_date.gte.${ptrCutoffString}`),
+      ])
+
+    if (allSignalsError) {
+      return Response.json(
+        {
+          ok: false,
+          error: allSignalsError.message,
+        },
+        { status: 500 }
+      )
     }
 
-    const [signals, rawFilings, rawPtrTrades] = await Promise.all([
-      loadSignals(supabase, limit),
-      loadRecentFilings(supabase, filingCutoffIso),
-      loadRecentPtrTrades(supabase, ptrCutoffDate),
-    ])
+    if (ptrError) {
+      return Response.json(
+        {
+          ok: false,
+          error: `raw_ptr_trades load failed: ${ptrError.message}`,
+        },
+        { status: 500 }
+      )
+    }
 
-    diagnostics.signalsLoaded = signals.length
-    diagnostics.rawFilingsLoaded = rawFilings.length
-    diagnostics.rawPtrTradesLoaded = rawPtrTrades.length
+    const signalRows = (allSignalRows || []) as SignalRow[]
+    const ptrSummaryMap = buildPtrSummaryMap((ptrRows || []) as PtrTradeRow[], ptrRecentDays)
 
-    const tickerUniverse = uniqueStrings([
-      ...signals.map((row) => row.ticker),
-      ...rawFilings.map((row) => row.ticker),
-      ...rawPtrTrades.map((row) => row.ticker),
-    ]).slice(0, MAX_LIMIT * 2)
-
-    const candidateRows = await loadCandidateContextForTickers(
-      supabase,
-      tickerUniverse,
-      scope
-    )
-    diagnostics.candidateRowsLoaded = candidateRows.length
-
-    const built = buildTickerScoreRows({
-      signals,
-      filings: rawFilings,
-      ptrTrades: rawPtrTrades,
-      candidateRows,
-      runId,
+    const tickerCurrentRowsBase = buildTickerScoresCurrentRows(
+      signalRows,
       runTimestamp,
-      minCombinedScore,
-      ptrRecentDays,
-      limit,
-    })
+      ptrSummaryMap,
+      minCombinedScore
+    )
 
-    diagnostics.filingTickersScored = built.diagnostics.filingTickersScored
-    diagnostics.ptrTickersScored = built.diagnostics.ptrTickersScored
-    diagnostics.filteredBelowMinCombinedScore =
-      built.diagnostics.filteredBelowMinCombinedScore
-    diagnostics.rankedTickersBuilt = built.rows.length
+    const tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(
+      supabase,
+      tickerCurrentRowsBase,
+      runDate
+    )
 
-    const writeResult =
-      built.rows.length > 0
+    const tickerCurrentWriteResult =
+      tickerCurrentRows.length > 0
         ? await upsertInChunksDetailed(
             supabase.from("ticker_scores_current"),
             "ticker_scores_current",
-            built.rows,
+            tickerCurrentRows,
             "ticker",
             (row) => row.ticker
           )
         : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
 
-    if (writeResult.errors.length > 0) {
+    if (tickerCurrentWriteResult.errors.length > 0) {
       return Response.json(
         {
           ok: false,
           error: "Failed writing ticker_scores_current rows",
           debug: {
-            diagnostics,
-            errorSamples: writeResult.errors.slice(0, 5),
+            errorSamples: tickerCurrentWriteResult.errors.slice(0, 5),
           },
         },
         { status: 500 }
       )
     }
 
-    diagnostics.tickerScoresInserted = writeResult.insertedOrUpdated
+    const currentTickerSet = new Set(
+      tickerCurrentRows.map((row) => normalizeTicker(row.ticker))
+    )
+
+    const { data: existingTickerRows, error: existingTickerRowsError } = await supabase
+      .from("ticker_scores_current")
+      .select("ticker")
+
+    if (existingTickerRowsError) {
+      return Response.json(
+        {
+          ok: false,
+          error: existingTickerRowsError.message,
+        },
+        { status: 500 }
+      )
+    }
+
+    const staleTickerList = uniqueStrings(
+      (existingTickerRows || [])
+        .map((row: any) => normalizeTicker(row.ticker))
+        .filter((ticker) => !currentTickerSet.has(ticker))
+    )
+
+    const staleDeleteResult =
+      staleTickerList.length > 0
+        ? await deleteInChunksByTickerDetailed(
+            supabase.from("ticker_scores_current"),
+            staleTickerList
+          )
+        : { deletedRequested: 0, errors: [] as any[] }
+
+    if (staleDeleteResult.errors.length > 0) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Failed deleting stale ticker_scores_current rows",
+          debug: {
+            errorSamples: staleDeleteResult.errors.slice(0, 5),
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    const tickerHistoryRows = buildTickerScoreHistoryRows(
+      tickerCurrentRows,
+      runDate,
+      runTimestamp
+    )
+
+    const tickerHistoryWriteResult =
+      tickerHistoryRows.length > 0
+        ? await upsertInChunksDetailed(
+            supabase.from("ticker_score_history"),
+            "ticker_score_history",
+            tickerHistoryRows,
+            "ticker,score_date",
+            (row) => `${row.ticker}:${row.score_date}`
+          )
+        : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
+
+    if (tickerHistoryWriteResult.errors.length > 0) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Failed writing ticker_score_history rows",
+          debug: {
+            errorSamples: tickerHistoryWriteResult.errors.slice(0, 5),
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    let retentionMessage = "skipped"
+    if (runRetention) {
+      const retentionCutoff = new Date(now)
+      retentionCutoff.setDate(retentionCutoff.getDate() - RETENTION_DAYS)
+      const retentionCutoffString = toIsoDateString(retentionCutoff)
+
+      const { error: tickerRetentionError } = await supabase
+        .from("ticker_score_history")
+        .delete()
+        .lt("score_date", retentionCutoffString)
+
+      retentionMessage = tickerRetentionError ? tickerRetentionError.message : "ok"
+    }
+
+    let strongBuyCount: number | null = null
+    let eliteBuyCount: number | null = null
+
+    if (includeCounts) {
+      const [strongBuyRes, eliteBuyRes] = await Promise.all([
+        supabase
+          .from("ticker_scores_current")
+          .select("*", { count: "exact", head: true })
+          .gte("app_score", 90),
+        supabase
+          .from("ticker_scores_current")
+          .select("*", { count: "exact", head: true })
+          .gte("app_score", 97),
+      ])
+
+      strongBuyCount = strongBuyRes.error ? null : strongBuyRes.count ?? 0
+      eliteBuyCount = eliteBuyRes.error ? null : eliteBuyRes.count ?? 0
+    }
 
     return Response.json({
       ok: true,
-      stage: "ticker_scores",
-      scope,
-      scoreVersion: SCORE_VERSION,
+      scannedSignals: signalRows.length,
+      ptrRowsScanned: (ptrRows || []).length,
+      ptrTickersMapped: ptrSummaryMap.size,
+      tickerCurrentInserted: tickerCurrentWriteResult.insertedOrUpdated,
+      tickerHistoryInserted: tickerHistoryWriteResult.insertedOrUpdated,
       lookbackDays,
       ptrLookbackDays,
       ptrRecentDays,
-      limit,
       minCombinedScore,
-      diagnostics,
-      preview: includePreview
-        ? built.ranked.slice(0, 25).map((row, index) => ({
-            rank: index + 1,
-            ticker: row.ticker,
-            filingSignalScore: row.filingSignalScore,
-            ptrSignalScore: row.ptrSignalScore,
-            technicalScore: row.technicalScore,
-            combinedScore: row.combinedScore,
-            confidenceLabel: row.confidenceLabel,
-            reasons: row.reasons.slice(0, 8),
-            breakdown: row.breakdown,
-          }))
-        : undefined,
-      message:
-        "Ticker scores rebuilt using insider filings, cluster-buy signals, PTR breadth and size, plus technical confirmation.",
+      limit,
+      retainedDays: RETENTION_DAYS,
+      scoreVersion: SCORE_VERSION,
+      retentionCleanup: retentionMessage,
+      strongBuyCount,
+      eliteBuyCount,
+      message: "Ticker scores rebuilt using PTR-first, filings-second, signals-third priority scoring.",
     })
   } catch (error: any) {
     return Response.json(
       {
         ok: false,
-        error: error?.message || "Unknown ticker score rebuild error",
+        error: error?.message || "Unknown error",
       },
       { status: 500 }
     )
