@@ -18,25 +18,30 @@ type ChunkWriteResult = {
 }
 
 type SignalRow = {
-  ticker: string | null
   signal_key?: string | null
+  ticker: string
+  company_name?: string | null
+  business_description?: string | null
+  app_score?: number | null
+  raw_score?: number | null
+  bias?: string | null
+  board_bucket?: string | null
+  signal_strength_bucket?: string | null
+  score_version?: string | null
+  score_updated_at?: string | null
+  stacked_signal_count?: number | null
+  score_breakdown?: Record<string, number> | null
+  signal_reasons?: string[] | null
+  score_caps_applied?: string[] | null
+  signal_tags?: string[] | null
   signal_type?: string | null
   signal_source?: string | null
   signal_category?: string | null
-  signal_strength_bucket?: string | null
-  signal_tags?: string[] | null
-  signal_reasons?: string[] | null
-  score_caps_applied?: string[] | null
-  score_breakdown?: Record<string, number> | null
-  app_score?: number | null
-  score?: number | null
   title?: string | null
   summary?: string | null
-  company_name?: string | null
-  business_description?: string | null
-  source_form?: string | null
   filed_at?: string | null
   accession_no?: string | null
+  source_form?: string | null
   pe_ratio?: number | null
   pe_forward?: number | null
   pe_type?: string | null
@@ -63,13 +68,15 @@ type SignalRow = {
   guidance_flag?: boolean | null
   age_days?: number | null
   freshness_bucket?: string | null
+  ticker_score_change_1d?: number | null
+  ticker_score_change_7d?: number | null
   updated_at?: string | null
+  created_at?: string | null
 }
 
 type RawPtrTradeRow = {
   ticker?: string | null
   filer_name?: string | null
-  politician_name?: string | null
   action?: string | null
   transaction_date?: string | null
   report_date?: string | null
@@ -99,17 +106,23 @@ type PtrSummary = {
   summary: string | null
 }
 
-const DEFAULT_LOOKBACK_DAYS = 14
-const MAX_LOOKBACK_DAYS = 60
+const DEFAULT_LOOKBACK_DAYS = 31
+const MAX_LOOKBACK_DAYS = 90
 const DEFAULT_LIMIT = 1000
 const MAX_LIMIT = 3000
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v9-ptr-filings-signals-priority"
+const SCORE_VERSION = "v10-ptr-filings-signals-looser"
+
+const DEFAULT_PTR_LOOKBACK_DAYS = 60
+const MAX_PTR_LOOKBACK_DAYS = 120
+const DEFAULT_PTR_RECENT_DAYS = 14
+const MAX_PTR_RECENT_DAYS = 30
+
 const MIN_SIGNAL_APP_SCORE = 20
-const MIN_TICKER_APP_SCORE = 35
+const MIN_TICKER_APP_SCORE = 28
+const MIN_COMBINED_SCORE = 35
+
 const DB_CHUNK_SIZE = 100
-const PTR_LOOKBACK_DAYS = 60
-const PTR_RECENT_DAYS = 14
 
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
@@ -229,8 +242,8 @@ async function deleteInChunksByTickerDetailed(table: any, tickers: string[]) {
 }
 
 function getStrengthBucket(score: number): "Buy" | "Strong Buy" | "Elite Buy" {
-  if (score >= 97) return "Elite Buy"
-  if (score >= 92) return "Strong Buy"
+  if (score >= 95) return "Elite Buy"
+  if (score >= 85) return "Strong Buy"
   return "Buy"
 }
 
@@ -247,7 +260,7 @@ function countPositiveEvidencePillars(breakdown: Record<string, number>) {
   ].filter(Boolean).length
 }
 
-function buildPtrSummaryMap(rows: RawPtrTradeRow[]) {
+function buildPtrSummaryMap(rows: RawPtrTradeRow[], ptrRecentDays: number) {
   const byTicker = new Map<string, RawPtrTradeRow[]>()
 
   for (const row of rows) {
@@ -271,36 +284,32 @@ function buildPtrSummaryMap(rows: RawPtrTradeRow[]) {
     })
 
     const uniqueBuyFilers = new Set(
-      buys
-        .map((row) => String(row.filer_name || row.politician_name || "").trim())
-        .filter(Boolean)
+      buys.map((row) => String(row.filer_name || "").trim()).filter(Boolean)
     ).size
 
     const uniqueSellFilers = new Set(
-      sells
-        .map((row) => String(row.filer_name || row.politician_name || "").trim())
-        .filter(Boolean)
+      sells.map((row) => String(row.filer_name || "").trim()).filter(Boolean)
     ).size
 
     const recentBuyCount = buys.filter((row) => {
       const age = daysAgo(row.transaction_date || row.report_date)
-      return age !== null && age <= PTR_RECENT_DAYS
+      return age !== null && age <= ptrRecentDays
     }).length
 
     const recentSellCount = sells.filter((row) => {
       const age = daysAgo(row.transaction_date || row.report_date)
-      return age !== null && age <= PTR_RECENT_DAYS
+      return age !== null && age <= ptrRecentDays
     }).length
 
     const totalBuyAmountLow = buys.reduce((sum, row) => sum + Number(row.amount_low || 0), 0)
     const totalSellAmountLow = sells.reduce((sum, row) => sum + Number(row.amount_low || 0), 0)
 
-    const tradeDates = trades
+    const allTradeDates = trades
       .map((row) => String(row.transaction_date || "").trim())
       .filter(Boolean)
       .sort((a, b) => b.localeCompare(a))
 
-    const reportDates = trades
+    const allReportDates = trades
       .map((row) => String(row.report_date || "").trim())
       .filter(Boolean)
       .sort((a, b) => b.localeCompare(a))
@@ -314,51 +323,51 @@ function buildPtrSummaryMap(rows: RawPtrTradeRow[]) {
       notes.push("at least one PTR buy")
     }
     if (buys.length >= 2) {
-      ptrBonus += 1
+      ptrBonus += 2
       notes.push("multiple PTR buys")
     }
     if (buys.length >= 3) {
-      ptrBonus += 1
+      ptrBonus += 2
       notes.push("three or more PTR buys")
     }
 
     if (uniqueBuyFilers >= 2) {
-      ptrBonus += 1
+      ptrBonus += 2
       notes.push("multiple PTR buyers")
     }
     if (uniqueBuyFilers >= 3) {
-      ptrBonus += 1
+      ptrBonus += 2
       notes.push("broad PTR participation")
     }
 
     if (recentBuyCount >= 1) {
-      ptrBonus += 1
+      ptrBonus += 2
       notes.push("recent PTR buy")
     }
     if (recentBuyCount >= 2) {
-      ptrBonus += 1
+      ptrBonus += 2
       notes.push("multiple recent PTR buys")
     }
 
     if (totalBuyAmountLow >= 100_001) {
-      ptrBonus += 1
+      ptrBonus += 2
       notes.push("meaningful disclosed buy size")
     }
     if (totalBuyAmountLow >= 250_001) {
-      ptrBonus += 1
+      ptrBonus += 2
       notes.push("strong disclosed buy size")
     }
     if (totalBuyAmountLow >= 500_001) {
-      ptrBonus += 1
+      ptrBonus += 2
       notes.push("very strong disclosed buy size")
     }
 
     if (sells.length >= 2 && totalSellAmountLow > totalBuyAmountLow) {
-      ptrPenalty -= 1
+      ptrPenalty -= 2
       notes.push("PTR selling headwind")
     }
     if (recentSellCount >= 2 && recentBuyCount === 0) {
-      ptrPenalty -= 1
+      ptrPenalty -= 2
       notes.push("recent PTR selling")
     }
 
@@ -398,8 +407,8 @@ function buildPtrSummaryMap(rows: RawPtrTradeRow[]) {
       buyCluster,
       strongBuying,
       strongSelling,
-      latestTradeDate: tradeDates[0] ?? null,
-      latestReportDate: reportDates[0] ?? null,
+      latestTradeDate: allTradeDates[0] ?? null,
+      latestReportDate: allReportDates[0] ?? null,
       notes,
       summary: summaryParts.length ? `PTR support: ${summaryParts.join(", ")}` : null,
     })
@@ -411,7 +420,8 @@ function buildPtrSummaryMap(rows: RawPtrTradeRow[]) {
 function buildTickerScoresCurrentRows(
   signalRows: SignalRow[],
   runTimestamp: string,
-  ptrMap: Map<string, PtrSummary>
+  ptrMap: Map<string, PtrSummary>,
+  minCombinedScore: number
 ) {
   const byTicker = new Map<string, SignalRow[]>()
 
@@ -440,10 +450,6 @@ function buildTickerScoresCurrentRows(
     const primaryScore = Number(primary.app_score || 0)
     const ptr = ptrMap.get(ticker) ?? null
 
-    if (sorted.length < 2 && primaryScore < 93 && !ptr?.strongBuying) {
-      continue
-    }
-
     const scoreBreakdown: Record<string, number> = {}
     const signalReasons = new Set<string>()
     const scoreCapsApplied = new Set<string>()
@@ -455,7 +461,7 @@ function buildTickerScoresCurrentRows(
     const signalCategories = new Set<string>()
 
     for (const row of sorted) {
-      signalKeys.push(String(row.signal_key || ""))
+      if (row.signal_key) signalKeys.push(String(row.signal_key))
       if (row.accession_no) accessionNos.push(String(row.accession_no))
       if (row.source_form) sourceForms.push(String(row.source_form))
       if (row.signal_source) signalSources.add(String(row.signal_source).toLowerCase())
@@ -473,27 +479,25 @@ function buildTickerScoresCurrentRows(
 
     let stackedScore = primaryScore
 
-    if (sorted.length >= 2) stackedScore += 2
-    if (sorted.length >= 3) stackedScore += 2
-    if (sorted.length >= 4) stackedScore += 1
+    if (sorted.length >= 2) stackedScore += 4
+    if (sorted.length >= 3) stackedScore += 3
+    if (sorted.length >= 4) stackedScore += 2
     if (sorted.length >= 5) stackedScore += 1
 
     if (ptr) {
-      stackedScore += ptr.ptrBonus + 4
-      stackedScore += ptr.ptrPenalty
+      stackedScore += ptr.ptrBonus + ptr.ptrPenalty
       scoreBreakdown.ptr =
-        round2((scoreBreakdown.ptr || 0) + ptr.ptrBonus + 4 + ptr.ptrPenalty) ?? 0
-      scoreCapsApplied.add("ptr-priority-bonus")
+        round2((scoreBreakdown.ptr || 0) + ptr.ptrBonus + ptr.ptrPenalty) ?? 0
 
       if (ptr.buyCluster) {
-        stackedScore += 2
-        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) + 2) ?? 0
+        stackedScore += 3
+        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) + 3) ?? 0
         scoreCapsApplied.add("ptr-cluster-bonus")
       }
 
       if (ptr.strongBuying) {
-        stackedScore += 2
-        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) + 2) ?? 0
+        stackedScore += 4
+        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) + 4) ?? 0
         scoreCapsApplied.add("ptr-strong-buying-bonus")
       }
 
@@ -510,8 +514,8 @@ function buildTickerScoresCurrentRows(
       }
 
       if (ptr.strongSelling) {
-        stackedScore -= 1
-        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) - 1) ?? 0
+        stackedScore -= 2
+        scoreBreakdown.ptr = round2((scoreBreakdown.ptr || 0) - 2) ?? 0
         scoreCapsApplied.add("ptr-selling-headwind")
       }
 
@@ -525,58 +529,52 @@ function buildTickerScoresCurrentRows(
     }
 
     if (signalSources.has("form4")) {
-      stackedScore += 3
-      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 3) ?? 0
-      scoreCapsApplied.add("insider-filing-priority-bonus")
+      stackedScore += 4
+      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 4) ?? 0
     }
 
     if (signalSources.has("13d") || signalSources.has("13g")) {
-      stackedScore += 3
-      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 3) ?? 0
-      scoreCapsApplied.add("ownership-filing-priority-bonus")
+      stackedScore += 4
+      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 4) ?? 0
     }
 
     if (signalSources.has("8k") || signalSources.has("earnings")) {
-      stackedScore += 2
-      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 2) ?? 0
-      scoreCapsApplied.add("catalyst-filing-priority-bonus")
+      stackedScore += 3
+      scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 3) ?? 0
     }
 
     if (signalSources.has("breakout") && signalSources.has("form4")) {
       stackedScore += 2
       scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 2) ?? 0
-      scoreCapsApplied.add("technical-plus-insider-bonus")
     }
 
     if (signalSources.has("breakout") && (signalSources.has("13d") || signalSources.has("13g"))) {
       stackedScore += 2
       scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 2) ?? 0
-      scoreCapsApplied.add("technical-plus-ownership-bonus")
     }
 
     if (signalSources.has("breakout") && signalSources.has("8k")) {
       stackedScore += 1
       scoreBreakdown.filings = round2((scoreBreakdown.filings || 0) + 1) ?? 0
-      scoreCapsApplied.add("technical-plus-catalyst-bonus")
     }
 
     const positivePillars = countPositiveEvidencePillars(scoreBreakdown)
 
-    if (positivePillars < 3) {
-      stackedScore = Math.min(stackedScore, 88)
-      scoreCapsApplied.add("stacked-limited-evidence-cap")
+    if (positivePillars < 2) {
+      stackedScore = Math.min(stackedScore, 82)
+      scoreCapsApplied.add("limited-evidence-cap")
     }
 
-    if (positivePillars < 4) {
-      stackedScore = Math.min(stackedScore, 93)
-      scoreCapsApplied.add("stacked-broad-confirmation-cap")
+    if (positivePillars < 3) {
+      stackedScore = Math.min(stackedScore, 90)
+      scoreCapsApplied.add("broad-confirmation-cap")
     }
 
     const hasBreakoutSupport =
       (scoreBreakdown.breakout || 0) > 0 || primary.breakout_20d === true
 
     const hasHeavyVolume =
-      (primary.volume_ratio ?? 0) >= 2 || (scoreBreakdown.volume || 0) >= 5
+      (primary.volume_ratio ?? 0) >= 1.4 || (scoreBreakdown.volume || 0) >= 3
 
     const hasFilingConfirmation =
       signalSources.has("form4") ||
@@ -586,76 +584,33 @@ function buildTickerScoresCurrentRows(
       signalSources.has("earnings") ||
       Boolean(ptr?.buyTradeCount)
 
-    const hasMultipleSignalTypes = signalSources.size >= 2 || Boolean(ptr?.buyTradeCount)
-    const hasThreeSignals = sorted.length >= 3 || Boolean(ptr?.strongBuying)
-    const hasFourSignals = sorted.length >= 4 || Boolean(ptr?.buyCluster)
-
-    if (!hasMultipleSignalTypes) {
-      stackedScore = Math.min(stackedScore, 94)
-      scoreCapsApplied.add("multi-source-required-cap")
-    }
-
-    if (!(hasBreakoutSupport && hasHeavyVolume && positivePillars >= 4)) {
-      stackedScore = Math.min(stackedScore, 97)
-      scoreCapsApplied.add("stacked-elite-confirmation-cap")
-    }
-
-    if (!(hasThreeSignals && hasMultipleSignalTypes && hasFilingConfirmation)) {
-      stackedScore = Math.min(stackedScore, 98)
-      scoreCapsApplied.add("stacked-top-tier-confirmation-cap")
-    }
-
-    if (
-      !(
-        hasFourSignals &&
-        hasBreakoutSupport &&
-        hasHeavyVolume &&
-        positivePillars >= 5 &&
-        hasFilingConfirmation &&
-        primaryScore >= 95
-      )
-    ) {
-      stackedScore = Math.min(stackedScore, 99)
-      scoreCapsApplied.add("stacked-no-perfect-score-cap")
+    if (primaryScore < minCombinedScore && !ptr?.strongBuying) {
+      continue
     }
 
     const finalScore = clamp(Math.round(stackedScore), 0, 100)
 
     if (finalScore < MIN_TICKER_APP_SCORE) continue
 
-    const perfectTickerSetup =
-      (sorted.length >= 4 || Boolean(ptr?.buyCluster)) &&
-      (signalSources.size >= 3 || Boolean(ptr?.strongBuying)) &&
-      hasBreakoutSupport &&
-      hasHeavyVolume &&
-      hasFilingConfirmation &&
-      positivePillars >= 5 &&
-      primaryScore >= 95 &&
-      (primary.relative_strength_20d ?? 0) >= 8 &&
-      (primary.price_return_20d ?? 0) >= 12 &&
-      (primary.volume_ratio ?? 0) >= 2.2
-
-    const finalTickerScore = perfectTickerSetup ? 100 : finalScore
-
     const primaryTitle =
       sorted.length >= 2 || ptr?.buyTradeCount
         ? `Priority-stacked setup (${sorted.length} signals${ptr?.buyTradeCount ? ` + ${ptr.buyTradeCount} PTR buys` : ""})`
-        : primary.title || "Priority signal"
+        : primary.title
 
     const primarySummary =
       sorted.length >= 2 || ptr?.buyTradeCount
-        ? `Priority evidence is lining up for this ticker. Sources: ${Array.from(signalSources).join(", ")}${ptr?.summary ? `. ${ptr.summary}` : ""}. Primary setup: ${primary.title || "Priority signal"}`
-        : primary.summary || null
+        ? `Priority evidence is lining up for this ticker. Sources: ${Array.from(signalSources).join(", ")}${ptr?.summary ? `. ${ptr.summary}` : ""}. Primary setup: ${primary.title || "Constructive signal"}`
+        : primary.summary
 
     rows.push({
       ticker,
-      company_name: primary.company_name ?? null,
-      business_description: primary.business_description ?? null,
-      app_score: finalTickerScore,
-      raw_score: finalTickerScore,
+      company_name: primary.company_name,
+      business_description: primary.business_description,
+      app_score: finalScore,
+      raw_score: finalScore,
       bias: "Bullish",
       board_bucket: "Buy",
-      signal_strength_bucket: getStrengthBucket(finalTickerScore),
+      signal_strength_bucket: getStrengthBucket(finalScore),
       score_version: SCORE_VERSION,
       score_updated_at: runTimestamp,
       stacked_signal_count: sorted.length,
@@ -664,44 +619,42 @@ function buildTickerScoresCurrentRows(
       score_caps_applied: Array.from(scoreCapsApplied),
       signal_tags: Array.from(signalTags),
       primary_signal_key: primary.signal_key ?? null,
-      primary_signal_type:
-        sorted.length >= 2 || ptr?.buyTradeCount ? "Priority Multi-Signal Buy" : primary.signal_type ?? null,
-      primary_signal_source:
-        ptr?.buyTradeCount ? "ptr+signals" : sorted.length >= 2 ? "multi" : primary.signal_source ?? null,
+      primary_signal_type: sorted.length >= 2 || ptr?.buyTradeCount ? "Priority Multi-Signal Buy" : primary.signal_type,
+      primary_signal_source: ptr?.buyTradeCount ? "ptr+signals" : sorted.length >= 2 ? "multi" : primary.signal_source,
       primary_signal_category:
-        sorted.length >= 2 || ptr?.buyTradeCount ? "PTR / Filings / Signals Priority Buy" : primary.signal_category ?? null,
+        sorted.length >= 2 || ptr?.buyTradeCount ? "PTR / Filings / Signals Priority Buy" : primary.signal_category,
       primary_title: primaryTitle,
       primary_summary: primarySummary,
       filed_at: ptr?.latestTradeDate ?? primary.filed_at ?? null,
       signal_keys: signalKeys,
       accession_nos: accessionNos,
       source_forms: uniqueStrings(sourceForms),
-      pe_ratio: primary.pe_ratio ?? null,
-      pe_forward: primary.pe_forward ?? null,
-      pe_type: primary.pe_type ?? null,
-      market_cap: primary.market_cap ?? null,
-      sector: primary.sector ?? null,
-      industry: primary.industry ?? null,
-      insider_action: primary.insider_action ?? null,
-      insider_shares: primary.insider_shares ?? null,
-      insider_avg_price: primary.insider_avg_price ?? null,
-      insider_buy_value: primary.insider_buy_value ?? null,
-      cluster_buyers: primary.cluster_buyers ?? null,
-      cluster_shares: primary.cluster_shares ?? null,
-      price_return_5d: primary.price_return_5d ?? null,
-      price_return_20d: primary.price_return_20d ?? null,
-      volume_ratio: primary.volume_ratio ?? null,
-      breakout_20d: primary.breakout_20d ?? false,
-      breakout_52w: primary.breakout_52w ?? false,
-      above_50dma: primary.above_50dma ?? false,
-      trend_aligned: primary.trend_aligned ?? false,
-      price_confirmed: primary.price_confirmed ?? false,
-      relative_strength_20d: primary.relative_strength_20d ?? null,
-      earnings_surprise_pct: primary.earnings_surprise_pct ?? null,
-      revenue_growth_pct: primary.revenue_growth_pct ?? null,
-      guidance_flag: primary.guidance_flag ?? false,
-      age_days: primary.age_days ?? null,
-      freshness_bucket: primary.freshness_bucket ?? null,
+      pe_ratio: primary.pe_ratio,
+      pe_forward: primary.pe_forward,
+      pe_type: primary.pe_type,
+      market_cap: primary.market_cap,
+      sector: primary.sector,
+      industry: primary.industry,
+      insider_action: primary.insider_action,
+      insider_shares: primary.insider_shares,
+      insider_avg_price: primary.insider_avg_price,
+      insider_buy_value: primary.insider_buy_value,
+      cluster_buyers: primary.cluster_buyers,
+      cluster_shares: primary.cluster_shares,
+      price_return_5d: primary.price_return_5d,
+      price_return_20d: primary.price_return_20d,
+      volume_ratio: primary.volume_ratio,
+      breakout_20d: primary.breakout_20d,
+      breakout_52w: primary.breakout_52w,
+      above_50dma: primary.above_50dma,
+      trend_aligned: primary.trend_aligned,
+      price_confirmed: primary.price_confirmed,
+      relative_strength_20d: primary.relative_strength_20d,
+      earnings_surprise_pct: primary.earnings_surprise_pct,
+      revenue_growth_pct: primary.revenue_growth_pct,
+      guidance_flag: primary.guidance_flag,
+      age_days: primary.age_days,
+      freshness_bucket: primary.freshness_bucket,
       ticker_score_change_1d: null,
       ticker_score_change_7d: null,
       updated_at: runTimestamp,
@@ -818,6 +771,18 @@ export async function GET(request: Request) {
       Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT)),
       MAX_LIMIT
     )
+    const ptrLookbackDays = Math.min(
+      Math.max(1, parseInteger(searchParams.get("ptrLookbackDays"), DEFAULT_PTR_LOOKBACK_DAYS)),
+      MAX_PTR_LOOKBACK_DAYS
+    )
+    const ptrRecentDays = Math.min(
+      Math.max(1, parseInteger(searchParams.get("ptrRecentDays"), DEFAULT_PTR_RECENT_DAYS)),
+      MAX_PTR_RECENT_DAYS
+    )
+    const minCombinedScore = Math.max(
+      0,
+      parseInteger(searchParams.get("minCombinedScore"), MIN_COMBINED_SCORE)
+    )
     const includeCounts = (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
     const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
 
@@ -830,63 +795,14 @@ export async function GET(request: Request) {
     const cutoffDateString = toIsoDateString(cutoffDate)
 
     const ptrCutoff = new Date(now)
-    ptrCutoff.setDate(ptrCutoff.getDate() - PTR_LOOKBACK_DAYS)
+    ptrCutoff.setDate(ptrCutoff.getDate() - ptrLookbackDays)
     const ptrCutoffString = toIsoDateString(ptrCutoff)
 
     const [{ data: allSignalRows, error: allSignalsError }, { data: ptrRows, error: ptrError }] =
       await Promise.all([
         supabase
           .from("signals")
-          .select(
-            `
-              ticker,
-              signal_key,
-              signal_type,
-              signal_source,
-              signal_category,
-              signal_strength_bucket,
-              signal_tags,
-              signal_reasons,
-              score_caps_applied,
-              score_breakdown,
-              app_score,
-              score,
-              title,
-              summary,
-              company_name,
-              business_description,
-              source_form,
-              filed_at,
-              accession_no,
-              pe_ratio,
-              pe_forward,
-              pe_type,
-              market_cap,
-              sector,
-              industry,
-              insider_action,
-              insider_shares,
-              insider_avg_price,
-              insider_buy_value,
-              cluster_buyers,
-              cluster_shares,
-              price_return_5d,
-              price_return_20d,
-              volume_ratio,
-              breakout_20d,
-              breakout_52w,
-              above_50dma,
-              trend_aligned,
-              price_confirmed,
-              relative_strength_20d,
-              earnings_surprise_pct,
-              revenue_growth_pct,
-              guidance_flag,
-              age_days,
-              freshness_bucket,
-              updated_at
-            `
-          )
+          .select("*")
           .gte("filed_at", cutoffDateString)
           .gte("app_score", MIN_SIGNAL_APP_SCORE)
           .order("app_score", { ascending: false })
@@ -912,19 +828,20 @@ export async function GET(request: Request) {
       return Response.json(
         {
           ok: false,
-          error: ptrError.message,
+          error: `raw_ptr_trades load failed: ${ptrError.message}`,
         },
         { status: 500 }
       )
     }
 
     const signalRows = (allSignalRows || []) as SignalRow[]
-    const ptrSummaryMap = buildPtrSummaryMap((ptrRows || []) as RawPtrTradeRow[])
+    const ptrSummaryMap = buildPtrSummaryMap((ptrRows || []) as RawPtrTradeRow[], ptrRecentDays)
 
     const tickerCurrentRowsBase = buildTickerScoresCurrentRows(
       signalRows,
       runTimestamp,
-      ptrSummaryMap
+      ptrSummaryMap,
+      minCombinedScore
     )
 
     const tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(
@@ -1044,11 +961,11 @@ export async function GET(request: Request) {
         supabase
           .from("ticker_scores_current")
           .select("*", { count: "exact", head: true })
-          .gte("app_score", 92),
+          .gte("app_score", 85),
         supabase
           .from("ticker_scores_current")
           .select("*", { count: "exact", head: true })
-          .gte("app_score", 97),
+          .gte("app_score", 95),
       ])
 
       strongBuyCount = strongBuyRes.error ? null : strongBuyRes.count ?? 0
@@ -1064,6 +981,9 @@ export async function GET(request: Request) {
       tickerHistoryInserted: tickerHistoryWriteResult.insertedOrUpdated,
       lookbackDays,
       limit,
+      ptrLookbackDays,
+      ptrRecentDays,
+      minCombinedScore,
       retainedDays: RETENTION_DAYS,
       scoreVersion: SCORE_VERSION,
       minSignalAppScore: MIN_SIGNAL_APP_SCORE,

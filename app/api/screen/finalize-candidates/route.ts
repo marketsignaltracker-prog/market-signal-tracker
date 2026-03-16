@@ -97,14 +97,13 @@ type CandidateUniverseRow = {
 }
 
 type RawPtrTradeRow = {
-  filer_name?: string | null
-  politician_name?: string | null
-  ticker?: string | null
-  action?: string | null
-  transaction_date?: string | null
+  filer_name: string | null
+  ticker: string | null
+  action: string | null
+  transaction_date: string | null
   report_date?: string | null
-  amount_low?: number | null
-  amount_high?: number | null
+  amount_low: number | null
+  amount_high: number | null
 }
 
 type PtrSignalSummary = {
@@ -124,13 +123,17 @@ type RankedRow = {
   reasons: string[]
 }
 
-const DEFAULT_MAX_FINAL_CANDIDATES = 24
-const MAX_FINAL_CANDIDATES_CAP = 60
-const DEFAULT_TARGET_MIN_FINAL_CANDIDATES = 10
-const STRICT_MIN_SCORE = 68
-const BALANCED_MIN_SCORE = 62
-const FALLBACK_MIN_SCORE = 56
+const DEFAULT_LIMIT = 30
+const MAX_LIMIT = 60
+const DEFAULT_TARGET_MIN = 12
+const MAX_TARGET_MIN = 24
+
+const MAX_FINAL_CANDIDATES = 30
 const DB_CHUNK_SIZE = 250
+
+const STRICT_MIN_SCORE = 62
+const BALANCED_MIN_SCORE = 56
+const FALLBACK_MIN_SCORE = 50
 
 const PTR_LOOKBACK_DAYS = 45
 const PTR_RECENT_DAYS = 14
@@ -144,18 +147,18 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks
 }
 
-function parseInteger(value: string | null | undefined, fallback: number) {
-  if (!value || value.trim() === "") return fallback
-  const parsed = Number.parseInt(value, 10)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
-
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
 }
 
 function uniqueStrings(values: (string | null | undefined)[]) {
   return Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean)))
+}
+
+function parseInteger(value: string | null | undefined, fallback: number) {
+  if (value === null || value === undefined || value.trim() === "") return fallback
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) ? parsed : fallback
 }
 
 function toIsoDateString(date: Date) {
@@ -189,56 +192,49 @@ async function deleteAllUniverseRows(table: any) {
   return error ? error.message : null
 }
 
-function isStrictEligible(row: CandidateHistoryRow) {
+function isStrictEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
   return (
     row.passes_price &&
     row.passes_volume &&
     row.passes_dollar_volume &&
     row.passes_market_cap &&
     row.above_sma_20 &&
-    (row.candidate_score ?? 0) >= STRICT_MIN_SCORE &&
-    (row.return_10d ?? -999) >= 1 &&
-    (row.return_20d ?? -999) >= 4 &&
-    (row.relative_strength_20d ?? -999) >= 1.5 &&
-    (row.volume_ratio ?? 0) >= 0.8 &&
-    (
-      row.breakout_20d ||
-      row.breakout_10d ||
-      (row.relative_strength_20d ?? -999) >= 4
-    ) &&
-    (row.breakout_clearance_pct ?? -999) >= -1 &&
-    (row.extension_from_sma20_pct ?? 999) <= 16 &&
-    (row.close_in_day_range ?? 0) >= 0.4
+    ((row.candidate_score ?? 0) >= STRICT_MIN_SCORE || Boolean(ptr?.ptrBonus >= 4)) &&
+    ((row.return_20d ?? -999) >= 2 || Boolean(ptr?.buyTradeCount)) &&
+    ((row.relative_strength_20d ?? -999) >= 0.5 || Boolean(ptr?.buyTradeCount)) &&
+    ((row.volume_ratio ?? 0) >= 0.7 || Boolean(ptr?.recentBuyCount)) &&
+    (row.extension_from_sma20_pct ?? 999) <= 18 &&
+    (row.close_in_day_range ?? 0) >= 0.35
   )
 }
 
-function isBalancedEligible(row: CandidateHistoryRow) {
+function isBalancedEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
   return (
     row.passes_price &&
     row.passes_volume &&
     row.passes_dollar_volume &&
     row.passes_market_cap &&
     row.above_sma_20 &&
-    (row.candidate_score ?? 0) >= BALANCED_MIN_SCORE &&
-    (row.return_20d ?? -999) >= 2 &&
-    (row.relative_strength_20d ?? -999) >= 0.5 &&
-    (row.volume_ratio ?? 0) >= 0.75 &&
-    (row.extension_from_sma20_pct ?? 999) <= 18
-  )
-}
-
-function isFallbackEligible(row: CandidateHistoryRow) {
-  return (
-    row.passes_price &&
-    row.passes_volume &&
-    row.passes_dollar_volume &&
-    row.passes_market_cap &&
-    row.above_sma_20 &&
-    (row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE &&
-    (row.return_20d ?? -999) >= 1 &&
-    (row.relative_strength_20d ?? -999) >= 0 &&
-    (row.volume_ratio ?? 0) >= 0.65 &&
+    ((row.candidate_score ?? 0) >= BALANCED_MIN_SCORE || Boolean(ptr?.ptrBonus >= 3)) &&
+    ((row.return_20d ?? -999) >= 0 || Boolean(ptr?.buyTradeCount)) &&
+    ((row.relative_strength_20d ?? -999) >= -0.5 || Boolean(ptr?.buyTradeCount)) &&
+    ((row.volume_ratio ?? 0) >= 0.6 || Boolean(ptr?.recentBuyCount)) &&
     (row.extension_from_sma20_pct ?? 999) <= 20
+  )
+}
+
+function isFallbackEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
+  return (
+    row.passes_price &&
+    row.passes_volume &&
+    row.passes_dollar_volume &&
+    row.passes_market_cap &&
+    row.above_sma_20 &&
+    ((row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE || Boolean(ptr?.ptrBonus >= 2)) &&
+    ((row.return_20d ?? -999) >= -2 || Boolean(ptr?.buyTradeCount)) &&
+    ((row.relative_strength_20d ?? -999) >= -2 || Boolean(ptr?.buyTradeCount)) &&
+    ((row.volume_ratio ?? 0) >= 0.5 || Boolean(ptr?.recentBuyCount)) &&
+    (row.extension_from_sma20_pct ?? 999) <= 24
   )
 }
 
@@ -260,9 +256,7 @@ function buildPtrSignalMap(rows: RawPtrTradeRow[]) {
 
   for (const [ticker, tickerRows] of grouped.entries()) {
     const uniqueFilers = new Set(
-      tickerRows
-        .map((row) => String(row.filer_name || row.politician_name || "").trim())
-        .filter(Boolean)
+      tickerRows.map((row) => String(row.filer_name || "").trim()).filter(Boolean)
     ).size
 
     const recentBuyCount = tickerRows.filter((row) => {
@@ -315,8 +309,8 @@ function getSelectionScore(
   const reasons: string[] = []
 
   if (ptr?.ptrBonus) {
-    score += ptr.ptrBonus + 4
-    reasons.push(`PTR priority +${ptr.ptrBonus + 4}`)
+    score += ptr.ptrBonus + 3
+    reasons.push(`PTR priority +${ptr.ptrBonus + 3}`)
   }
 
   if (row.has_insider_trades) {
@@ -330,7 +324,7 @@ function getSelectionScore(
   }
 
   if (row.has_clusters) {
-    score += 1
+    score += 2
     reasons.push("signal support")
   }
 
@@ -339,33 +333,31 @@ function getSelectionScore(
     reasons.push("above 20dma")
   }
 
-  if ((row.return_10d ?? 0) >= 2) {
+  if ((row.return_10d ?? 0) >= 1) {
     score += 2
     reasons.push("10d momentum")
-  } else if ((row.return_10d ?? 0) > 0) {
-    score += 1
   }
 
-  if ((row.return_20d ?? 0) >= 5) {
+  if ((row.return_20d ?? 0) >= 3) {
     score += 3
     reasons.push("20d momentum")
-  } else if ((row.return_20d ?? 0) >= 2) {
+  } else if ((row.return_20d ?? 0) >= 0) {
     score += 1.5
   }
 
-  if ((row.relative_strength_20d ?? 0) >= 4) {
+  if ((row.relative_strength_20d ?? 0) >= 3) {
     score += 3
     reasons.push("strong relative strength")
-  } else if ((row.relative_strength_20d ?? 0) >= 2) {
+  } else if ((row.relative_strength_20d ?? 0) >= 1) {
     score += 2
-  } else if ((row.relative_strength_20d ?? 0) >= 0.5) {
+  } else if ((row.relative_strength_20d ?? 0) >= -0.5) {
     score += 1
   }
 
-  if ((row.volume_ratio ?? 0) >= 1.5) {
+  if ((row.volume_ratio ?? 0) >= 1.3) {
     score += 2
     reasons.push("volume expansion")
-  } else if ((row.volume_ratio ?? 0) >= 1.0) {
+  } else if ((row.volume_ratio ?? 0) >= 0.9) {
     score += 1
   }
 
@@ -375,23 +367,23 @@ function getSelectionScore(
   } else if (row.breakout_10d) {
     score += 1.5
     reasons.push("10d breakout")
-  } else if ((row.breakout_clearance_pct ?? -999) >= -0.5) {
+  } else if ((row.breakout_clearance_pct ?? -999) >= -1) {
     score += 0.75
     reasons.push("near breakout")
   }
 
-  if ((row.close_in_day_range ?? 0) >= 0.65) {
+  if ((row.close_in_day_range ?? 0) >= 0.6) {
     score += 1.5
     reasons.push("strong close")
-  } else if ((row.close_in_day_range ?? 0) >= 0.5) {
+  } else if ((row.close_in_day_range ?? 0) >= 0.45) {
     score += 0.5
   }
 
-  if ((row.extension_from_sma20_pct ?? 999) <= 12) {
+  if ((row.extension_from_sma20_pct ?? 999) <= 14) {
     score += 1
     reasons.push("not too extended")
-  } else if ((row.extension_from_sma20_pct ?? 999) > 18) {
-    score -= 2
+  } else if ((row.extension_from_sma20_pct ?? 999) > 20) {
+    score -= 1.5
     reasons.push("too extended")
   }
 
@@ -418,9 +410,9 @@ function buildRankedRows(
       const { selectionScore, reasons } = getSelectionScore(row, ptrSummary)
 
       let bucket: "strict" | "balanced" | "fallback" = "fallback"
-      if (isStrictEligible(row)) bucket = "strict"
-      else if (isBalancedEligible(row)) bucket = "balanced"
-      else if (isFallbackEligible(row)) bucket = "fallback"
+      if (isStrictEligible(row, ptrSummary)) bucket = "strict"
+      else if (isBalancedEligible(row, ptrSummary)) bucket = "balanced"
+      else if (isFallbackEligible(row, ptrSummary)) bucket = "fallback"
       else return null
 
       return {
@@ -462,29 +454,27 @@ function buildRankedRows(
     })
 }
 
-function selectFinalRows(
-  ranked: RankedRow[],
-  maxFinalCandidates: number,
-  targetMinFinalCandidates: number
-) {
+function selectFinalRows(ranked: RankedRow[], limit: number, targetMin: number) {
   const strictRows = ranked.filter((item) => item.bucket === "strict")
   const balancedRows = ranked.filter((item) => item.bucket === "balanced")
   const fallbackRows = ranked.filter((item) => item.bucket === "fallback")
 
-  const selected: RankedRow[] = []
+  let selected: RankedRow[] = []
 
-  selected.push(...strictRows.slice(0, Math.min(12, maxFinalCandidates)))
+  selected.push(...strictRows.slice(0, Math.min(14, limit)))
 
-  if (selected.length < targetMinFinalCandidates) {
-    const needed = targetMinFinalCandidates - selected.length
-    selected.push(...balancedRows.slice(0, Math.max(needed, 6)))
+  if (selected.length < targetMin) {
+    const needed = targetMin - selected.length
+    selected.push(...balancedRows.slice(0, Math.max(needed, 8)))
   } else {
-    selected.push(...balancedRows.slice(0, 6))
+    selected.push(...balancedRows.slice(0, 8))
   }
 
-  if (selected.length < targetMinFinalCandidates) {
-    const stillNeeded = targetMinFinalCandidates - selected.length
-    selected.push(...fallbackRows.slice(0, stillNeeded))
+  if (selected.length < targetMin) {
+    const stillNeeded = targetMin - selected.length
+    selected.push(...fallbackRows.slice(0, Math.max(stillNeeded, 6)))
+  } else {
+    selected.push(...fallbackRows.slice(0, 6))
   }
 
   const seen = new Set<string>()
@@ -495,7 +485,7 @@ function selectFinalRows(
     return true
   })
 
-  return deduped.slice(0, maxFinalCandidates)
+  return deduped.slice(0, limit)
 }
 
 function toUniverseRow(
@@ -578,16 +568,14 @@ export async function GET(request: Request) {
     })
 
     const { searchParams } = new URL(request.url)
-    const maxFinalCandidates = Math.min(
-      Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_MAX_FINAL_CANDIDATES)),
-      MAX_FINAL_CANDIDATES_CAP
+    const limit = Math.min(
+      Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT)),
+      MAX_LIMIT
     )
-    const targetMinFinalCandidates = Math.min(
-      Math.max(1, parseInteger(searchParams.get("targetMin"), DEFAULT_TARGET_MIN_FINAL_CANDIDATES)),
-      maxFinalCandidates
+    const targetMin = Math.min(
+      Math.max(1, parseInteger(searchParams.get("targetMin"), DEFAULT_TARGET_MIN)),
+      MAX_TARGET_MIN
     )
-    const includePreview =
-      (searchParams.get("includePreview") || "false").toLowerCase() === "true"
 
     const candidateHistoryTable = supabase.from("candidate_screen_history") as any
     const candidateUniverseTable = supabase.from("candidate_universe") as any
@@ -633,7 +621,7 @@ export async function GET(request: Request) {
           )
       )
 
-      if (viableRows.length >= 10) {
+      if (viableRows.length >= 12) {
         screenedOn = candidateDate
         snapshotRows = typedRows
         break
@@ -671,7 +659,7 @@ export async function GET(request: Request) {
       try {
         const { data: ptrRows, error: ptrError } = await supabase
           .from("raw_ptr_trades")
-          .select("filer_name, politician_name, ticker, action, transaction_date, report_date, amount_low, amount_high")
+          .select("filer_name, ticker, action, transaction_date, report_date, amount_low, amount_high")
           .in("ticker", snapshotTickers)
           .or(`transaction_date.gte.${ptrCutoffString},report_date.gte.${ptrCutoffString}`)
 
@@ -697,11 +685,7 @@ export async function GET(request: Request) {
     const balancedCount = rankedRows.filter((item) => item.bucket === "balanced").length
     const fallbackCount = rankedRows.filter((item) => item.bucket === "fallback").length
 
-    const selectedRankedRows = selectFinalRows(
-      rankedRows,
-      maxFinalCandidates,
-      targetMinFinalCandidates
-    )
+    const selectedRankedRows = selectFinalRows(rankedRows, limit, targetMin)
 
     if (!selectedRankedRows.length) {
       return Response.json(
@@ -722,9 +706,9 @@ export async function GET(request: Request) {
       )
     }
 
-    const selectedTickers = new Set(selectedRankedRows.map((item) => normalizeTicker(item.row.ticker)))
+    const selectedTickers = new Set(selectedRankedRows.map((item) => item.row.ticker))
     const selectedSource =
-      strictCount >= targetMinFinalCandidates
+      strictCount >= targetMin
         ? "strict-led"
         : balancedCount > 0
           ? "balanced-led"
@@ -734,69 +718,67 @@ export async function GET(request: Request) {
       toUniverseRow(item, selectedSource)
     )
 
-    if (!includePreview) {
-      const deleteError = await deleteAllUniverseRows(candidateUniverseTable)
-      if (deleteError) {
-        return Response.json(
-          {
-            ok: false,
-            error: "Failed clearing candidate universe before finalization",
-            debug: { deleteError },
-          },
-          { status: 500 }
-        )
-      }
+    const deleteError = await deleteAllUniverseRows(candidateUniverseTable)
+    if (deleteError) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Failed clearing candidate universe before finalization",
+          debug: { deleteError },
+        },
+        { status: 500 }
+      )
+    }
 
-      const universeWrite = await upsertUniverseInChunks(candidateUniverseTable, universeRows)
-      if (universeWrite.errorCount > 0) {
-        return Response.json(
-          {
-            ok: false,
-            error: "Failed writing finalized candidate universe",
-            debug: {
-              errorCount: universeWrite.errorCount,
-              errorSamples: universeWrite.errors.slice(0, 5),
-            },
+    const universeWrite = await upsertUniverseInChunks(candidateUniverseTable, universeRows)
+    if (universeWrite.errorCount > 0) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Failed writing finalized candidate universe",
+          debug: {
+            errorCount: universeWrite.errorCount,
+            errorSamples: universeWrite.errors.slice(0, 5),
           },
-          { status: 500 }
-        )
-      }
+        },
+        { status: 500 }
+      )
+    }
 
-      const { error: markFalseError } = await candidateHistoryTable
-        .update({ included: false })
+    const { error: markFalseError } = await candidateHistoryTable
+      .update({ included: false })
+      .eq("screened_on", screenedOn)
+
+    if (markFalseError) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Failed resetting included flags on candidate history",
+          debug: {
+            message: markFalseError.message,
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    for (const chunk of chunkArray([...selectedTickers], DB_CHUNK_SIZE)) {
+      const { error } = await candidateHistoryTable
+        .update({ included: true })
         .eq("screened_on", screenedOn)
+        .in("ticker", chunk)
 
-      if (markFalseError) {
+      if (error) {
         return Response.json(
           {
             ok: false,
-            error: "Failed resetting included flags on candidate history",
+            error: "Failed marking finalized rows in candidate history",
             debug: {
-              message: markFalseError.message,
+              message: error.message,
             },
           },
           { status: 500 }
         )
-      }
-
-      for (const chunk of chunkArray([...selectedTickers], DB_CHUNK_SIZE)) {
-        const { error } = await candidateHistoryTable
-          .update({ included: true })
-          .eq("screened_on", screenedOn)
-          .in("ticker", chunk)
-
-        if (error) {
-          return Response.json(
-            {
-              ok: false,
-              error: "Failed marking finalized rows in candidate history",
-              debug: {
-                message: error.message,
-              },
-            },
-            { status: 500 }
-          )
-        }
       }
     }
 
@@ -818,15 +800,6 @@ export async function GET(request: Request) {
       ptrSelectedCount,
       firstTicker: universeRows[0]?.ticker ?? null,
       lastTicker: universeRows[universeRows.length - 1]?.ticker ?? null,
-      preview: includePreview
-        ? universeRows.map((row, index) => ({
-            rank: index + 1,
-            ticker: row.ticker,
-            name: row.name,
-            candidate_score: row.candidate_score,
-            screen_reason: row.screen_reason,
-          }))
-        : undefined,
     })
   } catch (error: any) {
     return Response.json(
