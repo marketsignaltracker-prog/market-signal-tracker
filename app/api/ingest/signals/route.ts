@@ -185,7 +185,7 @@ const RETENTION_DAYS = 30
 const SCORE_VERSION = "v9-priority-signals"
 const DB_CHUNK_SIZE = 100
 
-const MIN_SIGNAL_APP_SCORE = 55
+const DEFAULT_MIN_SIGNAL_APP_SCORE = 55
 const MIN_CANDIDATE_SCORE = 56
 const PTR_LOOKBACK_DAYS = 60
 const PTR_RECENT_DAYS = 14
@@ -380,15 +380,9 @@ function buildPtrSummaryMap(rows: RawPtrTradeRow[]) {
 
     const summaryParts: string[] = []
     if (buys.length > 0) summaryParts.push(`${buys.length} buy${buys.length === 1 ? "" : "s"}`)
-    if (uniqueBuyFilers > 0) {
-      summaryParts.push(`${uniqueBuyFilers} buyer${uniqueBuyFilers === 1 ? "" : "s"}`)
-    }
-    if (recentBuyCount > 0) {
-      summaryParts.push(`${recentBuyCount} recent`)
-    }
-    if (totalBuyAmountLow > 0) {
-      summaryParts.push(`min disclosed $${totalBuyAmountLow.toLocaleString()}`)
-    }
+    if (uniqueBuyFilers > 0) summaryParts.push(`${uniqueBuyFilers} buyer${uniqueBuyFilers === 1 ? "" : "s"}`)
+    if (recentBuyCount > 0) summaryParts.push(`${recentBuyCount} recent`)
+    if (totalBuyAmountLow > 0) summaryParts.push(`min disclosed $${totalBuyAmountLow.toLocaleString()}`)
 
     output.set(ticker, {
       buyTradeCount: buys.length,
@@ -433,7 +427,14 @@ function buildFilingSummaryMap(rows: RawFilingRow[]) {
       if (!form) continue
       forms.push(form)
 
-      if (form === "3" || form === "4" || form === "4/A" || form === "5" || form === "3/A" || form === "5/A") {
+      if (
+        form === "3" ||
+        form === "4" ||
+        form === "4/A" ||
+        form === "5" ||
+        form === "3/A" ||
+        form === "5/A"
+      ) {
         insiderFormCount += 1
       }
 
@@ -628,7 +629,6 @@ function buildSignalRow(
 
   const companyId = getContextCompanyId(context)
   const scored = scoreCandidateSignal({ context, filingSummary, ptrSummary })
-
   const signalKey = buildSignalKey(ticker, runDate)
 
   const title =
@@ -662,25 +662,16 @@ function buildSignalRow(
     filingSummary?.latestFiledAt ??
     runDate
 
-  const sourceForms = uniqueStrings([
-    ...(filingSummary?.forms || []),
-  ])
+  const sourceForms = uniqueStrings([...(filingSummary?.forms || [])])
 
-  const sourceCategory =
-    ptrSummary?.buyTradeCount
-      ? "PTR / Filings / Signals Priority Buy"
-      : filingSummary?.hasForm4 || filingSummary?.has13DOr13G || filingSummary?.hasCatalystForm
-        ? "Filings / Signals Priority Buy"
-        : "Signals Priority Buy"
-
-  const sourceType =
+  const signalType =
     ptrSummary?.buyTradeCount
       ? "Priority Multi-Signal Buy"
       : filingSummary?.hasForm4 || filingSummary?.has13DOr13G || filingSummary?.hasCatalystForm
         ? "Priority Filing Signal"
         : "Priority Signal"
 
-  const sourceSignal =
+  const signalSource =
     ptrSummary?.buyTradeCount
       ? "ptr+signals"
       : filingSummary?.hasForm4
@@ -691,6 +682,13 @@ function buildSignalRow(
             ? "8k"
             : "breakout"
 
+  const signalCategory =
+    ptrSummary?.buyTradeCount
+      ? "PTR / Filings / Signals Priority Buy"
+      : filingSummary?.hasForm4 || filingSummary?.has13DOr13G || filingSummary?.hasCatalystForm
+        ? "Filings / Signals Priority Buy"
+        : "Signals Priority Buy"
+
   return {
     signal_key: signalKey,
     company_id: companyId,
@@ -700,10 +698,9 @@ function buildSignalRow(
     pe_ratio: round2(context.pe_ratio ?? null),
     pe_forward: round2(context.pe_forward ?? null),
     pe_type: context.pe_type ?? null,
-    source_type: sourceType,
-    signal_type: sourceType,
-    signal_source: sourceSignal,
-    signal_category: sourceCategory,
+    signal_type: signalType,
+    signal_source: signalSource,
+    signal_category: signalCategory,
     signal_strength_bucket: getStrengthBucket(scored.appScore),
     signal_tags: uniqueStrings([
       "priority-signal",
@@ -731,12 +728,14 @@ function buildSignalRow(
     source_form: sourceForms[0] ?? null,
     filed_at: latestFiledAt,
     filing_url: null,
-    accession_no: `${signalKey}`,
+    accession_no: signalKey,
     insider_action: null,
     insider_shares: null,
     insider_avg_price: null,
     insider_buy_value: ptrSummary?.totalBuyAmountLow ?? null,
-    insider_signal_flavor: ptrSummary?.buyTradeCount ? "PTR + Filings + Technical" : "Filings + Technical",
+    insider_signal_flavor: ptrSummary?.buyTradeCount
+      ? "PTR + Filings + Technical"
+      : "Filings + Technical",
     cluster_buyers: ptrSummary?.uniqueBuyFilers ?? null,
     cluster_shares: null,
     price_return_5d: round2(context.return_5d ?? null),
@@ -770,6 +769,7 @@ function buildSignalRow(
               : "aging",
     last_scored_at: runTimestamp,
     updated_at: runTimestamp,
+    created_at: runTimestamp,
     score_breakdown: scored.breakdown,
     score_version: SCORE_VERSION,
     score_updated_at: runTimestamp,
@@ -785,12 +785,12 @@ function buildSignalRow(
     ticker_score_change_7d: null,
     source_forms: sourceForms,
     accession_nos: [],
-    created_at: runTimestamp,
   }
 }
 
 function buildSignalHistoryRow(signalRow: any, runDate: string, runTimestamp: string) {
   return {
+    signal_history_key: buildHistoryKey(runDate, signalRow.signal_key),
     signal_key: signalRow.signal_key,
     company_id: signalRow.company_id ?? null,
     ticker: signalRow.ticker,
@@ -799,7 +799,6 @@ function buildSignalHistoryRow(signalRow: any, runDate: string, runTimestamp: st
     pe_ratio: signalRow.pe_ratio,
     pe_forward: signalRow.pe_forward,
     pe_type: signalRow.pe_type,
-    source_type: signalRow.source_type ?? null,
     signal_type: signalRow.signal_type,
     signal_source: signalRow.signal_source,
     signal_category: signalRow.signal_category,
@@ -847,8 +846,6 @@ function buildSignalHistoryRow(signalRow: any, runDate: string, runTimestamp: st
     score_caps_applied: signalRow.score_caps_applied,
     ticker_score_change_1d: signalRow.ticker_score_change_1d,
     ticker_score_change_7d: signalRow.ticker_score_change_7d,
-    signal_history_key: buildHistoryKey(runDate, signalRow.signal_key),
-    scored_on: runDate,
     created_at: runTimestamp,
   }
 }
@@ -856,14 +853,63 @@ function buildSignalHistoryRow(signalRow: any, runDate: string, runTimestamp: st
 async function loadCandidateContext(
   supabase: any,
   limit: number,
-  candidateCutoffDateString: string
+  candidateCutoffDateString: string,
+  onlyActive: boolean
 ): Promise<{
   candidateRows: ContextRow[]
   candidateUniverseRowsLoaded: number
   candidateHistoryRowsLoaded: number
   fallbackCandidateSourceUsed: boolean
 }> {
-  const universeQuery = await supabase
+  const latestScreenedQuery = await supabase
+    .from("candidate_screen_history")
+    .select("screened_on")
+    .order("screened_on", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestScreenedQuery.error) {
+    throw new Error(
+      `candidate_screen_history latest snapshot lookup failed: ${latestScreenedQuery.error.message}`
+    )
+  }
+
+  const latestScreenedOn = latestScreenedQuery.data?.screened_on ?? null
+
+  if (latestScreenedOn) {
+    let historyQuery = supabase
+      .from("candidate_screen_history")
+      .select(
+        "id, company_id, ticker, cik, name, is_active, is_eligible, has_insider_trades, has_ptr_forms, has_clusters, eligibility_reason, price, market_cap, pe_ratio, pe_forward, pe_type, sector, industry, business_description, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, relative_strength_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, passes_price, passes_volume, passes_dollar_volume, passes_market_cap, candidate_score, included, screen_reason, last_screened_at, updated_at, screened_on"
+      )
+      .eq("screened_on", latestScreenedOn)
+      .gte("candidate_score", MIN_CANDIDATE_SCORE)
+      .order("candidate_score", { ascending: false })
+      .limit(limit)
+
+    if (onlyActive) {
+      historyQuery = historyQuery.eq("is_active", true)
+    }
+
+    const historyResult = await historyQuery
+
+    if (historyResult.error) {
+      throw new Error(`candidate_screen_history snapshot load failed: ${historyResult.error.message}`)
+    }
+
+    const historyRows = (historyResult.data || []) as CandidateHistoryRow[]
+
+    if (historyRows.length > 0) {
+      return {
+        candidateRows: historyRows,
+        candidateUniverseRowsLoaded: 0,
+        candidateHistoryRowsLoaded: historyRows.length,
+        fallbackCandidateSourceUsed: true,
+      }
+    }
+  }
+
+  let universeQuery = supabase
     .from("candidate_universe")
     .select(
       "company_id, ticker, cik, name, is_active, is_eligible, has_insider_trades, has_ptr_forms, has_clusters, eligibility_reason, price, market_cap, pe_ratio, pe_forward, pe_type, sector, industry, business_description, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, relative_strength_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, passes_price, passes_volume, passes_dollar_volume, passes_market_cap, candidate_score, included, screen_reason, last_screened_at, updated_at"
@@ -873,79 +919,23 @@ async function loadCandidateContext(
     .order("candidate_score", { ascending: false })
     .limit(limit)
 
-  if (universeQuery.error) {
-    throw new Error(`candidate_universe load failed: ${universeQuery.error.message}`)
+  if (onlyActive) {
+    universeQuery = universeQuery.eq("is_active", true)
   }
 
-  const universeRows = (universeQuery.data || []) as CandidateUniverseRow[]
+  const universeResult = await universeQuery
 
-  if (universeRows.length >= Math.min(20, limit)) {
-    return {
-      candidateRows: universeRows,
-      candidateUniverseRowsLoaded: universeRows.length,
-      candidateHistoryRowsLoaded: 0,
-      fallbackCandidateSourceUsed: false,
-    }
+  if (universeResult.error) {
+    throw new Error(`candidate_universe load failed: ${universeResult.error.message}`)
   }
 
-  const latestScreened = await supabase
-    .from("candidate_screen_history")
-    .select("screened_on")
-    .order("screened_on", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (latestScreened.error) {
-    throw new Error(`candidate_screen_history latest snapshot lookup failed: ${latestScreened.error.message}`)
-  }
-
-  const screenedOn = latestScreened.data?.screened_on ?? null
-  if (!screenedOn) {
-    return {
-      candidateRows: universeRows,
-      candidateUniverseRowsLoaded: universeRows.length,
-      candidateHistoryRowsLoaded: 0,
-      fallbackCandidateSourceUsed: false,
-    }
-  }
-
-  const historyQuery = await supabase
-    .from("candidate_screen_history")
-    .select(
-      "id, company_id, ticker, cik, name, is_active, is_eligible, has_insider_trades, has_ptr_forms, has_clusters, eligibility_reason, price, market_cap, pe_ratio, pe_forward, pe_type, sector, industry, business_description, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, relative_strength_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, passes_price, passes_volume, passes_dollar_volume, passes_market_cap, candidate_score, included, screen_reason, last_screened_at, updated_at, screened_on"
-    )
-    .eq("screened_on", screenedOn)
-    .gte("candidate_score", MIN_CANDIDATE_SCORE)
-    .order("candidate_score", { ascending: false })
-    .limit(limit)
-
-  if (historyQuery.error) {
-    throw new Error(`candidate_screen_history snapshot load failed: ${historyQuery.error.message}`)
-  }
-
-  const historyRows = (historyQuery.data || []) as CandidateHistoryRow[]
-
-  const deduped = new Map<string, ContextRow>()
-
-  for (const row of universeRows) {
-    const ticker = normalizeTicker(row.ticker)
-    if (!ticker) continue
-    deduped.set(ticker, row)
-  }
-
-  for (const row of historyRows) {
-    const ticker = normalizeTicker(row.ticker)
-    if (!ticker) continue
-    if (!deduped.has(ticker)) {
-      deduped.set(ticker, row)
-    }
-  }
+  const universeRows = (universeResult.data || []) as CandidateUniverseRow[]
 
   return {
-    candidateRows: [...deduped.values()].slice(0, limit),
+    candidateRows: universeRows,
     candidateUniverseRowsLoaded: universeRows.length,
-    candidateHistoryRowsLoaded: historyRows.length,
-    fallbackCandidateSourceUsed: historyRows.length > 0,
+    candidateHistoryRowsLoaded: 0,
+    fallbackCandidateSourceUsed: false,
   }
 }
 
@@ -985,6 +975,12 @@ export async function GET(request: Request) {
       Math.max(1, parseInteger(searchParams.get("lookbackDays"), DEFAULT_LOOKBACK_DAYS)),
       MAX_LOOKBACK_DAYS
     )
+    const minSignalStrength = Math.max(
+      0,
+      Math.min(100, parseInteger(searchParams.get("minSignalStrength"), DEFAULT_MIN_SIGNAL_APP_SCORE))
+    )
+    const onlyActive =
+      (searchParams.get("onlyActive") || "true").toLowerCase() !== "false"
     const includeCounts =
       (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
     const runRetention =
@@ -1019,16 +1015,20 @@ export async function GET(request: Request) {
     }
 
     const [candidateContext, rawFilingsQuery, rawPtrTradesQuery] = await Promise.all([
-      loadCandidateContext(supabase, limit, candidateCutoffDateString),
+      loadCandidateContext(supabase, limit, candidateCutoffDateString, onlyActive),
       supabase
         .from("raw_filings")
-        .select("company_id, ticker, company_name, filed_at, form_type, filing_url, accession_no, cik, primary_doc, fetched_at")
+        .select(
+          "company_id, ticker, company_name, filed_at, form_type, filing_url, accession_no, cik, primary_doc, fetched_at"
+        )
         .gte("filed_at", cutoffDateString)
         .order("filed_at", { ascending: false })
         .limit(limit * 10),
       supabase
         .from("raw_ptr_trades")
-        .select("ticker, filer_name, action, transaction_date, report_date, amount_low, amount_high, amount_range")
+        .select(
+          "ticker, filer_name, action, transaction_date, report_date, amount_low, amount_high, amount_range"
+        )
         .or(`transaction_date.gte.${ptrCutoffString},report_date.gte.${ptrCutoffString}`)
         .limit(limit * 20),
     ])
@@ -1085,7 +1085,7 @@ export async function GET(request: Request) {
 
       if (!signalRow) continue
 
-      if (signalRow.app_score < MIN_SIGNAL_APP_SCORE) {
+      if (signalRow.app_score < minSignalStrength) {
         diagnostics.filteredBelowSignalScore += 1
         continue
       }
@@ -1186,7 +1186,7 @@ export async function GET(request: Request) {
       lookbackDays,
       retainedDays: RETENTION_DAYS,
       scoreVersion: SCORE_VERSION,
-      minSignalAppScore: MIN_SIGNAL_APP_SCORE,
+      minSignalAppScore: minSignalStrength,
       retentionCleanup: retentionMessage,
       diagnostics,
       message:
