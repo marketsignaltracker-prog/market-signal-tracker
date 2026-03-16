@@ -310,6 +310,18 @@ function buildPtrSummaryMap(rows: PtrTradeRow[]) {
       sells.length >= 2 &&
       (recentSellCount >= 1 || totalSellAmountLow >= 250_001)
 
+    const summaryParts: string[] = []
+    if (buys.length > 0) summaryParts.push(`${buys.length} buy${buys.length === 1 ? "" : "s"}`)
+    if (uniqueBuyFilers > 0) {
+      summaryParts.push(`${uniqueBuyFilers} buyer${uniqueBuyFilers === 1 ? "" : "s"}`)
+    }
+    if (recentBuyCount > 0) {
+      summaryParts.push(`${recentBuyCount} recent`)
+    }
+    if (totalBuyAmountLow > 0) {
+      summaryParts.push(`min disclosed $${totalBuyAmountLow.toLocaleString()}`)
+    }
+
     output.set(ticker, {
       ticker,
       ptrBonus,
@@ -330,6 +342,7 @@ function buildPtrSummaryMap(rows: PtrTradeRow[]) {
       notes,
       summary: summaryParts.length ? `PTR support: ${summaryParts.join(", ")}` : null,
     })
+  }
 
   return output
 }
@@ -404,7 +417,7 @@ function buildTickerScoresCurrentRows(
     if (sorted.length >= 4) stackedScore += 1
     if (sorted.length >= 5) stackedScore += 1
 
-        if (ptr) {
+            if (ptr) {
       stackedScore += ptr.ptrBonus + 4
       stackedScore += ptr.ptrPenalty
       scoreBreakdown.ptr =
