@@ -140,8 +140,8 @@ type AInvestResponse = {
   message?: string
 }
 
-type PageFetchResult = {
-  page: number
+type FetchResult = {
+  ticker: string | null
   ok: boolean
   rows: RawPtrTradeRow[]
   upstreamCount: number
@@ -155,34 +155,21 @@ type Diagnostics = {
   candidateScreenHistoryRowsLoaded: number
   sourceRowsLoaded: number
   fallbackCandidateHistoryUsed: boolean
-
-  pagesRequested: number
-  pagesSucceeded: number
-  pagesFailed: number
-  pageSize: number
-  maxPages: number
-
-  upstreamRows: number
-  normalizedRows: number
+  successfulTickerFetches: number
+  failedTickerFetches: number
+  scannedRows: number
   dedupedRows: number
   insertedOrUpdated: number
-
-  stoppedBecauseShortPage: boolean
-  stoppedBecauseMaxPages: boolean
-  allowlistTickerCount: number
 }
 
 const DB_CHUNK_SIZE = 200
 const API_TIMEOUT_MS = 15000
+const API_CONCURRENCY = 4
 const DEFAULT_BATCH = 50
 const MAX_BATCH = 100
 const DEFAULT_START = 0
-
-const DEFAULT_PAGE_SIZE = 100
-const MAX_PAGE_SIZE = 200
-const DEFAULT_MAX_PAGES = 5
-const MAX_MAX_PAGES = 25
-
+const DEFAULT_LIMIT_PER_TICKER = 20
+const MAX_LIMIT_PER_TICKER = 50
 const CANDIDATE_LOOKBACK_DAYS = 60
 const AINVEST_CONGRESS_URL = "https://openapi.ainvest.com/open/ownership/congress"
 
@@ -356,6 +343,32 @@ async function fetchWithTimeout(url: string, token: string) {
   } finally {
     clearTimeout(timeout)
   }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  async function runner() {
+    while (true) {
+      const current = nextIndex
+      nextIndex += 1
+      if (current >= items.length) return
+      results[current] = await worker(items[current], current)
+    }
+  }
+
+  const runners = Array.from(
+    { length: Math.min(concurrency, Math.max(items.length, 1)) },
+    () => runner()
+  )
+
+  await Promise.all(runners)
+  return results
 }
 
 async function upsertRows(supabase: any, rows: RawPtrTradeRow[]) {
@@ -555,27 +568,11 @@ function extractTradeArray(parsed: AInvestResponse): AInvestTradeRow[] {
   return []
 }
 
-function extractTickerFromTrade(row: AInvestTradeRow) {
-  return normalizeTicker(
-    row.ticker ||
-      row.symbol ||
-      row.stock_symbol ||
-      row.stockTicker ||
-      row.code ||
-      row.security_code ||
-      row.securityCode ||
-      row.asset_symbol ||
-      row.assetSymbol
-  )
-}
-
 function normalizeAInvestTrade(
+  requestedTicker: string,
   row: AInvestTradeRow,
   fetchedAt: string
 ): RawPtrTradeRow | null {
-  const ticker = extractTickerFromTrade(row)
-  if (!ticker) return null
-
   const filerName = String(
     row.name || row.politician || row.filer || row.member || ""
   ).trim()
@@ -592,22 +589,18 @@ function normalizeAInvestTrade(
       row.reportDate ||
       row.report_date
   )
-
   const rawAction =
     row.transaction_type || row.trade_type || row.type || row.action || null
-
   const normalizedAction = normalizeAction(rawAction)
   const transactionType = normalizeTransactionType(rawAction)
-
   const amountRange =
     String(row.size || row.amount || row.amount_range || "").trim() || null
-
   const amounts = parseAmountRange(amountRange)
   const ptrUrl = row.link || row.url || row.source_url || row.sourceUrl || null
 
   const tradeKey = buildTradeKey({
     filer: filerName,
-    ticker,
+    ticker: requestedTicker,
     transaction_date: transactionDate,
     action: normalizedAction,
     amount_range: amountRange,
@@ -622,8 +615,8 @@ function normalizeAInvestTrade(
     district_or_state: row.district || row.state || null,
     report_date: reportDate,
     transaction_date: transactionDate,
-    ticker,
-    asset_name: row.asset_name || row.asset || ticker,
+    ticker: requestedTicker,
+    asset_name: row.asset_name || row.asset || requestedTicker,
     asset_type: row.asset_type || row.assetType || "Stock",
     action: normalizedAction,
     amount_range: amountRange,
@@ -643,15 +636,6 @@ function normalizeAInvestTrade(
     source_url: ptrUrl,
     ptr_id: tradeKey,
   }
-}
-
-function buildAllowlistFromSourceRows(rows: SourceRow[]) {
-  const out = new Set<string>()
-  for (const row of rows) {
-    const ticker = normalizeTicker(row.ticker)
-    if (ticker) out.add(ticker)
-  }
-  return out
 }
 
 export async function GET(request: Request) {
@@ -674,23 +658,16 @@ export async function GET(request: Request) {
     const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
 
-    const scopeParam = (searchParams.get("scope") || "all").toLowerCase()
+    const scopeParam = (searchParams.get("scope") || "eligible").toLowerCase()
     const start = Math.max(0, parseInteger(searchParams.get("start"), DEFAULT_START))
     const batch = Math.min(
       Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)),
       MAX_BATCH
     )
-
-    const pageSize = Math.min(
-      Math.max(1, parseInteger(searchParams.get("size"), DEFAULT_PAGE_SIZE)),
-      MAX_PAGE_SIZE
+    const perTickerLimit = Math.min(
+      Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT_PER_TICKER)),
+      MAX_LIMIT_PER_TICKER
     )
-
-    const maxPages = Math.min(
-      Math.max(1, parseInteger(searchParams.get("maxPages"), DEFAULT_MAX_PAGES)),
-      MAX_MAX_PAGES
-    )
-
     const onlyActive =
       (searchParams.get("onlyActive") || "true").toLowerCase() !== "false"
     const includeCounts =
@@ -715,32 +692,20 @@ export async function GET(request: Request) {
       candidateScreenHistoryRowsLoaded: 0,
       sourceRowsLoaded: 0,
       fallbackCandidateHistoryUsed: false,
-
-      pagesRequested: 0,
-      pagesSucceeded: 0,
-      pagesFailed: 0,
-      pageSize,
-      maxPages,
-
-      upstreamRows: 0,
-      normalizedRows: 0,
+      successfulTickerFetches: 0,
+      failedTickerFetches: 0,
+      scannedRows: 0,
       dedupedRows: 0,
       insertedOrUpdated: 0,
-
-      stoppedBecauseShortPage: false,
-      stoppedBecauseMaxPages: false,
-      allowlistTickerCount: 0,
     }
 
     let sourceRows: SourceRow[] = []
-    let allowlist: Set<string> | null = null
 
     if (scope === "all") {
       const allContext = await loadCompaniesContext(supabase, start, batch, onlyActive)
       sourceRows = allContext.rows
       diagnostics.companiesRowsLoaded = allContext.companiesRowsLoaded
       diagnostics.sourceRowsLoaded = allContext.rows.length
-      allowlist = null
     }
 
     if (scope === "eligible") {
@@ -748,7 +713,6 @@ export async function GET(request: Request) {
       sourceRows = eligibleContext.rows
       diagnostics.candidateUniverseRowsLoaded = eligibleContext.candidateUniverseRowsLoaded
       diagnostics.sourceRowsLoaded = eligibleContext.rows.length
-      allowlist = buildAllowlistFromSourceRows(sourceRows)
     }
 
     if (scope === "candidates") {
@@ -759,130 +723,102 @@ export async function GET(request: Request) {
         candidateContext.candidateScreenHistoryRowsLoaded
       diagnostics.fallbackCandidateHistoryUsed = candidateContext.fallbackCandidateHistoryUsed
       diagnostics.sourceRowsLoaded = candidateContext.candidateRows.length
-      allowlist = buildAllowlistFromSourceRows(sourceRows)
     }
 
-    diagnostics.allowlistTickerCount = allowlist?.size ?? 0
-
     const fetchedAt = new Date().toISOString()
-    const pageDiagnostics: Array<{
-      page: number
-      ok: boolean
-      upstreamCount: number
-      normalizedRows: number
-      keptRows: number
-      error: string | null
-    }> = []
 
-    const allRows: RawPtrTradeRow[] = []
+    const fetchResults = await mapWithConcurrency<SourceRow, FetchResult>(
+      sourceRows,
+      API_CONCURRENCY,
+      async (row) => {
+        const ticker = normalizeTicker(row.ticker)
 
-    for (let page = 1; page <= maxPages; page += 1) {
-      diagnostics.pagesRequested += 1
+        if (!ticker) {
+          return {
+            ticker: null,
+            ok: false,
+            rows: [],
+            upstreamCount: 0,
+            error: "Missing ticker",
+          }
+        }
 
-      const url = new URL(AINVEST_CONGRESS_URL)
-      url.searchParams.set("page", String(page))
-      url.searchParams.set("size", String(pageSize))
+        const url = new URL(AINVEST_CONGRESS_URL)
+        url.searchParams.set("ticker", ticker)
+        url.searchParams.set("page", "1")
+        url.searchParams.set("size", String(perTickerLimit))
 
-      let upstreamRows: AInvestTradeRow[] = []
+        try {
+          const res = await fetchWithTimeout(url.toString(), ainvestToken)
+          const contentType = res.headers.get("content-type") || ""
+          const rawBody = await res.text()
 
-      try {
-        const res = await fetchWithTimeout(url.toString(), ainvestToken)
-        const contentType = res.headers.get("content-type") || ""
-        const rawBody = await res.text()
+          if (!res.ok) {
+            let message = rawBody.slice(0, 300)
 
-        if (!res.ok) {
-          let message = rawBody.slice(0, 300)
+            if (contentType.includes("application/json")) {
+              try {
+                const parsedError = JSON.parse(rawBody)
+                message =
+                  parsedError?.message ||
+                  parsedError?.status_msg ||
+                  JSON.stringify(parsedError).slice(0, 300)
+              } catch {
+                // keep raw fallback
+              }
+            }
 
-          if (contentType.includes("application/json")) {
-            try {
-              const parsedError = JSON.parse(rawBody)
-              message =
-                parsedError?.message ||
-                parsedError?.status_msg ||
-                JSON.stringify(parsedError).slice(0, 300)
-            } catch {
-              // keep raw fallback
+            return {
+              ticker,
+              ok: false,
+              rows: [],
+              upstreamCount: 0,
+              error: `AInvest ${res.status}: ${message}`,
             }
           }
 
-          diagnostics.pagesFailed += 1
-          pageDiagnostics.push({
-            page,
+          let parsed: AInvestResponse
+          try {
+            parsed = JSON.parse(rawBody) as AInvestResponse
+          } catch {
+            return {
+              ticker,
+              ok: false,
+              rows: [],
+              upstreamCount: 0,
+              error: `AInvest returned non-JSON response: ${rawBody.slice(0, 300)}`,
+            }
+          }
+
+          const tradeRows = extractTradeArray(parsed)
+          const normalizedRows = tradeRows
+            .map((trade) => normalizeAInvestTrade(ticker, trade, fetchedAt))
+            .filter((trade): trade is RawPtrTradeRow => trade !== null)
+
+          return {
+            ticker,
+            ok: true,
+            rows: normalizedRows,
+            upstreamCount: tradeRows.length,
+            error: null,
+          }
+        } catch (error: any) {
+          return {
+            ticker,
             ok: false,
+            rows: [],
             upstreamCount: 0,
-            normalizedRows: 0,
-            keptRows: 0,
-            error: `AInvest ${res.status}: ${message}`,
-          })
-          break
+            error: error?.message || "Unknown AInvest error",
+          }
         }
-
-        let parsed: AInvestResponse
-        try {
-          parsed = JSON.parse(rawBody) as AInvestResponse
-        } catch {
-          diagnostics.pagesFailed += 1
-          pageDiagnostics.push({
-            page,
-            ok: false,
-            upstreamCount: 0,
-            normalizedRows: 0,
-            keptRows: 0,
-            error: `AInvest returned non-JSON response: ${rawBody.slice(0, 300)}`,
-          })
-          break
-        }
-
-        upstreamRows = extractTradeArray(parsed)
-        diagnostics.pagesSucceeded += 1
-        diagnostics.upstreamRows += upstreamRows.length
-
-        const normalizedRows = upstreamRows
-          .map((trade) => normalizeAInvestTrade(trade, fetchedAt))
-          .filter((trade): trade is RawPtrTradeRow => trade !== null)
-
-        diagnostics.normalizedRows += normalizedRows.length
-
-        const keptRows =
-          allowlist && allowlist.size > 0
-            ? normalizedRows.filter((row) => {
-                const ticker = normalizeTicker(row.ticker)
-                return Boolean(ticker && allowlist?.has(ticker))
-              })
-            : normalizedRows
-
-        allRows.push(...keptRows)
-
-        pageDiagnostics.push({
-          page,
-          ok: true,
-          upstreamCount: upstreamRows.length,
-          normalizedRows: normalizedRows.length,
-          keptRows: keptRows.length,
-          error: null,
-        })
-
-        if (upstreamRows.length < pageSize) {
-          diagnostics.stoppedBecauseShortPage = true
-          break
-        }
-
-        if (page === maxPages) {
-          diagnostics.stoppedBecauseMaxPages = true
-        }
-      } catch (error: any) {
-        diagnostics.pagesFailed += 1
-        pageDiagnostics.push({
-          page,
-          ok: false,
-          upstreamCount: upstreamRows.length,
-          normalizedRows: 0,
-          keptRows: 0,
-          error: error?.message || "Unknown AInvest error",
-        })
-        break
       }
-    }
+    )
+
+    diagnostics.successfulTickerFetches = fetchResults.filter((r) => r.ok).length
+    diagnostics.failedTickerFetches = fetchResults.filter((r) => !r.ok).length
+
+    const allRows = fetchResults.flatMap((r) => r.rows)
+    diagnostics.scannedRows = allRows.length
 
     const dedupe = new Map<string, RawPtrTradeRow>()
     for (const row of allRows) {
@@ -896,7 +832,6 @@ export async function GET(request: Request) {
 
     const inserted =
       dedupedRows.length > 0 ? await upsertRows(supabase, dedupedRows) : 0
-
     diagnostics.insertedOrUpdated = inserted
 
     let ptrCount: number | null = null
@@ -908,6 +843,8 @@ export async function GET(request: Request) {
       ptrCount = error ? null : count ?? 0
     }
 
+    const nextStart = sourceRows.length < batch ? null : start + batch
+
     return Response.json({
       ok: true,
       stage: "ptrs",
@@ -915,22 +852,22 @@ export async function GET(request: Request) {
       scope,
       start,
       batch,
-      nextStart: scope === "all" || scope === "eligible" || scope === "candidates"
-        ? sourceRows.length < batch
-          ? null
-          : start + batch
-        : null,
-      page: 1,
-      size: pageSize,
-      maxPages,
+      nextStart,
+      perTickerLimit,
       processedTickers: sourceRows.length,
       ptrCount,
       diagnostics,
-      pageDiagnostics,
+      tickerDiagnostics: fetchResults.map((r) => ({
+        ticker: r.ticker,
+        ok: r.ok,
+        upstreamCount: r.upstreamCount,
+        normalizedRows: r.rows.length,
+        error: r.error,
+      })),
       message:
         dedupedRows.length === 0
           ? "PTR route ran successfully but no normalized trades were returned from AInvest."
-          : "Raw PTR trades ingested successfully using page-based congress ingestion.",
+          : "Raw PTR trades ingested successfully.",
     })
   } catch (error: any) {
     return Response.json(
