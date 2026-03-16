@@ -26,7 +26,6 @@ type RawPtrTradeRow = {
   fetched_at: string
   updated_at: string
 
-  // Compatibility columns used elsewhere in your pipeline
   politician_name: string
   transaction_type: "buy" | "sell" | "exchange" | "unknown"
   trade_date: string | null
@@ -49,8 +48,10 @@ type CandidateUniverseRow = {
   cik?: string | null
   name?: string | null
   is_active?: boolean | null
-  passed?: boolean | null
-  as_of_date?: string | null
+  included?: boolean | null
+  candidate_score?: number | null
+  last_screened_at?: string | null
+  updated_at?: string | null
 }
 
 type CandidateScreenHistoryRow = {
@@ -58,9 +59,12 @@ type CandidateScreenHistoryRow = {
   ticker: string
   cik?: string | null
   name?: string | null
-  passed?: boolean | null
-  as_of_date?: string | null
   is_active?: boolean | null
+  included?: boolean | null
+  candidate_score?: number | null
+  screened_on?: string | null
+  last_screened_at?: string | null
+  updated_at?: string | null
 }
 
 type SourceRow = CompanyRow | CandidateUniverseRow | CandidateScreenHistoryRow
@@ -74,37 +78,29 @@ type AInvestTradeRow = {
   state?: string
   district?: string
   chamber?: string
-
   trade_date?: string
   transactionDate?: string
   transaction_date?: string
-
   filing_date?: string
   reportDate?: string
   report_date?: string
   disclosure_date?: string
-
   reporting_gap?: string
-
   trade_type?: string
   type?: string
   action?: string
-
   size?: string
   amount?: string
   amount_range?: string
   amountLow?: number | string | null
   amountHigh?: number | string | null
-
   link?: string | null
   url?: string | null
-
   owner?: string | null
   asset?: string | null
   asset_name?: string | null
   assetType?: string | null
   asset_type?: string | null
-
   ticker?: string | null
   symbol?: string | null
 }
@@ -421,10 +417,10 @@ async function loadEligibleContext(
 }> {
   let query = supabase
     .from("candidate_universe")
-    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
-    .eq("passed", true)
+    .select("company_id, ticker, cik, name, is_active, included, candidate_score, last_screened_at, updated_at")
+    .eq("included", true)
     .not("ticker", "is", null)
-    .order("ticker", { ascending: true })
+    .order("candidate_score", { ascending: false })
     .range(start, start + batch - 1)
 
   if (onlyActive) {
@@ -453,14 +449,14 @@ async function loadCandidatesContext(
 }> {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - CANDIDATE_LOOKBACK_DAYS)
+  const cutoffIso = cutoff.toISOString()
 
   let universeQuery = supabase
     .from("candidate_universe")
-    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
-    .eq("passed", true)
-    .gte("as_of_date", cutoff.toISOString())
+    .select("company_id, ticker, cik, name, is_active, included, candidate_score, last_screened_at, updated_at")
+    .gte("last_screened_at", cutoffIso)
     .not("ticker", "is", null)
-    .order("as_of_date", { ascending: false })
+    .order("candidate_score", { ascending: false })
     .range(start, start + batch - 1)
 
   if (onlyActive) {
@@ -483,15 +479,15 @@ async function loadCandidatesContext(
 
   const latestSnapshot = await supabase
     .from("candidate_screen_history")
-    .select("as_of_date")
-    .order("as_of_date", { ascending: false })
+    .select("screened_on")
+    .order("screened_on", { ascending: false })
     .limit(1)
     .maybeSingle()
 
   if (latestSnapshot.error) throw latestSnapshot.error
 
-  const latestAsOfDate = latestSnapshot.data?.as_of_date ?? null
-  if (!latestAsOfDate) {
+  const latestScreenedOn = latestSnapshot.data?.screened_on ?? null
+  if (!latestScreenedOn) {
     return {
       candidateRows: universeRows,
       candidateUniverseRowsLoaded: universeRows.length,
@@ -502,11 +498,10 @@ async function loadCandidatesContext(
 
   let historyQuery = supabase
     .from("candidate_screen_history")
-    .select("company_id, ticker, cik, name, passed, as_of_date, is_active")
-    .eq("as_of_date", latestAsOfDate)
-    .eq("passed", true)
+    .select("company_id, ticker, cik, name, is_active, included, candidate_score, screened_on, last_screened_at, updated_at")
+    .eq("screened_on", latestScreenedOn)
     .not("ticker", "is", null)
-    .order("ticker", { ascending: true })
+    .order("candidate_score", { ascending: false })
     .range(start, start + batch - 1)
 
   if (onlyActive) {
