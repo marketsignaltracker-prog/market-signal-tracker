@@ -286,7 +286,7 @@ async function fetchWithTimeout(url: string, token: string) {
     return await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${token}`,
+        "x-AINVEST_API_TOKEN": token,
         Accept: "application/json",
       },
       cache: "no-store",
