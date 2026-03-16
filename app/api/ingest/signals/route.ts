@@ -664,12 +664,14 @@ function buildSignalRow(
 
   const sourceForms = uniqueStrings([...(filingSummary?.forms || [])])
 
-  const signalType =
+  const sourceType =
     ptrSummary?.buyTradeCount
       ? "Priority Multi-Signal Buy"
       : filingSummary?.hasForm4 || filingSummary?.has13DOr13G || filingSummary?.hasCatalystForm
         ? "Priority Filing Signal"
         : "Priority Signal"
+
+  const signalType = sourceType
 
   const signalSource =
     ptrSummary?.buyTradeCount
@@ -698,6 +700,7 @@ function buildSignalRow(
     pe_ratio: round2(context.pe_ratio ?? null),
     pe_forward: round2(context.pe_forward ?? null),
     pe_type: context.pe_type ?? null,
+    source_type: sourceType,
     signal_type: signalType,
     signal_source: signalSource,
     signal_category: signalCategory,
@@ -847,6 +850,7 @@ function buildSignalHistoryRow(signalRow: any, runDate: string, runTimestamp: st
     ticker_score_change_1d: signalRow.ticker_score_change_1d,
     ticker_score_change_7d: signalRow.ticker_score_change_7d,
     created_at: runTimestamp,
+    scored_on: runDate,
   }
 }
 
