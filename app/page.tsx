@@ -92,6 +92,11 @@ type TickerScoreRow = {
   created_at?: string | null
 }
 
+type RawPtrTradeRow = {
+  ticker: string
+  amount_range?: string | null
+}
+
 type UnifiedRow = {
   ticker: string
   company_name: string | null
@@ -158,6 +163,7 @@ type UnifiedRow = {
   insider_shares: number | null
   insider_avg_price: number | null
   insider_buy_value: number | null
+  ptr_amount: string | null
   cluster_buyers: number | null
   cluster_shares: number | null
 
@@ -258,7 +264,8 @@ function firstBooleanOrNull(...values: Array<boolean | null | undefined>) {
 
 function makeUnifiedRow(
   candidate: CandidateUniverseRow | null,
-  signal: TickerScoreRow | null
+  signal: TickerScoreRow | null,
+  ptrAmount: string | null
 ): UnifiedRow | null {
   const ticker = normalizeTicker(candidate?.ticker || signal?.ticker)
   if (!ticker) return null
@@ -270,8 +277,12 @@ function makeUnifiedRow(
   return {
     ticker,
     company_name: firstString(signal?.company_name, candidate?.name),
-business_description: firstString(candidate?.business_description, signal?.business_description, null), 
-price: firstNumberOrNull(candidate?.price, null),
+    business_description: firstString(
+      candidate?.business_description,
+      signal?.business_description,
+      null
+    ),
+    price: firstNumberOrNull(candidate?.price, null),
 
     candidate_score: candidateScore,
     signal_score: signalScore,
@@ -336,6 +347,7 @@ price: firstNumberOrNull(candidate?.price, null),
     insider_shares: signal?.insider_shares ?? null,
     insider_avg_price: signal?.insider_avg_price ?? null,
     insider_buy_value: signal?.insider_buy_value ?? null,
+    ptr_amount: ptrAmount,
     cluster_buyers: signal?.cluster_buyers ?? null,
     cluster_shares: signal?.cluster_shares ?? null,
 
@@ -389,41 +401,41 @@ export default function Home() {
         setLoading(true)
         setError(null)
 
-        const [candidateRes, signalRes] = await Promise.all([
+        const [candidateRes, signalRes, ptrRes] = await Promise.all([
           supabase
-  .from("candidate_universe")
-  .select(`
-    ticker,
-    cik,
-    name,
-    business_description,
-    price,
-    market_cap,
-    avg_volume_20d,
-    avg_dollar_volume_20d,
-    one_day_return,
-    return_5d,
-    return_10d,
-    return_20d,
-    relative_strength_20d,
-    volume_ratio,
-    breakout_20d,
-    breakout_10d,
-    above_sma_20,
-    breakout_clearance_pct,
-    extension_from_sma20_pct,
-    close_in_day_range,
-    catalyst_count,
-    passes_price,
-    passes_volume,
-    passes_dollar_volume,
-    passes_market_cap,
-    candidate_score,
-    included,
-    screen_reason,
-    last_screened_at,
-    updated_at
-  `)
+            .from("candidate_universe")
+            .select(`
+              ticker,
+              cik,
+              name,
+              business_description,
+              price,
+              market_cap,
+              avg_volume_20d,
+              avg_dollar_volume_20d,
+              one_day_return,
+              return_5d,
+              return_10d,
+              return_20d,
+              relative_strength_20d,
+              volume_ratio,
+              breakout_20d,
+              breakout_10d,
+              above_sma_20,
+              breakout_clearance_pct,
+              extension_from_sma20_pct,
+              close_in_day_range,
+              catalyst_count,
+              passes_price,
+              passes_volume,
+              passes_dollar_volume,
+              passes_market_cap,
+              candidate_score,
+              included,
+              screen_reason,
+              last_screened_at,
+              updated_at
+            `)
             .gte("candidate_score", 70)
             .order("candidate_score", { ascending: false })
             .limit(1000),
@@ -487,6 +499,14 @@ export default function Home() {
             `)
             .order("app_score", { ascending: false })
             .limit(1000),
+
+          supabase
+            .from("raw_ptr_trades")
+            .select(`
+              ticker,
+              amount_range
+            `)
+            .limit(5000),
         ])
 
         if (!isMounted) return
@@ -505,11 +525,20 @@ export default function Home() {
           return
         }
 
+        if (ptrRes.error) {
+          setError(ptrRes.error.message)
+          setRows([])
+          setLoading(false)
+          return
+        }
+
         const candidateRows = (candidateRes.data || []) as CandidateUniverseRow[]
         const signalRows = (signalRes.data || []) as TickerScoreRow[]
+        const ptrRows = (ptrRes.data || []) as RawPtrTradeRow[]
 
         const candidateMap = new Map<string, CandidateUniverseRow>()
         const signalMap = new Map<string, TickerScoreRow>()
+        const ptrMap = new Map<string, string>()
 
         for (const row of candidateRows) {
           const ticker = normalizeTicker(row.ticker)
@@ -523,6 +552,15 @@ export default function Home() {
           signalMap.set(ticker, row)
         }
 
+        for (const row of ptrRows) {
+          const ticker = normalizeTicker(row.ticker)
+          const amountRange = typeof row.amount_range === "string" ? row.amount_range.trim() : ""
+          if (!ticker || !amountRange) continue
+          if (!ptrMap.has(ticker)) {
+            ptrMap.set(ticker, amountRange)
+          }
+        }
+
         const allTickers = new Set<string>([
           ...candidateMap.keys(),
           ...signalMap.keys(),
@@ -533,7 +571,8 @@ export default function Home() {
         for (const ticker of allTickers) {
           const unified = makeUnifiedRow(
             candidateMap.get(ticker) ?? null,
-            signalMap.get(ticker) ?? null
+            signalMap.get(ticker) ?? null,
+            ptrMap.get(ticker) ?? null
           )
           if (!unified) continue
 
@@ -730,7 +769,7 @@ export default function Home() {
           </div>
         </section>
 
-                <section
+        <section
           id="filters"
           className="mt-5 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] shadow-xl backdrop-blur-md sm:mt-7"
         >
@@ -878,39 +917,39 @@ export default function Home() {
 
         <section id="board" className="mt-6 sm:mt-8">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-  <div>
-    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-      Ranked board
-    </p>
-    <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
-      Today’s board
-    </h2>
-    <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-      One full board, sorted from highest score down.
-    </p>
-  </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                Ranked board
+              </p>
+              <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
+                Today’s board
+              </h2>
+              <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
+                One full board, sorted from highest score down.
+              </p>
+            </div>
 
-  <div className="flex items-center gap-3">
-    {safeCurrentPage > 1 ? (
-      <button
-        type="button"
-        onClick={() => {
-          setCurrentPage(1)
-          window.scrollTo({ top: 0, behavior: "smooth" })
-        }}
-        className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/40 hover:bg-cyan-400/15"
-      >
-        Best
-      </button>
-    ) : null}
+            <div className="flex items-center gap-3">
+              {safeCurrentPage > 1 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentPage(1)
+                    window.scrollTo({ top: 0, behavior: "smooth" })
+                  }}
+                  className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/40 hover:bg-cyan-400/15"
+                >
+                  Best
+                </button>
+              ) : null}
 
-    <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-      {filteredRows.length === 0
-        ? "No names"
-        : `${pageStart}-${pageEnd} of ${filteredRows.length}`}
-    </div>
-  </div>
-</div>
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
+                {filteredRows.length === 0
+                  ? "No names"
+                  : `${pageStart}-${pageEnd} of ${filteredRows.length}`}
+              </div>
+            </div>
+          </div>
 
           {loading ? (
             <LoadingPanel />
@@ -1272,9 +1311,9 @@ function TopSignalCard({
 
   const metricItems: MiniMetricItem[] = [
     { label: "Price", value: formatMoney(row.price) },
-    { label: "5D Move", value: formatPercent(row.price_return_5d) },
+    { label: "Insider Trade", value: formatInsiderValue(row) },
     { label: "Strength", value: formatRelativeStrengthForDisplay(row) },
-    { label: "Volume", value: formatRatio(row.volume_ratio) },
+    { label: "PTR Amount", value: row.ptr_amount || "—" },
   ].filter((item) => hasDisplayValue(item.value))
 
   return (
@@ -1323,8 +1362,8 @@ function TopSignalCard({
               {showCompanyInfo
                 ? "Hide details"
                 : hasRealCompanyInfo
-                ? "About the company"
-                : "More info"}
+                  ? "About the company"
+                  : "More info"}
             </button>
           </div>
         </div>
@@ -1890,10 +1929,10 @@ function SignalDetailsModal({
                       What confirms the setup
                     </p>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-<ConfirmationRow
-  label="Price confirmation"
-  value={formatPriceConfirmation(row)}
-/>
+                      <ConfirmationRow
+                        label="Price confirmation"
+                        value={formatPriceConfirmation(row)}
+                      />
                       <ConfirmationRow
                         label="Breakout"
                         value={
@@ -1972,6 +2011,7 @@ function SignalDetailsModal({
                       <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
                       <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
                       <MetricRow label="Insider value" value={formatInsiderValue(row)} />
+                      <MetricRow label="PTR amount" value={row.ptr_amount} />
                       <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
                       <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
                       <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
@@ -2083,10 +2123,11 @@ function SignalDetailsModal({
                         What confirms the setup
                       </p>
                       <div className="mt-4 grid gap-3">
-<ConfirmationRow
-  label="Price confirmation"
-  value={formatPriceConfirmation(row)}
-/>                        <ConfirmationRow
+                        <ConfirmationRow
+                          label="Price confirmation"
+                          value={formatPriceConfirmation(row)}
+                        />
+                        <ConfirmationRow
                           label="Breakout"
                           value={
                             row.breakout_52w
@@ -2146,6 +2187,7 @@ function SignalDetailsModal({
                         <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
                         <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
                         <MetricRow label="Insider value" value={formatInsiderValue(row)} />
+                        <MetricRow label="PTR amount" value={row.ptr_amount} />
                         <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
                         <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
                         <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
