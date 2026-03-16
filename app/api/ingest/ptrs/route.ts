@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
+type Scope = "all" | "eligible" | "candidates"
+
 type RawPtrTradeRow = {
   disclosure_source: string
   filer_name: string
@@ -24,7 +26,7 @@ type RawPtrTradeRow = {
   fetched_at: string
   updated_at: string
 
-  // New-model compatibility columns
+  // Compatibility columns used elsewhere in your pipeline
   politician_name: string
   transaction_type: "buy" | "sell" | "exchange" | "unknown"
   trade_date: string | null
@@ -33,65 +35,81 @@ type RawPtrTradeRow = {
   ptr_id: string
 }
 
-type AInvestTradeRow = {
-  id?: string | number | null
-  ptr_id?: string | number | null
-  symbol?: string | null
-  ticker?: string | null
-  code?: string | null
-
+type CompanyRow = {
+  id?: number | null
+  ticker: string
+  cik?: string | null
   name?: string | null
-  politician?: string | null
-  filer?: string | null
-  member?: string | null
+  is_active?: boolean | null
+}
 
-  chamber?: string | null
-  state?: string | null
-  district?: string | null
+type CandidateUniverseRow = {
+  company_id?: number | null
+  ticker: string
+  cik?: string | null
+  name?: string | null
+  is_active?: boolean | null
+  passed?: boolean | null
+  as_of_date?: string | null
+}
 
-  report_date?: string | null
-  reportDate?: string | null
-  disclosure_date?: string | null
-  disclosureDate?: string | null
-  filing_date?: string | null
+type CandidateScreenHistoryRow = {
+  company_id?: number | null
+  ticker: string
+  cik?: string | null
+  name?: string | null
+  passed?: boolean | null
+  as_of_date?: string | null
+  is_active?: boolean | null
+}
 
-  trade_date?: string | null
-  tradeDate?: string | null
-  transaction_date?: string | null
-  transactionDate?: string | null
+type SourceRow = CompanyRow | CandidateUniverseRow | CandidateScreenHistoryRow
 
-  action?: string | null
-  trade_type?: string | null
-  transaction_type?: string | null
-  type?: string | null
+type AInvestTradeRow = {
+  name?: string
+  politician?: string
+  filer?: string
+  member?: string
+  party?: string
+  state?: string
+  district?: string
+  chamber?: string
 
-  amount_range?: string | null
-  amount?: string | null
-  size?: string | null
-  amountLow?: string | number | null
-  amountHigh?: string | number | null
-  amount_low?: string | number | null
-  amount_high?: string | number | null
+  trade_date?: string
+  transactionDate?: string
+  transaction_date?: string
 
+  filing_date?: string
+  reportDate?: string
+  report_date?: string
+  disclosure_date?: string
+
+  reporting_gap?: string
+
+  trade_type?: string
+  type?: string
+  action?: string
+
+  size?: string
+  amount?: string
+  amount_range?: string
+  amountLow?: number | string | null
+  amountHigh?: number | string | null
+
+  link?: string | null
+  url?: string | null
+
+  owner?: string | null
   asset?: string | null
   asset_name?: string | null
   assetType?: string | null
   asset_type?: string | null
 
-  owner?: string | null
-  link?: string | null
-  url?: string | null
-  source_url?: string | null
-  raw_document_url?: string | null
+  ticker?: string | null
+  symbol?: string | null
 }
 
-type AInvestEnvelope = {
-  code?: number | string
-  message?: string
-  msg?: string
-  status?: number | string
-  status_code?: number | string
-  status_msg?: string
+type AInvestResponse = {
   data?:
     | AInvestTradeRow[]
     | {
@@ -100,37 +118,52 @@ type AInvestEnvelope = {
         list?: AInvestTradeRow[]
         items?: AInvestTradeRow[]
       }
+  result?: AInvestTradeRow[]
   rows?: AInvestTradeRow[]
   list?: AInvestTradeRow[]
   items?: AInvestTradeRow[]
-  result?: AInvestTradeRow[]
+  status_code?: number
+  status_msg?: string
+  message?: string
+}
+
+type FetchResult = {
+  ticker: string | null
+  ok: boolean
+  rows: RawPtrTradeRow[]
+  upstreamCount: number
+  error: string | null
 }
 
 type Diagnostics = {
-  pagesRequested: number
-  pagesSucceeded: number
-  pagesFailed: number
-  pageSize: number
-  maxPages: number | null
-  upstreamRows: number
-  normalizedRows: number
+  scope: Scope
+  companiesRowsLoaded: number
+  candidateUniverseRowsLoaded: number
+  candidateScreenHistoryRowsLoaded: number
+  sourceRowsLoaded: number
+  fallbackCandidateHistoryUsed: boolean
+  successfulTickerFetches: number
+  failedTickerFetches: number
+  scannedRows: number
   dedupedRows: number
   insertedOrUpdated: number
-  stoppedBecauseShortPage: boolean
-  stoppedBecauseMaxPages: boolean
 }
 
-const AINVEST_CONGRESS_URL = "https://openapi.ainvest.com/open/ownership/congress"
-
-const API_TIMEOUT_MS = 15000
 const DB_CHUNK_SIZE = 200
+const API_TIMEOUT_MS = 15000
+const API_CONCURRENCY = 4
 
-const DEFAULT_PAGE = 1
-const DEFAULT_PAGE_SIZE = 100
-const MAX_PAGE_SIZE = 200
+const DEFAULT_BATCH = 100
+const MAX_BATCH = 200
+const DEFAULT_START = 0
 
-const DEFAULT_MAX_PAGES = 10
-const MAX_MAX_PAGES = 200
+const DEFAULT_LIMIT_PER_TICKER = 20
+const MAX_LIMIT_PER_TICKER = 50
+
+const CANDIDATE_LOOKBACK_DAYS = 60
+
+const AINVEST_CONGRESS_URL =
+  "https://openapi.ainvest.com/open/ownership/congress"
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -164,15 +197,7 @@ function chunkArray<T>(items: T[], size: number) {
 
 function normalizeTicker(ticker: string | null | undefined) {
   const t = (ticker || "").trim().toUpperCase()
-  if (!t) return null
-
-  const cleaned = t
-    .replace(/\s+/g, "")
-    .replace(/^\$/, "")
-    .replace(/^\./, "")
-    .replace(/[^A-Z0-9.\-]/g, "")
-
-  return cleaned || null
+  return t || null
 }
 
 function safeNumber(value: unknown): number | null {
@@ -187,14 +212,6 @@ function normalizeDate(value: unknown): string | null {
 
   const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`
-
-  const usMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
-  if (usMatch) {
-    const mm = usMatch[1].padStart(2, "0")
-    const dd = usMatch[2].padStart(2, "0")
-    const yyyy = usMatch[3]
-    return `${yyyy}-${mm}-${dd}`
-  }
 
   const parsed = new Date(raw)
   if (!Number.isNaN(parsed.getTime())) {
@@ -264,7 +281,7 @@ function normalizeAction(value: string | null | undefined) {
   if (v.includes("sell") || v.includes("sale")) return "Sell"
   if (v.includes("exchange")) return "Exchange"
 
-  return (value || "").trim() || null
+  return value || null
 }
 
 function normalizeTransactionType(
@@ -288,7 +305,6 @@ function buildTradeKey(row: {
   amount_range: string | null
   report_date?: string | null
   ptr_url?: string | null
-  asset_name?: string | null
 }) {
   return [
     row.filer.toLowerCase(),
@@ -297,7 +313,6 @@ function buildTradeKey(row: {
     row.action || "unknown",
     row.amount_range || "unknown",
     row.report_date || "unknown",
-    row.asset_name || "unknown",
     row.ptr_url || "unknown",
   ].join("::")
 }
@@ -321,6 +336,32 @@ async function fetchWithTimeout(url: string, token: string) {
   }
 }
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+
+  async function runner() {
+    while (true) {
+      const current = nextIndex
+      nextIndex += 1
+      if (current >= items.length) return
+      results[current] = await worker(items[current], current)
+    }
+  }
+
+  const runners = Array.from(
+    { length: Math.min(concurrency, Math.max(items.length, 1)) },
+    () => runner()
+  )
+
+  await Promise.all(runners)
+  return results
+}
+
 async function upsertRows(supabase: any, rows: RawPtrTradeRow[]) {
   const chunks = chunkArray(rows, DB_CHUNK_SIZE)
   let inserted = 0
@@ -340,7 +381,168 @@ async function upsertRows(supabase: any, rows: RawPtrTradeRow[]) {
   return inserted
 }
 
-function extractTradeArray(parsed: AInvestEnvelope): AInvestTradeRow[] {
+async function loadCompaniesContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  onlyActive: boolean
+): Promise<{
+  rows: CompanyRow[]
+  companiesRowsLoaded: number
+}> {
+  let query = supabase
+    .from("companies")
+    .select("id, ticker, cik, name, is_active")
+    .not("ticker", "is", null)
+    .order("id", { ascending: true })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    query = query.eq("is_active", true)
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+
+  return {
+    rows: (data || []) as CompanyRow[],
+    companiesRowsLoaded: (data || []).length,
+  }
+}
+
+async function loadEligibleContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  onlyActive: boolean
+): Promise<{
+  rows: CandidateUniverseRow[]
+  candidateUniverseRowsLoaded: number
+}> {
+  let query = supabase
+    .from("candidate_universe")
+    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
+    .eq("passed", true)
+    .not("ticker", "is", null)
+    .order("ticker", { ascending: true })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    query = query.eq("is_active", true)
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+
+  return {
+    rows: (data || []) as CandidateUniverseRow[],
+    candidateUniverseRowsLoaded: (data || []).length,
+  }
+}
+
+async function loadCandidatesContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  onlyActive: boolean
+): Promise<{
+  candidateRows: SourceRow[]
+  candidateUniverseRowsLoaded: number
+  candidateScreenHistoryRowsLoaded: number
+  fallbackCandidateHistoryUsed: boolean
+}> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - CANDIDATE_LOOKBACK_DAYS)
+
+  let universeQuery = supabase
+    .from("candidate_universe")
+    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
+    .eq("passed", true)
+    .gte("as_of_date", cutoff.toISOString())
+    .not("ticker", "is", null)
+    .order("as_of_date", { ascending: false })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    universeQuery = universeQuery.eq("is_active", true)
+  }
+
+  const universeResult = await universeQuery
+  if (universeResult.error) throw universeResult.error
+
+  const universeRows = (universeResult.data || []) as CandidateUniverseRow[]
+
+  if (universeRows.length >= Math.min(25, batch)) {
+    return {
+      candidateRows: universeRows,
+      candidateUniverseRowsLoaded: universeRows.length,
+      candidateScreenHistoryRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
+    }
+  }
+
+  const latestSnapshot = await supabase
+    .from("candidate_screen_history")
+    .select("as_of_date")
+    .order("as_of_date", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestSnapshot.error) throw latestSnapshot.error
+
+  const latestAsOfDate = latestSnapshot.data?.as_of_date ?? null
+  if (!latestAsOfDate) {
+    return {
+      candidateRows: universeRows,
+      candidateUniverseRowsLoaded: universeRows.length,
+      candidateScreenHistoryRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
+    }
+  }
+
+  let historyQuery = supabase
+    .from("candidate_screen_history")
+    .select("company_id, ticker, cik, name, passed, as_of_date, is_active")
+    .eq("as_of_date", latestAsOfDate)
+    .eq("passed", true)
+    .not("ticker", "is", null)
+    .order("ticker", { ascending: true })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    historyQuery = historyQuery.eq("is_active", true)
+  }
+
+  const historyResult = await historyQuery
+  if (historyResult.error) throw historyResult.error
+
+  const historyRows = (historyResult.data || []) as CandidateScreenHistoryRow[]
+
+  const deduped = new Map<string, SourceRow>()
+
+  for (const row of universeRows) {
+    const ticker = normalizeTicker(row.ticker)
+    if (!ticker) continue
+    deduped.set(ticker, row)
+  }
+
+  for (const row of historyRows) {
+    const ticker = normalizeTicker(row.ticker)
+    if (!ticker) continue
+    if (!deduped.has(ticker)) {
+      deduped.set(ticker, row)
+    }
+  }
+
+  return {
+    candidateRows: [...deduped.values()].slice(0, batch),
+    candidateUniverseRowsLoaded: universeRows.length,
+    candidateScreenHistoryRowsLoaded: historyRows.length,
+    fallbackCandidateHistoryUsed: historyRows.length > 0,
+  }
+}
+
+function extractTradeArray(parsed: AInvestResponse): AInvestTradeRow[] {
   if (Array.isArray(parsed?.data)) return parsed.data
   if (Array.isArray(parsed?.result)) return parsed.result
   if (Array.isArray(parsed?.rows)) return parsed.rows
@@ -358,6 +560,7 @@ function extractTradeArray(parsed: AInvestEnvelope): AInvestTradeRow[] {
 }
 
 function normalizeAInvestTrade(
+  requestedTicker: string,
   row: AInvestTradeRow,
   fetchedAt: string
 ): RawPtrTradeRow | null {
@@ -367,56 +570,28 @@ function normalizeAInvestTrade(
 
   if (!filerName) return null
 
-  const ticker = normalizeTicker(row.ticker || row.symbol || row.code || null)
-  const assetName = String(row.asset_name || row.asset || ticker || "").trim() || null
-  const assetType = String(row.asset_type || row.assetType || "Stock").trim() || "Stock"
+  const responseTicker = normalizeTicker(row.ticker || row.symbol)
+  const ticker = responseTicker || requestedTicker
 
   const transactionDate = normalizeDate(
-    row.trade_date || row.tradeDate || row.transaction_date || row.transactionDate
+    row.trade_date || row.transactionDate || row.transaction_date
   )
-
   const reportDate = normalizeDate(
-    row.disclosure_date ||
-      row.disclosureDate ||
-      row.report_date ||
-      row.reportDate ||
-      row.filing_date
+    row.filing_date || row.reportDate || row.report_date || row.disclosure_date
   )
 
-  const rawAction =
-    row.transaction_type || row.trade_type || row.type || row.action || null
-
-  const normalizedAction = normalizeAction(rawAction)
-  const transactionType = normalizeTransactionType(rawAction)
+  const normalizedAction = normalizeAction(
+    row.trade_type || row.type || row.action
+  )
+  const transactionType = normalizeTransactionType(
+    row.trade_type || row.type || row.action
+  )
 
   const amountRange =
-    String(row.amount_range || row.amount || row.size || "").trim() || null
+    String(row.size || row.amount || row.amount_range || "").trim() || null
 
-  const parsedRange = parseAmountRange(amountRange)
-
-  const amountLow =
-    safeNumber(row.amount_low) ??
-    safeNumber(row.amountLow) ??
-    parsedRange.amount_low
-
-  const amountHigh =
-    safeNumber(row.amount_high) ??
-    safeNumber(row.amountHigh) ??
-    parsedRange.amount_high
-
-  const ptrUrl =
-    String(row.source_url || row.raw_document_url || row.link || row.url || "").trim() || null
-
-  const ptrId =
-    String(row.ptr_id || row.id || "").trim() ||
-    [
-      filerName.toLowerCase(),
-      ticker || "unknown",
-      transactionDate || "unknown",
-      normalizedAction || "unknown",
-      amountRange || "unknown",
-      reportDate || "unknown",
-    ].join("::")
+  const amounts = parseAmountRange(amountRange)
+  const ptrUrl = row.link || row.url || null
 
   const tradeKey = buildTradeKey({
     filer: filerName,
@@ -426,24 +601,23 @@ function normalizeAInvestTrade(
     amount_range: amountRange,
     report_date: reportDate,
     ptr_url: ptrUrl,
-    asset_name: assetName,
   })
 
   return {
     disclosure_source: "AINVEST",
     filer_name: filerName,
-    chamber: row.chamber ? String(row.chamber).trim() : null,
-    district_or_state: String(row.district || row.state || "").trim() || null,
+    chamber: row.chamber || null,
+    district_or_state: row.district || row.state || null,
     report_date: reportDate,
     transaction_date: transactionDate,
     ticker,
-    asset_name: assetName,
-    asset_type: assetType,
+    asset_name: row.asset_name || row.asset || ticker,
+    asset_type: row.asset_type || row.assetType || "Stock",
     action: normalizedAction,
     amount_range: amountRange,
-    amount_low: amountLow,
-    amount_high: amountHigh,
-    owner: row.owner ? String(row.owner).trim() : null,
+    amount_low: safeNumber(row.amountLow) ?? amounts.amount_low,
+    amount_high: safeNumber(row.amountHigh) ?? amounts.amount_high,
+    owner: row.owner || null,
     ptr_url: ptrUrl,
     raw_document_url: ptrUrl,
     trade_key: tradeKey,
@@ -455,7 +629,7 @@ function normalizeAInvestTrade(
     trade_date: transactionDate,
     disclosure_date: reportDate,
     source_url: ptrUrl,
-    ptr_id: ptrId,
+    ptr_id: tradeKey,
   }
 }
 
@@ -479,142 +653,185 @@ export async function GET(request: Request) {
     const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
 
-    const startPage = Math.max(
-      1,
-      parseInteger(searchParams.get("page"), DEFAULT_PAGE)
+    const scopeParam = (searchParams.get("scope") || "eligible").toLowerCase()
+    const start = Math.max(0, parseInteger(searchParams.get("start"), DEFAULT_START))
+    const batch = Math.min(
+      Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)),
+      MAX_BATCH
     )
-
-    const pageSize = Math.min(
-      Math.max(1, parseInteger(searchParams.get("size"), DEFAULT_PAGE_SIZE)),
-      MAX_PAGE_SIZE
+    const perTickerLimit = Math.min(
+      Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT_PER_TICKER)),
+      MAX_LIMIT_PER_TICKER
     )
-
-    const maxPages = Math.min(
-      Math.max(1, parseInteger(searchParams.get("maxPages"), DEFAULT_MAX_PAGES)),
-      MAX_MAX_PAGES
-    )
-
+    const onlyActive =
+      (searchParams.get("onlyActive") || "true").toLowerCase() !== "false"
     const includeCounts =
       (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
 
-    const fetchedAt = new Date().toISOString()
-
-    const diagnostics: Diagnostics = {
-      pagesRequested: 0,
-      pagesSucceeded: 0,
-      pagesFailed: 0,
-      pageSize,
-      maxPages,
-      upstreamRows: 0,
-      normalizedRows: 0,
-      dedupedRows: 0,
-      insertedOrUpdated: 0,
-      stoppedBecauseShortPage: false,
-      stoppedBecauseMaxPages: false,
+    if (!["all", "eligible", "candidates"].includes(scopeParam)) {
+      return Response.json(
+        {
+          ok: false,
+          error: `Invalid scope "${scopeParam}". Expected one of: all, eligible, candidates`,
+        },
+        { status: 400 }
+      )
     }
 
-    const allRows: RawPtrTradeRow[] = []
-    const pageDiagnostics: Array<{
-      page: number
-      ok: boolean
-      upstreamCount: number
-      normalizedRows: number
-      error: string | null
-    }> = []
+    const scope = scopeParam as Scope
 
-    for (let page = startPage; page < startPage + maxPages; page += 1) {
-      diagnostics.pagesRequested += 1
+    const diagnostics: Diagnostics = {
+      scope,
+      companiesRowsLoaded: 0,
+      candidateUniverseRowsLoaded: 0,
+      candidateScreenHistoryRowsLoaded: 0,
+      sourceRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
+      successfulTickerFetches: 0,
+      failedTickerFetches: 0,
+      scannedRows: 0,
+      dedupedRows: 0,
+      insertedOrUpdated: 0,
+    }
 
-      const url = new URL(AINVEST_CONGRESS_URL)
-      url.searchParams.set("page", String(page))
-      url.searchParams.set("size", String(pageSize))
+    let sourceRows: SourceRow[] = []
 
-      try {
-        const res = await fetchWithTimeout(url.toString(), ainvestToken)
-        const contentType = res.headers.get("content-type") || ""
-        const rawBody = await res.text()
+    if (scope === "all") {
+      const allContext = await loadCompaniesContext(
+        supabase,
+        start,
+        batch,
+        onlyActive
+      )
+      sourceRows = allContext.rows
+      diagnostics.companiesRowsLoaded = allContext.companiesRowsLoaded
+      diagnostics.sourceRowsLoaded = allContext.rows.length
+    }
 
-        if (!res.ok) {
-          let message = rawBody.slice(0, 300)
+    if (scope === "eligible") {
+      const eligibleContext = await loadEligibleContext(
+        supabase,
+        start,
+        batch,
+        onlyActive
+      )
+      sourceRows = eligibleContext.rows
+      diagnostics.candidateUniverseRowsLoaded =
+        eligibleContext.candidateUniverseRowsLoaded
+      diagnostics.sourceRowsLoaded = eligibleContext.rows.length
+    }
 
-          if (contentType.includes("application/json")) {
-            try {
-              const parsedError = JSON.parse(rawBody)
-              message =
-                parsedError?.message ||
-                parsedError?.msg ||
-                parsedError?.status_msg ||
-                JSON.stringify(parsedError).slice(0, 300)
-            } catch {
-              // keep raw fallback
+    if (scope === "candidates") {
+      const candidateContext = await loadCandidatesContext(
+        supabase,
+        start,
+        batch,
+        onlyActive
+      )
+      sourceRows = candidateContext.candidateRows
+      diagnostics.candidateUniverseRowsLoaded =
+        candidateContext.candidateUniverseRowsLoaded
+      diagnostics.candidateScreenHistoryRowsLoaded =
+        candidateContext.candidateScreenHistoryRowsLoaded
+      diagnostics.fallbackCandidateHistoryUsed =
+        candidateContext.fallbackCandidateHistoryUsed
+      diagnostics.sourceRowsLoaded = candidateContext.candidateRows.length
+    }
+
+    const fetchedAt = new Date().toISOString()
+
+    const fetchResults = await mapWithConcurrency<SourceRow, FetchResult>(
+      sourceRows,
+      API_CONCURRENCY,
+      async (row) => {
+        const ticker = normalizeTicker(row.ticker)
+
+        if (!ticker) {
+          return {
+            ticker: null,
+            ok: false,
+            rows: [],
+            upstreamCount: 0,
+            error: "Missing ticker",
+          }
+        }
+
+        const url = new URL(AINVEST_CONGRESS_URL)
+        url.searchParams.set("ticker", ticker)
+        url.searchParams.set("page", "1")
+        url.searchParams.set("size", String(perTickerLimit))
+
+        try {
+          const res = await fetchWithTimeout(url.toString(), ainvestToken)
+          const contentType = res.headers.get("content-type") || ""
+          const rawBody = await res.text()
+
+          if (!res.ok) {
+            let message = rawBody.slice(0, 300)
+
+            if (contentType.includes("application/json")) {
+              try {
+                const parsedError = JSON.parse(rawBody)
+                message =
+                  parsedError?.message ||
+                  parsedError?.status_msg ||
+                  JSON.stringify(parsedError).slice(0, 300)
+              } catch {
+                // keep raw fallback
+              }
+            }
+
+            return {
+              ticker,
+              ok: false,
+              rows: [],
+              upstreamCount: 0,
+              error: `AInvest ${res.status}: ${message}`,
             }
           }
 
-          diagnostics.pagesFailed += 1
-          pageDiagnostics.push({
-            page,
+          let parsed: AInvestResponse
+          try {
+            parsed = JSON.parse(rawBody) as AInvestResponse
+          } catch {
+            return {
+              ticker,
+              ok: false,
+              rows: [],
+              upstreamCount: 0,
+              error: `AInvest returned non-JSON response: ${rawBody.slice(0, 300)}`,
+            }
+          }
+
+          const tradeRows = extractTradeArray(parsed)
+          const normalizedRows = tradeRows
+            .map((trade) => normalizeAInvestTrade(ticker, trade, fetchedAt))
+            .filter((trade): trade is RawPtrTradeRow => trade !== null)
+
+          return {
+            ticker,
+            ok: true,
+            rows: normalizedRows,
+            upstreamCount: tradeRows.length,
+            error: null,
+          }
+        } catch (error: any) {
+          return {
+            ticker,
             ok: false,
+            rows: [],
             upstreamCount: 0,
-            normalizedRows: 0,
-            error: `AInvest ${res.status}: ${message}`,
-          })
-          break
+            error: error?.message || "Unknown AInvest error",
+          }
         }
-
-        let parsed: AInvestEnvelope
-        try {
-          parsed = JSON.parse(rawBody) as AInvestEnvelope
-        } catch {
-          diagnostics.pagesFailed += 1
-          pageDiagnostics.push({
-            page,
-            ok: false,
-            upstreamCount: 0,
-            normalizedRows: 0,
-            error: `AInvest returned non-JSON response: ${rawBody.slice(0, 300)}`,
-          })
-          break
-        }
-
-        const tradeRows = extractTradeArray(parsed)
-        const normalizedRows = tradeRows
-          .map((trade) => normalizeAInvestTrade(trade, fetchedAt))
-          .filter((trade): trade is RawPtrTradeRow => trade !== null)
-
-        diagnostics.pagesSucceeded += 1
-        diagnostics.upstreamRows += tradeRows.length
-        diagnostics.normalizedRows += normalizedRows.length
-
-        allRows.push(...normalizedRows)
-
-        pageDiagnostics.push({
-          page,
-          ok: true,
-          upstreamCount: tradeRows.length,
-          normalizedRows: normalizedRows.length,
-          error: null,
-        })
-
-        if (tradeRows.length < pageSize) {
-          diagnostics.stoppedBecauseShortPage = true
-          break
-        }
-      } catch (error: any) {
-        diagnostics.pagesFailed += 1
-        pageDiagnostics.push({
-          page,
-          ok: false,
-          upstreamCount: 0,
-          normalizedRows: 0,
-          error: error?.message || "Unknown AInvest error",
-        })
-        break
       }
-    }
+    )
 
-    if (!diagnostics.stoppedBecauseShortPage && diagnostics.pagesRequested >= maxPages) {
-      diagnostics.stoppedBecauseMaxPages = true
-    }
+    diagnostics.successfulTickerFetches = fetchResults.filter((r) => r.ok).length
+    diagnostics.failedTickerFetches = fetchResults.filter((r) => !r.ok).length
+
+    const allRows = fetchResults.flatMap((r) => r.rows)
+    diagnostics.scannedRows = allRows.length
 
     const dedupe = new Map<string, RawPtrTradeRow>()
     for (const row of allRows) {
@@ -628,7 +845,6 @@ export async function GET(request: Request) {
 
     const inserted =
       dedupedRows.length > 0 ? await upsertRows(supabase, dedupedRows) : 0
-
     diagnostics.insertedOrUpdated = inserted
 
     let ptrCount: number | null = null
@@ -640,20 +856,31 @@ export async function GET(request: Request) {
       ptrCount = error ? null : count ?? 0
     }
 
+    const nextStart = sourceRows.length < batch ? null : start + batch
+
     return Response.json({
       ok: true,
       stage: "ptrs",
       targetTable: "raw_ptr_trades",
-      page: startPage,
-      size: pageSize,
-      maxPages,
+      scope,
+      start,
+      batch,
+      nextStart,
+      perTickerLimit,
+      processedTickers: sourceRows.length,
       ptrCount,
       diagnostics,
-      pageDiagnostics,
+      tickerDiagnostics: fetchResults.map((r) => ({
+        ticker: r.ticker,
+        ok: r.ok,
+        upstreamCount: r.upstreamCount,
+        normalizedRows: r.rows.length,
+        error: r.error,
+      })),
       message:
         dedupedRows.length === 0
           ? "PTR route ran successfully but no normalized trades were returned from AInvest."
-          : "Raw PTR trades ingested successfully from paginated AInvest congress feed.",
+          : "Raw PTR trades ingested successfully.",
     })
   } catch (error: any) {
     return Response.json(
