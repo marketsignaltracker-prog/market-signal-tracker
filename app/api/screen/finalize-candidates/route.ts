@@ -192,48 +192,62 @@ async function deleteAllUniverseRows(table: any) {
   return error ? error.message : null
 }
 
+function getPtrMetrics(ptr: PtrSignalSummary | null | undefined) {
+  return {
+    ptrBonus: ptr?.ptrBonus ?? 0,
+    buyTradeCount: ptr?.buyTradeCount ?? 0,
+    recentBuyCount: ptr?.recentBuyCount ?? 0,
+  }
+}
+
 function isStrictEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
+  const { ptrBonus, buyTradeCount, recentBuyCount } = getPtrMetrics(ptr)
+
   return (
     row.passes_price &&
     row.passes_volume &&
     row.passes_dollar_volume &&
     row.passes_market_cap &&
     row.above_sma_20 &&
-    ((row.candidate_score ?? 0) >= STRICT_MIN_SCORE || Boolean(ptr?.ptrBonus >= 4)) &&
-    ((row.return_20d ?? -999) >= 2 || Boolean(ptr?.buyTradeCount)) &&
-    ((row.relative_strength_20d ?? -999) >= 0.5 || Boolean(ptr?.buyTradeCount)) &&
-    ((row.volume_ratio ?? 0) >= 0.7 || Boolean(ptr?.recentBuyCount)) &&
+    ((row.candidate_score ?? 0) >= STRICT_MIN_SCORE || ptrBonus >= 4) &&
+    ((row.return_20d ?? -999) >= 2 || buyTradeCount > 0) &&
+    ((row.relative_strength_20d ?? -999) >= 0.5 || buyTradeCount > 0) &&
+    ((row.volume_ratio ?? 0) >= 0.7 || recentBuyCount > 0) &&
     (row.extension_from_sma20_pct ?? 999) <= 18 &&
     (row.close_in_day_range ?? 0) >= 0.35
   )
 }
 
 function isBalancedEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
+  const { ptrBonus, buyTradeCount, recentBuyCount } = getPtrMetrics(ptr)
+
   return (
     row.passes_price &&
     row.passes_volume &&
     row.passes_dollar_volume &&
     row.passes_market_cap &&
     row.above_sma_20 &&
-    ((row.candidate_score ?? 0) >= BALANCED_MIN_SCORE || Boolean(ptr?.ptrBonus >= 3)) &&
-    ((row.return_20d ?? -999) >= 0 || Boolean(ptr?.buyTradeCount)) &&
-    ((row.relative_strength_20d ?? -999) >= -0.5 || Boolean(ptr?.buyTradeCount)) &&
-    ((row.volume_ratio ?? 0) >= 0.6 || Boolean(ptr?.recentBuyCount)) &&
+    ((row.candidate_score ?? 0) >= BALANCED_MIN_SCORE || ptrBonus >= 3) &&
+    ((row.return_20d ?? -999) >= 0 || buyTradeCount > 0) &&
+    ((row.relative_strength_20d ?? -999) >= -0.5 || buyTradeCount > 0) &&
+    ((row.volume_ratio ?? 0) >= 0.6 || recentBuyCount > 0) &&
     (row.extension_from_sma20_pct ?? 999) <= 20
   )
 }
 
 function isFallbackEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
+  const { ptrBonus, buyTradeCount, recentBuyCount } = getPtrMetrics(ptr)
+
   return (
     row.passes_price &&
     row.passes_volume &&
     row.passes_dollar_volume &&
     row.passes_market_cap &&
     row.above_sma_20 &&
-    ((row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE || Boolean(ptr?.ptrBonus >= 2)) &&
-    ((row.return_20d ?? -999) >= -2 || Boolean(ptr?.buyTradeCount)) &&
-    ((row.relative_strength_20d ?? -999) >= -2 || Boolean(ptr?.buyTradeCount)) &&
-    ((row.volume_ratio ?? 0) >= 0.5 || Boolean(ptr?.recentBuyCount)) &&
+    ((row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE || ptrBonus >= 2) &&
+    ((row.return_20d ?? -999) >= -2 || buyTradeCount > 0) &&
+    ((row.relative_strength_20d ?? -999) >= -2 || buyTradeCount > 0) &&
+    ((row.volume_ratio ?? 0) >= 0.5 || recentBuyCount > 0) &&
     (row.extension_from_sma20_pct ?? 999) <= 24
   )
 }
