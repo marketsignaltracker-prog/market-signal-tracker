@@ -3,60 +3,118 @@ import { createClient } from "@supabase/supabase-js"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
-type CandidateSignalInput = {
+type Scope = "all" | "eligible" | "candidates"
+type SignalMode = "all" | "filings" | "ptrs"
+
+type CompanyRow = {
+  id?: number | null
   ticker: string
-  cik: string | null
-  name: string | null
-  price: number | null
-  market_cap: number | null
-  pe_ratio?: number | null
-  pe_forward?: number | null
-  pe_type?: string | null
-  sector?: string | null
-  industry?: string | null
-  business_description?: string | null
-  avg_volume_20d: number | null
-  avg_dollar_volume_20d: number | null
-  one_day_return?: number | null
-  return_5d: number | null
-  return_10d?: number | null
-  return_20d: number | null
-  relative_strength_20d: number | null
-  volume_ratio: number | null
-  breakout_20d: boolean | null
-  breakout_10d?: boolean | null
-  above_sma_20: boolean | null
-  breakout_clearance_pct?: number | null
-  extension_from_sma20_pct?: number | null
-  close_in_day_range?: number | null
-  catalyst_count?: number | null
-  passes_price?: boolean | null
-  passes_volume?: boolean | null
-  passes_dollar_volume?: boolean | null
-  passes_market_cap?: boolean | null
-  candidate_score: number | null
-  included: boolean | null
-  screen_reason: string | null
-  last_screened_at: string | null
+  cik?: string | null
+  name?: string | null
+  is_active?: boolean | null
 }
 
-type CandidateHistorySignalInput = CandidateSignalInput & {
-  screened_on: string
+type CandidateUniverseRow = {
+  company_id?: number | null
+  ticker: string
+  cik?: string | null
+  name?: string | null
+  is_active?: boolean | null
+  passed?: boolean | null
+  as_of_date?: string | null
 }
 
-type Diagnostics = {
-  candidateUniverseRowsLoaded: number
-  candidateHistoryRowsLoaded: number
-  candidateRowsLoaded: number
-  fallbackCandidateSourceUsed: boolean
-  candidateSignalsBuilt: number
-  candidateSignalsInserted: number
-  signalHistoryInserted: number
-  tickerCurrentBuilt: number
-  tickerCurrentInserted: number
-  tickerHistoryInserted: number
-  filteredBelowSignalScore: number
-  filteredBelowTickerScore: number
+type CandidateScreenHistoryRow = {
+  company_id?: number | null
+  ticker: string
+  cik?: string | null
+  name?: string | null
+  is_active?: boolean | null
+  passed?: boolean | null
+  as_of_date?: string | null
+}
+
+type ContextRow = CompanyRow | CandidateUniverseRow | CandidateScreenHistoryRow
+
+type RawFilingRow = {
+  company_id?: number | null
+  ticker: string | null
+  company_name?: string | null
+  form_type?: string | null
+  filed_at?: string | null
+  filing_url?: string | null
+  accession_no?: string | null
+  cik?: string | null
+  primary_doc?: string | null
+  fetched_at?: string | null
+}
+
+type RawPtrTradeRow = {
+  ticker: string | null
+  politician_name?: string | null
+  filer_name?: string | null
+  chamber?: string | null
+  transaction_type?: string | null
+  action?: string | null
+  trade_date?: string | null
+  disclosure_date?: string | null
+  source_url?: string | null
+  ptr_url?: string | null
+  trade_key?: string | null
+  amount_low?: number | null
+  amount_high?: number | null
+  asset_name?: string | null
+}
+
+type CurrentSignalRow = {
+  run_id: string
+  ticker: string
+  company_id: number | null
+  signal_type: string
+  source_type: string
+  strength: number
+  direction: "bullish" | "bearish" | "neutral"
+  summary: string
+  metadata: Record<string, unknown>
+  as_of_date: string
+  created_at: string
+  updated_at: string
+}
+
+type SignalHistoryRow = {
+  signal_history_key: string
+  scored_on: string
+  ticker: string
+  company_name: string | null
+  signal_type: string
+  signal_source: string
+  signal_category: string
+  signal_strength_bucket: string
+  signal_tags: string[]
+  bias: string
+  score: number
+  app_score: number
+  board_bucket: string
+  title: string
+  summary: string
+  source_form: string | null
+  filed_at: string | null
+  filing_url: string | null
+  accession_no: string | null
+  last_scored_at: string
+  updated_at: string
+  created_at: string
+  score_breakdown: Record<string, unknown>
+  score_version: string
+  stacked_signal_count: number
+  run_id: string
+  company_id: number | null
+  source_type: string
+  strength: number
+  direction: string
+  as_of_date: string
+  captured_at: string
+  snapshot: Record<string, unknown>
 }
 
 type ChunkWriteResult = {
@@ -73,18 +131,49 @@ type ChunkWriteResult = {
   }>
 }
 
+type Diagnostics = {
+  scope: Scope
+  mode: SignalMode
+  companiesRowsLoaded: number
+  candidateUniverseRowsLoaded: number
+  candidateScreenHistoryRowsLoaded: number
+  sourceRowsLoaded: number
+  fallbackCandidateHistoryUsed: boolean
+  rawFilingsLoaded: number
+  rawPtrTradesLoaded: number
+  filingSignalsBuilt: number
+  ptrSignalsBuilt: number
+  signalsInserted: number
+  signalHistoryInserted: number
+  filteredBelowMinStrength: number
+}
+
 const DEFAULT_LIMIT = 150
 const MAX_LIMIT = 300
-const DEFAULT_LOOKBACK_DAYS = 10
-const MAX_LOOKBACK_DAYS = 30
-const RETENTION_DAYS = 30
-const SCORE_VERSION = "v6-tech-only"
-
+const DEFAULT_LOOKBACK_DAYS = 21
+const MAX_LOOKBACK_DAYS = 60
+const DEFAULT_MIN_SIGNAL_STRENGTH = 20
+const RETENTION_DAYS = 45
+const SCORE_VERSION = "v7-lenient-insider-ptr"
 const DB_CHUNK_SIZE = 100
+const QUERY_CHUNK_SIZE = 200
+const CANDIDATE_LOOKBACK_DAYS = 10
 
-const MIN_SIGNAL_APP_SCORE = 70
-const MIN_TICKER_APP_SCORE = 75
-const MIN_CANDIDATE_SCORE = 70
+const FILING_SIGNAL_TYPE = "insider_activity"
+const PTR_SIGNAL_TYPE = "ptr_activity"
+
+const OWNERSHIP_FORMS = new Set([
+  "4",
+  "4/A",
+  "13D",
+  "13D/A",
+  "13G",
+  "13G/A",
+  "SC 13D",
+  "SC 13D/A",
+  "SC 13G",
+  "SC 13G/A",
+])
 
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
@@ -94,36 +183,17 @@ function parseInteger(value: string | null | undefined, fallback: number) {
   if (value === null || value === undefined || value.trim() === "") {
     return fallback
   }
+
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) ? parsed : fallback
-}
-
-function toIsoDateString(date: Date) {
-  return date.toISOString().slice(0, 10)
-}
-
-function round2(value: number | null | undefined) {
-  if (value === null || value === undefined || Number.isNaN(value)) return null
-  return Math.round(value * 100) / 100
-}
-
-function roundWhole(value: number | null | undefined) {
-  if (value === null || value === undefined || Number.isNaN(value)) return null
-  return Math.round(value)
 }
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
 
-function uniqueStrings(values: (string | null | undefined)[]) {
-  return Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean)))
-}
-
-function addDays(isoDate: string, days: number) {
-  const d = new Date(`${isoDate}T00:00:00.000Z`)
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().slice(0, 10)
+function toIsoDateString(date: Date) {
+  return date.toISOString().slice(0, 10)
 }
 
 function chunkArray<T>(items: T[], size: number) {
@@ -132,6 +202,43 @@ function chunkArray<T>(items: T[], size: number) {
     chunks.push(items.slice(i, i + size))
   }
   return chunks
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(values.map((value) => (value || "").trim()).filter(Boolean))
+  )
+}
+
+function getDaysAgo(dateValue: string | null | undefined) {
+  if (!dateValue) return null
+  const parsed = new Date(dateValue)
+  if (Number.isNaN(parsed.getTime())) return null
+
+  const now = Date.now()
+  const diffMs = now - parsed.getTime()
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+}
+
+function getStrengthBucket(strength: number) {
+  if (strength >= 75) return "high"
+  if (strength >= 45) return "medium"
+  return "low"
+}
+
+function getBoardBucket(strength: number) {
+  if (strength >= 75) return "High"
+  if (strength >= 45) return "Watch"
+  return "Early"
+}
+
+function buildHistoryKey(
+  runId: string,
+  ticker: string,
+  signalType: string,
+  sourceType: string
+) {
+  return `${runId}::${ticker}::${signalType}::${sourceType}`
 }
 
 async function upsertInChunksDetailed(
@@ -157,7 +264,9 @@ async function upsertInChunksDetailed(
         details: (error as any)?.details ?? null,
         hint: (error as any)?.hint ?? null,
         code: (error as any)?.code ?? null,
-        sampleKeys: sampleKeyBuilder ? chunk.slice(0, 10).map(sampleKeyBuilder) : undefined,
+        sampleKeys: sampleKeyBuilder
+          ? chunk.slice(0, 10).map(sampleKeyBuilder)
+          : undefined,
       })
     } else {
       insertedOrUpdated += chunk.length
@@ -170,394 +279,549 @@ async function upsertInChunksDetailed(
   }
 }
 
-function getStrengthBucket(score: number): "Buy" | "Strong Buy" | "Elite Buy" {
-  if (score >= 97) return "Elite Buy"
-  if (score >= 90) return "Strong Buy"
-  return "Buy"
-}
-
-function buildSignalKey(ticker: string, runDate: string) {
-  return `breakout:TECH_${runDate}_${normalizeTicker(ticker)}:${normalizeTicker(ticker)}`
-}
-
-function buildHistoryKey(runDate: string, signalKey: string) {
-  return `${runDate}_${signalKey}`
-}
-
-function scoreCandidateSignal(candidate: CandidateSignalInput) {
-  const candidateScore = Number(candidate.candidate_score || 0)
-
-  const breakdown: Record<string, number> = {}
-  const reasons: string[] = []
-  const caps: string[] = []
-
-  const add = (key: string, value: number, reason?: string | null) => {
-    if (!Number.isFinite(value) || value === 0) return
-    breakdown[key] = round2((breakdown[key] || 0) + value) ?? value
-    if (reason) reasons.push(reason)
-  }
-
-  add("base", 45, "Base technical candidate signal")
-
-  if (candidate.included) add("included", 12, "Finalized candidate universe member")
-
-  if (candidateScore >= 98) add("candidate_score", 18, "Elite candidate score")
-  else if (candidateScore >= 95) add("candidate_score", 15, "Very strong candidate score")
-  else if (candidateScore >= 90) add("candidate_score", 12, "High candidate score")
-  else if (candidateScore >= 85) add("candidate_score", 8, "Strong candidate score")
-  else if (candidateScore >= 78) add("candidate_score", 5, "Constructive candidate score")
-
-  if ((candidate.return_5d ?? 0) >= 6) add("short_momentum", 5, "Strong 5-day momentum")
-  else if ((candidate.return_5d ?? 0) >= 3) add("short_momentum", 3, "Positive 5-day momentum")
-
-  if ((candidate.return_10d ?? 0) >= 8) add("medium_momentum", 5, "Strong 10-day momentum")
-  else if ((candidate.return_10d ?? 0) >= 4) add("medium_momentum", 3, "Positive 10-day momentum")
-
-  if ((candidate.return_20d ?? 0) >= 20) add("trend_momentum", 7, "Strong 20-day momentum")
-  else if ((candidate.return_20d ?? 0) >= 12) add("trend_momentum", 5, "Healthy 20-day momentum")
-  else if ((candidate.return_20d ?? 0) >= 6) add("trend_momentum", 2, "Positive 20-day momentum")
-
-  if ((candidate.relative_strength_20d ?? 0) >= 10) add("relative_strength", 8, "Exceptional relative strength")
-  else if ((candidate.relative_strength_20d ?? 0) >= 6) add("relative_strength", 6, "Strong relative strength")
-  else if ((candidate.relative_strength_20d ?? 0) >= 3) add("relative_strength", 3, "Positive relative strength")
-
-  if ((candidate.volume_ratio ?? 0) >= 2.5) add("volume", 7, "Heavy volume confirmation")
-  else if ((candidate.volume_ratio ?? 0) >= 1.8) add("volume", 5, "Strong volume confirmation")
-  else if ((candidate.volume_ratio ?? 0) >= 1.3) add("volume", 2, "Moderate volume confirmation")
-
-  if (candidate.breakout_20d) add("breakout", 8, "20-day breakout")
-  else if (candidate.breakout_10d) add("breakout", 5, "10-day breakout")
-
-  if (candidate.above_sma_20) add("trend", 4, "Above 20-day moving average")
-
-  if ((candidate.breakout_clearance_pct ?? 0) >= 1) add("clearance", 3, "Clean breakout clearance")
-  else if ((candidate.breakout_clearance_pct ?? 0) >= 0.25) add("clearance", 1, "Valid breakout clearance")
-
-  if ((candidate.close_in_day_range ?? 0) >= 0.8) add("close_strength", 3, "Strong close in day range")
-  else if ((candidate.close_in_day_range ?? 0) >= 0.6) add("close_strength", 1, "Constructive close in day range")
-
-  if ((candidate.extension_from_sma20_pct ?? 999) > 18) {
-    add("overextension_penalty", -8, "Too extended from 20-day average")
-    caps.push("overextended-cap")
-  } else if ((candidate.extension_from_sma20_pct ?? 999) > 14) {
-    add("overextension_penalty", -4, "Somewhat extended from 20-day average")
-  }
-
-  if (!(candidate.passes_price ?? true)) add("liquidity_penalty", -5, "Failed minimum price")
-  if (!(candidate.passes_volume ?? true)) add("liquidity_penalty", -4, "Failed minimum volume")
-  if (!(candidate.passes_dollar_volume ?? true)) add("liquidity_penalty", -5, "Failed minimum dollar volume")
-  if (!(candidate.passes_market_cap ?? true)) add("liquidity_penalty", -4, "Failed minimum market cap")
-
-  let rawScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
-  rawScore = clamp(Math.round(rawScore), 0, 100)
-
-  let appScore = Math.round(Math.pow(rawScore / 100, 1.2) * 100)
-
-  if (!(candidate.breakout_20d || candidate.breakout_10d) && (candidate.relative_strength_20d ?? 0) < 5) {
-    appScore = Math.min(appScore, 88)
-    caps.push("no-breakout-no-rs-cap")
-  }
-
-  if ((candidate.volume_ratio ?? 0) < 1.2 && (candidate.return_20d ?? 0) < 10) {
-    appScore = Math.min(appScore, 84)
-    caps.push("weak-volume-momentum-cap")
-  }
-
-  appScore = clamp(appScore, 0, 100)
-
-  return {
-    rawScore,
-    appScore,
-    breakdown,
-    reasons: uniqueStrings(reasons),
-    caps: uniqueStrings(caps),
-  }
-}
-
-function buildSignalRow(candidate: CandidateSignalInput, runDate: string, runTimestamp: string) {
-  const signalScore = scoreCandidateSignal(candidate)
-  const signalKey = buildSignalKey(candidate.ticker, runDate)
-
-  const title =
-    (candidate.candidate_score ?? 0) >= 95
-      ? "Elite technical strong-buy setup"
-      : (candidate.candidate_score ?? 0) >= 90
-        ? "High-conviction technical strong-buy setup"
-        : "Technical breakout candidate"
-
-  const summaryParts = uniqueStrings([
-    candidate.screen_reason,
-    candidate.breakout_20d ? "20-day breakout present" : null,
-    candidate.breakout_10d ? "10-day breakout present" : null,
-    candidate.above_sma_20 ? "trend support is intact" : null,
-    (candidate.volume_ratio ?? 0) >= 1.5 ? "volume is elevated" : null,
-    (candidate.relative_strength_20d ?? 0) >= 3 ? "relative strength is positive" : null,
-  ])
-
-  return {
-    signal_key: signalKey,
-    ticker: normalizeTicker(candidate.ticker),
-    company_name: candidate.name,
-    business_description: candidate.business_description ?? null,
-    pe_ratio: round2(candidate.pe_ratio ?? null),
-    pe_forward: round2(candidate.pe_forward ?? null),
-    pe_type: candidate.pe_type ?? null,
-    signal_type: "Technical Strong Buy",
-    signal_source: "breakout",
-    signal_category: "Breakout",
-    signal_strength_bucket: getStrengthBucket(signalScore.appScore),
-    signal_tags: uniqueStrings([
-      "source:breakout",
-      "bullish",
-      "candidate-screen",
-      candidate.included ? "candidate-included" : null,
-      candidate.breakout_20d ? "breakout-20d" : null,
-      candidate.breakout_10d ? "breakout-10d" : null,
-      candidate.above_sma_20 ? "above-sma20" : null,
-      (candidate.volume_ratio ?? 0) >= 2 ? "heavy-volume" : null,
-      (candidate.relative_strength_20d ?? 0) >= 6 ? "relative-strength" : null,
-    ]),
-    catalyst_type: null,
-    bias: "Bullish",
-    score: signalScore.rawScore,
-    app_score: signalScore.appScore,
-    board_bucket: "Buy",
-    title,
-    summary: summaryParts.length
-      ? `Technical setup is constructive: ${summaryParts.join(", ")}.`
-      : "Technical setup is constructive.",
-    source_form: null,
-    filed_at: runDate,
-    filing_url: null,
-    accession_no: `TECH_${runDate}_${normalizeTicker(candidate.ticker)}`,
-    insider_action: null,
-    insider_shares: null,
-    insider_avg_price: null,
-    insider_buy_value: null,
-    insider_signal_flavor: "Technical",
-    cluster_buyers: null,
-    cluster_shares: null,
-    price_return_5d: round2(candidate.return_5d),
-    price_return_20d: round2(candidate.return_20d),
-    volume_ratio: round2(candidate.volume_ratio),
-    breakout_20d: candidate.breakout_20d === true,
-    breakout_52w: false,
-    above_50dma: candidate.above_sma_20 === true,
-    trend_aligned: candidate.above_sma_20 === true,
-    price_confirmed:
-      candidate.breakout_20d === true ||
-      candidate.breakout_10d === true ||
-      (candidate.volume_ratio ?? 0) >= 1.5,
-    earnings_surprise_pct: null,
-    revenue_growth_pct: null,
-    guidance_flag: false,
-    market_cap: roundWhole(candidate.market_cap),
-    sector: candidate.sector ?? null,
-    industry: candidate.industry ?? null,
-    relative_strength_20d: round2(candidate.relative_strength_20d),
-    age_days: 0,
-    freshness_bucket: "today",
-    last_scored_at: runTimestamp,
-    updated_at: runTimestamp,
-    score_breakdown: signalScore.breakdown,
-    score_version: SCORE_VERSION,
-    score_updated_at: runTimestamp,
-    stacked_signal_count: 1,
-    signal_reasons: signalScore.reasons,
-    score_caps_applied: signalScore.caps,
-    ticker_score_change_1d: null,
-    ticker_score_change_7d: null,
-  }
-}
-
-function buildSignalHistoryRow(signalRow: any, runDate: string, runTimestamp: string) {
-  return {
-    signal_key: signalRow.signal_key,
-    ticker: signalRow.ticker,
-    company_name: signalRow.company_name,
-    business_description: signalRow.business_description,
-    pe_ratio: signalRow.pe_ratio,
-    pe_forward: signalRow.pe_forward,
-    pe_type: signalRow.pe_type,
-    signal_type: signalRow.signal_type,
-    signal_source: signalRow.signal_source,
-    signal_category: signalRow.signal_category,
-    signal_strength_bucket: signalRow.signal_strength_bucket,
-    signal_tags: signalRow.signal_tags,
-    catalyst_type: signalRow.catalyst_type,
-    bias: signalRow.bias,
-    score: signalRow.score,
-    app_score: signalRow.app_score,
-    board_bucket: signalRow.board_bucket,
-    title: signalRow.title,
-    summary: signalRow.summary,
-    source_form: signalRow.source_form,
-    filed_at: signalRow.filed_at,
-    filing_url: signalRow.filing_url,
-    accession_no: signalRow.accession_no,
-    insider_action: signalRow.insider_action,
-    insider_shares: signalRow.insider_shares,
-    insider_avg_price: signalRow.insider_avg_price,
-    insider_buy_value: signalRow.insider_buy_value,
-    insider_signal_flavor: signalRow.insider_signal_flavor,
-    cluster_buyers: signalRow.cluster_buyers,
-    cluster_shares: signalRow.cluster_shares,
-    price_return_5d: signalRow.price_return_5d,
-    price_return_20d: signalRow.price_return_20d,
-    volume_ratio: signalRow.volume_ratio,
-    breakout_20d: signalRow.breakout_20d,
-    breakout_52w: signalRow.breakout_52w,
-    above_50dma: signalRow.above_50dma,
-    trend_aligned: signalRow.trend_aligned,
-    price_confirmed: signalRow.price_confirmed,
-    earnings_surprise_pct: signalRow.earnings_surprise_pct,
-    revenue_growth_pct: signalRow.revenue_growth_pct,
-    guidance_flag: signalRow.guidance_flag,
-    market_cap: signalRow.market_cap,
-    sector: signalRow.sector,
-    industry: signalRow.industry,
-    relative_strength_20d: signalRow.relative_strength_20d,
-    age_days: signalRow.age_days,
-    freshness_bucket: signalRow.freshness_bucket,
-    score_breakdown: signalRow.score_breakdown,
-    score_version: signalRow.score_version,
-    stacked_signal_count: signalRow.stacked_signal_count,
-    signal_reasons: signalRow.signal_reasons,
-    score_caps_applied: signalRow.score_caps_applied,
-    ticker_score_change_1d: signalRow.ticker_score_change_1d,
-    ticker_score_change_7d: signalRow.ticker_score_change_7d,
-    signal_history_key: buildHistoryKey(runDate, signalRow.signal_key),
-    scored_on: runDate,
-    created_at: runTimestamp,
-  }
-}
-
-async function loadCandidateInputs(
+async function loadCompaniesContext(
   supabase: any,
   limit: number,
-  candidateCutoffDateString: string
+  onlyActive: boolean
 ): Promise<{
-  candidateRows: CandidateSignalInput[]
-  candidateUniverseRowsLoaded: number
-  candidateHistoryRowsLoaded: number
-  fallbackCandidateSourceUsed: boolean
+  rows: CompanyRow[]
+  companiesRowsLoaded: number
 }> {
-  const universeQuery = await supabase
-    .from("candidate_universe")
-    .select(
-      "ticker, cik, name, price, market_cap, pe_ratio, pe_forward, pe_type, sector, industry, business_description, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, relative_strength_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, passes_price, passes_volume, passes_dollar_volume, passes_market_cap, candidate_score, included, screen_reason, last_screened_at"
-    )
-    .gte("candidate_score", MIN_CANDIDATE_SCORE)
-    .gte("last_screened_at", candidateCutoffDateString)
-    .order("candidate_score", { ascending: false })
+  let query = supabase
+    .from("companies")
+    .select("id, ticker, cik, name, is_active")
+    .not("ticker", "is", null)
+    .order("id", { ascending: true })
     .limit(limit)
 
-  if (universeQuery.error) {
-    throw new Error(`candidate_universe load failed: ${universeQuery.error.message}`)
+  if (onlyActive) {
+    query = query.eq("is_active", true)
   }
 
-  const universeRows = (universeQuery.data || []) as CandidateSignalInput[]
+  const { data, error } = await query
+  if (error) throw new Error(`companies load failed: ${error.message}`)
 
-  if (universeRows.length >= Math.min(20, limit)) {
+  return {
+    rows: (data || []) as CompanyRow[],
+    companiesRowsLoaded: (data || []).length,
+  }
+}
+
+async function loadEligibleContext(
+  supabase: any,
+  limit: number,
+  onlyActive: boolean
+): Promise<{
+  rows: CandidateUniverseRow[]
+  candidateUniverseRowsLoaded: number
+}> {
+  let query = supabase
+    .from("candidate_universe")
+    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
+    .eq("passed", true)
+    .not("ticker", "is", null)
+    .order("ticker", { ascending: true })
+    .limit(limit)
+
+  if (onlyActive) {
+    query = query.eq("is_active", true)
+  }
+
+  const { data, error } = await query
+  if (error) {
+    throw new Error(`candidate_universe eligible load failed: ${error.message}`)
+  }
+
+  return {
+    rows: (data || []) as CandidateUniverseRow[],
+    candidateUniverseRowsLoaded: (data || []).length,
+  }
+}
+
+async function loadCandidatesContext(
+  supabase: any,
+  limit: number,
+  onlyActive: boolean
+): Promise<{
+  candidateRows: ContextRow[]
+  candidateUniverseRowsLoaded: number
+  candidateScreenHistoryRowsLoaded: number
+  fallbackCandidateHistoryUsed: boolean
+}> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - CANDIDATE_LOOKBACK_DAYS)
+
+  let universeQuery = supabase
+    .from("candidate_universe")
+    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
+    .eq("passed", true)
+    .gte("as_of_date", cutoff.toISOString())
+    .not("ticker", "is", null)
+    .order("as_of_date", { ascending: false })
+    .limit(limit)
+
+  if (onlyActive) {
+    universeQuery = universeQuery.eq("is_active", true)
+  }
+
+  const universeResult = await universeQuery
+  if (universeResult.error) {
+    throw new Error(
+      `candidate_universe candidate load failed: ${universeResult.error.message}`
+    )
+  }
+
+  const universeRows = (universeResult.data || []) as CandidateUniverseRow[]
+
+  if (universeRows.length >= Math.min(25, limit)) {
     return {
       candidateRows: universeRows,
       candidateUniverseRowsLoaded: universeRows.length,
-      candidateHistoryRowsLoaded: 0,
-      fallbackCandidateSourceUsed: false,
+      candidateScreenHistoryRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
     }
   }
 
-  const latestScreened = await supabase
+  const latestSnapshot = await supabase
     .from("candidate_screen_history")
-    .select("screened_on")
-    .order("screened_on", { ascending: false })
+    .select("as_of_date")
+    .order("as_of_date", { ascending: false })
     .limit(1)
     .maybeSingle()
 
-  if (latestScreened.error) {
-    throw new Error(`candidate_screen_history latest snapshot lookup failed: ${latestScreened.error.message}`)
+  if (latestSnapshot.error) {
+    throw new Error(
+      `candidate_screen_history latest snapshot lookup failed: ${latestSnapshot.error.message}`
+    )
   }
 
-  const screenedOn = latestScreened.data?.screened_on ?? null
-  if (!screenedOn) {
+  const latestAsOfDate = latestSnapshot.data?.as_of_date ?? null
+  if (!latestAsOfDate) {
     return {
       candidateRows: universeRows,
       candidateUniverseRowsLoaded: universeRows.length,
-      candidateHistoryRowsLoaded: 0,
-      fallbackCandidateSourceUsed: false,
+      candidateScreenHistoryRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
     }
   }
 
-  const historyQuery = await supabase
+  let historyQuery = supabase
     .from("candidate_screen_history")
-    .select(
-      "ticker, cik, name, price, market_cap, pe_ratio, pe_forward, pe_type, sector, industry, business_description, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, relative_strength_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, passes_price, passes_volume, passes_dollar_volume, passes_market_cap, candidate_score, included, screen_reason, last_screened_at, screened_on"
-    )
-    .eq("screened_on", screenedOn)
-    .gte("candidate_score", MIN_CANDIDATE_SCORE)
-    .order("candidate_score", { ascending: false })
+    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
+    .eq("as_of_date", latestAsOfDate)
+    .eq("passed", true)
+    .not("ticker", "is", null)
+    .order("ticker", { ascending: true })
     .limit(limit)
 
-  if (historyQuery.error) {
-    throw new Error(`candidate_screen_history snapshot load failed: ${historyQuery.error.message}`)
+  if (onlyActive) {
+    historyQuery = historyQuery.eq("is_active", true)
   }
 
-  const historyRows = (historyQuery.data || []) as CandidateHistorySignalInput[]
+  const historyResult = await historyQuery
+  if (historyResult.error) {
+    throw new Error(
+      `candidate_screen_history snapshot load failed: ${historyResult.error.message}`
+    )
+  }
 
-  const deduped = new Map<string, CandidateSignalInput>()
+  const historyRows = (historyResult.data || []) as CandidateScreenHistoryRow[]
+  const deduped = new Map<string, ContextRow>()
+
   for (const row of universeRows) {
     const ticker = normalizeTicker(row.ticker)
     if (!ticker) continue
     deduped.set(ticker, row)
   }
+
   for (const row of historyRows) {
     const ticker = normalizeTicker(row.ticker)
     if (!ticker) continue
     if (!deduped.has(ticker)) {
-      deduped.set(ticker, {
-        ticker: row.ticker,
-        cik: row.cik,
-        name: row.name,
-        price: row.price,
-        market_cap: row.market_cap,
-        pe_ratio: row.pe_ratio,
-        pe_forward: row.pe_forward,
-        pe_type: row.pe_type,
-        sector: row.sector,
-        industry: row.industry,
-        business_description: row.business_description,
-        avg_volume_20d: row.avg_volume_20d,
-        avg_dollar_volume_20d: row.avg_dollar_volume_20d,
-        one_day_return: row.one_day_return,
-        return_5d: row.return_5d,
-        return_10d: row.return_10d,
-        return_20d: row.return_20d,
-        relative_strength_20d: row.relative_strength_20d,
-        volume_ratio: row.volume_ratio,
-        breakout_20d: row.breakout_20d,
-        breakout_10d: row.breakout_10d,
-        above_sma_20: row.above_sma_20,
-        breakout_clearance_pct: row.breakout_clearance_pct,
-        extension_from_sma20_pct: row.extension_from_sma20_pct,
-        close_in_day_range: row.close_in_day_range,
-        catalyst_count: row.catalyst_count,
-        passes_price: row.passes_price,
-        passes_volume: row.passes_volume,
-        passes_dollar_volume: row.passes_dollar_volume,
-        passes_market_cap: row.passes_market_cap,
-        candidate_score: row.candidate_score,
-        included: row.included,
-        screen_reason: row.screen_reason,
-        last_screened_at: row.last_screened_at,
-      })
+      deduped.set(ticker, row)
     }
   }
 
   return {
     candidateRows: [...deduped.values()].slice(0, limit),
     candidateUniverseRowsLoaded: universeRows.length,
-    candidateHistoryRowsLoaded: historyRows.length,
-    fallbackCandidateSourceUsed: historyRows.length > 0,
+    candidateScreenHistoryRowsLoaded: historyRows.length,
+    fallbackCandidateHistoryUsed: historyRows.length > 0,
+  }
+}
+
+async function loadRecentFilingsForTickers(
+  supabase: any,
+  tickers: string[],
+  cutoffIso: string
+): Promise<RawFilingRow[]> {
+  const allRows: RawFilingRow[] = []
+
+  for (const tickerChunk of chunkArray(tickers, QUERY_CHUNK_SIZE)) {
+    const { data, error } = await supabase
+      .from("raw_filings")
+      .select(
+        "company_id, ticker, company_name, form_type, filed_at, filing_url, accession_no, cik, primary_doc, fetched_at"
+      )
+      .in("ticker", tickerChunk)
+      .gte("filed_at", cutoffIso)
+      .order("filed_at", { ascending: false })
+
+    if (error) {
+      throw new Error(`raw_filings load failed: ${error.message}`)
+    }
+
+    allRows.push(...(((data || []) as RawFilingRow[]) || []))
+  }
+
+  return allRows
+}
+
+async function loadRecentPtrTradesForTickers(
+  supabase: any,
+  tickers: string[],
+  cutoffDate: string
+): Promise<RawPtrTradeRow[]> {
+  const allRows: RawPtrTradeRow[] = []
+
+  for (const tickerChunk of chunkArray(tickers, QUERY_CHUNK_SIZE)) {
+    const { data, error } = await supabase
+      .from("raw_ptr_trades")
+      .select(
+        "ticker, politician_name, filer_name, chamber, transaction_type, action, trade_date, disclosure_date, source_url, ptr_url, trade_key, amount_low, amount_high, asset_name"
+      )
+      .in("ticker", tickerChunk)
+      .or(
+        `trade_date.gte.${cutoffDate},disclosure_date.gte.${cutoffDate}`
+      )
+      .order("trade_date", { ascending: false })
+
+    if (error) {
+      throw new Error(`raw_ptr_trades load failed: ${error.message}`)
+    }
+
+    allRows.push(...(((data || []) as RawPtrTradeRow[]) || []))
+  }
+
+  return allRows
+}
+
+function scoreFilingSignal(rows: RawFilingRow[]) {
+  const forms = rows.map((row) => (row.form_type || "").trim().toUpperCase())
+  const latestRow = rows[0] || null
+  const latestFiledAt = latestRow?.filed_at || null
+  const latestDaysAgo = getDaysAgo(latestFiledAt)
+
+  let strength = 25
+  const breakdown: Record<string, number> = {
+    base_recent_filing: 25,
+  }
+
+  const add = (key: string, value: number) => {
+    if (!value) return
+    breakdown[key] = value
+    strength += value
+  }
+
+  const form4Count = forms.filter((form) => form === "4" || form === "4/A").length
+  const ownershipCount = forms.filter((form) => OWNERSHIP_FORMS.has(form)).length
+
+  if (form4Count > 0) {
+    add("form4_presence", 20)
+  }
+
+  if (ownershipCount >= 2) {
+    add("multiple_ownership_forms", 10)
+  } else if (ownershipCount === 1) {
+    add("ownership_form_presence", 5)
+  }
+
+  if (rows.length >= 4) {
+    add("filing_count", 12)
+  } else if (rows.length >= 2) {
+    add("filing_count", 7)
+  }
+
+  if (latestDaysAgo !== null) {
+    if (latestDaysAgo <= 3) add("recency", 15)
+    else if (latestDaysAgo <= 7) add("recency", 10)
+    else if (latestDaysAgo <= 14) add("recency", 5)
+  }
+
+  return {
+    strength: clamp(Math.round(strength), 0, 100),
+    latestRow,
+    latestFiledAt,
+    form4Count,
+    ownershipCount,
+    filingCount: rows.length,
+    forms: uniqueStrings(forms),
+    breakdown,
+  }
+}
+
+function isPositivePtrTrade(row: RawPtrTradeRow) {
+  const type = (row.transaction_type || "").trim().toLowerCase()
+  const action = (row.action || "").trim().toLowerCase()
+
+  return (
+    type === "buy" ||
+    type === "exchange" ||
+    action.includes("buy") ||
+    action.includes("purchase") ||
+    action.includes("exchange")
+  )
+}
+
+function scorePtrSignal(rows: RawPtrTradeRow[]) {
+  const positiveRows = rows.filter(isPositivePtrTrade)
+  const relevantRows = positiveRows.length > 0 ? positiveRows : rows
+  const latestRow = relevantRows[0] || null
+  const latestDate = latestRow?.trade_date || latestRow?.disclosure_date || null
+  const latestDaysAgo = getDaysAgo(latestDate)
+
+  let strength = positiveRows.length > 0 ? 35 : 18
+  const breakdown: Record<string, number> = {
+    base_ptr_activity: positiveRows.length > 0 ? 35 : 18,
+  }
+
+  const add = (key: string, value: number) => {
+    if (!value) return
+    breakdown[key] = value
+    strength += value
+  }
+
+  if (positiveRows.length >= 3) {
+    add("multiple_positive_ptrs", 20)
+  } else if (positiveRows.length >= 2) {
+    add("multiple_positive_ptrs", 12)
+  } else if (positiveRows.length === 1) {
+    add("single_positive_ptr", 6)
+  }
+
+  if (latestDaysAgo !== null) {
+    if (latestDaysAgo <= 7) add("recency", 15)
+    else if (latestDaysAgo <= 14) add("recency", 10)
+    else if (latestDaysAgo <= 30) add("recency", 5)
+  }
+
+  const maxAmountHigh = relevantRows.reduce<number>((max, row) => {
+    const value = Number(row.amount_high || 0)
+    return Number.isFinite(value) ? Math.max(max, value) : max
+  }, 0)
+
+  if (maxAmountHigh >= 250000) {
+    add("trade_size", 10)
+  } else if (maxAmountHigh >= 50000) {
+    add("trade_size", 5)
+  }
+
+  return {
+    strength: clamp(Math.round(strength), 0, 100),
+    latestRow,
+    latestDate,
+    positiveCount: positiveRows.length,
+    totalCount: rows.length,
+    breakdown,
+  }
+}
+
+function buildFilingSignal(
+  context: ContextRow,
+  rows: RawFilingRow[],
+  runId: string,
+  runTimestamp: string
+): CurrentSignalRow {
+  const ticker = normalizeTicker(context.ticker)
+  const companyId =
+    "company_id" in context
+      ? Number(context.company_id ?? null)
+      : Number(context.id ?? null)
+
+  const scored = scoreFilingSignal(rows)
+  const summaryParts = uniqueStrings([
+    scored.form4Count > 0
+      ? `includes ${scored.form4Count} recent Form 4 filing${scored.form4Count === 1 ? "" : "s"}`
+      : null,
+    scored.ownershipCount > 0
+      ? `${scored.ownershipCount} ownership-style filing${scored.ownershipCount === 1 ? "" : "s"} detected`
+      : null,
+    scored.filingCount >= 2
+      ? `${scored.filingCount} total recent filing records`
+      : null,
+    scored.latestFiledAt ? `latest filing on ${toIsoDateString(new Date(scored.latestFiledAt))}` : null,
+  ])
+
+  const summary =
+    summaryParts.length > 0
+      ? `Recent insider/ownership filing activity detected: ${summaryParts.join(", ")}.`
+      : "Recent insider/ownership filing activity detected."
+
+  return {
+    run_id: runId,
+    ticker,
+    company_id: Number.isFinite(companyId) ? companyId : null,
+    signal_type: FILING_SIGNAL_TYPE,
+    source_type: "filing",
+    strength: scored.strength,
+    direction: "bullish",
+    summary,
+    metadata: {
+      ticker,
+      filingCount: scored.filingCount,
+      form4Count: scored.form4Count,
+      ownershipCount: scored.ownershipCount,
+      forms: scored.forms,
+      latestFiledAt: scored.latestFiledAt,
+      latestAccessionNo: scored.latestRow?.accession_no || null,
+      latestFilingUrl: scored.latestRow?.filing_url || null,
+      breakdown: scored.breakdown,
+    },
+    as_of_date: runTimestamp,
+    created_at: runTimestamp,
+    updated_at: runTimestamp,
+  }
+}
+
+function buildPtrSignal(
+  context: ContextRow,
+  rows: RawPtrTradeRow[],
+  runId: string,
+  runTimestamp: string
+): CurrentSignalRow {
+  const ticker = normalizeTicker(context.ticker)
+  const companyId =
+    "company_id" in context
+      ? Number(context.company_id ?? null)
+      : Number(context.id ?? null)
+
+  const scored = scorePtrSignal(rows)
+  const relevantNames = uniqueStrings(
+    rows.map((row) => row.politician_name || row.filer_name)
+  ).slice(0, 3)
+
+  const summaryParts = uniqueStrings([
+    scored.positiveCount > 0
+      ? `${scored.positiveCount} recent positive PTR trade disclosure${scored.positiveCount === 1 ? "" : "s"}`
+      : `${scored.totalCount} recent PTR disclosure${scored.totalCount === 1 ? "" : "s"}`,
+    relevantNames.length > 0 ? `reported by ${relevantNames.join(", ")}` : null,
+    scored.latestDate ? `latest disclosure on ${scored.latestDate}` : null,
+  ])
+
+  const summary =
+    summaryParts.length > 0
+      ? `Recent congressional trading activity detected: ${summaryParts.join(", ")}.`
+      : "Recent congressional trading activity detected."
+
+  return {
+    run_id: runId,
+    ticker,
+    company_id: Number.isFinite(companyId) ? companyId : null,
+    signal_type: PTR_SIGNAL_TYPE,
+    source_type: "ptr",
+    strength: scored.strength,
+    direction: scored.positiveCount > 0 ? "bullish" : "neutral",
+    summary,
+    metadata: {
+      ticker,
+      totalCount: scored.totalCount,
+      positiveCount: scored.positiveCount,
+      latestTradeDate: scored.latestDate,
+      latestPolitician:
+        scored.latestRow?.politician_name || scored.latestRow?.filer_name || null,
+      latestTradeKey: scored.latestRow?.trade_key || null,
+      latestSourceUrl: scored.latestRow?.source_url || scored.latestRow?.ptr_url || null,
+      breakdown: scored.breakdown,
+    },
+    as_of_date: runTimestamp,
+    created_at: runTimestamp,
+    updated_at: runTimestamp,
+  }
+}
+
+function buildSignalHistoryRow(
+  signal: CurrentSignalRow,
+  contextName: string | null,
+  runDate: string,
+  runId: string,
+  runTimestamp: string
+): SignalHistoryRow {
+  const metadata = signal.metadata || {}
+  const breakdown =
+    typeof metadata.breakdown === "object" && metadata.breakdown !== null
+      ? (metadata.breakdown as Record<string, unknown>)
+      : {}
+
+  const title =
+    signal.source_type === "ptr"
+      ? "Congressional trading activity detected"
+      : "Insider/ownership filing activity detected"
+
+  const signalTags =
+    signal.source_type === "ptr"
+      ? uniqueStrings(["ptr", "congress", signal.direction, signal.signal_type])
+      : uniqueStrings(["filing", "insider", signal.direction, signal.signal_type])
+
+  return {
+    signal_history_key: buildHistoryKey(
+      runId,
+      signal.ticker,
+      signal.signal_type,
+      signal.source_type
+    ),
+    scored_on: runDate,
+    ticker: signal.ticker,
+    company_name: contextName,
+    signal_type: signal.signal_type,
+    signal_source: signal.source_type,
+    signal_category: signal.source_type === "ptr" ? "Congress" : "Ownership",
+    signal_strength_bucket: getStrengthBucket(signal.strength),
+    signal_tags: signalTags,
+    bias:
+      signal.direction === "bullish"
+        ? "Bullish"
+        : signal.direction === "bearish"
+          ? "Bearish"
+          : "Neutral",
+    score: signal.strength,
+    app_score: signal.strength,
+    board_bucket: getBoardBucket(signal.strength),
+    title,
+    summary: signal.summary,
+    source_form:
+      signal.source_type === "filing"
+        ? String((metadata.latestAccessionNo ? metadata.forms?.[0] : metadata.forms?.[0]) || "")
+            .trim() || null
+        : null,
+    filed_at:
+      signal.source_type === "filing"
+        ? (metadata.latestFiledAt as string | null) || null
+        : (metadata.latestTradeDate as string | null) || null,
+    filing_url:
+      signal.source_type === "filing"
+        ? (metadata.latestFilingUrl as string | null) || null
+        : (metadata.latestSourceUrl as string | null) || null,
+    accession_no:
+      signal.source_type === "filing"
+        ? (metadata.latestAccessionNo as string | null) || null
+        : (metadata.latestTradeKey as string | null) || null,
+    last_scored_at: runTimestamp,
+    updated_at: runTimestamp,
+    created_at: runTimestamp,
+    score_breakdown: breakdown,
+    score_version: SCORE_VERSION,
+    stacked_signal_count: 1,
+    run_id: runId,
+    company_id: signal.company_id,
+    source_type: signal.source_type,
+    strength: signal.strength,
+    direction: signal.direction,
+    as_of_date: signal.as_of_date,
+    captured_at: runTimestamp,
+    snapshot: {
+      ...signal,
+      company_name: contextName,
+    },
   }
 }
 
@@ -589,103 +853,279 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
 
+    const scopeParam = (searchParams.get("scope") || "eligible").toLowerCase()
+    const modeParam = (searchParams.get("mode") || "all").toLowerCase()
     const limit = Math.min(
       Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT)),
       MAX_LIMIT
     )
     const lookbackDays = Math.min(
-      Math.max(1, parseInteger(searchParams.get("lookbackDays"), DEFAULT_LOOKBACK_DAYS)),
+      Math.max(
+        1,
+        parseInteger(searchParams.get("lookbackDays"), DEFAULT_LOOKBACK_DAYS)
+      ),
       MAX_LOOKBACK_DAYS
     )
+    const minSignalStrength = Math.max(
+      0,
+      Math.min(
+        100,
+        parseInteger(
+          searchParams.get("minSignalStrength"),
+          DEFAULT_MIN_SIGNAL_STRENGTH
+        )
+      )
+    )
+    const onlyActive =
+      (searchParams.get("onlyActive") || "true").toLowerCase() !== "false"
+    const runRetention =
+      (searchParams.get("runRetention") || "false").toLowerCase() === "true"
 
-    const includeCounts = (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
-    const runRetention = (searchParams.get("runRetention") || "false").toLowerCase() === "true"
+    if (!["all", "eligible", "candidates"].includes(scopeParam)) {
+      return Response.json(
+        {
+          ok: false,
+          error: `Invalid scope "${scopeParam}". Expected one of: all, eligible, candidates`,
+        },
+        { status: 400 }
+      )
+    }
+
+    if (!["all", "filings", "ptrs"].includes(modeParam)) {
+      return Response.json(
+        {
+          ok: false,
+          error: `Invalid mode "${modeParam}". Expected one of: all, filings, ptrs`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const scope = scopeParam as Scope
+    const mode = modeParam as SignalMode
 
     const now = new Date()
     const runDate = toIsoDateString(now)
     const runTimestamp = now.toISOString()
+    const runId = `signals_${runTimestamp}`
 
-    const candidateCutoffDate = new Date(now)
-    candidateCutoffDate.setDate(candidateCutoffDate.getDate() - lookbackDays)
-    const candidateCutoffDateString = candidateCutoffDate.toISOString()
+    const cutoff = new Date(now)
+    cutoff.setDate(cutoff.getDate() - lookbackDays)
+    const cutoffIso = cutoff.toISOString()
+    const cutoffDate = toIsoDateString(cutoff)
 
     const diagnostics: Diagnostics = {
+      scope,
+      mode,
+      companiesRowsLoaded: 0,
       candidateUniverseRowsLoaded: 0,
-      candidateHistoryRowsLoaded: 0,
-      candidateRowsLoaded: 0,
-      fallbackCandidateSourceUsed: false,
-      candidateSignalsBuilt: 0,
-      candidateSignalsInserted: 0,
+      candidateScreenHistoryRowsLoaded: 0,
+      sourceRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
+      rawFilingsLoaded: 0,
+      rawPtrTradesLoaded: 0,
+      filingSignalsBuilt: 0,
+      ptrSignalsBuilt: 0,
+      signalsInserted: 0,
       signalHistoryInserted: 0,
-      tickerCurrentBuilt: 0,
-      tickerCurrentInserted: 0,
-      tickerHistoryInserted: 0,
-      filteredBelowSignalScore: 0,
-      filteredBelowTickerScore: 0,
+      filteredBelowMinStrength: 0,
     }
 
-    const candidateLoadResult = await loadCandidateInputs(
-      supabase,
-      limit,
-      candidateCutoffDateString
-    )
+    let contextRows: ContextRow[] = []
 
-    const candidateRows = candidateLoadResult.candidateRows
-    diagnostics.candidateUniverseRowsLoaded = candidateLoadResult.candidateUniverseRowsLoaded
-    diagnostics.candidateHistoryRowsLoaded = candidateLoadResult.candidateHistoryRowsLoaded
-    diagnostics.candidateRowsLoaded = candidateRows.length
-    diagnostics.fallbackCandidateSourceUsed = candidateLoadResult.fallbackCandidateSourceUsed
+    if (scope === "all") {
+      const allContext = await loadCompaniesContext(supabase, limit, onlyActive)
+      contextRows = allContext.rows
+      diagnostics.companiesRowsLoaded = allContext.companiesRowsLoaded
+      diagnostics.sourceRowsLoaded = allContext.rows.length
+    }
 
-    const signalRows: any[] = []
-    const historyRows: any[] = []
+    if (scope === "eligible") {
+      const eligibleContext = await loadEligibleContext(
+        supabase,
+        limit,
+        onlyActive
+      )
+      contextRows = eligibleContext.rows
+      diagnostics.candidateUniverseRowsLoaded =
+        eligibleContext.candidateUniverseRowsLoaded
+      diagnostics.sourceRowsLoaded = eligibleContext.rows.length
+    }
 
-    for (const candidate of candidateRows) {
-      const signalRow = buildSignalRow(candidate, runDate, runTimestamp)
+    if (scope === "candidates") {
+      const candidateContext = await loadCandidatesContext(
+        supabase,
+        limit,
+        onlyActive
+      )
+      contextRows = candidateContext.candidateRows
+      diagnostics.candidateUniverseRowsLoaded =
+        candidateContext.candidateUniverseRowsLoaded
+      diagnostics.candidateScreenHistoryRowsLoaded =
+        candidateContext.candidateScreenHistoryRowsLoaded
+      diagnostics.fallbackCandidateHistoryUsed =
+        candidateContext.fallbackCandidateHistoryUsed
+      diagnostics.sourceRowsLoaded = candidateContext.candidateRows.length
+    }
 
-      if (signalRow.app_score < MIN_SIGNAL_APP_SCORE) {
-        diagnostics.filteredBelowSignalScore += 1
-        continue
+    const contextMap = new Map<string, ContextRow>()
+    for (const row of contextRows) {
+      const ticker = normalizeTicker(row.ticker)
+      if (!ticker) continue
+      if (!contextMap.has(ticker)) {
+        contextMap.set(ticker, row)
+      }
+    }
+
+    const tickers = [...contextMap.keys()]
+
+    if (tickers.length === 0) {
+      return Response.json({
+        ok: true,
+        stage: "signals",
+        scope,
+        mode,
+        limit,
+        lookbackDays,
+        minSignalStrength,
+        diagnostics,
+        message: "No source tickers were available for signal generation.",
+      })
+    }
+
+    let rawFilings: RawFilingRow[] = []
+    let rawPtrTrades: RawPtrTradeRow[] = []
+
+    if (mode === "all" || mode === "filings") {
+      rawFilings = await loadRecentFilingsForTickers(supabase, tickers, cutoffIso)
+      diagnostics.rawFilingsLoaded = rawFilings.length
+    }
+
+    if (mode === "all" || mode === "ptrs") {
+      rawPtrTrades = await loadRecentPtrTradesForTickers(
+        supabase,
+        tickers,
+        cutoffDate
+      )
+      diagnostics.rawPtrTradesLoaded = rawPtrTrades.length
+    }
+
+    const filingsByTicker = new Map<string, RawFilingRow[]>()
+    for (const row of rawFilings) {
+      const ticker = normalizeTicker(row.ticker)
+      if (!ticker) continue
+
+      const current = filingsByTicker.get(ticker) || []
+      current.push(row)
+      filingsByTicker.set(ticker, current)
+    }
+
+    const ptrsByTicker = new Map<string, RawPtrTradeRow[]>()
+    for (const row of rawPtrTrades) {
+      const ticker = normalizeTicker(row.ticker)
+      if (!ticker) continue
+
+      const current = ptrsByTicker.get(ticker) || []
+      current.push(row)
+      ptrsByTicker.set(ticker, current)
+    }
+
+    const currentSignals: CurrentSignalRow[] = []
+    const historySignals: SignalHistoryRow[] = []
+
+    for (const [ticker, context] of contextMap.entries()) {
+      if (mode === "all" || mode === "filings") {
+        const tickerFilings = filingsByTicker.get(ticker) || []
+
+        if (tickerFilings.length > 0) {
+          const filingSignal = buildFilingSignal(
+            context,
+            tickerFilings,
+            runId,
+            runTimestamp
+          )
+
+          if (filingSignal.strength >= minSignalStrength) {
+            currentSignals.push(filingSignal)
+            historySignals.push(
+              buildSignalHistoryRow(
+                filingSignal,
+                context.name || null,
+                runDate,
+                runId,
+                runTimestamp
+              )
+            )
+            diagnostics.filingSignalsBuilt += 1
+          } else {
+            diagnostics.filteredBelowMinStrength += 1
+          }
+        }
       }
 
-      signalRows.push(signalRow)
-      historyRows.push(buildSignalHistoryRow(signalRow, runDate, runTimestamp))
+      if (mode === "all" || mode === "ptrs") {
+        const tickerPtrs = ptrsByTicker.get(ticker) || []
+
+        if (tickerPtrs.length > 0) {
+          const ptrSignal = buildPtrSignal(
+            context,
+            tickerPtrs,
+            runId,
+            runTimestamp
+          )
+
+          if (ptrSignal.strength >= minSignalStrength) {
+            currentSignals.push(ptrSignal)
+            historySignals.push(
+              buildSignalHistoryRow(
+                ptrSignal,
+                context.name || null,
+                runDate,
+                runId,
+                runTimestamp
+              )
+            )
+            diagnostics.ptrSignalsBuilt += 1
+          } else {
+            diagnostics.filteredBelowMinStrength += 1
+          }
+        }
+      }
     }
 
-    diagnostics.candidateSignalsBuilt = signalRows.length
-
-    const signalWriteResult =
-      signalRows.length > 0
+    const signalsWriteResult =
+      currentSignals.length > 0
         ? await upsertInChunksDetailed(
             supabase.from("signals"),
             "signals",
-            signalRows,
-            "signal_key",
-            (row) => row.signal_key
+            currentSignals,
+            "ticker,signal_type,source_type",
+            (row) => `${row.ticker}:${row.signal_type}:${row.source_type}`
           )
         : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
 
-    if (signalWriteResult.errors.length > 0) {
+    if (signalsWriteResult.errors.length > 0) {
       return Response.json(
         {
           ok: false,
-          error: "Failed writing signals rows",
+          error: "Failed writing current signals rows",
           debug: {
             diagnostics,
-            errorSamples: signalWriteResult.errors.slice(0, 5),
+            errorSamples: signalsWriteResult.errors.slice(0, 5),
           },
         },
         { status: 500 }
       )
     }
 
-    diagnostics.candidateSignalsInserted = signalWriteResult.insertedOrUpdated
+    diagnostics.signalsInserted = signalsWriteResult.insertedOrUpdated
 
     const historyWriteResult =
-      historyRows.length > 0
+      historySignals.length > 0
         ? await upsertInChunksDetailed(
             supabase.from("signal_history"),
             "signal_history",
-            historyRows,
+            historySignals,
             "signal_history_key",
             (row) => row.signal_history_key
           )
@@ -707,50 +1147,40 @@ export async function GET(request: Request) {
 
     diagnostics.signalHistoryInserted = historyWriteResult.insertedOrUpdated
 
-    let retentionMessage = "skipped"
+    let retentionCleanup = "skipped"
     if (runRetention) {
       const retentionCutoff = new Date(now)
       retentionCutoff.setDate(retentionCutoff.getDate() - RETENTION_DAYS)
-      const retentionCutoffString = toIsoDateString(retentionCutoff)
+      const retentionCutoffDate = toIsoDateString(retentionCutoff)
 
       const { error: retentionError } = await supabase
         .from("signal_history")
         .delete()
-        .lt("scored_on", retentionCutoffString)
+        .lt("scored_on", retentionCutoffDate)
 
-      retentionMessage = retentionError ? retentionError.message : "ok"
+      retentionCleanup = retentionError ? retentionError.message : "ok"
     }
 
     return Response.json({
       ok: true,
-      candidateUniverseRowsLoaded: diagnostics.candidateUniverseRowsLoaded,
-      candidateHistoryRowsLoaded: diagnostics.candidateHistoryRowsLoaded,
-      candidateRowsLoaded: diagnostics.candidateRowsLoaded,
-      fallbackCandidateSourceUsed: diagnostics.fallbackCandidateSourceUsed,
-      candidateSignalsInserted: diagnostics.candidateSignalsInserted,
-      signalHistoryInserted: diagnostics.signalHistoryInserted,
-      tickerCurrentInserted: 0,
-      tickerHistoryInserted: 0,
+      stage: mode === "filings" ? "filing_signals" : mode === "ptrs" ? "ptr_signals" : "signals",
+      scope,
+      mode,
       limit,
       lookbackDays,
+      minSignalStrength,
       retainedDays: RETENTION_DAYS,
+      retentionCleanup,
       scoreVersion: SCORE_VERSION,
-      minSignalAppScore: MIN_SIGNAL_APP_SCORE,
-      minTickerAppScore: MIN_TICKER_APP_SCORE,
-      rebuildTickerScores: false,
-      retentionCleanup: retentionMessage,
-      tickerRetentionCleanup: "moved-to-separate-route",
-      strongBuyCount: null,
-      eliteBuyCount: null,
       diagnostics,
       message:
-        "Technical signals generated from candidate data only. Ticker score rebuild has been moved to a separate route.",
+        "Signals were generated leniently from recent insider/ownership filings and PTR activity. They are intended to feed ticker scoring rather than act as a hard screening gate.",
     })
   } catch (error: any) {
     return Response.json(
       {
         ok: false,
-        error: error?.message || "Unknown error",
+        error: error?.message || "Unknown signals route error",
       },
       { status: 500 }
     )

@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
+type Scope = "all" | "eligible" | "candidates"
+
 type RawPtrTradeRow = {
   disclosure_source: string
   filer_name: string
@@ -23,20 +25,44 @@ type RawPtrTradeRow = {
   trade_key: string
   fetched_at: string
   updated_at: string
+
+  // New-model compatibility columns
+  politician_name: string
+  transaction_type: "buy" | "sell" | "exchange" | "unknown"
+  trade_date: string | null
+  disclosure_date: string | null
+  source_url: string | null
+  ptr_id: string
 }
 
-type SourceRow = {
+type CompanyRow = {
   id?: number | null
+  ticker: string
+  cik?: string | null
+  name?: string | null
+  is_active?: boolean | null
+}
+
+type CandidateUniverseRow = {
   company_id?: number | null
   ticker: string
   cik?: string | null
   name?: string | null
   is_active?: boolean | null
-  is_eligible?: boolean | null
-  candidate_score?: number | null
-  included?: boolean | null
-  last_screened_at?: string | null
+  passed?: boolean | null
+  as_of_date?: string | null
 }
+
+type CandidateScreenHistoryRow = {
+  company_id?: number | null
+  ticker: string
+  cik?: string | null
+  name?: string | null
+  passed?: boolean | null
+  as_of_date?: string | null
+}
+
+type SourceRow = CompanyRow | CandidateUniverseRow | CandidateScreenHistoryRow
 
 type AInvestTradeRow = {
   name?: string
@@ -86,6 +112,28 @@ type AInvestResponse = {
   message?: string
 }
 
+type FetchResult = {
+  ticker: string | null
+  ok: boolean
+  rows: RawPtrTradeRow[]
+  upstreamCount: number
+  error: string | null
+}
+
+type Diagnostics = {
+  scope: Scope
+  companiesRowsLoaded: number
+  candidateUniverseRowsLoaded: number
+  candidateScreenHistoryRowsLoaded: number
+  sourceRowsLoaded: number
+  fallbackCandidateHistoryUsed: boolean
+  successfulTickerFetches: number
+  failedTickerFetches: number
+  scannedRows: number
+  dedupedRows: number
+  insertedOrUpdated: number
+}
+
 const DB_CHUNK_SIZE = 200
 const API_TIMEOUT_MS = 12000
 const API_CONCURRENCY = 4
@@ -95,8 +143,8 @@ const DEFAULT_START = 0
 const DEFAULT_LIMIT_PER_TICKER = 10
 const MAX_LIMIT_PER_TICKER = 50
 const CANDIDATE_LOOKBACK_DAYS = 10
-const MIN_CANDIDATE_SCORE = 65
-const AINVEST_CONGRESS_URL = "https://openapi.ainvest.com/open/ownership/congress"
+const AINVEST_CONGRESS_URL =
+  "https://openapi.ainvest.com/open/ownership/congress"
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -217,6 +265,19 @@ function normalizeAction(value: string | null | undefined) {
   return value || null
 }
 
+function normalizeTransactionType(
+  value: string | null | undefined
+): "buy" | "sell" | "exchange" | "unknown" {
+  const v = (value || "").trim().toLowerCase()
+
+  if (!v) return "unknown"
+  if (v.includes("buy") || v.includes("purchase")) return "buy"
+  if (v.includes("sell") || v.includes("sale")) return "sell"
+  if (v.includes("exchange")) return "exchange"
+
+  return "unknown"
+}
+
 function buildTradeKey(row: {
   filer: string
   ticker: string | null
@@ -301,63 +362,165 @@ async function upsertRows(supabase: any, rows: RawPtrTradeRow[]) {
   return inserted
 }
 
-async function loadSourceRows(
+async function loadCompaniesContext(
   supabase: any,
-  scope: "all" | "eligible" | "candidates",
   start: number,
   batch: number,
   onlyActive: boolean
-): Promise<SourceRow[]> {
-  if (scope === "all") {
-    let query = supabase
-      .from("companies")
-      .select("id, ticker, cik, name, is_active")
-      .not("ticker", "is", null)
-      .order("id", { ascending: true })
-      .range(start, start + batch - 1)
-
-    if (onlyActive) query = query.eq("is_active", true)
-
-    const { data, error } = await query
-    if (error) throw error
-    return (data || []) as SourceRow[]
-  }
-
-  if (scope === "eligible") {
-    let query = supabase
-      .from("candidate_universe")
-      .select("company_id, ticker, cik, name, is_active, is_eligible")
-      .eq("is_eligible", true)
-      .not("ticker", "is", null)
-      .order("ticker", { ascending: true })
-      .range(start, start + batch - 1)
-
-    if (onlyActive) query = query.eq("is_active", true)
-
-    const { data, error } = await query
-    if (error) throw error
-    return (data || []) as SourceRow[]
-  }
-
-  const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - CANDIDATE_LOOKBACK_DAYS)
-
+): Promise<{
+  rows: CompanyRow[]
+  companiesRowsLoaded: number
+}> {
   let query = supabase
-    .from("candidate_universe")
-    .select(
-      "company_id, ticker, cik, name, is_active, candidate_score, included, last_screened_at"
-    )
-    .gte("candidate_score", MIN_CANDIDATE_SCORE)
-    .gte("last_screened_at", cutoff.toISOString())
+    .from("companies")
+    .select("id, ticker, cik, name, is_active")
     .not("ticker", "is", null)
-    .order("candidate_score", { ascending: false })
+    .order("id", { ascending: true })
     .range(start, start + batch - 1)
 
-  if (onlyActive) query = query.eq("is_active", true)
+  if (onlyActive) {
+    query = query.eq("is_active", true)
+  }
 
   const { data, error } = await query
   if (error) throw error
-  return (data || []) as SourceRow[]
+
+  return {
+    rows: (data || []) as CompanyRow[],
+    companiesRowsLoaded: (data || []).length,
+  }
+}
+
+async function loadEligibleContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  onlyActive: boolean
+): Promise<{
+  rows: CandidateUniverseRow[]
+  candidateUniverseRowsLoaded: number
+}> {
+  let query = supabase
+    .from("candidate_universe")
+    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
+    .eq("passed", true)
+    .not("ticker", "is", null)
+    .order("ticker", { ascending: true })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    query = query.eq("is_active", true)
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+
+  return {
+    rows: (data || []) as CandidateUniverseRow[],
+    candidateUniverseRowsLoaded: (data || []).length,
+  }
+}
+
+async function loadCandidatesContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  onlyActive: boolean
+): Promise<{
+  candidateRows: SourceRow[]
+  candidateUniverseRowsLoaded: number
+  candidateScreenHistoryRowsLoaded: number
+  fallbackCandidateHistoryUsed: boolean
+}> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - CANDIDATE_LOOKBACK_DAYS)
+
+  let universeQuery = supabase
+    .from("candidate_universe")
+    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
+    .eq("passed", true)
+    .gte("as_of_date", cutoff.toISOString())
+    .not("ticker", "is", null)
+    .order("as_of_date", { ascending: false })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    universeQuery = universeQuery.eq("is_active", true)
+  }
+
+  const universeResult = await universeQuery
+  if (universeResult.error) throw universeResult.error
+
+  const universeRows = (universeResult.data || []) as CandidateUniverseRow[]
+
+  if (universeRows.length >= Math.min(25, batch)) {
+    return {
+      candidateRows: universeRows,
+      candidateUniverseRowsLoaded: universeRows.length,
+      candidateScreenHistoryRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
+    }
+  }
+
+  const latestSnapshot = await supabase
+    .from("candidate_screen_history")
+    .select("as_of_date")
+    .order("as_of_date", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestSnapshot.error) throw latestSnapshot.error
+
+  const latestAsOfDate = latestSnapshot.data?.as_of_date ?? null
+  if (!latestAsOfDate) {
+    return {
+      candidateRows: universeRows,
+      candidateUniverseRowsLoaded: universeRows.length,
+      candidateScreenHistoryRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
+    }
+  }
+
+  let historyQuery = supabase
+    .from("candidate_screen_history")
+    .select("company_id, ticker, cik, name, passed, as_of_date, is_active")
+    .eq("as_of_date", latestAsOfDate)
+    .eq("passed", true)
+    .not("ticker", "is", null)
+    .order("ticker", { ascending: true })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    historyQuery = historyQuery.eq("is_active", true)
+  }
+
+  const historyResult = await historyQuery
+  if (historyResult.error) throw historyResult.error
+
+  const historyRows = (historyResult.data || []) as CandidateScreenHistoryRow[]
+
+  const deduped = new Map<string, SourceRow>()
+
+  for (const row of universeRows) {
+    const ticker = normalizeTicker(row.ticker)
+    if (!ticker) continue
+    deduped.set(ticker, row)
+  }
+
+  for (const row of historyRows) {
+    const ticker = normalizeTicker(row.ticker)
+    if (!ticker) continue
+    if (!deduped.has(ticker)) {
+      deduped.set(ticker, row)
+    }
+  }
+
+  return {
+    candidateRows: [...deduped.values()].slice(0, batch),
+    candidateUniverseRowsLoaded: universeRows.length,
+    candidateScreenHistoryRowsLoaded: historyRows.length,
+    fallbackCandidateHistoryUsed: historyRows.length > 0,
+  }
 }
 
 function extractTradeArray(parsed: AInvestResponse): AInvestTradeRow[] {
@@ -382,53 +545,66 @@ function normalizeAInvestTrade(
   row: AInvestTradeRow,
   fetchedAt: string
 ): RawPtrTradeRow | null {
-  const filer_name = String(
+  const filerName = String(
     row.name || row.politician || row.filer || row.member || ""
   ).trim()
 
-  if (!filer_name) return null
+  if (!filerName) return null
 
-  const transaction_date = normalizeDate(
+  const transactionDate = normalizeDate(
     row.trade_date || row.transactionDate || row.transaction_date
   )
-  const report_date = normalizeDate(
+  const reportDate = normalizeDate(
     row.filing_date || row.reportDate || row.report_date
   )
-  const action = normalizeAction(row.trade_type || row.type || row.action)
-  const amount_range =
+  const normalizedAction = normalizeAction(
+    row.trade_type || row.type || row.action
+  )
+  const transactionType = normalizeTransactionType(
+    row.trade_type || row.type || row.action
+  )
+  const amountRange =
     String(row.size || row.amount || row.amount_range || "").trim() || null
-  const amounts = parseAmountRange(amount_range)
+  const amounts = parseAmountRange(amountRange)
+  const ptrUrl = row.link || null
 
-  const ptr_url = row.link || null
+  const tradeKey = buildTradeKey({
+    filer: filerName,
+    ticker,
+    transaction_date: transactionDate,
+    action: normalizedAction,
+    amount_range: amountRange,
+    report_date: reportDate,
+    ptr_url: ptrUrl,
+  })
 
   return {
     disclosure_source: "AINVEST",
-    filer_name,
+    filer_name: filerName,
     chamber: row.chamber || null,
     district_or_state: row.district || row.state || null,
-    report_date,
-    transaction_date,
+    report_date: reportDate,
+    transaction_date: transactionDate,
     ticker,
     asset_name: row.asset || ticker,
     asset_type: row.assetType || "Stock",
-    action,
-    amount_range,
+    action: normalizedAction,
+    amount_range: amountRange,
     amount_low: safeNumber(row.amountLow) ?? amounts.amount_low,
     amount_high: safeNumber(row.amountHigh) ?? amounts.amount_high,
     owner: row.owner || null,
-    ptr_url,
-    raw_document_url: ptr_url,
-    trade_key: buildTradeKey({
-      filer: filer_name,
-      ticker,
-      transaction_date,
-      action,
-      amount_range,
-      report_date,
-      ptr_url,
-    }),
+    ptr_url: ptrUrl,
+    raw_document_url: ptrUrl,
+    trade_key: tradeKey,
     fetched_at: fetchedAt,
     updated_at: fetchedAt,
+
+    politician_name: filerName,
+    transaction_type: transactionType,
+    trade_date: transactionDate,
+    disclosure_date: reportDate,
+    source_url: ptrUrl,
+    ptr_id: tradeKey,
   }
 }
 
@@ -453,13 +629,19 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
 
     const scopeParam = (searchParams.get("scope") || "eligible").toLowerCase()
-    const start = Math.max(0, parseInteger(searchParams.get("start"), DEFAULT_START))
+    const start = Math.max(
+      0,
+      parseInteger(searchParams.get("start"), DEFAULT_START)
+    )
     const batch = Math.min(
       Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)),
       MAX_BATCH
     )
     const perTickerLimit = Math.min(
-      Math.max(1, parseInteger(searchParams.get("limit"), DEFAULT_LIMIT_PER_TICKER)),
+      Math.max(
+        1,
+        parseInteger(searchParams.get("limit"), DEFAULT_LIMIT_PER_TICKER)
+      ),
       MAX_LIMIT_PER_TICKER
     )
     const onlyActive =
@@ -477,18 +659,69 @@ export async function GET(request: Request) {
       )
     }
 
-    const scope = scopeParam as "all" | "eligible" | "candidates"
-    const sourceRows = await loadSourceRows(
-      supabase,
+    const scope = scopeParam as Scope
+
+    const diagnostics: Diagnostics = {
       scope,
-      start,
-      batch,
-      onlyActive
-    )
+      companiesRowsLoaded: 0,
+      candidateUniverseRowsLoaded: 0,
+      candidateScreenHistoryRowsLoaded: 0,
+      sourceRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
+      successfulTickerFetches: 0,
+      failedTickerFetches: 0,
+      scannedRows: 0,
+      dedupedRows: 0,
+      insertedOrUpdated: 0,
+    }
+
+    let sourceRows: SourceRow[] = []
+
+    if (scope === "all") {
+      const allContext = await loadCompaniesContext(
+        supabase,
+        start,
+        batch,
+        onlyActive
+      )
+      sourceRows = allContext.rows
+      diagnostics.companiesRowsLoaded = allContext.companiesRowsLoaded
+      diagnostics.sourceRowsLoaded = allContext.rows.length
+    }
+
+    if (scope === "eligible") {
+      const eligibleContext = await loadEligibleContext(
+        supabase,
+        start,
+        batch,
+        onlyActive
+      )
+      sourceRows = eligibleContext.rows
+      diagnostics.candidateUniverseRowsLoaded =
+        eligibleContext.candidateUniverseRowsLoaded
+      diagnostics.sourceRowsLoaded = eligibleContext.rows.length
+    }
+
+    if (scope === "candidates") {
+      const candidateContext = await loadCandidatesContext(
+        supabase,
+        start,
+        batch,
+        onlyActive
+      )
+      sourceRows = candidateContext.candidateRows
+      diagnostics.candidateUniverseRowsLoaded =
+        candidateContext.candidateUniverseRowsLoaded
+      diagnostics.candidateScreenHistoryRowsLoaded =
+        candidateContext.candidateScreenHistoryRowsLoaded
+      diagnostics.fallbackCandidateHistoryUsed =
+        candidateContext.fallbackCandidateHistoryUsed
+      diagnostics.sourceRowsLoaded = candidateContext.candidateRows.length
+    }
 
     const fetchedAt = new Date().toISOString()
 
-    const fetchResults = await mapWithConcurrency(
+    const fetchResults = await mapWithConcurrency<SourceRow, FetchResult>(
       sourceRows,
       API_CONCURRENCY,
       async (row) => {
@@ -498,7 +731,7 @@ export async function GET(request: Request) {
           return {
             ticker: null,
             ok: false,
-            rows: [] as RawPtrTradeRow[],
+            rows: [],
             upstreamCount: 0,
             error: "Missing ticker",
           }
@@ -525,14 +758,14 @@ export async function GET(request: Request) {
                   parsedError?.status_msg ||
                   JSON.stringify(parsedError).slice(0, 300)
               } catch {
-                // keep raw text fallback
+                // keep raw fallback
               }
             }
 
             return {
               ticker,
               ok: false,
-              rows: [] as RawPtrTradeRow[],
+              rows: [],
               upstreamCount: 0,
               error: `AInvest ${res.status}: ${message}`,
             }
@@ -545,7 +778,7 @@ export async function GET(request: Request) {
             return {
               ticker,
               ok: false,
-              rows: [] as RawPtrTradeRow[],
+              rows: [],
               upstreamCount: 0,
               error: `AInvest returned non-JSON response: ${rawBody.slice(0, 300)}`,
             }
@@ -567,7 +800,7 @@ export async function GET(request: Request) {
           return {
             ticker,
             ok: false,
-            rows: [] as RawPtrTradeRow[],
+            rows: [],
             upstreamCount: 0,
             error: error?.message || "Unknown AInvest error",
           }
@@ -575,9 +808,13 @@ export async function GET(request: Request) {
       }
     )
 
-    const allRows = fetchResults.flatMap((r) => r.rows)
-    const dedupe = new Map<string, RawPtrTradeRow>()
+    diagnostics.successfulTickerFetches = fetchResults.filter((r) => r.ok).length
+    diagnostics.failedTickerFetches = fetchResults.filter((r) => !r.ok).length
 
+    const allRows = fetchResults.flatMap((r) => r.rows)
+    diagnostics.scannedRows = allRows.length
+
+    const dedupe = new Map<string, RawPtrTradeRow>()
     for (const row of allRows) {
       if (!dedupe.has(row.trade_key)) {
         dedupe.set(row.trade_key, row)
@@ -585,8 +822,11 @@ export async function GET(request: Request) {
     }
 
     const dedupedRows = Array.from(dedupe.values())
+    diagnostics.dedupedRows = dedupedRows.length
+
     const inserted =
       dedupedRows.length > 0 ? await upsertRows(supabase, dedupedRows) : 0
+    diagnostics.insertedOrUpdated = inserted
 
     let ptrCount: number | null = null
     if (includeCounts) {
@@ -597,20 +837,21 @@ export async function GET(request: Request) {
       ptrCount = error ? null : count ?? 0
     }
 
+    const nextStart = sourceRows.length < batch ? null : start + batch
+
     return Response.json({
       ok: true,
+      stage: "ptrs",
+      targetTable: "raw_ptr_trades",
       scope,
       start,
       batch,
+      nextStart,
       perTickerLimit,
       processedTickers: sourceRows.length,
-      successfulTickerFetches: fetchResults.filter((r) => r.ok).length,
-      failedTickerFetches: fetchResults.filter((r) => !r.ok).length,
-      scannedRows: allRows.length,
-      dedupedRows: dedupedRows.length,
-      insertedOrUpdated: inserted,
       ptrCount,
-      diagnostics: fetchResults.map((r) => ({
+      diagnostics,
+      tickerDiagnostics: fetchResults.map((r) => ({
         ticker: r.ticker,
         ok: r.ok,
         upstreamCount: r.upstreamCount,
@@ -620,7 +861,7 @@ export async function GET(request: Request) {
       message:
         dedupedRows.length === 0
           ? "PTR route ran successfully but no normalized trades were returned from AInvest."
-          : "PTR trades ingested successfully",
+          : "Raw PTR trades ingested successfully.",
     })
   } catch (error: any) {
     return Response.json(

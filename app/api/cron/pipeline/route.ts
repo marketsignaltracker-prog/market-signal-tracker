@@ -18,12 +18,11 @@ type PipelineStage =
   | "companies"
   | "filings"
   | "ptrs"
-  | "signals"
-  | "filing_signals"
   | "eligible_universe"
   | "screening"
-  | "finalize_candidates"
+  | "signals"
   | "ticker_scores"
+  | "finalize_candidates"
   | "complete"
   | "error"
 
@@ -41,6 +40,7 @@ type PipelineStateRow = {
   cycle_completed_at: string | null
   filings_completed_at: string | null
   signals_completed_at: string | null
+  ticker_scores_completed_at?: string | null
   last_run_started_at: string | null
   last_run_finished_at: string | null
   last_success_at: string | null
@@ -51,21 +51,19 @@ type PipelineStateRow = {
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
-/**
- * Reduced-universe screening means we can process a little more per run,
- * but we still want checkpoint-safe batches.
- */
 const DEFAULT_SCREEN_BATCH = 200
 const MAX_SCREEN_BATCH = 250
 
 const DEFAULT_FILINGS_BATCH = 200
 const DEFAULT_PTRS_BATCH = 200
-const DEFAULT_SIGNALS_LIMIT = 250
-const DEFAULT_SIGNALS_LOOKBACK_DAYS = 31
-const DEFAULT_FILING_SIGNALS_LIMIT = 200
-const DEFAULT_FILING_SIGNALS_LOOKBACK_DAYS = 31
 const DEFAULT_ELIGIBLE_UNIVERSE_LOOKBACK_DAYS = 30
+const DEFAULT_SIGNALS_LIMIT = 300
+const DEFAULT_SIGNALS_LOOKBACK_DAYS = 31
 const DEFAULT_TICKER_SCORES_LIMIT = 1000
+const DEFAULT_TICKER_SCORES_PTR_LOOKBACK_DAYS = 60
+const DEFAULT_TICKER_SCORES_PTR_RECENT_DAYS = 14
+const DEFAULT_FINAL_CANDIDATES_LIMIT = 30
+const DEFAULT_FINAL_CANDIDATES_TARGET_MIN = 12
 
 const DEFAULT_STEP_TIMEOUT_MS = 240_000
 
@@ -251,6 +249,7 @@ async function getPipelineState(supabase: any): Promise<PipelineStateRow> {
     cycle_completed_at: null,
     filings_completed_at: null,
     signals_completed_at: null,
+    ticker_scores_completed_at: null,
     last_run_started_at: null,
     last_run_finished_at: null,
     last_success_at: null,
@@ -489,6 +488,7 @@ export async function GET(request: NextRequest) {
         screen_total: null,
         filings_completed_at: null,
         signals_completed_at: null,
+        ticker_scores_completed_at: null,
         cycle_completed_at: null,
       })
     }
@@ -567,87 +567,6 @@ export async function GET(request: NextRequest) {
       }
 
       state = await patchPipelineState(supabase, {
-        stage: "signals",
-        status: "running",
-      })
-    }
-
-    if (state.stage === "signals") {
-      if (shouldStopForRuntime(runStartedAtMs)) {
-        return await checkpointStage(
-          supabase,
-          "signals",
-          results,
-          "Pipeline checkpointed before signals. Continue on next cron run."
-        )
-      }
-
-      const signalsResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/ingest/signals", {
-          limit: DEFAULT_SIGNALS_LIMIT,
-          lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
-          runRetention: false,
-          includeCounts: false,
-        }),
-        DEFAULT_STEP_TIMEOUT_MS
-      )
-
-      results.push(signalsResult)
-
-      if (!signalsResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          signalsResult,
-          `Signals step failed: ${String(
-            (signalsResult.data as any)?.error || signalsResult.status
-          )}`
-        )
-      }
-
-      state = await patchPipelineState(supabase, {
-        stage: "filing_signals",
-        status: "running",
-        signals_completed_at: nowIso(),
-      })
-    }
-
-    if (state.stage === "filing_signals") {
-      if (shouldStopForRuntime(runStartedAtMs)) {
-        return await checkpointStage(
-          supabase,
-          "filing_signals",
-          results,
-          "Pipeline checkpointed before filing signals. Continue on next cron run."
-        )
-      }
-
-      const filingSignalsResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/ingest/filing-signals", {
-          limit: DEFAULT_FILING_SIGNALS_LIMIT,
-          lookbackDays: DEFAULT_FILING_SIGNALS_LOOKBACK_DAYS,
-          runRetention: false,
-          includeCounts: false,
-        }),
-        DEFAULT_STEP_TIMEOUT_MS
-      )
-
-      results.push(filingSignalsResult)
-
-      if (!filingSignalsResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          filingSignalsResult,
-          `Filing signals step failed: ${String(
-            (filingSignalsResult.data as any)?.error || filingSignalsResult.status
-          )}`
-        )
-      }
-
-      state = await patchPipelineState(supabase, {
         stage: "eligible_universe",
         status: "running",
       })
@@ -663,10 +582,6 @@ export async function GET(request: NextRequest) {
         )
       }
 
-      /**
-       * PTR → filings → signals priority starts here.
-       * The eligible-universe route is now the main reducer before Yahoo work.
-       */
       const eligibleUniverseResult = await runStep(
         baseUrl,
         withSearchParams("/api/screen/eligible-universe", {
@@ -734,11 +649,6 @@ export async function GET(request: NextRequest) {
           )
         }
 
-        /**
-         * Critical change:
-         * Always screen the reduced eligible universe, not the full companies table.
-         * That keeps the whole stack aligned with PTR → filings → signals priority.
-         */
         const screenPath = withSearchParams("/api/screen/candidates", {
           universe: "eligible",
           start: nextStart,
@@ -777,7 +687,7 @@ export async function GET(request: NextRequest) {
           extractStepCount(screenData, ["totalCompanies"]) ?? state.screen_total
 
         state = await patchPipelineState(supabase, {
-          stage: returnedNextStart === null ? "finalize_candidates" : "screening",
+          stage: returnedNextStart === null ? "signals" : "screening",
           status: "running",
           screen_start: nextStart,
           screen_batch: batchSize,
@@ -793,31 +703,39 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (state.stage === "finalize_candidates") {
+    if (state.stage === "signals") {
       if (shouldStopForRuntime(runStartedAtMs)) {
         return await checkpointStage(
           supabase,
-          "finalize_candidates",
+          "signals",
           results,
-          "Pipeline checkpointed before candidate finalization. Continue on next cron run."
+          "Pipeline checkpointed before unified signals. Continue on next cron run."
         )
       }
 
-      const finalizeResult = await runStep(
+      const signalsResult = await runStep(
         baseUrl,
-        "/api/screen/finalize-candidates",
+        withSearchParams("/api/ingest/signals", {
+          scope: "eligible",
+          mode: "all",
+          limit: DEFAULT_SIGNALS_LIMIT,
+          lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
+          minSignalStrength: 20,
+          onlyActive: true,
+          runRetention: false,
+        }),
         DEFAULT_STEP_TIMEOUT_MS
       )
 
-      results.push(finalizeResult)
+      results.push(signalsResult)
 
-      if (!finalizeResult.ok) {
+      if (!signalsResult.ok) {
         return await failPipelineForStep(
           supabase,
           results,
-          finalizeResult,
-          `Finalize candidates step failed: ${String(
-            (finalizeResult.data as any)?.error || finalizeResult.status
+          signalsResult,
+          `Signals step failed: ${String(
+            (signalsResult.data as any)?.error || signalsResult.status
           )}`
         )
       }
@@ -825,6 +743,7 @@ export async function GET(request: NextRequest) {
       state = await patchPipelineState(supabase, {
         stage: "ticker_scores",
         status: "running",
+        signals_completed_at: nowIso(),
       })
     }
 
@@ -834,17 +753,20 @@ export async function GET(request: NextRequest) {
           supabase,
           "ticker_scores",
           results,
-          "Pipeline checkpointed before ticker score rebuild. Continue on next cron run."
+          "Pipeline checkpointed before ticker scores. Continue on next cron run."
         )
       }
 
       const tickerScoresResult = await runStep(
         baseUrl,
         withSearchParams("/api/ingest/ticker-scores", {
+          scope: "eligible",
           limit: DEFAULT_TICKER_SCORES_LIMIT,
-          lookbackDays: DEFAULT_FILING_SIGNALS_LOOKBACK_DAYS,
-          runRetention: false,
-          includeCounts: false,
+          lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
+          ptrLookbackDays: DEFAULT_TICKER_SCORES_PTR_LOOKBACK_DAYS,
+          ptrRecentDays: DEFAULT_TICKER_SCORES_PTR_RECENT_DAYS,
+          minCombinedScore: 35,
+          includePreview: false,
         }),
         DEFAULT_STEP_TIMEOUT_MS
       )
@@ -862,6 +784,46 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      state = await patchPipelineState(supabase, {
+        stage: "finalize_candidates",
+        status: "running",
+        ticker_scores_completed_at: nowIso(),
+      })
+    }
+
+    if (state.stage === "finalize_candidates") {
+      if (shouldStopForRuntime(runStartedAtMs)) {
+        return await checkpointStage(
+          supabase,
+          "finalize_candidates",
+          results,
+          "Pipeline checkpointed before candidate finalization. Continue on next cron run."
+        )
+      }
+
+      const finalizeResult = await runStep(
+        baseUrl,
+        withSearchParams("/api/screen/finalize-candidates", {
+          limit: DEFAULT_FINAL_CANDIDATES_LIMIT,
+          targetMin: DEFAULT_FINAL_CANDIDATES_TARGET_MIN,
+          includePreview: false,
+        }),
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(finalizeResult)
+
+      if (!finalizeResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          finalizeResult,
+          `Finalize candidates step failed: ${String(
+            (finalizeResult.data as any)?.error || finalizeResult.status
+          )}`
+        )
+      }
+
       const completedAt = nowIso()
 
       state = await patchPipelineState(supabase, {
@@ -870,7 +832,6 @@ export async function GET(request: NextRequest) {
         screen_start: 0,
         screen_next_start: 0,
         screen_batch: clampScreenBatch(state.screen_batch),
-        signals_completed_at: completedAt,
         cycle_completed_at: completedAt,
         last_success_at: completedAt,
         last_run_finished_at: completedAt,

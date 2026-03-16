@@ -3,27 +3,33 @@ import { createClient } from "@supabase/supabase-js"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
-type CompanyTickerRow = {
+type Scope = "all" | "eligible" | "candidates"
+
+type CompanyRow = {
   id?: number | null
+  ticker: string
+  cik: string | null
+  name: string | null
+  is_active?: boolean | null
+}
+
+type CandidateUniverseRow = {
   company_id?: number | null
   ticker: string
   cik: string | null
   name: string | null
   is_active?: boolean | null
-  candidate_score?: number | null
-  included?: boolean | null
-  last_screened_at?: string | null
-  is_eligible?: boolean | null
+  passed?: boolean | null
+  as_of_date?: string | null
 }
 
-type CandidateHistoryTickerRow = {
+type CandidateScreenHistoryRow = {
+  company_id?: number | null
   ticker: string
   cik: string | null
   name: string | null
-  candidate_score?: number | null
-  included?: boolean | null
-  last_screened_at?: string | null
-  screened_on: string
+  as_of_date?: string | null
+  passed?: boolean | null
 }
 
 type SecSubmissionRecent = {
@@ -42,7 +48,7 @@ type SecSubmissionResponse = {
   }
 }
 
-type RawFilingInsertRow = {
+type RawFilingUpsertRow = {
   ticker: string
   company_name: string | null
   form_type: string | null
@@ -54,28 +60,37 @@ type RawFilingInsertRow = {
   fetched_at: string
 }
 
+type ChunkWriteError = {
+  table: string
+  chunkStart: number
+  chunkSize: number
+  message: string
+  details?: string | null
+  hint?: string | null
+  code?: string | null
+  sampleKeys?: string[]
+}
+
 type ChunkWriteResult = {
   insertedOrUpdated: number
-  errors: Array<{
-    table: string
-    chunkStart: number
-    chunkSize: number
-    message: string
-    details?: string | null
-    hint?: string | null
-    code?: string | null
-    sampleKeys?: string[]
-  }>
+  errors: ChunkWriteError[]
+}
+
+type FilingFetchResult = {
+  missingCik: boolean
+  fetched: boolean
+  rows: RawFilingUpsertRow[]
+  unsupportedFormsSkipped: number
 }
 
 type Diagnostics = {
-  sourceScope: "all" | "eligible" | "candidates"
+  scope: Scope
+  companiesRowsLoaded: number
   candidateUniverseRowsLoaded: number
-  candidateHistoryRowsLoaded: number
-  companyRowsLoaded: number
-  candidateRowsLoaded: number
-  fallbackCandidateSourceUsed: boolean
-  candidateRowsWithoutCik: number
+  candidateScreenHistoryRowsLoaded: number
+  sourceRowsLoaded: number
+  fallbackCandidateHistoryUsed: boolean
+  sourceRowsWithoutCik: number
   secSubmissionsFetched: number
   secSubmissionsFailed: number
   filingRowsBuilt: number
@@ -89,7 +104,6 @@ const MAX_BATCH = 150
 const DEFAULT_START = 0
 const RETENTION_DAYS = 30
 const CANDIDATE_LOOKBACK_DAYS = 10
-const MIN_CANDIDATE_SCORE = 65
 const SEC_TIMEOUT_MS = 5000
 const DB_CHUNK_SIZE = 100
 const SEC_FETCH_CONCURRENCY = 6
@@ -186,7 +200,7 @@ async function upsertInChunksDetailed(
   sampleKeyBuilder?: (row: any) => string
 ): Promise<ChunkWriteResult> {
   let insertedOrUpdated = 0
-  const errors: ChunkWriteResult["errors"] = []
+  const errors: ChunkWriteError[] = []
 
   for (let i = 0; i < rows.length; i += DB_CHUNK_SIZE) {
     const chunk = rows.slice(i, i + DB_CHUNK_SIZE)
@@ -311,7 +325,7 @@ function extractRecentFilingsFromSubmission(params: {
 
   if (!ticker || !cik) return []
 
-  const rows: RawFilingInsertRow[] = []
+  const rows: RawFilingUpsertRow[] = []
 
   for (let i = 0; i < accessionNumbers.length; i += 1) {
     const accessionNo = String(accessionNumbers[i] || "").trim()
@@ -338,8 +352,8 @@ function extractRecentFilingsFromSubmission(params: {
   return rows
 }
 
-function dedupeFilings(rows: RawFilingInsertRow[]) {
-  const byKey = new Map<string, RawFilingInsertRow>()
+function dedupeFilings(rows: RawFilingUpsertRow[]) {
+  const byKey = new Map<string, RawFilingUpsertRow>()
 
   for (const row of rows) {
     const key = `${row.accession_no}:${normalizeTicker(row.ticker)}`
@@ -351,123 +365,14 @@ function dedupeFilings(rows: RawFilingInsertRow[]) {
   return [...byKey.values()]
 }
 
-async function loadCandidateContext(
-  supabase: any,
-  start: number,
-  batch: number,
-  candidateCutoffDateString: string
-): Promise<{
-  candidateRows: CompanyTickerRow[]
-  candidateUniverseRowsLoaded: number
-  candidateHistoryRowsLoaded: number
-  fallbackCandidateSourceUsed: boolean
-}> {
-  const universeQuery = await supabase
-    .from("candidate_universe")
-    .select(
-      "company_id, ticker, cik, name, is_active, candidate_score, included, last_screened_at"
-    )
-    .gte("candidate_score", MIN_CANDIDATE_SCORE)
-    .gte("last_screened_at", candidateCutoffDateString)
-    .order("candidate_score", { ascending: false })
-    .range(start, start + batch - 1)
-
-  if (universeQuery.error) {
-    throw new Error(
-      `candidate_universe load failed: ${universeQuery.error.message}`
-    )
-  }
-
-  const universeRows = (universeQuery.data || []) as CompanyTickerRow[]
-
-  if (universeRows.length >= Math.min(25, batch)) {
-    return {
-      candidateRows: universeRows,
-      candidateUniverseRowsLoaded: universeRows.length,
-      candidateHistoryRowsLoaded: 0,
-      fallbackCandidateSourceUsed: false,
-    }
-  }
-
-  const latestScreened = await supabase
-    .from("candidate_screen_history")
-    .select("screened_on")
-    .order("screened_on", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (latestScreened.error) {
-    throw new Error(
-      `candidate_screen_history latest snapshot lookup failed: ${latestScreened.error.message}`
-    )
-  }
-
-  const screenedOn = latestScreened.data?.screened_on ?? null
-  if (!screenedOn) {
-    return {
-      candidateRows: universeRows,
-      candidateUniverseRowsLoaded: universeRows.length,
-      candidateHistoryRowsLoaded: 0,
-      fallbackCandidateSourceUsed: false,
-    }
-  }
-
-  const historyQuery = await supabase
-    .from("candidate_screen_history")
-    .select(
-      "ticker, cik, name, candidate_score, included, last_screened_at, screened_on"
-    )
-    .eq("screened_on", screenedOn)
-    .gte("candidate_score", MIN_CANDIDATE_SCORE)
-    .order("candidate_score", { ascending: false })
-    .range(start, start + batch - 1)
-
-  if (historyQuery.error) {
-    throw new Error(
-      `candidate_screen_history snapshot load failed: ${historyQuery.error.message}`
-    )
-  }
-
-  const historyRows = (historyQuery.data || []) as CandidateHistoryTickerRow[]
-
-  const deduped = new Map<string, CompanyTickerRow>()
-  for (const row of universeRows) {
-    const ticker = normalizeTicker(row.ticker)
-    if (!ticker) continue
-    deduped.set(ticker, row)
-  }
-
-  for (const row of historyRows) {
-    const ticker = normalizeTicker(row.ticker)
-    if (!ticker) continue
-    if (!deduped.has(ticker)) {
-      deduped.set(ticker, {
-        ticker: row.ticker,
-        cik: row.cik,
-        name: row.name,
-        candidate_score: row.candidate_score,
-        included: row.included,
-        last_screened_at: row.last_screened_at,
-      })
-    }
-  }
-
-  return {
-    candidateRows: [...deduped.values()].slice(0, batch),
-    candidateUniverseRowsLoaded: universeRows.length,
-    candidateHistoryRowsLoaded: historyRows.length,
-    fallbackCandidateSourceUsed: historyRows.length > 0,
-  }
-}
-
-async function loadAllCompaniesContext(
+async function loadCompaniesContext(
   supabase: any,
   start: number,
   batch: number,
   onlyActive: boolean
 ): Promise<{
-  rows: CompanyTickerRow[]
-  companyRowsLoaded: number
+  rows: CompanyRow[]
+  companiesRowsLoaded: number
 }> {
   let query = supabase
     .from("companies")
@@ -486,7 +391,7 @@ async function loadAllCompaniesContext(
     throw new Error(`companies load failed: ${error.message}`)
   }
 
-  const rows = ((data || []) as CompanyTickerRow[]).map((row) => ({
+  const rows = ((data || []) as CompanyRow[]).map((row) => ({
     id: row.id ?? null,
     ticker: row.ticker,
     cik: row.cik,
@@ -496,7 +401,7 @@ async function loadAllCompaniesContext(
 
   return {
     rows,
-    companyRowsLoaded: rows.length,
+    companiesRowsLoaded: rows.length,
   }
 }
 
@@ -506,13 +411,13 @@ async function loadEligibleContext(
   batch: number,
   onlyActive: boolean
 ): Promise<{
-  rows: CompanyTickerRow[]
+  rows: CandidateUniverseRow[]
   candidateUniverseRowsLoaded: number
 }> {
   let query = supabase
     .from("candidate_universe")
-    .select("company_id, ticker, cik, name, is_active, is_eligible")
-    .eq("is_eligible", true)
+    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
+    .eq("passed", true)
     .not("cik", "is", null)
     .order("ticker", { ascending: true })
     .range(start, start + batch - 1)
@@ -527,19 +432,125 @@ async function loadEligibleContext(
     throw new Error(`candidate_universe eligible load failed: ${error.message}`)
   }
 
-  const rows = ((data || []) as CompanyTickerRow[]).map((row) => ({
-    id: row.company_id ?? null,
+  const rows = ((data || []) as CandidateUniverseRow[]).map((row) => ({
     company_id: row.company_id ?? null,
     ticker: row.ticker,
     cik: row.cik,
     name: row.name,
     is_active: row.is_active ?? true,
-    is_eligible: true,
+    passed: true,
+    as_of_date: row.as_of_date ?? null,
   }))
 
   return {
     rows,
     candidateUniverseRowsLoaded: rows.length,
+  }
+}
+
+async function loadCandidatesContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  candidateCutoffDateString: string
+): Promise<{
+  candidateRows: Array<CompanyRow | CandidateUniverseRow>
+  candidateUniverseRowsLoaded: number
+  candidateScreenHistoryRowsLoaded: number
+  fallbackCandidateHistoryUsed: boolean
+}> {
+  const universeQuery = await supabase
+    .from("candidate_universe")
+    .select("company_id, ticker, cik, name, is_active, passed, as_of_date")
+    .eq("passed", true)
+    .gte("as_of_date", candidateCutoffDateString)
+    .order("as_of_date", { ascending: false })
+    .range(start, start + batch - 1)
+
+  if (universeQuery.error) {
+    throw new Error(
+      `candidate_universe load failed: ${universeQuery.error.message}`
+    )
+  }
+
+  const universeRows = (universeQuery.data || []) as CandidateUniverseRow[]
+
+  if (universeRows.length >= Math.min(25, batch)) {
+    return {
+      candidateRows: universeRows,
+      candidateUniverseRowsLoaded: universeRows.length,
+      candidateScreenHistoryRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
+    }
+  }
+
+  const latestSnapshot = await supabase
+    .from("candidate_screen_history")
+    .select("as_of_date")
+    .order("as_of_date", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestSnapshot.error) {
+    throw new Error(
+      `candidate_screen_history latest snapshot lookup failed: ${latestSnapshot.error.message}`
+    )
+  }
+
+  const latestAsOfDate = latestSnapshot.data?.as_of_date ?? null
+  if (!latestAsOfDate) {
+    return {
+      candidateRows: universeRows,
+      candidateUniverseRowsLoaded: universeRows.length,
+      candidateScreenHistoryRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
+    }
+  }
+
+  const historyQuery = await supabase
+    .from("candidate_screen_history")
+    .select("company_id, ticker, cik, name, passed, as_of_date")
+    .eq("as_of_date", latestAsOfDate)
+    .eq("passed", true)
+    .order("ticker", { ascending: true })
+    .range(start, start + batch - 1)
+
+  if (historyQuery.error) {
+    throw new Error(
+      `candidate_screen_history snapshot load failed: ${historyQuery.error.message}`
+    )
+  }
+
+  const historyRows = (historyQuery.data || []) as CandidateScreenHistoryRow[]
+
+  const deduped = new Map<string, CompanyRow | CandidateUniverseRow>()
+
+  for (const row of universeRows) {
+    const ticker = normalizeTicker(row.ticker)
+    if (!ticker) continue
+    deduped.set(ticker, row)
+  }
+
+  for (const row of historyRows) {
+    const ticker = normalizeTicker(row.ticker)
+    if (!ticker) continue
+    if (!deduped.has(ticker)) {
+      deduped.set(ticker, {
+        company_id: row.company_id ?? null,
+        ticker: row.ticker,
+        cik: row.cik,
+        name: row.name,
+        passed: row.passed ?? true,
+        as_of_date: row.as_of_date ?? null,
+      })
+    }
+  }
+
+  return {
+    candidateRows: [...deduped.values()].slice(0, batch),
+    candidateUniverseRowsLoaded: universeRows.length,
+    candidateScreenHistoryRowsLoaded: historyRows.length,
+    fallbackCandidateHistoryUsed: historyRows.length > 0,
   }
 }
 
@@ -572,7 +583,10 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
 
     const scopeParam = (searchParams.get("scope") || "candidates").toLowerCase()
-    const start = Math.max(0, parseInteger(searchParams.get("start"), DEFAULT_START))
+    const start = Math.max(
+      0,
+      parseInteger(searchParams.get("start"), DEFAULT_START)
+    )
     const batch = Math.min(
       Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)),
       MAX_BATCH
@@ -592,8 +606,7 @@ export async function GET(request: Request) {
       )
     }
 
-    const scope = scopeParam as "all" | "eligible" | "candidates"
-
+    const scope = scopeParam as Scope
     const now = new Date()
     const nowIso = now.toISOString()
 
@@ -604,13 +617,13 @@ export async function GET(request: Request) {
     const candidateCutoffDateString = candidateCutoffDate.toISOString()
 
     const diagnostics: Diagnostics = {
-      sourceScope: scope,
+      scope,
+      companiesRowsLoaded: 0,
       candidateUniverseRowsLoaded: 0,
-      candidateHistoryRowsLoaded: 0,
-      companyRowsLoaded: 0,
-      candidateRowsLoaded: 0,
-      fallbackCandidateSourceUsed: false,
-      candidateRowsWithoutCik: 0,
+      candidateScreenHistoryRowsLoaded: 0,
+      sourceRowsLoaded: 0,
+      fallbackCandidateHistoryUsed: false,
+      sourceRowsWithoutCik: 0,
       secSubmissionsFetched: 0,
       secSubmissionsFailed: 0,
       filingRowsBuilt: 0,
@@ -619,18 +632,18 @@ export async function GET(request: Request) {
       duplicateRowsCollapsed: 0,
     }
 
-    let sourceRows: CompanyTickerRow[] = []
+    let sourceRows: Array<CompanyRow | CandidateUniverseRow> = []
 
     if (scope === "all") {
-      const allContext = await loadAllCompaniesContext(
+      const allContext = await loadCompaniesContext(
         supabase,
         start,
         batch,
         onlyActive
       )
       sourceRows = allContext.rows
-      diagnostics.companyRowsLoaded = allContext.companyRowsLoaded
-      diagnostics.candidateRowsLoaded = allContext.rows.length
+      diagnostics.companiesRowsLoaded = allContext.companiesRowsLoaded
+      diagnostics.sourceRowsLoaded = allContext.rows.length
     }
 
     if (scope === "eligible") {
@@ -643,11 +656,11 @@ export async function GET(request: Request) {
       sourceRows = eligibleContext.rows
       diagnostics.candidateUniverseRowsLoaded =
         eligibleContext.candidateUniverseRowsLoaded
-      diagnostics.candidateRowsLoaded = eligibleContext.rows.length
+      diagnostics.sourceRowsLoaded = eligibleContext.rows.length
     }
 
     if (scope === "candidates") {
-      const candidateContext = await loadCandidateContext(
+      const candidateContext = await loadCandidatesContext(
         supabase,
         start,
         batch,
@@ -657,75 +670,76 @@ export async function GET(request: Request) {
       sourceRows = candidateContext.candidateRows
       diagnostics.candidateUniverseRowsLoaded =
         candidateContext.candidateUniverseRowsLoaded
-      diagnostics.candidateHistoryRowsLoaded =
-        candidateContext.candidateHistoryRowsLoaded
-      diagnostics.candidateRowsLoaded = candidateContext.candidateRows.length
-      diagnostics.fallbackCandidateSourceUsed =
-        candidateContext.fallbackCandidateSourceUsed
+      diagnostics.candidateScreenHistoryRowsLoaded =
+        candidateContext.candidateScreenHistoryRowsLoaded
+      diagnostics.fallbackCandidateHistoryUsed =
+        candidateContext.fallbackCandidateHistoryUsed
+      diagnostics.sourceRowsLoaded = candidateContext.candidateRows.length
     }
 
-    const filingFetchResults = await mapWithConcurrency(
-      sourceRows,
-      SEC_FETCH_CONCURRENCY,
-      async (candidate) => {
-        const ticker = normalizeTicker(candidate.ticker)
-        const cik = normalizeCik(candidate.cik)
+    const filingFetchResults = await mapWithConcurrency<
+      CompanyRow | CandidateUniverseRow,
+      FilingFetchResult
+    >(sourceRows, SEC_FETCH_CONCURRENCY, async (sourceRow) => {
+      const ticker = normalizeTicker(sourceRow.ticker)
+      const cik = normalizeCik(sourceRow.cik)
 
-        if (!ticker || !cik) {
-          return {
-            missingCik: true,
-            fetched: false,
-            rows: [] as RawFilingInsertRow[],
-            unsupportedFormsSkipped: 0,
-          }
-        }
-
-        const submission = await fetchSecSubmission(cik)
-
-        if (!submission) {
-          return {
-            missingCik: false,
-            fetched: false,
-            rows: [] as RawFilingInsertRow[],
-            unsupportedFormsSkipped: 0,
-          }
-        }
-
-        const extracted = extractRecentFilingsFromSubmission({
-          submission,
-          fallbackTicker: ticker,
-          fallbackCompanyName: candidate.name,
-          fallbackCik: cik,
-          nowIso,
-        })
-
-        let unsupportedForThisSubmission = 0
-        const recent = submission.filings?.recent
-
-        if (recent?.form?.length) {
-          for (const rawForm of recent.form) {
-            const normalized = normalizeFormType(
-              String(rawForm || "").trim() || null
-            )
-            if (!normalized) continue
-            if (!ALLOWED_FORMS.has(normalized)) unsupportedForThisSubmission += 1
-          }
-        }
-
+      if (!ticker || !cik) {
         return {
-          missingCik: false,
-          fetched: true,
-          rows: extracted,
-          unsupportedFormsSkipped: unsupportedForThisSubmission,
+          missingCik: true,
+          fetched: false,
+          rows: [],
+          unsupportedFormsSkipped: 0,
         }
       }
-    )
 
-    const rawRows: RawFilingInsertRow[] = []
+      const submission = await fetchSecSubmission(cik)
+
+      if (!submission) {
+        return {
+          missingCik: false,
+          fetched: false,
+          rows: [],
+          unsupportedFormsSkipped: 0,
+        }
+      }
+
+      const rows = extractRecentFilingsFromSubmission({
+        submission,
+        fallbackTicker: ticker,
+        fallbackCompanyName: sourceRow.name,
+        fallbackCik: cik,
+        nowIso,
+      })
+
+      let unsupportedForThisSubmission = 0
+      const recent = submission.filings?.recent
+
+      if (recent?.form?.length) {
+        for (const rawForm of recent.form) {
+          const normalized = normalizeFormType(
+            String(rawForm || "").trim() || null
+          )
+          if (!normalized) continue
+          if (!ALLOWED_FORMS.has(normalized)) {
+            unsupportedForThisSubmission += 1
+          }
+        }
+      }
+
+      return {
+        missingCik: false,
+        fetched: true,
+        rows,
+        unsupportedFormsSkipped: unsupportedForThisSubmission,
+      }
+    })
+
+    const rawRows: RawFilingUpsertRow[] = []
 
     for (const result of filingFetchResults) {
       if (result.missingCik) {
-        diagnostics.candidateRowsWithoutCik += 1
+        diagnostics.sourceRowsWithoutCik += 1
         continue
       }
 
@@ -752,7 +766,7 @@ export async function GET(request: Request) {
             "accession_no",
             (row) => row.accession_no
           )
-        : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
+        : { insertedOrUpdated: 0, errors: [] }
 
     if (writeResult.errors.length > 0) {
       return Response.json(
@@ -770,7 +784,7 @@ export async function GET(request: Request) {
 
     diagnostics.filingRowsInserted = writeResult.insertedOrUpdated
 
-    let retentionMessage = "skipped"
+    let retentionCleanup = "skipped"
     if (runRetention) {
       const retentionCutoff = new Date(now)
       retentionCutoff.setDate(retentionCutoff.getDate() - RETENTION_DAYS)
@@ -781,27 +795,29 @@ export async function GET(request: Request) {
         .delete()
         .lt("filed_at", retentionCutoffString)
 
-      retentionMessage = retentionError ? retentionError.message : "ok"
+      retentionCleanup = retentionError ? retentionError.message : "ok"
     }
 
     const nextStart = sourceRows.length < batch ? null : start + batch
 
     return Response.json({
       ok: true,
+      stage: "filings",
+      targetTable: "raw_filings",
       scope,
       start,
       batch,
       nextStart,
-      filingRowsInserted: diagnostics.filingRowsInserted,
       retainedDays: RETENTION_DAYS,
-      retentionCleanup: retentionMessage,
+      retentionCleanup,
+      filingRowsInserted: diagnostics.filingRowsInserted,
       diagnostics,
       message:
         scope === "all"
-          ? "Raw filing metadata ingested for all companies in the requested batch."
+          ? "Raw filings ingested for companies in the requested batch."
           : scope === "eligible"
-            ? "Raw filing metadata ingested for eligible-universe companies in the requested batch."
-            : "Raw filing metadata ingested for candidate tickers only. Filing parsing and scoring are handled in a separate filing-signals route.",
+            ? "Raw filings ingested for eligible-universe tickers in the requested batch."
+            : "Raw filings ingested for current candidate tickers. Signal generation happens in the signals pipeline step.",
     })
   } catch (error: any) {
     return Response.json(

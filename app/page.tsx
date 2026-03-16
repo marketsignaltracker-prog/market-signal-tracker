@@ -182,7 +182,10 @@ type UnifiedRow = {
 
   has_candidate_data: boolean
   has_signal_data: boolean
-  data_source_label: "Technical + Filing" | "Technical Only" | "Filing Only"
+  data_source_label:
+    | "Price Strength + Signals"
+    | "Price Strength Only"
+    | "Signals Only"
 }
 
 type PriceFilterType =
@@ -211,7 +214,7 @@ type ReasonLine = {
 }
 
 const CARDS_PER_PAGE = 18
-const DETAIL_TABS = ["Overview", "Drivers", "Metrics"] as const
+const DETAIL_TABS = ["Overview", "Why it’s here", "Numbers"] as const
 
 function normalizeTicker(value: string | null | undefined) {
   return (value || "").trim().toUpperCase()
@@ -300,9 +303,17 @@ function makeUnifiedRow(
     pe_type: signal?.pe_type ?? null,
 
     one_day_return: candidate?.one_day_return ?? null,
-    price_return_5d: firstNumberOrNull(signal?.price_return_5d, candidate?.return_5d, null),
+    price_return_5d: firstNumberOrNull(
+      signal?.price_return_5d,
+      candidate?.return_5d,
+      null
+    ),
     return_10d: candidate?.return_10d ?? null,
-    price_return_20d: firstNumberOrNull(signal?.price_return_20d, candidate?.return_20d, null),
+    price_return_20d: firstNumberOrNull(
+      signal?.price_return_20d,
+      candidate?.return_20d,
+      null
+    ),
     volume_ratio: firstNumberOrNull(signal?.volume_ratio, candidate?.volume_ratio, null),
     relative_strength_20d:
       signal?.relative_strength_20d ??
@@ -329,7 +340,9 @@ function makeUnifiedRow(
     signal_tags: Array.isArray(signal?.signal_tags) ? signal.signal_tags : [],
     signal_reasons: Array.isArray(signal?.signal_reasons) ? signal.signal_reasons : [],
     score_breakdown: signal?.score_breakdown ?? null,
-    score_caps_applied: Array.isArray(signal?.score_caps_applied) ? signal.score_caps_applied : [],
+    score_caps_applied: Array.isArray(signal?.score_caps_applied)
+      ? signal.score_caps_applied
+      : [],
 
     primary_signal_type: signal?.primary_signal_type ?? null,
     primary_signal_source: signal?.primary_signal_source ?? null,
@@ -368,10 +381,10 @@ function makeUnifiedRow(
     has_signal_data: Boolean(signal),
     data_source_label:
       candidate && signal
-        ? "Technical + Filing"
+        ? "Price Strength + Signals"
         : candidate
-          ? "Technical Only"
-          : "Filing Only",
+          ? "Price Strength Only"
+          : "Signals Only",
   }
 }
 
@@ -554,7 +567,8 @@ export default function Home() {
 
         for (const row of ptrRows) {
           const ticker = normalizeTicker(row.ticker)
-          const amountRange = typeof row.amount_range === "string" ? row.amount_range.trim() : ""
+          const amountRange =
+            typeof row.amount_range === "string" ? row.amount_range.trim() : ""
           if (!ticker || !amountRange) continue
           if (!ptrMap.has(ticker)) {
             ptrMap.set(ticker, amountRange)
@@ -577,7 +591,8 @@ export default function Home() {
           if (!unified) continue
 
           const include =
-            (unified.candidate_score ?? -1) >= 70 || (unified.signal_score ?? -1) >= 70
+            (unified.candidate_score ?? -1) >= 70 ||
+            (unified.signal_score ?? -1) >= 70
 
           if (include) merged.push(unified)
         }
@@ -588,7 +603,7 @@ export default function Home() {
         setLoading(false)
       } catch (err: any) {
         if (!isMounted) return
-        setError(err?.message || "Error loading strong buys.")
+        setError(err?.message || "Error loading today’s list.")
         setRows([])
         setLoading(false)
       }
@@ -632,7 +647,8 @@ export default function Home() {
     return filteredRows.slice(startIndex, startIndex + CARDS_PER_PAGE)
   }, [filteredRows, safeCurrentPage])
 
-  const pageStart = filteredRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
+  const pageStart =
+    filteredRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
   const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, filteredRows.length)
 
   const selectedRow = useMemo(() => {
@@ -754,17 +770,83 @@ export default function Home() {
               </div>
 
               <h1 className="mt-3 max-w-3xl text-2xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-[2.85rem]">
-                Today's Strong Buys Ranked and Simplified.
+                Stock ideas for regular people.
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-                The strongest mix of price strength, interest, and signal support right now.
+                We surface stocks that are showing unusual strength, fresh signal support,
+                or both — then rank them in plain English so you can understand what stands
+                out fast.
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:w-[320px]">
-              <CompactStatCard label="Strong Buys" value={loading ? "…" : String(strongBuyCount)} tone="emerald" />
-              <CompactStatCard label="Elite" value={loading ? "…" : String(eliteCount)} tone="cyan" />
+              <CompactStatCard
+                label="Ideas on the board"
+                value={loading ? "…" : String(strongBuyCount)}
+                tone="emerald"
+              />
+              <CompactStatCard
+                label="Top tier"
+                value={loading ? "…" : String(eliteCount)}
+                tone="cyan"
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_0.85fr] sm:mt-7">
+          <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 shadow-xl backdrop-blur-md sm:p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+              How to use this board
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-white sm:text-2xl">
+              Start simple
+            </h2>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <SimpleExplainerCard
+                step="1"
+                title="Open a stock card"
+                body="Every card tells you, in plain language, why a stock made the list today."
+              />
+              <SimpleExplainerCard
+                step="2"
+                title="Check the score"
+                body="Higher scores usually mean more pieces are lining up at the same time."
+              />
+              <SimpleExplainerCard
+                step="3"
+                title="Read the details"
+                body="Use the guided detail view to see what’s supporting the idea before you decide anything."
+              />
+            </div>
+          </div>
+
+          <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 shadow-xl backdrop-blur-md sm:p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+              What the score means
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-white sm:text-2xl">
+              Quick score guide
+            </h2>
+
+            <div className="mt-4 space-y-3">
+              <ConfidenceLegendCard
+                color="bg-yellow-400"
+                label="70–79"
+                body="Worth a look. Something good is happening, but the setup is less complete."
+              />
+              <ConfidenceLegendCard
+                color="bg-cyan-400"
+                label="80–89"
+                body="Stronger setup. More evidence is lining up."
+              />
+              <ConfidenceLegendCard
+                color="bg-emerald-400"
+                label="90+"
+                body="Top tier. Usually the strongest mix of momentum, confirmation, and signal support."
+              />
             </div>
           </div>
         </section>
@@ -777,7 +859,7 @@ export default function Home() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                  Refine the board
+                  Narrow it down
                 </p>
                 <h2 className="mt-1 text-lg font-semibold text-white sm:text-2xl">
                   Filters
@@ -821,7 +903,7 @@ export default function Home() {
                   <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                     <div>
                       <p className="text-sm text-slate-400">
-                        Use filters when you want tighter control over what shows up on the board.
+                        Use filters when you want a smaller, cleaner list that fits your style.
                       </p>
                     </div>
 
@@ -861,11 +943,13 @@ export default function Home() {
                     />
 
                     <FilterSelect
-                      label="Freshness"
+                      label="How recent"
                       value={freshnessFilter}
-                      onChange={(value) => setFreshnessFilter(value as FreshnessFilterType)}
+                      onChange={(value) =>
+                        setFreshnessFilter(value as FreshnessFilterType)
+                      }
                       options={[
-                        { value: "all", label: "All freshness" },
+                        { value: "all", label: "Any time" },
                         { value: "today", label: "Today" },
                         { value: "3d", label: "Last 3 days" },
                         { value: "7d", label: "Last 7 days" },
@@ -874,11 +958,11 @@ export default function Home() {
                     />
 
                     <FilterSelect
-                      label="Conviction"
+                      label="Minimum score"
                       value={scoreFilter}
                       onChange={(value) => setScoreFilter(value as ScoreFilterType)}
                       options={[
-                        { value: "all", label: "All scores" },
+                        { value: "all", label: "Any score" },
                         { value: "70", label: "70+" },
                         { value: "75", label: "75+" },
                         { value: "80", label: "80+" },
@@ -888,24 +972,24 @@ export default function Home() {
                     />
 
                     <FilterSelect
-                      label="Sector"
+                      label="Business area"
                       value={sectorFilter}
                       onChange={(value) => setSectorFilter(value)}
                       options={sectorOptions.map((sector) => ({
                         value: sector,
-                        label: sector === "all" ? "All sectors" : sector,
+                        label: sector === "all" ? "All business areas" : sector,
                       }))}
                     />
 
                     <FilterSelect
-                      label="Source"
+                      label="Why it’s here"
                       value={sourceFilter}
                       onChange={(value) => setSourceFilter(value as SourceFilterType)}
                       options={[
-                        { value: "all", label: "All sources" },
-                        { value: "both", label: "Technical + Filing" },
-                        { value: "technical_only", label: "Technical only" },
-                        { value: "filing_only", label: "Filing only" },
+                        { value: "all", label: "All reasons" },
+                        { value: "both", label: "Price strength + signals" },
+                        { value: "technical_only", label: "Price strength only" },
+                        { value: "filing_only", label: "Signals only" },
                       ]}
                     />
                   </div>
@@ -922,10 +1006,10 @@ export default function Home() {
                 Ranked board
               </p>
               <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
-                Today’s board
+                Today’s ideas
               </h2>
               <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-                One full board, sorted from highest score down.
+                Sorted from strongest overall setup down.
               </p>
             </div>
 
@@ -939,7 +1023,7 @@ export default function Home() {
                   }}
                   className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/40 hover:bg-cyan-400/15"
                 >
-                  Best
+                  Back to top ideas
                 </button>
               ) : null}
 
@@ -987,7 +1071,8 @@ export default function Home() {
         </section>
 
         <footer className="mt-10 border-t border-white/10 pt-8 text-sm leading-6 text-slate-500">
-          Rankings are model-based and designed to help members surface promising stock ideas faster. They are not guarantees, and they should be used as part of a broader decision process.
+          This board is meant to help you find ideas faster, not make the decision for you.
+          A high score means more things are lining up right now — not that a stock is guaranteed to work.
         </footer>
       </div>
 
@@ -1004,7 +1089,11 @@ export default function Home() {
           row={selectedRow}
           onClose={closeDetails}
           onPrev={selectedIndex > 0 ? goToPrevSelected : undefined}
-          onNext={selectedIndex >= 0 && selectedIndex < filteredRows.length - 1 ? goToNextSelected : undefined}
+          onNext={
+            selectedIndex >= 0 && selectedIndex < filteredRows.length - 1
+              ? goToNextSelected
+              : undefined
+          }
           positionLabel={
             selectedIndex >= 0 ? `${selectedIndex + 1} of ${filteredRows.length}` : null
           }
@@ -1012,6 +1101,46 @@ export default function Home() {
         />
       ) : null}
     </main>
+  )
+}
+
+function SimpleExplainerCard({
+  step,
+  title,
+  body,
+}: {
+  step: string
+  title: string
+  body: string
+}) {
+  return (
+    <div className="rounded-[1.25rem] border border-white/10 bg-black/20 p-4">
+      <div className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-cyan-400/25 bg-cyan-400/10 text-sm font-bold text-cyan-200">
+        {step}
+      </div>
+      <h3 className="mt-3 text-base font-semibold text-white">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-300">{body}</p>
+    </div>
+  )
+}
+
+function ConfidenceLegendCard({
+  color,
+  label,
+  body,
+}: {
+  color: string
+  label: string
+  body: string
+}) {
+  return (
+    <div className="rounded-[1.25rem] border border-white/10 bg-black/20 p-4">
+      <div className="flex items-center gap-3">
+        <span className={`h-3 w-3 rounded-full ${color}`} />
+        <span className="text-sm font-semibold text-white">{label}</span>
+      </div>
+      <p className="mt-2 text-sm leading-6 text-slate-300">{body}</p>
+    </div>
   )
 }
 
@@ -1048,7 +1177,10 @@ function formatPriceConfirmation(row: UnifiedRow) {
   const hasBreakout = row.breakout_20d === true || row.breakout_52w === true
   const hasVolumeSupport = (row.volume_ratio ?? 0) >= 1.2
   const hasRelativeStrength = (row.relative_strength_20d ?? 0) > 0
-  const hasTrendSupport = row.trend_aligned === true || row.above_sma_20 === true || row.above_50dma === true
+  const hasTrendSupport =
+    row.trend_aligned === true ||
+    row.above_sma_20 === true ||
+    row.above_50dma === true
 
   if (hasBreakout && (hasVolumeSupport || hasRelativeStrength || hasTrendSupport)) {
     return "Confirmed"
@@ -1124,7 +1256,11 @@ function FilterSelect({
         className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3.5 text-white outline-none transition focus:border-cyan-400/40 focus:bg-slate-950 sm:py-4"
       >
         {options.map((option) => (
-          <option key={`${label}-${option.value}`} value={option.value} className="bg-slate-900">
+          <option
+            key={`${label}-${option.value}`}
+            value={option.value}
+            className="bg-slate-900"
+          >
             {option.label}
           </option>
         ))}
@@ -1136,8 +1272,8 @@ function FilterSelect({
 function LoadingPanel() {
   return (
     <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
-      <h2 className="text-2xl font-semibold">Loading today’s strong buys…</h2>
-      <p className="mt-2 text-slate-400">Pulling the shortlist together now.</p>
+      <h2 className="text-2xl font-semibold">Loading today’s ideas…</h2>
+      <p className="mt-2 text-slate-400">Pulling the board together now.</p>
     </div>
   )
 }
@@ -1153,9 +1289,9 @@ function ErrorPanel({ message }: { message: string }) {
 function EmptyPanel() {
   return (
     <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
-      <h2 className="text-2xl font-semibold">No strong buys found</h2>
+      <h2 className="text-2xl font-semibold">Nothing matched those filters</h2>
       <p className="mt-2 text-slate-400">
-        Try widening freshness, valuation, or score filters to reveal more names.
+        Try widening the score, freshness, or valuation filters.
       </p>
     </div>
   )
@@ -1209,7 +1345,10 @@ function matchesFreshnessFilter(row: UnifiedRow, freshnessFilter: FreshnessFilte
   if ((age === null || age === undefined) && row.last_screened_at) {
     const timestamp = new Date(row.last_screened_at).getTime()
     if (!Number.isNaN(timestamp)) {
-      age = Math.max(0, Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000)))
+      age = Math.max(
+        0,
+        Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000))
+      )
     }
   }
 
@@ -1238,8 +1377,10 @@ function matchesSectorFilter(row: UnifiedRow, sectorFilter: SectorFilterType) {
 function matchesSourceFilter(row: UnifiedRow, sourceFilter: SourceFilterType) {
   if (sourceFilter === "all") return true
   if (sourceFilter === "both") return row.has_candidate_data && row.has_signal_data
-  if (sourceFilter === "technical_only") return row.has_candidate_data && !row.has_signal_data
-  if (sourceFilter === "filing_only") return !row.has_candidate_data && row.has_signal_data
+  if (sourceFilter === "technical_only")
+    return row.has_candidate_data && !row.has_signal_data
+  if (sourceFilter === "filing_only")
+    return !row.has_candidate_data && row.has_signal_data
   return true
 }
 
@@ -1302,18 +1443,18 @@ function TopSignalCard({
 
   const hasRealCompanyInfo = Boolean(row.business_description?.trim())
 
-  const infoTitle = hasRealCompanyInfo ? "About the company" : "Current signal summary"
+  const infoTitle = hasRealCompanyInfo ? "About the company" : "Why this showed up"
 
   const infoBody = hasRealCompanyInfo
     ? row.business_description!.trim()
     : (row.primary_summary || "").trim() ||
-      `${row.company_name || row.ticker} is currently appearing on today’s ranked board based on strong signals.`
+      `${row.company_name || row.ticker} is on today’s board because enough good things are lining up right now.`
 
   const metricItems: MiniMetricItem[] = [
     { label: "Price", value: formatMoney(row.price) },
-    { label: "Insider Trade", value: formatInsiderValue(row) },
-    { label: "Strength", value: formatRelativeStrengthForDisplay(row) },
-    { label: "PTR Amount", value: row.ptr_amount || "—" },
+    { label: "Insider value", value: formatInsiderValue(row) },
+    { label: "Vs market", value: formatRelativeStrengthForDisplay(row) },
+    { label: "PTR amount", value: row.ptr_amount || "—" },
   ].filter((item) => hasDisplayValue(item.value))
 
   return (
@@ -1323,9 +1464,7 @@ function TopSignalCard({
       onClick={onClick}
       className={[
         "flex w-full self-start flex-col overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-xl transition duration-300 hover:-translate-y-1 hover:scale-[1.01] sm:p-5",
-        isSelected
-          ? "ring-2 ring-cyan-300/25"
-          : "hover:ring-1 hover:ring-white/10",
+        isSelected ? "ring-2 ring-cyan-300/25" : "hover:ring-1 hover:ring-white/10",
       ].join(" ")}
       style={{
         borderColor: isSelected ? `${palette.end}80` : `${palette.end}33`,
@@ -1340,9 +1479,7 @@ function TopSignalCard({
             <CardRankBadge rank={rank} />
           </div>
 
-          <h3 className="mt-2 truncate text-2xl font-bold sm:text-3xl">
-            {row.ticker}
-          </h3>
+          <h3 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{row.ticker}</h3>
 
           {row.company_name ? (
             <p className="mt-1 truncate text-sm text-slate-400">
@@ -1363,7 +1500,7 @@ function TopSignalCard({
                 ? "Hide details"
                 : hasRealCompanyInfo
                   ? "About the company"
-                  : "More info"}
+                  : "More context"}
             </button>
           </div>
         </div>
@@ -1386,9 +1523,7 @@ function TopSignalCard({
               {infoTitle}
             </p>
 
-            <p className="text-sm leading-6 text-slate-300">
-              {infoBody}
-            </p>
+            <p className="text-sm leading-6 text-slate-300">{infoBody}</p>
 
             <div className="mt-4 flex justify-end">
               <button
@@ -1419,7 +1554,7 @@ function TopSignalCard({
 
       <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-          Why it could matter today
+          Why it made the list
         </p>
 
         <ul className="mt-3 space-y-2 text-sm leading-6 text-white">
@@ -1442,7 +1577,7 @@ function TopSignalCard({
 
       <div className="mt-auto rounded-2xl bg-black/20 p-4">
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-          Member takeaway
+          Plain-English takeaway
         </p>
 
         <ul className="space-y-2 text-sm leading-6 text-slate-100">
@@ -1456,7 +1591,7 @@ function TopSignalCard({
       </div>
 
       <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-        <span className="text-sm text-slate-300">Open guided detail</span>
+        <span className="text-sm text-slate-300">Open guided details</span>
 
         <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white">
           Explore →
@@ -1489,7 +1624,7 @@ function ScoreBar({
     >
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-          Setup Score
+          Overall score
         </p>
         <p className="shrink-0 text-sm font-semibold text-white">{score}/100</p>
       </div>
@@ -1508,7 +1643,7 @@ function ScoreBar({
         <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.14em] text-slate-500">
           <span>Good</span>
           <span>Strong</span>
-          <span>Elite</span>
+          <span>Top tier</span>
         </div>
       ) : null}
     </div>
@@ -1584,14 +1719,6 @@ function FreshnessBadge({ row }: { row: UnifiedRow }) {
 
   return (
     <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
-      {label}
-    </span>
-  )
-}
-
-function ReasonChip({ label }: { label: string }) {
-  return (
-    <span className="inline-flex min-h-[38px] max-w-full items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 text-center text-xs font-semibold text-cyan-200">
       {label}
     </span>
   )
@@ -1678,7 +1805,10 @@ function PaginationControls({
   )
 }
 
-function buildPaginationPages(currentPage: number, totalPages: number): Array<number | "ellipsis"> {
+function buildPaginationPages(
+  currentPage: number,
+  totalPages: number
+): Array<number | "ellipsis"> {
   if (totalPages <= 7) {
     return Array.from({ length: totalPages }, (_, i) => i + 1)
   }
@@ -1688,7 +1818,15 @@ function buildPaginationPages(currentPage: number, totalPages: number): Array<nu
   }
 
   if (currentPage >= totalPages - 3) {
-    return [1, "ellipsis", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages]
+    return [
+      1,
+      "ellipsis",
+      totalPages - 4,
+      totalPages - 3,
+      totalPages - 2,
+      totalPages - 1,
+      totalPages,
+    ]
   }
 
   return [1, "ellipsis", currentPage - 1, currentPage, currentPage + 1, "ellipsis", totalPages]
@@ -1811,7 +1949,7 @@ function SignalDetailsModal({
                     {positionLabel}
                   </p>
                 ) : null}
-                <p className="text-sm font-semibold text-slate-200">Guided Detail View</p>
+                <p className="text-sm font-semibold text-slate-200">Guided details</p>
               </div>
             </div>
 
@@ -1858,9 +1996,11 @@ function SignalDetailsModal({
                 <div>
                   <div className="mb-5 rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                      Why members are seeing this today
+                      The simple version
                     </p>
-                    <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">{thesis}</p>
+                    <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">
+                      {thesis}
+                    </p>
                     <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-300 sm:text-base">
                       {confidenceBullets.map((item, i) => (
                         <li key={i} className="flex items-start gap-2">
@@ -1883,11 +2023,14 @@ function SignalDetailsModal({
 
                   <div className="mb-5">
                     <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Score drivers
+                      Biggest score drivers
                     </p>
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       {reasons.map((reason) => (
-                        <ReasonCard key={`${reason.label}-${reason.value}`} reason={reason} />
+                        <ReasonCard
+                          key={`${reason.label}-${reason.value}`}
+                          reason={reason}
+                        />
                       ))}
                     </div>
                   </div>
@@ -1904,7 +2047,7 @@ function SignalDetailsModal({
 
                   <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                      What stands out here
+                      What stands out
                     </p>
                     <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-200 sm:text-base">
                       {setupBullets.map((item, i) => (
@@ -1944,12 +2087,27 @@ function SignalDetailsModal({
                         }
                       />
                       <ConfirmationRow
-                        label="Trend alignment"
-                        value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"}
+                        label="Trend"
+                        value={
+                          row.trend_aligned === true
+                            ? "Aligned"
+                            : row.above_sma_20
+                              ? "Constructive"
+                              : "Mixed"
+                        }
                       />
-                      <ConfirmationRow label="Relative strength" value={formatRelativeStrengthForDisplay(row)} />
-                      <ConfirmationRow label="Participation" value={formatRatio(row.volume_ratio)} />
-                      <ConfirmationRow label="Signal stack" value={formatSignalStack(row.stacked_signal_count, row)} />
+                      <ConfirmationRow
+                        label="Vs market"
+                        value={formatRelativeStrengthForDisplay(row)}
+                      />
+                      <ConfirmationRow
+                        label="Volume"
+                        value={formatRatio(row.volume_ratio)}
+                      />
+                      <ConfirmationRow
+                        label="Signals stacked"
+                        value={formatSignalStack(row.stacked_signal_count, row)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1960,21 +2118,56 @@ function SignalDetailsModal({
                   </p>
 
                   <div className="mt-4 space-y-3">
-                    <MetricRow label="Display score" value={`${row.display_score}`} />
-                    <MetricRow label="Candidate score" value={formatSimpleNumber(row.candidate_score)} />
-                    <MetricRow label="Signal score" value={formatSimpleNumber(row.signal_score)} />
-                    <MetricRow label="Source" value={row.data_source_label} />
-                    <MetricRow label="Confidence tier" value={getConfidenceTierLabel(row.display_score)} />
+                    <MetricRow label="Overall score" value={`${row.display_score}`} />
+                    <MetricRow
+                      label="Price strength score"
+                      value={formatSimpleNumber(row.candidate_score)}
+                    />
+                    <MetricRow
+                      label="Signals score"
+                      value={formatSimpleNumber(row.signal_score)}
+                    />
+                    <MetricRow label="Why it’s here" value={row.data_source_label} />
+                    <MetricRow
+                      label="Confidence tier"
+                      value={getConfidenceTierLabel(row.display_score)}
+                    />
                     <MetricRow label="Price" value={formatMoney(row.price)} />
-                    <MetricRow label="Primary signal" value={row.primary_title || "Technical setup"} />
-                    <MetricRow label="Signal source" value={formatSource(row.primary_signal_source)} />
-                    <MetricRow label="Signal category" value={getSignalCategory(row)} />
+                    <MetricRow
+                      label="Main reason"
+                      value={row.primary_title || "Price strength"}
+                    />
+                    <MetricRow
+                      label="Signal source"
+                      value={formatSource(row.primary_signal_source)}
+                    />
+                    <MetricRow
+                      label="Signal category"
+                      value={getSignalCategory(row)}
+                    />
                     <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
-                    <MetricRow label="Filed at" value={row.filed_at ? formatDateLong(row.filed_at) : null} />
-                    <MetricRow label="Last screened" value={row.last_screened_at ? formatDateLong(row.last_screened_at) : null} />
-                    <MetricRow label="Signals stacked" value={formatWholeNumber(row.stacked_signal_count)} />
-                    <MetricRow label="1D score change" value={formatScoreChange(row.ticker_score_change_1d)} />
-                    <MetricRow label="7D score change" value={formatScoreChange(row.ticker_score_change_7d)} />
+                    <MetricRow
+                      label="Filed at"
+                      value={row.filed_at ? formatDateLong(row.filed_at) : null}
+                    />
+                    <MetricRow
+                      label="Last screened"
+                      value={
+                        row.last_screened_at ? formatDateLong(row.last_screened_at) : null
+                      }
+                    />
+                    <MetricRow
+                      label="Signals stacked"
+                      value={formatWholeNumber(row.stacked_signal_count)}
+                    />
+                    <MetricRow
+                      label="1D score change"
+                      value={formatScoreChange(row.ticker_score_change_1d)}
+                    />
+                    <MetricRow
+                      label="7D score change"
+                      value={formatScoreChange(row.ticker_score_change_7d)}
+                    />
                   </div>
 
                   <div className="mt-6 border-t border-white/10 pt-6">
@@ -2001,12 +2194,22 @@ function SignalDetailsModal({
 
                   <div className="mt-6 border-t border-white/10 pt-6">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Filing and signal detail
+                      Signals and filings
                     </p>
 
                     <div className="mt-4 space-y-3">
-                      <MetricRow label="Source forms" value={row.source_forms.length ? row.source_forms.join(", ") : null} />
-                      <MetricRow label="Accession nos" value={row.accession_nos.length ? row.accession_nos.slice(0, 3).join(", ") : null} />
+                      <MetricRow
+                        label="Source forms"
+                        value={row.source_forms.length ? row.source_forms.join(", ") : null}
+                      />
+                      <MetricRow
+                        label="Accession nos"
+                        value={
+                          row.accession_nos.length
+                            ? row.accession_nos.slice(0, 3).join(", ")
+                            : null
+                        }
+                      />
                       <MetricRow label="Insider action" value={row.insider_action || null} />
                       <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
                       <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
@@ -2022,11 +2225,14 @@ function SignalDetailsModal({
 
                   <div className="mt-6 border-t border-white/10 pt-6">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Valuation and company
+                      Company basics
                     </p>
 
                     <div className="mt-4 space-y-3">
-                      <MetricRow label="Valuation" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
+                      <MetricRow
+                        label="Valuation"
+                        value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)}
+                      />
                       <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
                       <MetricRow label="Sector" value={row.sector || null} />
                       <MetricRow label="Industry" value={row.industry || null} />
@@ -2047,9 +2253,11 @@ function SignalDetailsModal({
                   <div className="space-y-5">
                     <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                        Why members are seeing this today
+                        The simple version
                       </p>
-                      <p className="mt-2 break-words text-xl font-semibold text-white">{thesis}</p>
+                      <p className="mt-2 break-words text-xl font-semibold text-white">
+                        {thesis}
+                      </p>
                       <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-300">
                         {confidenceBullets.map((item, i) => (
                           <li key={i} className="flex items-start gap-2">
@@ -2067,13 +2275,15 @@ function SignalDetailsModal({
                         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                           Company
                         </p>
-                        <p className="break-words text-sm leading-7 text-slate-300">{row.business_description}</p>
+                        <p className="break-words text-sm leading-7 text-slate-300">
+                          {row.business_description}
+                        </p>
                       </div>
                     ) : null}
 
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                        What stands out here
+                        What stands out
                       </p>
                       <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-200">
                         {setupBullets.map((item, i) => (
@@ -2099,11 +2309,14 @@ function SignalDetailsModal({
                   <div className="space-y-5">
                     <div>
                       <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Score drivers
+                        Biggest score drivers
                       </p>
                       <div className="grid gap-3">
                         {reasons.map((reason) => (
-                          <ReasonCard key={`${reason.label}-${reason.value}`} reason={reason} />
+                          <ReasonCard
+                            key={`${reason.label}-${reason.value}`}
+                            reason={reason}
+                          />
                         ))}
                       </div>
                     </div>
@@ -2138,12 +2351,27 @@ function SignalDetailsModal({
                           }
                         />
                         <ConfirmationRow
-                          label="Trend alignment"
-                          value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"}
+                          label="Trend"
+                          value={
+                            row.trend_aligned === true
+                              ? "Aligned"
+                              : row.above_sma_20
+                                ? "Constructive"
+                                : "Mixed"
+                          }
                         />
-                        <ConfirmationRow label="Relative strength" value={formatRelativeStrengthForDisplay(row)} />
-                        <ConfirmationRow label="Participation" value={formatRatio(row.volume_ratio)} />
-                        <ConfirmationRow label="Signal stack" value={formatSignalStack(row.stacked_signal_count, row)} />
+                        <ConfirmationRow
+                          label="Vs market"
+                          value={formatRelativeStrengthForDisplay(row)}
+                        />
+                        <ConfirmationRow
+                          label="Volume"
+                          value={formatRatio(row.volume_ratio)}
+                        />
+                        <ConfirmationRow
+                          label="Signals stacked"
+                          value={formatSignalStack(row.stacked_signal_count, row)}
+                        />
                       </div>
                     </div>
                   </div>
@@ -2157,21 +2385,56 @@ function SignalDetailsModal({
                       </p>
 
                       <div className="mt-4 space-y-3">
-                        <MetricRow label="Display score" value={`${row.display_score}`} />
-                        <MetricRow label="Candidate score" value={formatSimpleNumber(row.candidate_score)} />
-                        <MetricRow label="Signal score" value={formatSimpleNumber(row.signal_score)} />
-                        <MetricRow label="Source" value={row.data_source_label} />
-                        <MetricRow label="Confidence tier" value={getConfidenceTierLabel(row.display_score)} />
+                        <MetricRow label="Overall score" value={`${row.display_score}`} />
+                        <MetricRow
+                          label="Price strength score"
+                          value={formatSimpleNumber(row.candidate_score)}
+                        />
+                        <MetricRow
+                          label="Signals score"
+                          value={formatSimpleNumber(row.signal_score)}
+                        />
+                        <MetricRow label="Why it’s here" value={row.data_source_label} />
+                        <MetricRow
+                          label="Confidence tier"
+                          value={getConfidenceTierLabel(row.display_score)}
+                        />
                         <MetricRow label="Price" value={formatMoney(row.price)} />
-                        <MetricRow label="Primary signal" value={row.primary_title || "Technical setup"} />
-                        <MetricRow label="Signal source" value={formatSource(row.primary_signal_source)} />
-                        <MetricRow label="Signal category" value={getSignalCategory(row)} />
+                        <MetricRow
+                          label="Main reason"
+                          value={row.primary_title || "Price strength"}
+                        />
+                        <MetricRow
+                          label="Signal source"
+                          value={formatSource(row.primary_signal_source)}
+                        />
+                        <MetricRow
+                          label="Signal category"
+                          value={getSignalCategory(row)}
+                        />
                         <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
-                        <MetricRow label="Filed at" value={row.filed_at ? formatDateLong(row.filed_at) : null} />
-                        <MetricRow label="Last screened" value={row.last_screened_at ? formatDateLong(row.last_screened_at) : null} />
-                        <MetricRow label="Signals stacked" value={formatWholeNumber(row.stacked_signal_count)} />
-                        <MetricRow label="1D score change" value={formatScoreChange(row.ticker_score_change_1d)} />
-                        <MetricRow label="7D score change" value={formatScoreChange(row.ticker_score_change_7d)} />
+                        <MetricRow
+                          label="Filed at"
+                          value={row.filed_at ? formatDateLong(row.filed_at) : null}
+                        />
+                        <MetricRow
+                          label="Last screened"
+                          value={
+                            row.last_screened_at ? formatDateLong(row.last_screened_at) : null
+                          }
+                        />
+                        <MetricRow
+                          label="Signals stacked"
+                          value={formatWholeNumber(row.stacked_signal_count)}
+                        />
+                        <MetricRow
+                          label="1D score change"
+                          value={formatScoreChange(row.ticker_score_change_1d)}
+                        />
+                        <MetricRow
+                          label="7D score change"
+                          value={formatScoreChange(row.ticker_score_change_7d)}
+                        />
                         <MetricRow label="1D move" value={formatPercent(row.one_day_return)} />
                         <MetricRow label="5D move" value={formatPercent(row.price_return_5d)} />
                         <MetricRow label="10D move" value={formatPercent(row.return_10d)} />
@@ -2217,7 +2480,7 @@ function SignalDetailsModal({
                 onClick={onClose}
                 className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-3 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/30 hover:bg-cyan-400/15"
               >
-                Back to Board
+                Back to board
               </button>
 
               <button
@@ -2250,7 +2513,9 @@ function MetricRow({
   return (
     <div className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3 text-sm">
       <span className="min-w-0 break-words text-slate-400">{label}</span>
-      <span className="max-w-[58%] truncate text-right font-semibold text-white">{value}</span>
+      <span className="max-w-[58%] truncate text-right font-semibold text-white">
+        {value}
+      </span>
     </div>
   )
 }
@@ -2288,7 +2553,9 @@ function ReasonCard({ reason }: { reason: ReasonLine }) {
   return (
     <div className={`rounded-2xl border p-4 ${classes}`}>
       <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{reason.label}</p>
-      <p className={`mt-2 break-words text-sm font-semibold ${textClasses}`}>{reason.value}</p>
+      <p className={`mt-2 break-words text-sm font-semibold ${textClasses}`}>
+        {reason.value}
+      </p>
     </div>
   )
 }
@@ -2348,52 +2615,28 @@ function TagPill({ tag }: { tag: string }) {
   )
 }
 
-function getCompanyOneLiner(row: UnifiedRow) {
-  if (row.business_description && row.business_description.trim()) {
-    return row.business_description.trim()
-  }
-
-  if (row.primary_summary && row.primary_summary.trim()) {
-    return row.primary_summary.trim()
-  }
-
-  if (row.company_name && row.industry && row.sector) {
-    return `${row.company_name} operates in the ${row.industry} industry within the ${row.sector} sector.`
-  }
-
-  if (row.company_name && row.sector) {
-    return `${row.company_name} operates in the ${row.sector} sector.`
-  }
-
-  if (row.company_name && row.industry) {
-    return `${row.company_name} operates in the ${row.industry} industry.`
-  }
-
-  return "Company information not available."
-}
-
 function getFeaturedThesis(row: UnifiedRow) {
   if (row.primary_signal_source === "breakout" && (row.volume_ratio ?? 0) >= 2) {
-    return "Fresh breakout with strong participation"
+    return "Fresh breakout with strong buying interest"
   }
 
   if ((row.cluster_buyers ?? 0) >= 2) {
-    return "Multiple bullish signals are stacking together"
+    return "More than one good signal is showing up at the same time"
   }
 
   if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
-    return "Momentum is being reinforced by earnings support"
+    return "Business strength is helping support the move"
   }
 
   if ((row.relative_strength_20d ?? 0) >= 8) {
-    return "This name is acting like a true market leader right now"
+    return "This stock has been acting stronger than much of the market"
   }
 
   if ((row.candidate_score ?? 0) >= 85 && !row.has_signal_data) {
-    return "High-scoring technical candidate with clean setup quality"
+    return "A very strong price-based setup on its own"
   }
 
-  return "A high-conviction setup with strong current support"
+  return "Several things are lining up well right now"
 }
 
 function getSimpleCardBullets(row: UnifiedRow) {
@@ -2404,23 +2647,23 @@ function getSimpleCardBullets(row: UnifiedRow) {
   }
 
   if ((row.volume_ratio ?? 0) >= 1.5) {
-    points.push("Trading activity is stronger than normal.")
+    points.push("Trading activity is stronger than usual.")
   }
 
   if ((row.relative_strength_20d ?? 0) >= 5) {
-    points.push("It has been outperforming the market while also standing out versus other stocks.")
+    points.push("It has been outperforming the market recently.")
   }
 
   if ((row.cluster_buyers ?? 0) >= 2) {
-    points.push("Multiple bullish signals are showing up at once.")
+    points.push("Multiple positive signals are showing up together.")
   }
 
   if ((row.earnings_surprise_pct ?? 0) >= 10) {
-    points.push("Recent earnings were stronger than expected.")
+    points.push("Recent earnings came in stronger than expected.")
   }
 
   if ((row.revenue_growth_pct ?? 0) >= 15) {
-    points.push("The business is still showing solid growth.")
+    points.push("The business is still growing at a healthy pace.")
   }
 
   if (row.guidance_flag === true) {
@@ -2428,7 +2671,9 @@ function getSimpleCardBullets(row: UnifiedRow) {
   }
 
   if (points.length === 0) {
-    points.push("This stock is showing enough strength right now to stay on today’s ranked board.")
+    points.push(
+      "Enough good things are happening right now to keep this stock on today’s board."
+    )
   }
 
   return points.slice(0, 3)
@@ -2438,15 +2683,21 @@ function getPremiumSummaryBullets(row: UnifiedRow) {
   const bullets: string[] = []
 
   if (row.has_candidate_data && row.has_signal_data) {
-    bullets.push("This stock passed the technical screen and also picked up extra confirmation from filings or other signals.")
+    bullets.push(
+      "This one has both price strength and extra signal support working in its favor."
+    )
   }
 
   if (row.has_candidate_data && !row.has_signal_data) {
-    bullets.push("This stock is here mainly because its technical setup scored well on the model.")
+    bullets.push(
+      "This one mainly made the list because its price setup looks strong."
+    )
   }
 
   if (row.has_signal_data && !row.has_candidate_data) {
-    bullets.push("This stock is here mainly because the signal layer was strong enough on its own.")
+    bullets.push(
+      "This one mainly made the list because the signal layer was strong enough on its own."
+    )
   }
 
   if ((row.relative_strength_20d ?? 0) > 0) {
@@ -2454,15 +2705,17 @@ function getPremiumSummaryBullets(row: UnifiedRow) {
   }
 
   if ((row.volume_ratio ?? 0) >= 1.5) {
-    bullets.push("Higher-than-normal trading volume suggests stronger interest from buyers.")
+    bullets.push("Higher volume suggests more investor attention than normal.")
   }
 
   if ((row.candidate_score ?? 0) >= 90) {
-    bullets.push("Its technical score is strong compared with most names on the board.")
+    bullets.push("Its price-based setup is among the stronger ones on the board.")
   }
 
   if (!bullets.length) {
-    bullets.push("This setup has enough strength and support to deserve attention today.")
+    bullets.push(
+      "This setup has enough strength and support to deserve attention today."
+    )
   }
 
   return bullets.slice(0, 3)
@@ -2472,22 +2725,25 @@ function getTopReasonLines(row: UnifiedRow): ReasonLine[] {
   const items: ReasonLine[] = []
   const breakdown = row.score_breakdown || {}
 
-  const labelMap: Record<string, { label: string; tone: "good" | "bad" | "neutral" }> = {
-    insider_buying: { label: "Insiders", tone: "good" },
-    repeat_buying: { label: "Repeat Buying", tone: "good" },
-    senior_executive_buy: { label: "Executive Buy", tone: "good" },
+  const labelMap: Record<
+    string,
+    { label: string; tone: "good" | "bad" | "neutral" }
+  > = {
+    insider_buying: { label: "Insider buying", tone: "good" },
+    repeat_buying: { label: "Repeat buying", tone: "good" },
+    senior_executive_buy: { label: "Executive buy", tone: "good" },
     momentum: { label: "Momentum", tone: "good" },
-    relative_strength: { label: "Vs Market", tone: "good" },
+    relative_strength: { label: "Vs market", tone: "good" },
     earnings: { label: "Earnings", tone: "good" },
     valuation: { label: "Valuation", tone: "neutral" },
     catalyst: { label: "Catalyst", tone: "good" },
     freshness: { label: "Freshness", tone: "neutral" },
-    candidate_screen: { label: "Technical Screen", tone: "good" },
-    candidate_tier_bonus: { label: "Tier Bonus", tone: "good" },
-    candidate_volume: { label: "Screen Volume", tone: "good" },
-    candidate_momentum: { label: "Screen Momentum", tone: "good" },
-    candidate_breakout: { label: "Screen Breakout", tone: "good" },
-    base: { label: "Base Signal", tone: "neutral" },
+    candidate_screen: { label: "Price setup", tone: "good" },
+    candidate_tier_bonus: { label: "Tier bonus", tone: "good" },
+    candidate_volume: { label: "Price volume", tone: "good" },
+    candidate_momentum: { label: "Price momentum", tone: "good" },
+    candidate_breakout: { label: "Breakout", tone: "good" },
+    base: { label: "Base signal", tone: "neutral" },
   }
 
   for (const [key, rawValue] of Object.entries(breakdown)) {
@@ -2509,7 +2765,7 @@ function getTopReasonLines(row: UnifiedRow): ReasonLine[] {
 
   if ((row.candidate_score ?? 0) > 0) {
     items.push({
-      label: "Candidate Score",
+      label: "Price strength score",
       value: String(Math.round(row.candidate_score ?? 0)),
       tone: "good",
       weight: Math.abs(row.candidate_score ?? 0),
@@ -2519,7 +2775,7 @@ function getTopReasonLines(row: UnifiedRow): ReasonLine[] {
   if (!items.length) {
     items.push({
       label: "Model",
-      value: "Bullish signals outweigh negatives",
+      value: "The positives currently outweigh the negatives",
       tone: "good",
       weight: 1,
     })
@@ -2535,11 +2791,13 @@ function getConfidenceBullets(row: UnifiedRow) {
   const bullets: string[] = []
 
   if (row.has_candidate_data && !row.has_signal_data) {
-    bullets.push("This made the board because the technical screen alone scored it highly enough.")
+    bullets.push(
+      "This made the board mostly because the price-based setup was strong enough on its own."
+    )
   }
 
   if ((row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")) {
-    bullets.push("More than one bullish signal is showing up at the same time.")
+    bullets.push("More than one positive signal is showing up at the same time.")
   }
 
   if (
@@ -2547,11 +2805,11 @@ function getConfidenceBullets(row: UnifiedRow) {
     row.breakout_20d === true ||
     row.breakout_52w === true
   ) {
-    bullets.push("The stock is breaking above important price levels, which often attracts attention.")
+    bullets.push("The stock is pushing above important price levels.")
   }
 
   if ((row.volume_ratio ?? 0) >= 1.5 || tags.includes("volume-confirmed")) {
-    bullets.push("Trading volume is elevated, which suggests stronger interest from buyers.")
+    bullets.push("Volume is elevated, which often means stronger buyer interest.")
   }
 
   if (
@@ -2559,19 +2817,21 @@ function getConfidenceBullets(row: UnifiedRow) {
     (row.revenue_growth_pct ?? 0) >= 15 ||
     row.guidance_flag === true
   ) {
-    bullets.push("Recent business or earnings data is helping support the setup.")
+    bullets.push("Recent business results are helping support the setup.")
   }
 
   if ((row.relative_strength_20d ?? 0) > 0) {
-    bullets.push("The stock has been outperforming the broader market recently.")
+    bullets.push("The stock has been outperforming the market recently.")
   }
 
   if (score >= 90) {
-    bullets.push("Its overall model score is near the top of today’s board.")
+    bullets.push("Its overall score is near the top of today’s board.")
   }
 
   if (!bullets.length) {
-    bullets.push("The original signal is still holding up well enough to keep this name on the board.")
+    bullets.push(
+      "The original signal is still holding up well enough to keep this name on the board."
+    )
   }
 
   return bullets.slice(0, 4)
@@ -2581,7 +2841,9 @@ function getSimpleSetupBullets(row: UnifiedRow) {
   const parts: string[] = []
 
   if (row.breakout_20d) {
-    parts.push("The stock just moved above recent price levels, which can be a sign of fresh buying interest.")
+    parts.push(
+      "The stock just moved above recent price levels, which can be a sign of fresh buying interest."
+    )
   }
 
   if ((row.relative_strength_20d ?? 0) > 0) {
@@ -2589,11 +2851,15 @@ function getSimpleSetupBullets(row: UnifiedRow) {
   }
 
   if ((row.volume_ratio ?? 0) > 1.3) {
-    parts.push("Trading volume is higher than usual, which suggests stronger participation from investors.")
+    parts.push(
+      "Trading volume is higher than usual, which suggests stronger participation."
+    )
   }
 
   if ((row.earnings_surprise_pct ?? 0) > 0) {
-    parts.push("Recent earnings came in stronger than expected, which can attract new buyers.")
+    parts.push(
+      "Recent earnings were better than expected, which can attract new buyers."
+    )
   }
 
   if ((row.revenue_growth_pct ?? 0) > 10) {
@@ -2601,7 +2867,9 @@ function getSimpleSetupBullets(row: UnifiedRow) {
   }
 
   if (parts.length === 0) {
-    parts.push("This stock is showing multiple signs of strength compared with the rest of the market, which is why it appears on today’s shortlist.")
+    parts.push(
+      "This stock is showing enough strength versus the rest of the market to deserve a closer look."
+    )
   }
 
   return parts.slice(0, 4)
@@ -2623,13 +2891,13 @@ function prettifyTag(tag: string) {
 }
 
 function formatSource(source?: string | null) {
-  if (!source) return "Technical Screen"
+  if (!source) return "Price strength"
   if (source === "form4") return "Form 4"
   if (source === "13d") return "13D"
   if (source === "13g") return "13G"
-  if (source === "8k") return "8-K / Current Report"
+  if (source === "8k") return "8-K / current report"
   if (source === "earnings") return "Earnings"
-  if (source === "breakout") return "Technical / Breakout"
+  if (source === "breakout") return "Price breakout"
   return source
 }
 
@@ -2676,7 +2944,7 @@ function formatRelativeStrengthForDisplay(row: UnifiedRow) {
   }
 
   if (row.has_candidate_data && !row.has_signal_data) {
-    return "Technical only"
+    return "Price only"
   }
 
   return "—"
@@ -2773,32 +3041,6 @@ function truncateText(value: string | null | undefined, maxLength: number) {
   return `${value.slice(0, maxLength).trim()}…`
 }
 
-function getCompanyInfoText(row: UnifiedRow) {
-  const description = (row.business_description || row.primary_summary || "").trim()
-
-  if (description) {
-    return description
-  }
-
-  if (row.company_name && row.industry && row.sector) {
-    return `${row.company_name} operates in the ${row.industry} industry within the ${row.sector} sector.`
-  }
-
-  if (row.company_name && row.sector) {
-    return `${row.company_name} operates in the ${row.sector} sector.`
-  }
-
-  if (row.company_name && row.industry) {
-    return `${row.company_name} operates in the ${row.industry} industry.`
-  }
-
-  if (row.company_name) {
-    return `${row.company_name} is currently on today’s ranked board.`
-  }
-
-  return "Company information not available."
-}
-
 function getScorePalette(score: number) {
   const s = Math.max(0, Math.min(100, score))
 
@@ -2818,23 +3060,23 @@ function getScorePalette(score: number) {
 }
 
 function getScoreTierLabel(score: number) {
-  if (score >= 90) return "Elite"
-  if (score >= 80) return "Strong Buy"
-  if (score >= 70) return "Buy"
+  if (score >= 90) return "Top tier"
+  if (score >= 80) return "Strong"
+  if (score >= 70) return "Good"
   return "Watch"
 }
 
 function getConfidenceTierLabel(score: number) {
-  if (score >= 90) return "Top Tier"
-  if (score >= 80) return "High Conviction"
-  if (score >= 70) return "Strong Setup"
+  if (score >= 90) return "Top tier"
+  if (score >= 80) return "High confidence"
+  if (score >= 70) return "Strong setup"
   return "Developing"
 }
 
 function getSignalCategory(row: UnifiedRow) {
   const storedCategory = (row.primary_signal_category ?? "").trim()
   if (storedCategory) return storedCategory
-  return row.has_signal_data ? "Strong Buy" : "Technical"
+  return row.has_signal_data ? "Signals" : "Price strength"
 }
 
 function getFreshnessLabel(row: UnifiedRow) {
@@ -2844,21 +3086,24 @@ function getFreshnessLabel(row: UnifiedRow) {
   if ((age === null || age === undefined) && row.last_screened_at) {
     const timestamp = new Date(row.last_screened_at).getTime()
     if (!Number.isNaN(timestamp)) {
-      age = Math.max(0, Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000)))
+      age = Math.max(
+        0,
+        Math.floor((Date.now() - timestamp) / (24 * 60 * 60 * 1000))
+      )
     }
   }
 
   if (bucket === "today") return "Today"
-  if (bucket === "fresh") return "1-3D"
-  if (bucket === "recent") return "4-7D"
-  if (bucket === "aging") return "8-14D"
+  if (bucket === "fresh") return "1–3D"
+  if (bucket === "recent") return "4–7D"
+  if (bucket === "aging") return "8–14D"
   if (bucket === "stale") return "Older"
 
   if (typeof age === "number") {
     if (age <= 0) return "Today"
-    if (age <= 3) return "1-3D"
-    if (age <= 7) return "4-7D"
-    if (age <= 14) return "8-14D"
+    if (age <= 3) return "1–3D"
+    if (age <= 7) return "4–7D"
+    if (age <= 14) return "8–14D"
     return "Older"
   }
 
