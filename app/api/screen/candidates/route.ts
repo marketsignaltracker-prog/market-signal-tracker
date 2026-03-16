@@ -1672,7 +1672,7 @@ export async function GET(request: Request) {
         score >= 70
       )
 
-      const row: CandidateUniverseRow = {
+            const row: CandidateUniverseRow = {
         company_id: metric.company.id,
         ticker: metric.ticker,
         cik: metric.company.cik,
@@ -1683,6 +1683,7 @@ export async function GET(request: Request) {
         has_ptr_forms: metric.company.has_ptr_forms ?? null,
         has_clusters: metric.company.has_clusters ?? null,
         eligibility_reason: metric.company.eligibility_reason ?? null,
+
         price: round2(metric.latestClose),
         market_cap: metric.marketCap || null,
         pe_ratio: round2(metric.snapshot.peRatio),
@@ -1691,6 +1692,7 @@ export async function GET(request: Request) {
         sector: metric.snapshot.sector,
         industry: metric.snapshot.industry,
         business_description: metric.snapshot.businessDescription,
+
         avg_volume_20d: round2(metric.avgVolume20d),
         avg_dollar_volume_20d: round2(metric.avgDollarVolume20d),
         one_day_return: round2(metric.oneDayReturn),
@@ -1699,19 +1701,25 @@ export async function GET(request: Request) {
         return_20d: round2(metric.return20d),
         relative_strength_20d: round2(metric.relative_strength_20d),
         volume_ratio: round2(metric.volumeRatio),
+
         breakout_20d: metric.breakout20d,
         breakout_10d: metric.breakout10d,
         above_sma_20: metric.aboveSma20,
         breakout_clearance_pct: round2(metric.breakoutClearancePct),
         extension_from_sma20_pct: round2(metric.extensionFromSma20Pct),
         close_in_day_range: round2(metric.closeInDayRange),
+
         catalyst_count: catalystCount,
         passes_price: metric.passesPrice,
         passes_volume: metric.passesVolume,
         passes_dollar_volume: metric.passesDollarVolume,
         passes_market_cap: metric.passesMarketCap,
+
         candidate_score: score,
         included: passed || highPriorityCandidate || strongBuyNowCandidate,
+        passed: passed || highPriorityCandidate || strongBuyNowCandidate,
+        as_of_date: screenedOn,
+
         screen_reason: buildCandidateReason({
           prequalified: passed,
           strongBuyNow: Boolean(highPriorityCandidate || strongBuyNowCandidate),
@@ -1719,6 +1727,7 @@ export async function GET(request: Request) {
           exclusionReason,
           score,
         }),
+
         last_screened_at: nowIso,
         updated_at: nowIso,
       }
