@@ -1639,7 +1639,7 @@ export async function GET(request: Request) {
       const score = scoreDetails.candidateScore
       const catalystCount = scoreDetails.catalystCount
 
-            const highPriorityCandidate = Boolean(
+                  const highPriorityCandidate = Boolean(
         (
           metric.company.has_ptr_forms ||
           metric.company.has_insider_trades ||
@@ -1647,8 +1647,8 @@ export async function GET(request: Request) {
           metric.company.has_clusters
         ) &&
         (
-          metric.breakout_20d ||
-          metric.breakout_10d ||
+          metric.breakout20d ||
+          metric.breakout10d ||
           metric.aboveSma20 ||
           (metric.relativeReturn20d ?? 0) >= MIN_RELATIVE_RETURN_20D ||
           (metric.volumeRatio ?? 0) >= MIN_STRONG_BUY_VOLUME_RATIO
