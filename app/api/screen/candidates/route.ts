@@ -1639,7 +1639,7 @@ export async function GET(request: Request) {
       const score = scoreDetails.candidateScore
       const catalystCount = scoreDetails.catalystCount
 
-      const highPriorityCandidate =
+      const highPriorityCandidate = Boolean
         metric.passesStrongCompanyGate &&
         metric.strongCompanyScore >= 72 &&
         metric.passesPrice &&
@@ -1661,7 +1661,7 @@ export async function GET(request: Request) {
           metric.company.has_clusters
         )
 
-      const passed =
+      const passed = boolean
         metric.passesStrongCompanyGate &&
         metric.passesPrice &&
         metric.passesVolume &&
