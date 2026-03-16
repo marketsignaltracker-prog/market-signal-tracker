@@ -69,9 +69,18 @@ type AInvestTradeRow = {
 }
 
 type AInvestResponse = {
-  data?: AInvestTradeRow[] | { data?: AInvestTradeRow[] }
+  data?:
+    | AInvestTradeRow[]
+    | {
+        data?: AInvestTradeRow[]
+        rows?: AInvestTradeRow[]
+        list?: AInvestTradeRow[]
+        items?: AInvestTradeRow[]
+      }
   result?: AInvestTradeRow[]
   rows?: AInvestTradeRow[]
+  list?: AInvestTradeRow[]
+  items?: AInvestTradeRow[]
   status_code?: number
   status_msg?: string
   message?: string
@@ -87,6 +96,7 @@ const DEFAULT_LIMIT_PER_TICKER = 10
 const MAX_LIMIT_PER_TICKER = 50
 const CANDIDATE_LOOKBACK_DAYS = 10
 const MIN_CANDIDATE_SCORE = 65
+const AINVEST_CONGRESS_URL = "https://openapi.ainvest.com/open/ownership/congress"
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -213,6 +223,8 @@ function buildTradeKey(row: {
   transaction_date: string | null
   action: string | null
   amount_range: string | null
+  report_date?: string | null
+  ptr_url?: string | null
 }) {
   return [
     row.filer.toLowerCase(),
@@ -220,6 +232,8 @@ function buildTradeKey(row: {
     row.transaction_date || "unknown",
     row.action || "unknown",
     row.amount_range || "unknown",
+    row.report_date || "unknown",
+    row.ptr_url || "unknown",
   ].join("::")
 }
 
@@ -229,6 +243,7 @@ async function fetchWithTimeout(url: string, token: string) {
 
   try {
     return await fetch(url, {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
@@ -272,11 +287,9 @@ async function upsertRows(supabase: any, rows: RawPtrTradeRow[]) {
   let inserted = 0
 
   for (const chunk of chunks) {
-    const { error } = await supabase
-      .from("raw_ptr_trades")
-      .upsert(chunk, {
-        onConflict: "trade_key",
-      })
+    const { error } = await supabase.from("raw_ptr_trades").upsert(chunk, {
+      onConflict: "trade_key",
+    })
 
     if (error) {
       throw error
@@ -351,7 +364,16 @@ function extractTradeArray(parsed: AInvestResponse): AInvestTradeRow[] {
   if (Array.isArray(parsed?.data)) return parsed.data
   if (Array.isArray(parsed?.result)) return parsed.result
   if (Array.isArray(parsed?.rows)) return parsed.rows
-  if (Array.isArray(parsed?.data?.data)) return parsed.data.data
+  if (Array.isArray(parsed?.list)) return parsed.list
+  if (Array.isArray(parsed?.items)) return parsed.items
+
+  if (parsed?.data && typeof parsed.data === "object") {
+    if (Array.isArray(parsed.data.data)) return parsed.data.data
+    if (Array.isArray(parsed.data.rows)) return parsed.data.rows
+    if (Array.isArray(parsed.data.list)) return parsed.data.list
+    if (Array.isArray(parsed.data.items)) return parsed.data.items
+  }
+
   return []
 }
 
@@ -373,8 +395,11 @@ function normalizeAInvestTrade(
     row.filing_date || row.reportDate || row.report_date
   )
   const action = normalizeAction(row.trade_type || row.type || row.action)
-  const amount_range = String(row.size || row.amount || row.amount_range || "").trim() || null
+  const amount_range =
+    String(row.size || row.amount || row.amount_range || "").trim() || null
   const amounts = parseAmountRange(amount_range)
+
+  const ptr_url = row.link || null
 
   return {
     disclosure_source: "AINVEST",
@@ -388,19 +413,19 @@ function normalizeAInvestTrade(
     asset_type: row.assetType || "Stock",
     action,
     amount_range,
-    amount_low:
-      safeNumber(row.amountLow) ?? amounts.amount_low,
-    amount_high:
-      safeNumber(row.amountHigh) ?? amounts.amount_high,
+    amount_low: safeNumber(row.amountLow) ?? amounts.amount_low,
+    amount_high: safeNumber(row.amountHigh) ?? amounts.amount_high,
     owner: row.owner || null,
-    ptr_url: row.link || null,
-    raw_document_url: row.link || null,
+    ptr_url,
+    raw_document_url: ptr_url,
     trade_key: buildTradeKey({
       filer: filer_name,
       ticker,
       transaction_date,
       action,
       amount_range,
+      report_date,
+      ptr_url,
     }),
     fetched_at: fetchedAt,
     updated_at: fetchedAt,
@@ -479,35 +504,50 @@ export async function GET(request: Request) {
           }
         }
 
-        const url = new URL("https://docs.ainvest.com/open/ownership/congress")
+        const url = new URL(AINVEST_CONGRESS_URL)
         url.searchParams.set("ticker", ticker)
         url.searchParams.set("page", "1")
         url.searchParams.set("size", String(perTickerLimit))
 
         try {
           const res = await fetchWithTimeout(url.toString(), ainvestToken)
-          const body = await res.text()
+          const contentType = res.headers.get("content-type") || ""
+          const rawBody = await res.text()
 
           if (!res.ok) {
+            let message = rawBody.slice(0, 300)
+
+            if (contentType.includes("application/json")) {
+              try {
+                const parsedError = JSON.parse(rawBody)
+                message =
+                  parsedError?.message ||
+                  parsedError?.status_msg ||
+                  JSON.stringify(parsedError).slice(0, 300)
+              } catch {
+                // keep raw text fallback
+              }
+            }
+
             return {
               ticker,
               ok: false,
               rows: [] as RawPtrTradeRow[],
               upstreamCount: 0,
-              error: `AInvest ${res.status}: ${body.slice(0, 300)}`,
+              error: `AInvest ${res.status}: ${message}`,
             }
           }
 
           let parsed: AInvestResponse
           try {
-            parsed = JSON.parse(body) as AInvestResponse
+            parsed = JSON.parse(rawBody) as AInvestResponse
           } catch {
             return {
               ticker,
               ok: false,
               rows: [] as RawPtrTradeRow[],
               upstreamCount: 0,
-              error: `AInvest returned non-JSON response: ${body.slice(0, 300)}`,
+              error: `AInvest returned non-JSON response: ${rawBody.slice(0, 300)}`,
             }
           }
 
@@ -545,7 +585,8 @@ export async function GET(request: Request) {
     }
 
     const dedupedRows = Array.from(dedupe.values())
-    const inserted = dedupedRows.length > 0 ? await upsertRows(supabase, dedupedRows) : 0
+    const inserted =
+      dedupedRows.length > 0 ? await upsertRows(supabase, dedupedRows) : 0
 
     let ptrCount: number | null = null
     if (includeCounts) {
