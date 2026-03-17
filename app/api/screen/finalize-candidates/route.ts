@@ -229,7 +229,10 @@ function getPtrMetrics(ptr: PtrSignalSummary | null | undefined) {
   }
 }
 
-function getSignalFamilyCount(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
+function getSignalFamilyCount(
+  row: CandidateHistoryRow,
+  ptr: PtrSignalSummary | null | undefined
+) {
   const hasPtr = Boolean((ptr?.buyTradeCount ?? 0) > 0)
   const hasFiling =
     Boolean(row.has_insider_trades) ||
