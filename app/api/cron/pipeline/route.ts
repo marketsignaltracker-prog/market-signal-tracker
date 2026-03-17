@@ -16,10 +16,10 @@ type StepResult = {
 type PipelineStage =
   | "idle"
   | "companies"
+  | "screening"
+  | "eligible_universe"
   | "filings"
   | "ptrs"
-  | "eligible_universe"
-  | "screening"
   | "signals"
   | "ticker_scores"
   | "finalize_candidates"
@@ -59,11 +59,11 @@ const DEFAULT_PTRS_BATCH = 100
 const DEFAULT_ELIGIBLE_UNIVERSE_LOOKBACK_DAYS = 30
 
 const DEFAULT_SIGNALS_LIMIT = 300
-const DEFAULT_SIGNALS_LOOKBACK_DAYS = 30
+const DEFAULT_SIGNALS_LOOKBACK_DAYS = 31
 const DEFAULT_SIGNALS_MIN_STRENGTH = 58
 
 const DEFAULT_TICKER_SCORES_LIMIT = 1000
-const DEFAULT_TICKER_SCORES_PTR_LOOKBACK_DAYS = 30
+const DEFAULT_TICKER_SCORES_PTR_LOOKBACK_DAYS = 60
 const DEFAULT_TICKER_SCORES_PTR_RECENT_DAYS = 14
 const DEFAULT_TICKER_SCORES_MIN_COMBINED_SCORE = 60
 
@@ -419,7 +419,7 @@ export async function GET(request: NextRequest) {
       }
 
       state = await patchPipelineState(supabase, {
-        stage: "filings",
+        stage: "screening",
         status: "idle",
         screen_start: 0,
         screen_next_start: 0,
@@ -440,13 +440,130 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    if (state.stage === "screening") {
+      const screeningStart = getStageCursor(state)
+      const batchSize = clampScreenBatch(
+        parseInteger(String(state.screen_batch), DEFAULT_SCREEN_BATCH)
+      )
+
+      const screenResult = await runStep(
+        baseUrl,
+        withSearchParams("/api/screen/candidates", {
+          universe: "all",
+          start: screeningStart,
+          batch: batchSize,
+          onlyActive: true,
+          includeResults: false,
+          includeCounts: false,
+          runRetention: false,
+        }),
+        SCREENING_STEP_TIMEOUT_MS
+      )
+
+      results.push(screenResult)
+
+      if (!screenResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          screenResult,
+          `Screening step failed at start=${screeningStart}: ${String(
+            (screenResult.data as any)?.error || screenResult.status
+          )}`
+        )
+      }
+
+      const screenData = screenResult.data as any
+      const returnedNextStart =
+        typeof screenData?.nextStart === "number"
+          ? Number(screenData.nextStart)
+          : null
+
+      const returnedTotalCompanies =
+        extractStepCount(screenData, ["totalCompanies"]) ?? state.screen_total
+
+      state = await patchPipelineState(supabase, {
+        stage: returnedNextStart === null ? "eligible_universe" : "screening",
+        status: "idle",
+        screen_start: returnedNextStart ?? 0,
+        screen_next_start: returnedNextStart,
+        screen_batch: batchSize,
+        screen_total: returnedTotalCompanies,
+        last_run_finished_at: nowIso(),
+      })
+
+      return NextResponse.json({
+        ok: true,
+        message:
+          returnedNextStart === null
+            ? "Completed final screening batch."
+            : "Completed one screening batch.",
+        nextStage: state.stage,
+        nextStart: returnedNextStart,
+        state: {
+          stage: state.stage,
+          status: state.status,
+          screenStart: state.screen_start,
+          screenNextStart: state.screen_next_start,
+          screenBatch: state.screen_batch,
+          screenTotal: state.screen_total,
+        },
+        results,
+      })
+    }
+
+    if (state.stage === "eligible_universe") {
+      const eligibleUniverseResult = await runStep(
+        baseUrl,
+        withSearchParams("/api/screen/eligible-universe", {
+          lookbackDays: DEFAULT_ELIGIBLE_UNIVERSE_LOOKBACK_DAYS,
+          onlyActive: true,
+          includeCounts: true,
+        }),
+        DEFAULT_STEP_TIMEOUT_MS
+      )
+
+      results.push(eligibleUniverseResult)
+
+      if (!eligibleUniverseResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          eligibleUniverseResult,
+          `Eligible universe step failed: ${String(
+            (eligibleUniverseResult.data as any)?.error ||
+              eligibleUniverseResult.status
+          )}`
+        )
+      }
+
+      state = await patchPipelineState(supabase, {
+        stage: "filings",
+        status: "idle",
+        screen_start: 0,
+        screen_next_start: 0,
+        screen_total:
+          typeof (eligibleUniverseResult.data as any)?.eligibleCount === "number"
+            ? Number((eligibleUniverseResult.data as any).eligibleCount)
+            : state.screen_total,
+        last_run_finished_at: nowIso(),
+      })
+
+      return NextResponse.json({
+        ok: true,
+        message: "Completed eligible universe step.",
+        nextStage: state.stage,
+        results,
+      })
+    }
+
     if (state.stage === "filings") {
       const filingsStart = getStageCursor(state)
 
       const filingsResult = await runStep(
         baseUrl,
         withSearchParams("/api/ingest/filings", {
-          scope: "all",
+          scope: "eligible",
           start: filingsStart,
           batch: DEFAULT_FILINGS_BATCH,
           runRetention: true,
@@ -509,11 +626,12 @@ export async function GET(request: NextRequest) {
       const ptrsResult = await runStep(
         baseUrl,
         withSearchParams("/api/ingest/ptrs", {
-          scope: "all",
+          scope: "eligible",
           start: ptrsStart,
           batch: DEFAULT_PTRS_BATCH,
           onlyActive: true,
           includeCounts: false,
+          runRetention: true,
         }),
         PTRS_STEP_TIMEOUT_MS
       )
@@ -540,7 +658,7 @@ export async function GET(request: NextRequest) {
       const ptrsComplete = nextPtrsStart === null
 
       state = await patchPipelineState(supabase, {
-        stage: ptrsComplete ? "eligible_universe" : "ptrs",
+        stage: ptrsComplete ? "signals" : "ptrs",
         status: "idle",
         screen_start: ptrsComplete ? 0 : nextPtrsStart,
         screen_next_start: ptrsComplete ? 0 : nextPtrsStart,
@@ -554,123 +672,6 @@ export async function GET(request: NextRequest) {
           : "Completed one PTR batch.",
         nextStage: state.stage,
         nextPtrsStart,
-        state: {
-          stage: state.stage,
-          status: state.status,
-          screenStart: state.screen_start,
-          screenNextStart: state.screen_next_start,
-          screenBatch: state.screen_batch,
-          screenTotal: state.screen_total,
-        },
-        results,
-      })
-    }
-
-    if (state.stage === "eligible_universe") {
-      const eligibleUniverseResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/screen/eligible-universe", {
-          lookbackDays: DEFAULT_ELIGIBLE_UNIVERSE_LOOKBACK_DAYS,
-          onlyActive: true,
-          includeCounts: true,
-        }),
-        DEFAULT_STEP_TIMEOUT_MS
-      )
-
-      results.push(eligibleUniverseResult)
-
-      if (!eligibleUniverseResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          eligibleUniverseResult,
-          `Eligible universe step failed: ${String(
-            (eligibleUniverseResult.data as any)?.error ||
-              eligibleUniverseResult.status
-          )}`
-        )
-      }
-
-      state = await patchPipelineState(supabase, {
-        stage: "screening",
-        status: "idle",
-        screen_start: 0,
-        screen_next_start: 0,
-        screen_total:
-          typeof (eligibleUniverseResult.data as any)?.eligibleCount === "number"
-            ? Number((eligibleUniverseResult.data as any).eligibleCount)
-            : null,
-        last_run_finished_at: nowIso(),
-      })
-
-      return NextResponse.json({
-        ok: true,
-        message: "Completed eligible universe step.",
-        nextStage: state.stage,
-        results,
-      })
-    }
-
-    if (state.stage === "screening") {
-      const screeningStart = getStageCursor(state)
-      const batchSize = clampScreenBatch(
-        parseInteger(String(state.screen_batch), DEFAULT_SCREEN_BATCH)
-      )
-
-      const screenResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/screen/candidates", {
-          universe: "eligible",
-          start: screeningStart,
-          batch: batchSize,
-          onlyActive: true,
-          includeResults: false,
-          includeCounts: false,
-          runRetention: false,
-        }),
-        SCREENING_STEP_TIMEOUT_MS
-      )
-
-      results.push(screenResult)
-
-      if (!screenResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          screenResult,
-          `Screening step failed at start=${screeningStart}: ${String(
-            (screenResult.data as any)?.error || screenResult.status
-          )}`
-        )
-      }
-
-      const screenData = screenResult.data as any
-      const returnedNextStart =
-        typeof screenData?.nextStart === "number"
-          ? Number(screenData.nextStart)
-          : null
-
-      const returnedTotalCompanies =
-        extractStepCount(screenData, ["totalCompanies"]) ?? state.screen_total
-
-      state = await patchPipelineState(supabase, {
-        stage: returnedNextStart === null ? "signals" : "screening",
-        status: "idle",
-        screen_start: returnedNextStart ?? 0,
-        screen_next_start: returnedNextStart,
-        screen_batch: batchSize,
-        screen_total: returnedTotalCompanies,
-        last_run_finished_at: nowIso(),
-      })
-
-      return NextResponse.json({
-        ok: true,
-        message:
-          returnedNextStart === null
-            ? "Completed final screening batch."
-            : "Completed one screening batch.",
-        nextStage: state.stage,
-        nextStart: returnedNextStart,
         state: {
           stage: state.stage,
           status: state.status,

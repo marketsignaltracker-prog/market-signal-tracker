@@ -4,44 +4,98 @@ import { createClient } from "@supabase/supabase-js"
 export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
-type CompanyRow = {
-  id: number
+type CandidateHistoryRow = {
+  company_id?: number | null
   ticker: string
   cik: string | null
   name: string | null
-  is_active: boolean | null
+  is_active?: boolean | null
+  is_eligible?: boolean | null
+  has_insider_trades?: boolean | null
+  has_ptr_forms?: boolean | null
+  has_clusters?: boolean | null
+  eligibility_reason?: string | null
+  price?: number | null
+  market_cap?: number | null
+  pe_ratio?: number | null
+  pe_forward?: number | null
+  pe_type?: string | null
+  sector?: string | null
+  industry?: string | null
+  business_description?: string | null
+  avg_volume_20d?: number | null
+  avg_dollar_volume_20d?: number | null
+  one_day_return?: number | null
+  return_5d?: number | null
+  return_10d?: number | null
+  return_20d?: number | null
+  relative_strength_20d?: number | null
+  volume_ratio?: number | null
+  breakout_20d?: boolean | null
+  breakout_10d?: boolean | null
+  above_sma_20?: boolean | null
+  breakout_clearance_pct?: number | null
+  extension_from_sma20_pct?: number | null
+  close_in_day_range?: number | null
+  catalyst_count?: number | null
+  passes_price?: boolean | null
+  passes_volume?: boolean | null
+  passes_dollar_volume?: boolean | null
+  passes_market_cap?: boolean | null
+  candidate_score?: number | null
+  included?: boolean | null
+  passed?: boolean | null
+  screen_reason?: string | null
+  last_screened_at?: string | null
+  updated_at?: string | null
+  screened_on?: string | null
 }
 
-type FilingRow = {
+type CandidateUniverseRow = {
   company_id?: number | null
-  ticker?: string | null
-  filed_at?: string | null
-  form_type?: string | null
-}
-
-type PtrRow = {
-  ticker?: string | null
-  transaction_date?: string | null
-  report_date?: string | null
-}
-
-type SignalRow = {
-  company_id?: number | null
-  ticker?: string | null
-  created_at?: string | null
-  signal_type?: string | null
-  signal_source?: string | null
-  signal_category?: string | null
-}
-
-type EligibilityFlags = {
-  hasInsiderTrades: boolean
-  hasOwnershipFilings: boolean
-  hasCatalystFilings: boolean
-  hasPtrForms: boolean
-  hasSignals: boolean
-  isEligible: boolean
-  reasons: string[]
+  ticker: string
+  cik: string | null
+  name: string | null
+  is_active?: boolean | null
+  is_eligible?: boolean | null
+  has_insider_trades?: boolean | null
+  has_ptr_forms?: boolean | null
+  has_clusters?: boolean | null
+  eligibility_reason?: string | null
+  price?: number | null
+  market_cap?: number | null
+  pe_ratio?: number | null
+  pe_forward?: number | null
+  pe_type?: string | null
+  sector?: string | null
+  industry?: string | null
+  business_description?: string | null
+  avg_volume_20d?: number | null
+  avg_dollar_volume_20d?: number | null
+  one_day_return?: number | null
+  return_5d?: number | null
+  return_10d?: number | null
+  return_20d?: number | null
+  relative_strength_20d?: number | null
+  volume_ratio?: number | null
+  breakout_20d?: boolean | null
+  breakout_10d?: boolean | null
+  above_sma_20?: boolean | null
+  breakout_clearance_pct?: number | null
+  extension_from_sma20_pct?: number | null
+  close_in_day_range?: number | null
+  catalyst_count?: number | null
+  passes_price?: boolean | null
+  passes_volume?: boolean | null
+  passes_dollar_volume?: boolean | null
+  passes_market_cap?: boolean | null
+  candidate_score?: number | null
+  included?: boolean | null
+  passed?: boolean | null
+  as_of_date?: string | null
+  screen_reason?: string | null
+  last_screened_at?: string | null
+  updated_at?: string | null
 }
 
 function getSupabaseAdmin(): any {
@@ -92,40 +146,12 @@ function requirePipelineToken(request: NextRequest) {
   return null
 }
 
-function toIsoDateStringDaysAgo(days: number) {
-  const d = new Date()
-  d.setUTCDate(d.getUTCDate() - days)
-  return d.toISOString().slice(0, 10)
-}
-
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
 }
 
-function normalizeFormType(formType: string | null | undefined) {
-  const normalized = (formType || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, " ")
-    .replace(/^FORM\s+/i, "")
-
-  if (normalized === "8K") return "8-K"
-  if (normalized === "6K") return "6-K"
-  if (normalized === "4A" || normalized === "4 /A") return "4/A"
-  if (normalized === "13DA" || normalized === "SCHEDULE 13D/A") return "13D/A"
-  if (normalized === "13GA" || normalized === "SCHEDULE 13G/A") return "13G/A"
-  if (normalized === "SCHEDULE 13D") return "13D"
-  if (normalized === "SCHEDULE 13G") return "13G"
-  if (normalized === "SC13D") return "SC 13D"
-  if (normalized === "SC13D/A") return "SC 13D/A"
-  if (normalized === "SC13G") return "SC 13G"
-  if (normalized === "SC13G/A") return "SC 13G/A"
-
-  return normalized
-}
-
-function uniqueStrings(values: Array<string | null | undefined>) {
-  return Array.from(new Set(values.map((value) => (value || "").trim()).filter(Boolean)))
+function uniqueStrings(values: (string | null | undefined)[]) {
+  return Array.from(new Set(values.map((v) => (v ?? "").trim()).filter(Boolean)))
 }
 
 function chunkArray<T>(items: T[], size: number) {
@@ -136,109 +162,113 @@ function chunkArray<T>(items: T[], size: number) {
   return chunks
 }
 
-function isInsiderTradeForm(formType: string) {
-  return (
-    formType === "3" ||
-    formType === "4" ||
-    formType === "5" ||
-    formType === "3/A" ||
-    formType === "4/A" ||
-    formType === "5/A"
-  )
+function buildEligibilityReason(row: CandidateHistoryRow) {
+  const reasons: string[] = ["screened_candidate"]
+
+  if (row.included) reasons.push("included")
+  if (row.passed) reasons.push("passed")
+  if ((row.candidate_score ?? 0) >= 85) reasons.push("high_score")
+  else if ((row.candidate_score ?? 0) >= 70) reasons.push("qualified_score")
+
+  if (row.breakout_20d) reasons.push("breakout_20d")
+  if (row.breakout_10d) reasons.push("breakout_10d")
+  if (row.above_sma_20) reasons.push("above_sma_20")
+  if ((row.relative_strength_20d ?? 0) >= 3) reasons.push("relative_strength")
+  if ((row.volume_ratio ?? 0) >= 1.25) reasons.push("volume_confirmation")
+
+  return reasons.join(",")
 }
 
-function isOwnershipForm(formType: string) {
-  return (
-    formType === "13D" ||
-    formType === "13D/A" ||
-    formType === "13G" ||
-    formType === "13G/A" ||
-    formType === "SC 13D" ||
-    formType === "SC 13D/A" ||
-    formType === "SC 13G" ||
-    formType === "SC 13G/A"
-  )
+function shouldIncludeRow(
+  row: CandidateHistoryRow,
+  minCandidateScore: number
+) {
+  const score = Number(row.candidate_score ?? 0)
+
+  if (row.included === true) return true
+  if (row.passed === true) return true
+  if (score >= minCandidateScore) return true
+
+  return false
 }
 
-function isCatalystForm(formType: string) {
-  return (
-    formType === "8-K" ||
-    formType === "6-K" ||
-    formType === "10-Q" ||
-    formType === "10-K"
-  )
-}
-
-function buildEligibilityFlags(params: {
-  hasInsiderTrades: boolean
-  hasOwnershipFilings: boolean
-  hasCatalystFilings: boolean
-  hasPtrForms: boolean
-  hasSignals: boolean
-}): EligibilityFlags {
-  const {
-    hasInsiderTrades,
-    hasOwnershipFilings,
-    hasCatalystFilings,
-    hasPtrForms,
-    hasSignals,
-  } = params
-
-  const reasons: string[] = []
-
-  if (hasPtrForms) reasons.push("ptr_forms")
-  if (hasInsiderTrades) reasons.push("insider_trades")
-  if (hasOwnershipFilings) reasons.push("ownership_filings")
-  if (hasCatalystFilings) reasons.push("catalyst_filings")
-  if (hasSignals) reasons.push("signals")
-
-  const priorityEvidenceCount =
-    Number(hasPtrForms) +
-    Number(hasInsiderTrades) +
-    Number(hasOwnershipFilings) +
-    Number(hasCatalystFilings)
-
-  const isEligible =
-    hasPtrForms ||
-    hasInsiderTrades ||
-    hasOwnershipFilings ||
-    (hasCatalystFilings && hasSignals) ||
-    (priorityEvidenceCount >= 2) ||
-    (hasSignals && (hasPtrForms || hasInsiderTrades || hasOwnershipFilings))
-
+function toUniverseRow(
+  row: CandidateHistoryRow,
+  updatedAt: string
+): CandidateUniverseRow {
   return {
-    hasInsiderTrades,
-    hasOwnershipFilings,
-    hasCatalystFilings,
-    hasPtrForms,
-    hasSignals,
-    isEligible,
-    reasons,
+    company_id: row.company_id ?? null,
+    ticker: normalizeTicker(row.ticker),
+    cik: row.cik ?? null,
+    name: row.name ?? null,
+    is_active: row.is_active ?? true,
+    is_eligible: true,
+
+    has_insider_trades: row.has_insider_trades ?? false,
+    has_ptr_forms: row.has_ptr_forms ?? false,
+    has_clusters: row.has_clusters ?? false,
+    eligibility_reason: buildEligibilityReason(row),
+
+    price: row.price ?? null,
+    market_cap: row.market_cap ?? null,
+    pe_ratio: row.pe_ratio ?? null,
+    pe_forward: row.pe_forward ?? null,
+    pe_type: row.pe_type ?? null,
+    sector: row.sector ?? null,
+    industry: row.industry ?? null,
+    business_description: row.business_description ?? null,
+    avg_volume_20d: row.avg_volume_20d ?? null,
+    avg_dollar_volume_20d: row.avg_dollar_volume_20d ?? null,
+    one_day_return: row.one_day_return ?? null,
+    return_5d: row.return_5d ?? null,
+    return_10d: row.return_10d ?? null,
+    return_20d: row.return_20d ?? null,
+    relative_strength_20d: row.relative_strength_20d ?? null,
+    volume_ratio: row.volume_ratio ?? null,
+    breakout_20d: row.breakout_20d ?? false,
+    breakout_10d: row.breakout_10d ?? false,
+    above_sma_20: row.above_sma_20 ?? false,
+    breakout_clearance_pct: row.breakout_clearance_pct ?? null,
+    extension_from_sma20_pct: row.extension_from_sma20_pct ?? null,
+    close_in_day_range: row.close_in_day_range ?? null,
+    catalyst_count: row.catalyst_count ?? 0,
+    passes_price: row.passes_price ?? false,
+    passes_volume: row.passes_volume ?? false,
+    passes_dollar_volume: row.passes_dollar_volume ?? false,
+    passes_market_cap: row.passes_market_cap ?? false,
+    candidate_score: row.candidate_score ?? 0,
+
+    included: row.included ?? true,
+    passed: row.passed ?? true,
+    as_of_date: row.screened_on ?? null,
+    screen_reason: row.screen_reason ?? "Selected from latest screening snapshot",
+    last_screened_at: row.last_screened_at ?? updatedAt,
+    updated_at: updatedAt,
   }
 }
 
-async function resetEligibilityForTickers(
+async function replaceCandidateUniverse(
   supabase: any,
-  tickers: string[],
-  updatedAt: string
+  rows: CandidateUniverseRow[]
 ) {
-  const table = supabase.from("candidate_universe") as any
-  const chunks = chunkArray(tickers, 250)
+  const candidateUniverseTable = supabase.from("candidate_universe") as any
 
-  for (const chunk of chunks) {
-    const { error } = await table
-      .update({
-        is_eligible: false,
-        has_insider_trades: false,
-        has_ptr_forms: false,
-        has_clusters: false,
-        eligibility_reason: null,
-        updated_at: updatedAt,
-      })
-      .in("ticker", chunk)
+  const { error: deleteError } = await candidateUniverseTable.delete().neq("ticker", "")
+  if (deleteError) {
+    throw new Error(`Failed clearing candidate_universe: ${deleteError.message}`)
+  }
+
+  if (!rows.length) {
+    return
+  }
+
+  for (const chunk of chunkArray(rows, 250)) {
+    const { error } = await candidateUniverseTable.upsert(chunk, {
+      onConflict: "ticker",
+    })
 
     if (error) {
-      throw new Error(`Failed resetting eligibility rows: ${error.message}`)
+      throw new Error(`Failed upserting candidate_universe rows: ${error.message}`)
     }
   }
 }
@@ -250,9 +280,9 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = getSupabaseAdmin()
 
-    const lookbackDays = parseInteger(
-      request.nextUrl.searchParams.get("lookbackDays"),
-      30
+    const minCandidateScore = parseInteger(
+      request.nextUrl.searchParams.get("minCandidateScore"),
+      70
     )
 
     const onlyActive =
@@ -260,237 +290,110 @@ export async function GET(request: NextRequest) {
     const includeCounts =
       request.nextUrl.searchParams.get("includeCounts") === "true"
 
-    const sinceDate = toIsoDateStringDaysAgo(lookbackDays)
     const updatedAt = new Date().toISOString()
 
-    let companiesQuery = (supabase.from("companies") as any)
-      .select("id,ticker,cik,name,is_active")
+    const latestSnapshotQuery = await (supabase.from("candidate_screen_history") as any)
+      .select("screened_on")
+      .order("screened_on", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (latestSnapshotQuery.error) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Failed to load latest screening snapshot: ${latestSnapshotQuery.error.message}`,
+        },
+        { status: 500 }
+      )
+    }
+
+    const latestScreenedOn = latestSnapshotQuery.data?.screened_on ?? null
+
+    if (!latestScreenedOn) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "No candidate_screen_history snapshot found",
+        },
+        { status: 500 }
+      )
+    }
+
+    let historyQuery = (supabase.from("candidate_screen_history") as any)
+      .select("*")
+      .eq("screened_on", latestScreenedOn)
 
     if (onlyActive) {
-      companiesQuery = companiesQuery.eq("is_active", true)
+      historyQuery = historyQuery.eq("is_active", true)
     }
 
-    const { data: companies, error: companiesError } = await companiesQuery
+    const { data: historyRows, error: historyError } = await historyQuery
 
-    if (companiesError) {
+    if (historyError) {
       return NextResponse.json(
         {
           ok: false,
-          error: `Failed to load companies: ${companiesError.message}`,
+          error: `Failed to load candidate_screen_history rows: ${historyError.message}`,
           debug: {
-            step: "companies",
-            sinceDate,
-            onlyActive,
+            screenedOn: latestScreenedOn,
           },
         },
         { status: 500 }
       )
     }
 
-    const typedCompanies = (companies || []) as CompanyRow[]
+    const typedHistoryRows = (historyRows || []) as CandidateHistoryRow[]
 
-    const companyById = new Map<number, CompanyRow>()
-    for (const company of typedCompanies) {
-      if (company?.id !== null && company?.id !== undefined) {
-        companyById.set(company.id, company)
+    const deduped = new Map<string, CandidateHistoryRow>()
+    for (const row of typedHistoryRows) {
+      const ticker = normalizeTicker(row.ticker)
+      if (!ticker) continue
+
+      const existing = deduped.get(ticker)
+      if (!existing) {
+        deduped.set(ticker, row)
+        continue
+      }
+
+      const existingScore = Number(existing.candidate_score ?? 0)
+      const rowScore = Number(row.candidate_score ?? 0)
+
+      if (rowScore > existingScore) {
+        deduped.set(ticker, row)
       }
     }
 
-    const { data: filings, error: filingsError } = await (supabase.from("raw_filings") as any)
-      .select("company_id,ticker,filed_at,form_type")
-      .gte("filed_at", sinceDate)
+    const latestRows = Array.from(deduped.values())
 
-    if (filingsError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Failed to load filings: ${filingsError.message}`,
-          debug: {
-            step: "raw_filings",
-            sinceDate,
-          },
-        },
-        { status: 500 }
-      )
-    }
+    const selectedRows = latestRows.filter((row) =>
+      shouldIncludeRow(row, minCandidateScore)
+    )
 
-    const { data: ptrs, error: ptrsError } = await (supabase.from("raw_ptr_trades") as any)
-      .select("ticker,transaction_date,report_date")
-      .or(`transaction_date.gte.${sinceDate},report_date.gte.${sinceDate}`)
+    const universeRows = selectedRows.map((row) => toUniverseRow(row, updatedAt))
 
-    if (ptrsError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Failed to load ptr trades: ${ptrsError.message}`,
-          debug: {
-            step: "raw_ptr_trades",
-            sinceDate,
-          },
-        },
-        { status: 500 }
-      )
-    }
-
-    const { data: signals, error: signalsError } = await (supabase.from("signals") as any)
-      .select("company_id,ticker,created_at,signal_type,signal_source,signal_category")
-      .gte("created_at", sinceDate)
-
-    if (signalsError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Failed to load signals: ${signalsError.message}`,
-          debug: {
-            step: "signals",
-            sinceDate,
-          },
-        },
-        { status: 500 }
-      )
-    }
-
-    const insiderTradeTickers = new Set<string>()
-    const ownershipFilingTickers = new Set<string>()
-    const catalystFilingTickers = new Set<string>()
-    const ptrTickers = new Set<string>()
-    const signalTickers = new Set<string>()
-
-    for (const filing of (filings || []) as FilingRow[]) {
-      const formType = normalizeFormType(filing?.form_type)
-
-      const ticker =
-        filing?.ticker
-          ? normalizeTicker(filing.ticker)
-          : filing?.company_id && companyById.get(Number(filing.company_id))?.ticker
-            ? normalizeTicker(companyById.get(Number(filing.company_id))?.ticker || "")
-            : null
-
-      if (!ticker) continue
-      if (!formType) continue
-
-      if (isInsiderTradeForm(formType)) insiderTradeTickers.add(ticker)
-      if (isOwnershipForm(formType)) ownershipFilingTickers.add(ticker)
-      if (isCatalystForm(formType)) catalystFilingTickers.add(ticker)
-    }
-
-    for (const ptr of (ptrs || []) as PtrRow[]) {
-      const ticker = ptr?.ticker ? normalizeTicker(ptr.ticker) : null
-      if (ticker) ptrTickers.add(ticker)
-    }
-
-    for (const signal of (signals || []) as SignalRow[]) {
-      const ticker =
-        signal?.ticker
-          ? normalizeTicker(signal.ticker)
-          : signal?.company_id && companyById.get(Number(signal.company_id))?.ticker
-            ? normalizeTicker(companyById.get(Number(signal.company_id))?.ticker || "")
-            : null
-
-      if (!ticker) continue
-      signalTickers.add(ticker)
-    }
-
-    const allCompanyTickers = uniqueStrings(typedCompanies.map((company) => normalizeTicker(company.ticker)))
-
-    if (allCompanyTickers.length > 0) {
-      await resetEligibilityForTickers(supabase, allCompanyTickers, updatedAt)
-    }
-
-    const eligibleRows: Array<Record<string, any>> = []
-
-    let eligibleBecausePtr = 0
-    let eligibleBecauseInsider = 0
-    let eligibleBecauseOwnership = 0
-    let eligibleBecauseCatalystAndSignal = 0
-    let eligibleBecauseMultiplePriorityBuckets = 0
-
-    for (const company of typedCompanies) {
-      const ticker = normalizeTicker(company?.ticker)
-      if (!ticker) continue
-
-      const flags = buildEligibilityFlags({
-        hasInsiderTrades: insiderTradeTickers.has(ticker),
-        hasOwnershipFilings: ownershipFilingTickers.has(ticker),
-        hasCatalystFilings: catalystFilingTickers.has(ticker),
-        hasPtrForms: ptrTickers.has(ticker),
-        hasSignals: signalTickers.has(ticker),
-      })
-
-      if (!flags.isEligible) continue
-
-      if (flags.hasPtrForms) eligibleBecausePtr += 1
-      if (flags.hasInsiderTrades) eligibleBecauseInsider += 1
-      if (flags.hasOwnershipFilings) eligibleBecauseOwnership += 1
-      if (flags.hasCatalystFilings && flags.hasSignals) eligibleBecauseCatalystAndSignal += 1
-
-      const priorityBucketCount =
-        Number(flags.hasPtrForms) +
-        Number(flags.hasInsiderTrades) +
-        Number(flags.hasOwnershipFilings) +
-        Number(flags.hasCatalystFilings)
-
-      if (priorityBucketCount >= 2) {
-        eligibleBecauseMultiplePriorityBuckets += 1
-      }
-
-      eligibleRows.push({
-        company_id: company.id,
-        ticker,
-        cik: company.cik ?? null,
-        name: company.name ?? null,
-        is_active: company.is_active ?? true,
-        has_insider_trades: flags.hasInsiderTrades,
-        has_ptr_forms: flags.hasPtrForms,
-        has_clusters: flags.hasSignals,
-        is_eligible: true,
-        eligibility_reason: flags.reasons.join(","),
-        updated_at: updatedAt,
-      })
-    }
-
-    if (eligibleRows.length > 0) {
-      const { error: upsertError } = await (supabase.from("candidate_universe") as any).upsert(
-        eligibleRows,
-        { onConflict: "ticker" }
-      )
-
-      if (upsertError) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: `Failed to upsert candidate universe: ${upsertError.message}`,
-            debug: {
-              step: "candidate_universe_upsert",
-              sampleRow: eligibleRows[0] ?? null,
-              eligibleCount: eligibleRows.length,
-            },
-          },
-          { status: 500 }
-        )
-      }
-    }
+    await replaceCandidateUniverse(supabase, universeRows)
 
     return NextResponse.json({
       ok: true,
-      lookbackDays,
-      eligibleCount: eligibleRows.length,
+      screenedOn: latestScreenedOn,
+      minCandidateScore,
+      eligibleCount: universeRows.length,
       counts: includeCounts
         ? {
-            companies: typedCompanies.length,
-            insiderTradeTickers: insiderTradeTickers.size,
-            ownershipFilingTickers: ownershipFilingTickers.size,
-            catalystFilingTickers: catalystFilingTickers.size,
-            ptrTickers: ptrTickers.size,
-            signalTickers: signalTickers.size,
-            eligibleBecausePtr,
-            eligibleBecauseInsider,
-            eligibleBecauseOwnership,
-            eligibleBecauseCatalystAndSignal,
-            eligibleBecauseMultiplePriorityBuckets,
-            eligibleRows: eligibleRows.length,
+            snapshotRows: typedHistoryRows.length,
+            distinctTickersInSnapshot: latestRows.length,
+            selectedRows: selectedRows.length,
+            eligibleRows: universeRows.length,
+            includedFlagRows: latestRows.filter((row) => row.included === true).length,
+            passedFlagRows: latestRows.filter((row) => row.passed === true).length,
+            scoreQualifiedRows: latestRows.filter(
+              (row) => Number(row.candidate_score ?? 0) >= minCandidateScore
+            ).length,
           }
         : undefined,
+      message:
+        "Eligible universe rebuilt from the latest candidate screening snapshot.",
     })
   } catch (error) {
     return NextResponse.json(

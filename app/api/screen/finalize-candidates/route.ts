@@ -814,7 +814,16 @@ function toUniverseRow(
   ranked: RankedRow,
   selectedSource: string
 ): CandidateUniverseRow {
-  const { row, ptrSummary, selectionScore, adjustedSelectionScore, bucket, reasons, signalFamilyCount } = ranked
+  const {
+    row,
+    ptrSummary,
+    selectionScore,
+    adjustedSelectionScore,
+    bucket,
+    reasons,
+    signalFamilyCount,
+  } = ranked
+
   const ptrReason = ptrSummary?.summary ? `; ${ptrSummary.summary}` : ""
 
   return {

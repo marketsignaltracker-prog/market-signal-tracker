@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
+type Scope = "all" | "eligible" | "screened"
+
 type CompanyRow = {
   id: number
   ticker: string
@@ -17,6 +19,9 @@ type CandidateUniverseRow = {
   cik: string | null
   name: string | null
   is_active?: boolean | null
+  included?: boolean | null
+  is_eligible?: boolean | null
+  updated_at?: string | null
 }
 
 type CandidateHistoryRow = {
@@ -25,6 +30,7 @@ type CandidateHistoryRow = {
   cik: string | null
   name: string | null
   is_active?: boolean | null
+  included?: boolean | null
   screened_on?: string | null
 }
 
@@ -68,15 +74,6 @@ type SecSubmissionRecent = {
   filingDate?: string[]
   form?: string[]
   primaryDocument?: string[]
-  primaryDocDescription?: string[]
-  reportDate?: string[]
-}
-
-type SecSubmissionFile = {
-  name?: string
-  filingCount?: number
-  filingFrom?: string
-  filingTo?: string
 }
 
 type SecSubmissionJson = {
@@ -85,12 +82,11 @@ type SecSubmissionJson = {
   tickers?: string[]
   filings?: {
     recent?: SecSubmissionRecent
-    files?: SecSubmissionFile[]
   }
 }
 
 type Diagnostics = {
-  scope: string
+  scope: Scope
   companiesRowsLoaded: number
   candidateUniverseRowsLoaded: number
   candidateScreenHistoryRowsLoaded: number
@@ -102,16 +98,33 @@ type Diagnostics = {
   filingRowsBuilt: number
   filingRowsInserted: number
   unsupportedFormsSkipped: number
+  olderThanCutoffSkipped: number
   duplicateRowsCollapsed: number
 }
 
+const DEFAULT_SCOPE: Scope = "eligible"
 const DEFAULT_BATCH = 15
 const MAX_BATCH = 50
 const DB_CHUNK_SIZE = 250
 const RETENTION_DAYS = 30
-const MAX_INTERNAL_BATCHES_PER_RUN = 2
 
 const SUPPORTED_FORMS = new Set(["3", "3/A", "4", "4/A", "5", "5/A"])
+
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error("Missing Supabase environment variables")
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  })
+}
 
 function parseInteger(value: string | null | undefined, fallback: number) {
   if (value === null || value === undefined || value.trim() === "") {
@@ -123,7 +136,8 @@ function parseInteger(value: string | null | undefined, fallback: number) {
 }
 
 function normalizeTicker(ticker: string | null | undefined) {
-  return (ticker || "").trim().toUpperCase()
+  const t = (ticker || "").trim().toUpperCase()
+  return t || null
 }
 
 function normalizeCik(cik: string | number | null | undefined) {
@@ -265,6 +279,7 @@ function buildRecentRowsFromSubmission(params: {
     return {
       rows: [] as RawFilingInsertRow[],
       unsupportedFormsSkipped: 0,
+      olderThanCutoffSkipped: 0,
     }
   }
 
@@ -282,9 +297,10 @@ function buildRecentRowsFromSubmission(params: {
 
   const rows: RawFilingInsertRow[] = []
   let unsupportedFormsSkipped = 0
+  let olderThanCutoffSkipped = 0
 
   const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - 30)
+  cutoff.setDate(cutoff.getDate() - RETENTION_DAYS)
 
   for (let i = 0; i < maxLen; i += 1) {
     const accessionNo = String(accessionNumbers[i] || "").trim()
@@ -297,13 +313,13 @@ function buildRecentRowsFromSubmission(params: {
       continue
     }
 
-    const filedAtDate = new Date(filedAtRaw)
-
+    const filedAtDate = new Date(`${filedAtRaw}T00:00:00.000Z`)
     if (Number.isNaN(filedAtDate.getTime())) {
       continue
     }
 
     if (filedAtDate < cutoff) {
+      olderThanCutoffSkipped += 1
       continue
     }
 
@@ -329,6 +345,7 @@ function buildRecentRowsFromSubmission(params: {
   return {
     rows,
     unsupportedFormsSkipped,
+    olderThanCutoffSkipped,
   }
 }
 
@@ -401,121 +418,25 @@ async function upsertInChunksDetailed(
   }
 }
 
-async function loadCandidateContextSourceRows(
+async function loadCompaniesContext(
   supabase: any,
-  scope: string,
   start: number,
-  batch: number
-): Promise<{
-  sourceRows: SourceRow[]
-  diagnostics: Pick<
-    Diagnostics,
-    | "companiesRowsLoaded"
-    | "candidateUniverseRowsLoaded"
-    | "candidateScreenHistoryRowsLoaded"
-    | "sourceRowsLoaded"
-    | "fallbackCandidateHistoryUsed"
-    | "sourceRowsWithoutCik"
-  >
-}> {
-  if (scope === "eligible") {
-    const { data, error } = await supabase
-      .from("candidate_universe")
-      .select("company_id,ticker,cik,name,is_active")
-      .eq("is_eligible", true)
-      .order("ticker", { ascending: true })
-      .range(start, start + batch - 1)
-
-    if (error) {
-      throw new Error(`candidate_universe load failed: ${error.message}`)
-    }
-
-    const typedRows = (data || []) as CandidateUniverseRow[]
-    const sourceRows = typedRows
-      .map(buildSourceRowFromCandidateUniverse)
-      .filter((row): row is SourceRow => row !== null)
-
-    return {
-      sourceRows,
-      diagnostics: {
-        companiesRowsLoaded: 0,
-        candidateUniverseRowsLoaded: typedRows.length,
-        candidateScreenHistoryRowsLoaded: 0,
-        sourceRowsLoaded: sourceRows.length,
-        fallbackCandidateHistoryUsed: false,
-        sourceRowsWithoutCik: typedRows.length - sourceRows.length,
-      },
-    }
-  }
-
-  if (scope === "screened") {
-    const latestScreenedQuery = await supabase
-      .from("candidate_screen_history")
-      .select("screened_on")
-      .order("screened_on", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (latestScreenedQuery.error) {
-      throw new Error(
-        `candidate_screen_history latest snapshot lookup failed: ${latestScreenedQuery.error.message}`
-      )
-    }
-
-    const latestScreenedOn = latestScreenedQuery.data?.screened_on ?? null
-
-    if (!latestScreenedOn) {
-      return {
-        sourceRows: [],
-        diagnostics: {
-          companiesRowsLoaded: 0,
-          candidateUniverseRowsLoaded: 0,
-          candidateScreenHistoryRowsLoaded: 0,
-          sourceRowsLoaded: 0,
-          fallbackCandidateHistoryUsed: false,
-          sourceRowsWithoutCik: 0,
-        },
-      }
-    }
-
-    const { data, error } = await supabase
-      .from("candidate_screen_history")
-      .select("company_id,ticker,cik,name,is_active")
-      .eq("screened_on", latestScreenedOn)
-      .order("ticker", { ascending: true })
-      .range(start, start + batch - 1)
-
-    if (error) {
-      throw new Error(`candidate_screen_history load failed: ${error.message}`)
-    }
-
-    const typedRows = (data || []) as CandidateHistoryRow[]
-    const sourceRows = typedRows
-      .map(buildSourceRowFromCandidateHistory)
-      .filter((row): row is SourceRow => row !== null)
-
-    return {
-      sourceRows,
-      diagnostics: {
-        companiesRowsLoaded: 0,
-        candidateUniverseRowsLoaded: 0,
-        candidateScreenHistoryRowsLoaded: typedRows.length,
-        sourceRowsLoaded: sourceRows.length,
-        fallbackCandidateHistoryUsed: false,
-        sourceRowsWithoutCik: typedRows.length - sourceRows.length,
-      },
-    }
-  }
-
-  const { data, error } = await supabase
+  batch: number,
+  onlyActive: boolean
+) {
+  let query = supabase
     .from("companies")
-    .select("id,ticker,cik,name,is_active")
+    .select("id, ticker, cik, name, is_active")
+    .not("ticker", "is", null)
     .order("id", { ascending: true })
     .range(start, start + batch - 1)
 
-  if (error) {
-    throw new Error(`companies load failed: ${error.message}`)
+  if (onlyActive) {
+    query = query.eq("is_active", true)
   }
+
+  const { data, error } = await query
+  if (error) throw error
 
   const typedRows = (data || []) as CompanyRow[]
   const sourceRows = typedRows
@@ -535,6 +456,109 @@ async function loadCandidateContextSourceRows(
   }
 }
 
+async function loadEligibleContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  onlyActive: boolean
+) {
+  let query = supabase
+    .from("candidate_universe")
+    .select("company_id, ticker, cik, name, is_active, included, is_eligible, updated_at")
+    .or("included.eq.true,is_eligible.eq.true")
+    .not("ticker", "is", null)
+    .order("ticker", { ascending: true })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    query = query.eq("is_active", true)
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+
+  const typedRows = (data || []) as CandidateUniverseRow[]
+  const sourceRows = typedRows
+    .map(buildSourceRowFromCandidateUniverse)
+    .filter((row): row is SourceRow => row !== null)
+
+  return {
+    sourceRows,
+    diagnostics: {
+      companiesRowsLoaded: 0,
+      candidateUniverseRowsLoaded: typedRows.length,
+      candidateScreenHistoryRowsLoaded: 0,
+      sourceRowsLoaded: sourceRows.length,
+      fallbackCandidateHistoryUsed: false,
+      sourceRowsWithoutCik: typedRows.length - sourceRows.length,
+    },
+  }
+}
+
+async function loadScreenedContext(
+  supabase: any,
+  start: number,
+  batch: number,
+  onlyActive: boolean
+) {
+  const latestSnapshot = await supabase
+    .from("candidate_screen_history")
+    .select("screened_on")
+    .order("screened_on", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestSnapshot.error) throw latestSnapshot.error
+
+  const latestScreenedOn = latestSnapshot.data?.screened_on ?? null
+  if (!latestScreenedOn) {
+    return {
+      sourceRows: [] as SourceRow[],
+      diagnostics: {
+        companiesRowsLoaded: 0,
+        candidateUniverseRowsLoaded: 0,
+        candidateScreenHistoryRowsLoaded: 0,
+        sourceRowsLoaded: 0,
+        fallbackCandidateHistoryUsed: false,
+        sourceRowsWithoutCik: 0,
+      },
+    }
+  }
+
+  let query = supabase
+    .from("candidate_screen_history")
+    .select("company_id, ticker, cik, name, included, screened_on, is_active")
+    .eq("screened_on", latestScreenedOn)
+    .eq("included", true)
+    .not("ticker", "is", null)
+    .order("ticker", { ascending: true })
+    .range(start, start + batch - 1)
+
+  if (onlyActive) {
+    query = query.eq("is_active", true)
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+
+  const typedRows = (data || []) as CandidateHistoryRow[]
+  const sourceRows = typedRows
+    .map(buildSourceRowFromCandidateHistory)
+    .filter((row): row is SourceRow => row !== null)
+
+  return {
+    sourceRows,
+    diagnostics: {
+      companiesRowsLoaded: 0,
+      candidateUniverseRowsLoaded: 0,
+      candidateScreenHistoryRowsLoaded: typedRows.length,
+      sourceRowsLoaded: sourceRows.length,
+      fallbackCandidateHistoryUsed: typedRows.length > 0,
+      sourceRowsWithoutCik: typedRows.length - sourceRows.length,
+    },
+  }
+}
+
 export async function GET(request: Request) {
   const pipelineToken = process.env.PIPELINE_TOKEN
   const suppliedToken = request.headers.get("x-pipeline-token")
@@ -543,38 +567,36 @@ export async function GET(request: Request) {
     return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 })
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    return Response.json(
-      { ok: false, error: "Missing Supabase environment variables" },
-      { status: 500 }
-    )
-  }
-
   try {
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    })
-
+    const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
 
-    const scope = (searchParams.get("scope") || "all").toLowerCase()
+    const scopeParam = (searchParams.get("scope") || DEFAULT_SCOPE).toLowerCase()
     const start = Math.max(0, parseInteger(searchParams.get("start"), 0))
     const batch = Math.min(
       Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)),
       MAX_BATCH
     )
+    const onlyActive =
+      (searchParams.get("onlyActive") || "true").toLowerCase() !== "false"
     const includeCounts =
       (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
     const runRetention =
       (searchParams.get("runRetention") || "false").toLowerCase() === "true"
 
-    const overallDiagnostics: Diagnostics = {
+    if (!["all", "eligible", "screened"].includes(scopeParam)) {
+      return Response.json(
+        {
+          ok: false,
+          error: `Invalid scope "${scopeParam}". Expected one of: all, eligible, screened`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const scope = scopeParam as Scope
+
+    const diagnostics: Diagnostics = {
       scope,
       companiesRowsLoaded: 0,
       candidateUniverseRowsLoaded: 0,
@@ -587,102 +609,92 @@ export async function GET(request: Request) {
       filingRowsBuilt: 0,
       filingRowsInserted: 0,
       unsupportedFormsSkipped: 0,
+      olderThanCutoffSkipped: 0,
       duplicateRowsCollapsed: 0,
     }
 
-    let currentStart = start
-    let internalRuns = 0
-    let nextStart: number | null = null
+    let sourceRows: SourceRow[] = []
 
-    while (internalRuns < MAX_INTERNAL_BATCHES_PER_RUN) {
-      const sourceLoad = await loadCandidateContextSourceRows(
-        supabase,
-        scope,
-        currentStart,
-        batch
-      )
-
-      overallDiagnostics.companiesRowsLoaded += sourceLoad.diagnostics.companiesRowsLoaded
-      overallDiagnostics.candidateUniverseRowsLoaded += sourceLoad.diagnostics.candidateUniverseRowsLoaded
-      overallDiagnostics.candidateScreenHistoryRowsLoaded += sourceLoad.diagnostics.candidateScreenHistoryRowsLoaded
-      overallDiagnostics.sourceRowsLoaded += sourceLoad.diagnostics.sourceRowsLoaded
-      overallDiagnostics.sourceRowsWithoutCik += sourceLoad.diagnostics.sourceRowsWithoutCik
-      overallDiagnostics.fallbackCandidateHistoryUsed =
-        overallDiagnostics.fallbackCandidateHistoryUsed ||
-        sourceLoad.diagnostics.fallbackCandidateHistoryUsed
-
-      const sourceRows = sourceLoad.sourceRows
-
-      if (sourceRows.length === 0) {
-        nextStart = null
-        break
-      }
-
-      const fetchedAt = nowIso()
-      const builtRows: RawFilingInsertRow[] = []
-
-      for (const sourceRow of sourceRows) {
-        try {
-          const submission = await fetchSecSubmissions(sourceRow.cik)
-          overallDiagnostics.secSubmissionsFetched += 1
-
-          const built = buildRecentRowsFromSubmission({
-            submission,
-            sourceRow,
-            fetchedAt,
-          })
-
-          overallDiagnostics.unsupportedFormsSkipped += built.unsupportedFormsSkipped
-          builtRows.push(...built.rows)
-        } catch {
-          overallDiagnostics.secSubmissionsFailed += 1
-        }
-      }
-
-      overallDiagnostics.filingRowsBuilt += builtRows.length
-
-      const dedupedRows = dedupeFilingRows(builtRows)
-      overallDiagnostics.duplicateRowsCollapsed += builtRows.length - dedupedRows.length
-
-      const writeResult =
-        dedupedRows.length > 0
-          ? await upsertInChunksDetailed(
-              supabase.from("raw_filings"),
-              "raw_filings",
-              dedupedRows,
-              "accession_no",
-              (row) => row.accession_no
-            )
-          : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
-
-      if (writeResult.errors.length > 0) {
-        return Response.json(
-          {
-            ok: false,
-            error: "Failed writing raw filings rows",
-            debug: {
-              diagnostics: overallDiagnostics,
-              errorSamples: writeResult.errors.slice(0, 5),
-              currentStart,
-              batch,
-              internalRuns,
-            },
-          },
-          { status: 500 }
-        )
-      }
-
-      overallDiagnostics.filingRowsInserted += writeResult.insertedOrUpdated
-
-      if (sourceRows.length < batch) {
-        nextStart = null
-        break
-      }
-
-      currentStart += batch
-      nextStart = currentStart
-      internalRuns += 1
+    if (scope === "all") {
+      const context = await loadCompaniesContext(supabase, start, batch, onlyActive)
+      sourceRows = context.sourceRows
+      Object.assign(diagnostics, {
+        ...diagnostics,
+        ...context.diagnostics,
+      })
     }
+
+    if (scope === "eligible") {
+      const context = await loadEligibleContext(supabase, start, batch, onlyActive)
+      sourceRows = context.sourceRows
+      Object.assign(diagnostics, {
+        ...diagnostics,
+        ...context.diagnostics,
+      })
+    }
+
+    if (scope === "screened") {
+      const context = await loadScreenedContext(supabase, start, batch, onlyActive)
+      sourceRows = context.sourceRows
+      Object.assign(diagnostics, {
+        ...diagnostics,
+        ...context.diagnostics,
+      })
+    }
+
+    const fetchedAt = nowIso()
+    const builtRows: RawFilingInsertRow[] = []
+
+    for (const sourceRow of sourceRows) {
+      try {
+        const submission = await fetchSecSubmissions(sourceRow.cik)
+        diagnostics.secSubmissionsFetched += 1
+
+        const built = buildRecentRowsFromSubmission({
+          submission,
+          sourceRow,
+          fetchedAt,
+        })
+
+        diagnostics.unsupportedFormsSkipped += built.unsupportedFormsSkipped
+        diagnostics.olderThanCutoffSkipped += built.olderThanCutoffSkipped
+        builtRows.push(...built.rows)
+      } catch {
+        diagnostics.secSubmissionsFailed += 1
+      }
+    }
+
+    diagnostics.filingRowsBuilt = builtRows.length
+
+    const dedupedRows = dedupeFilingRows(builtRows)
+    diagnostics.duplicateRowsCollapsed = builtRows.length - dedupedRows.length
+
+    const writeResult =
+      dedupedRows.length > 0
+        ? await upsertInChunksDetailed(
+            supabase.from("raw_filings"),
+            "raw_filings",
+            dedupedRows,
+            "accession_no",
+            (row) => row.accession_no
+          )
+        : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
+
+    if (writeResult.errors.length > 0) {
+      return Response.json(
+        {
+          ok: false,
+          error: "Failed writing raw filings rows",
+          debug: {
+            diagnostics,
+            errorSamples: writeResult.errors.slice(0, 5),
+          },
+        },
+        { status: 500 }
+      )
+    }
+
+    diagnostics.filingRowsInserted = writeResult.insertedOrUpdated
 
     let retentionMessage = "skipped"
     if (runRetention) {
@@ -693,7 +705,9 @@ export async function GET(request: Request) {
       const { error: retentionError } = await supabase
         .from("raw_filings")
         .delete()
-        .lt("filed_at", retentionCutoffString)
+        .or(
+          `filed_at.lt.${retentionCutoffString},filed_at.is.null,form_type.not.in.(3,3/A,4,4/A,5,5/A)`
+        )
 
       retentionMessage = retentionError ? retentionError.message : "ok"
     }
@@ -707,6 +721,8 @@ export async function GET(request: Request) {
       filingCount = error ? null : count ?? 0
     }
 
+    const nextStart = sourceRows.length < batch ? null : start + batch
+
     return Response.json({
       ok: true,
       stage: "filings",
@@ -714,23 +730,22 @@ export async function GET(request: Request) {
       scope,
       start,
       batch,
-      internalRuns: internalRuns + 1,
       nextStart,
       retainedDays: RETENTION_DAYS,
       retentionCleanup: retentionMessage,
-      filingRowsInserted: overallDiagnostics.filingRowsInserted,
+      filingRowsInserted: diagnostics.filingRowsInserted,
       filingCount,
-      diagnostics: overallDiagnostics,
+      diagnostics,
       message:
-        nextStart === null
-          ? "Insider filings ingestion completed for the remaining source rows in this run."
-          : "Insider filings ingestion advanced multiple internal batches in this run.",
+        diagnostics.filingRowsInserted === 0
+          ? "Insider filings route ran successfully but no recent insider filings were found."
+          : "Recent insider filings ingested successfully.",
     })
   } catch (error: any) {
     return Response.json(
       {
         ok: false,
-        error: error?.message || "Unknown error",
+        error: error?.message || "Unknown filings ingest error",
       },
       { status: 500 }
     )
