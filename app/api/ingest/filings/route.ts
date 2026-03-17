@@ -385,7 +385,6 @@ function buildRecentRowsFromSubmission(params: {
     rows,
     unsupportedFormsSkipped,
   }
-}
 
 function dedupeFilingRows(rows: RawFilingInsertRow[]) {
   const map = new Map<string, RawFilingInsertRow>()
