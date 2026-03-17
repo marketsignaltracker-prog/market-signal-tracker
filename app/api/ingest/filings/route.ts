@@ -109,7 +109,7 @@ const DEFAULT_BATCH = 15
 const MAX_BATCH = 50
 const DB_CHUNK_SIZE = 250
 const RETENTION_DAYS = 30
-const MAX_INTERNAL_BATCHES_PER_RUN = 4
+const MAX_INTERNAL_BATCHES_PER_RUN = 2
 
 const SUPPORTED_FORMS = new Set(["3", "3/A", "4", "4/A", "5", "5/A"])
 
