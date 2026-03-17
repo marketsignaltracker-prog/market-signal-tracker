@@ -105,7 +105,7 @@ type Diagnostics = {
   duplicateRowsCollapsed: number
 }
 
-const DEFAULT_BATCH = 25
+const DEFAULT_BATCH = 15
 const MAX_BATCH = 50
 const DB_CHUNK_SIZE = 250
 const RETENTION_DAYS = 30
