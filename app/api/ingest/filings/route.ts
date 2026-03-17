@@ -109,7 +109,7 @@ const DEFAULT_BATCH = 15
 const MAX_BATCH = 50
 const DB_CHUNK_SIZE = 250
 const RETENTION_DAYS = 30
-const MAX_INTERNAL_BATCHES_PER_RUN = 4
+const MAX_INTERNAL_BATCHES_PER_RUN = 2
 
 const SUPPORTED_FORMS = new Set([
   "3",
@@ -118,18 +118,6 @@ const SUPPORTED_FORMS = new Set([
   "4/A",
   "5",
   "5/A",
-  "13D",
-  "13D/A",
-  "13G",
-  "13G/A",
-  "SC 13D",
-  "SC 13D/A",
-  "SC 13G",
-  "SC 13G/A",
-  "8-K",
-  "6-K",
-  "10-Q",
-  "10-K",
 ])
 
 function parseInteger(value: string | null | undefined, fallback: number) {
@@ -171,23 +159,11 @@ function normalizeFormType(formType: string | null | undefined) {
     .replace(/\s+/g, " ")
     .replace(/^FORM\s+/i, "")
 
-  if (normalized === "8K") return "8-K"
-  if (normalized === "6K") return "6-K"
   if (normalized === "4A" || normalized === "4 /A") return "4/A"
-  if (normalized === "13DA" || normalized === "SCHEDULE 13D/A") return "13D/A"
-  if (normalized === "13GA" || normalized === "SCHEDULE 13G/A") return "13G/A"
-  if (normalized === "SCHEDULE 13D") return "13D"
-  if (normalized === "SCHEDULE 13G") return "13G"
-  if (normalized === "SC13D") return "SC 13D"
-  if (normalized === "SC13D/A") return "SC 13D/A"
-  if (normalized === "SC13G") return "SC 13G"
-  if (normalized === "SC13G/A") return "SC 13G/A"
+  if (normalized === "3A" || normalized === "3 /A") return "3/A"
+  if (normalized === "5A" || normalized === "5 /A") return "5/A"
 
   return normalized
-}
-
-function uniqueStrings(values: Array<string | null | undefined>) {
-  return Array.from(new Set(values.map((value) => (value || "").trim()).filter(Boolean)))
 }
 
 function chunkArray<T>(items: T[], size: number) {
@@ -735,8 +711,8 @@ export async function GET(request: Request) {
       diagnostics: overallDiagnostics,
       message:
         nextStart === null
-          ? "Raw filings ingestion completed for the remaining source rows in this run."
-          : "Raw filings ingestion advanced multiple internal batches in this run.",
+          ? "Insider filings ingestion completed for the remaining source rows in this run."
+          : "Insider filings ingestion advanced multiple internal batches in this run.",
     })
   } catch (error: any) {
     return Response.json(
