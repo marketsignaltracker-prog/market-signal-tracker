@@ -227,8 +227,8 @@ const yahooFinance = new YahooFinance({
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
-const MAX_BATCH = 50
-const DEFAULT_BATCH = 25
+const MAX_BATCH = 150
+const DEFAULT_BATCH = 100
 const RETENTION_DAYS = 30
 
 const BENCHMARK_TICKER = "SPY"
@@ -1110,7 +1110,6 @@ function makeExcludedRow(params: {
   cik: string
   name: string | null
   isActive?: boolean | null
-  isEligible?: boolean | null
   hasInsiderTrades?: boolean | null
   hasPtrForms?: boolean | null
   hasClusters?: boolean | null
@@ -1131,10 +1130,10 @@ function makeExcludedRow(params: {
     cik: params.cik,
     name: params.name,
     is_active: params.isActive ?? true,
-    is_eligible: params.isEligible ?? null,
-    has_insider_trades: params.hasInsiderTrades ?? null,
-    has_ptr_forms: params.hasPtrForms ?? null,
-    has_clusters: params.hasClusters ?? null,
+    is_eligible: false,
+    has_insider_trades: params.hasInsiderTrades ?? false,
+    has_ptr_forms: params.hasPtrForms ?? false,
+    has_clusters: params.hasClusters ?? false,
     eligibility_reason: params.eligibilityReason ?? null,
     price: null,
     market_cap: null,
@@ -1204,7 +1203,6 @@ async function prepareTickerForScoring(
       cik: company.cik,
       name: company.name,
       isActive: company.is_active,
-      isEligible: company.is_eligible,
       hasInsiderTrades: company.has_insider_trades,
       hasPtrForms: company.has_ptr_forms,
       hasClusters: company.has_clusters,
@@ -1250,7 +1248,6 @@ async function prepareTickerForScoring(
       cik: company.cik,
       name: company.name,
       isActive: company.is_active,
-      isEligible: company.is_eligible,
       hasInsiderTrades: company.has_insider_trades,
       hasPtrForms: company.has_ptr_forms,
       hasClusters: company.has_clusters,
@@ -1303,7 +1300,6 @@ async function prepareTickerForScoring(
       cik: company.cik,
       name: company.name,
       isActive: company.is_active,
-      isEligible: company.is_eligible,
       hasInsiderTrades: company.has_insider_trades,
       hasPtrForms: company.has_ptr_forms,
       hasClusters: company.has_clusters,
@@ -1661,10 +1657,7 @@ export async function GET(request: Request) {
         score = Math.min(score, 74)
       }
 
-      if (
-        metric.return20d > 20 &&
-        metric.volumeRatio > 2.5
-      ) {
+      if (metric.return20d > 20 && metric.volumeRatio > 2.5) {
         score = Math.min(score, 76)
       }
 
@@ -1784,10 +1777,10 @@ export async function GET(request: Request) {
         cik: metric.company.cik,
         name: metric.company.name,
         is_active: metric.company.is_active ?? true,
-        is_eligible: metric.company.is_eligible ?? null,
-        has_insider_trades: metric.company.has_insider_trades ?? null,
-        has_ptr_forms: metric.company.has_ptr_forms ?? null,
-        has_clusters: metric.company.has_clusters ?? null,
+        is_eligible: passed,
+        has_insider_trades: metric.company.has_insider_trades ?? false,
+        has_ptr_forms: metric.company.has_ptr_forms ?? false,
+        has_clusters: metric.company.has_clusters ?? false,
         eligibility_reason: metric.company.eligibility_reason ?? null,
         price: round2(metric.latestClose),
         market_cap: metric.marketCap || null,
@@ -2022,6 +2015,11 @@ export async function GET(request: Request) {
       results: includeResults ? results : [],
     })
   } catch (error: any) {
+    console.error("screen/candidates fatal error", {
+      message: error?.message || "Unknown error",
+      stack: error?.stack || null,
+    })
+
     return Response.json(
       { ok: false, error: error.message || "Unknown error" },
       { status: 500 }
