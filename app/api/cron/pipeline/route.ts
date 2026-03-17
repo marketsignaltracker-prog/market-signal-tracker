@@ -441,52 +441,70 @@ export async function GET(request: NextRequest) {
     }
 
     if (state.stage === "screening") {
-      const screeningStart = getStageCursor(state)
       const batchSize = clampScreenBatch(
         parseInteger(String(state.screen_batch), DEFAULT_SCREEN_BATCH)
       )
 
-      const screenResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/screen/candidates", {
-          universe: "all",
-          start: screeningStart,
-          batch: batchSize,
-          onlyActive: true,
-          includeResults: false,
-          includeCounts: false,
-          runRetention: false,
-        }),
-        SCREENING_STEP_TIMEOUT_MS
-      )
+      const LOOP_BUDGET_MS = 45_000
+      const loopStartedAt = Date.now()
+      let currentStart = getStageCursor(state)
+      let returnedTotalCompanies = state.screen_total
+      let screeningDone = false
+      let batchesRun = 0
 
-      results.push(screenResult)
-
-      if (!screenResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          screenResult,
-          `Screening step failed at start=${screeningStart}: ${String(
-            (screenResult.data as any)?.error || screenResult.status
-          )}`
+      while (Date.now() - loopStartedAt < LOOP_BUDGET_MS) {
+        const screenResult = await runStep(
+          baseUrl,
+          withSearchParams("/api/screen/candidates", {
+            universe: "all",
+            start: currentStart,
+            batch: batchSize,
+            onlyActive: true,
+            includeResults: false,
+            includeCounts: false,
+            runRetention: false,
+          }),
+          SCREENING_STEP_TIMEOUT_MS
         )
+
+        results.push(screenResult)
+        batchesRun += 1
+
+        if (!screenResult.ok) {
+          return await failPipelineForStep(
+            supabase,
+            results,
+            screenResult,
+            `Screening step failed at start=${currentStart}: ${String(
+              (screenResult.data as any)?.error || screenResult.status
+            )}`
+          )
+        }
+
+        const screenData = screenResult.data as any
+        const returnedNextStart =
+          typeof screenData?.nextStart === "number"
+            ? Number(screenData.nextStart)
+            : null
+
+        returnedTotalCompanies =
+          extractStepCount(screenData, ["totalCompanies"]) ?? returnedTotalCompanies
+
+        if (returnedNextStart === null) {
+          screeningDone = true
+          break
+        }
+
+        currentStart = returnedNextStart
       }
 
-      const screenData = screenResult.data as any
-      const returnedNextStart =
-        typeof screenData?.nextStart === "number"
-          ? Number(screenData.nextStart)
-          : null
-
-      const returnedTotalCompanies =
-        extractStepCount(screenData, ["totalCompanies"]) ?? state.screen_total
+      const nextStart = screeningDone ? null : currentStart
 
       state = await patchPipelineState(supabase, {
-        stage: returnedNextStart === null ? "eligible_universe" : "screening",
+        stage: screeningDone ? "eligible_universe" : "screening",
         status: "idle",
-        screen_start: returnedNextStart ?? 0,
-        screen_next_start: returnedNextStart,
+        screen_start: nextStart ?? 0,
+        screen_next_start: nextStart,
         screen_batch: batchSize,
         screen_total: returnedTotalCompanies,
         last_run_finished_at: nowIso(),
@@ -494,12 +512,12 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({
         ok: true,
-        message:
-          returnedNextStart === null
-            ? "Completed final screening batch."
-            : "Completed one screening batch.",
+        message: screeningDone
+          ? `Completed screening (${batchesRun} batch${batchesRun !== 1 ? "es" : ""} this invocation).`
+          : `Completed ${batchesRun} screening batch${batchesRun !== 1 ? "es" : ""}, more remaining.`,
         nextStage: state.stage,
-        nextStart: returnedNextStart,
+        nextStart,
+        batchesRun,
         state: {
           stage: state.stage,
           status: state.status,
