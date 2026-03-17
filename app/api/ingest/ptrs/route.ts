@@ -172,7 +172,7 @@ const MAX_BATCH = 100
 const DEFAULT_START = 0
 const DEFAULT_LIMIT_PER_TICKER = 20
 const MAX_LIMIT_PER_TICKER = 50
-const CANDIDATE_LOOKBACK_DAYS = 60
+const CANDIDATE_LOOKBACK_DAYS = 30
 const AINVEST_CONGRESS_URL = "https://openapi.ainvest.com/open/ownership/congress"
 
 function getSupabaseAdmin() {

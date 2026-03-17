@@ -185,7 +185,7 @@ type MarketBreadthStats = {
 
 const DEFAULT_LIMIT = 250
 const MAX_LIMIT = 1000
-const DEFAULT_LOOKBACK_DAYS = 31
+const DEFAULT_LOOKBACK_DAYS = 30
 const MAX_LOOKBACK_DAYS = 60
 const RETENTION_DAYS = 30
 const SCORE_VERSION = "v10-priority-signals-balanced"
@@ -193,7 +193,7 @@ const DB_CHUNK_SIZE = 100
 
 const DEFAULT_MIN_SIGNAL_APP_SCORE = 58
 const MIN_CANDIDATE_SCORE = 58
-const PTR_LOOKBACK_DAYS = 60
+const PTR_LOOKBACK_DAYS = 30
 const PTR_RECENT_DAYS = 14
 
 function normalizeTicker(ticker: string | null | undefined) {

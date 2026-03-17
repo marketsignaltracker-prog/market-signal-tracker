@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     const scope = (url.searchParams.get("scope") || "eligible").toLowerCase()
     const limit = parseInteger(url.searchParams.get("limit"), 150)
-    const lookbackDays = parseInteger(url.searchParams.get("lookbackDays"), 21)
+    const lookbackDays = parseInteger(url.searchParams.get("lookbackDays"), 30)
     const minSignalStrength = parseInteger(
       url.searchParams.get("minSignalStrength"),
       20
