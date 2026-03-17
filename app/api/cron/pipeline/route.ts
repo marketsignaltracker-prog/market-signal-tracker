@@ -501,30 +501,65 @@ export async function GET(request: NextRequest) {
 }
 
     if (state.stage === "ptrs") {
-      const ptrsStart = getStageCursor(state)
+  const ptrsStart = state.screen_next_start ?? state.screen_start ?? 0
 
-      const ptrsResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/ingest/ptrs", {
-          scope: "all",
-          start: ptrsStart,
-          batch: DEFAULT_PTRS_BATCH,
-        }),
-        DEFAULT_STEP_TIMEOUT_MS
-      )
+  const ptrsResult = await runStep(
+    baseUrl,
+    withSearchParams("/api/ingest/ptrs", {
+      scope: "all",
+      start: ptrsStart,
+      batch: DEFAULT_PTRS_BATCH,
+      onlyActive: true,
+      includeCounts: false,
+    }),
+    DEFAULT_STEP_TIMEOUT_MS
+  )
 
-      results.push(ptrsResult)
+  results.push(ptrsResult)
 
-      if (!ptrsResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          ptrsResult,
-          `PTR step failed: ${String(
-            (ptrsResult.data as any)?.error || ptrsResult.status
-          )}`
-        )
-      }
+  if (!ptrsResult.ok) {
+    return await failPipelineForStep(
+      supabase,
+      results,
+      ptrsResult,
+      `PTR step failed: ${String(
+        (ptrsResult.data as any)?.error || ptrsResult.status
+      )}`
+    )
+  }
+
+  const ptrsData = ptrsResult.data as any
+  const nextPtrsStart =
+    typeof ptrsData?.nextStart === "number" ? Number(ptrsData.nextStart) : null
+
+  const ptrsAreComplete = nextPtrsStart === null
+
+  state = await patchPipelineState(supabase, {
+    stage: ptrsAreComplete ? "eligible_universe" : "ptrs",
+    status: "idle",
+    screen_start: ptrsAreComplete ? 0 : nextPtrsStart,
+    screen_next_start: ptrsAreComplete ? 0 : nextPtrsStart,
+    last_run_finished_at: nowIso(),
+  })
+
+  return NextResponse.json({
+    ok: true,
+    message: ptrsAreComplete
+      ? "Completed PTR step."
+      : "Completed one PTR batch.",
+    nextStage: ptrsAreComplete ? "eligible_universe" : "ptrs",
+    nextPtrsStart,
+    state: {
+      stage: state.stage,
+      status: state.status,
+      screenStart: state.screen_start,
+      screenNextStart: state.screen_next_start,
+      screenBatch: state.screen_batch,
+      screenTotal: state.screen_total,
+    },
+    results,
+  })
+}
 
       const data = ptrsResult.data as any
       const nextPtrsStart =
