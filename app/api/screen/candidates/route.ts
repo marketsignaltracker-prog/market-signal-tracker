@@ -231,7 +231,7 @@ type CandidateScoreOutput = {
 }
 
 const yahooFinance = new YahooFinance({
-  queue: { concurrency: 2 },
+  queue: { concurrency: 1 },
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
@@ -260,12 +260,13 @@ const MIN_CATALYST_COUNT = 8
 
 const MIN_STRONG_COMPANY_SCORE = 72
 
-const TICKER_CONCURRENCY = 2
+const TICKER_CONCURRENCY = 1
 const DB_CHUNK_SIZE = 250
 
-const YAHOO_RETRY_ATTEMPTS = 3
-const YAHOO_RETRY_BASE_DELAY_MS = 1200
-const MAX_TRANSIENT_ERROR_RATE = 0.35
+const YAHOO_RETRY_ATTEMPTS = 4
+const YAHOO_RETRY_BASE_DELAY_MS = 1500
+const MAX_TRANSIENT_ERROR_RATE = 0.5
+const MIN_TRANSIENT_ERRORS_TO_ABORT = 10
 
 function avg(nums: number[]) {
   if (!nums.length) return 0
@@ -1991,7 +1992,12 @@ export async function GET(request: Request) {
     const transientErrorRate =
       processedCount > 0 ? transientYahooErrorsInBatch / processedCount : 0
 
-    if (processedCount > 0 && transientErrorRate > MAX_TRANSIENT_ERROR_RATE) {
+    const severeYahooFailure =
+      processedCount > 0 &&
+      transientYahooErrorsInBatch >= MIN_TRANSIENT_ERRORS_TO_ABORT &&
+      transientErrorRate > MAX_TRANSIENT_ERROR_RATE
+
+    if (severeYahooFailure) {
       return Response.json(
         {
           ok: false,
@@ -2105,7 +2111,9 @@ export async function GET(request: Request) {
         minCloseInDayRange: MIN_CLOSE_IN_DAY_RANGE,
         minCatalystCount: MIN_CATALYST_COUNT,
         yahooRetryAttempts: YAHOO_RETRY_ATTEMPTS,
+        yahooRetryBaseDelayMs: YAHOO_RETRY_BASE_DELAY_MS,
         maxTransientErrorRate: MAX_TRANSIENT_ERROR_RATE,
+        minTransientErrorsToAbort: MIN_TRANSIENT_ERRORS_TO_ABORT,
       },
       counts: includeCounts
         ? {
