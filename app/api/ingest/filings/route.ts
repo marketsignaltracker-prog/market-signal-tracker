@@ -109,16 +109,9 @@ const DEFAULT_BATCH = 15
 const MAX_BATCH = 50
 const DB_CHUNK_SIZE = 250
 const RETENTION_DAYS = 30
-const MAX_INTERNAL_BATCHES_PER_RUN = 2
+const MAX_INTERNAL_BATCHES_PER_RUN = 4
 
-const SUPPORTED_FORMS = new Set([
-  "3",
-  "3/A",
-  "4",
-  "4/A",
-  "5",
-  "5/A",
-])
+const SUPPORTED_FORMS = new Set(["3", "3/A", "4", "4/A", "5", "5/A"])
 
 function parseInteger(value: string | null | undefined, fallback: number) {
   if (value === null || value === undefined || value.trim() === "") {
@@ -159,19 +152,11 @@ function normalizeFormType(formType: string | null | undefined) {
     .replace(/\s+/g, " ")
     .replace(/^FORM\s+/i, "")
 
-  if (normalized === "4A" || normalized === "4 /A") return "4/A"
   if (normalized === "3A" || normalized === "3 /A") return "3/A"
+  if (normalized === "4A" || normalized === "4 /A") return "4/A"
   if (normalized === "5A" || normalized === "5 /A") return "5/A"
 
   return normalized
-}
-
-function chunkArray<T>(items: T[], size: number) {
-  const chunks: T[][] = []
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size))
-  }
-  return chunks
 }
 
 function buildSecSubmissionsUrl(cik: string) {
@@ -180,7 +165,11 @@ function buildSecSubmissionsUrl(cik: string) {
   return `https://data.sec.gov/submissions/CIK${padded}.json`
 }
 
-function buildFilingUrl(cik: string | null | undefined, accessionNo: string, primaryDoc: string | null | undefined) {
+function buildFilingUrl(
+  cik: string | null | undefined,
+  accessionNo: string,
+  primaryDoc: string | null | undefined
+) {
   const normalizedCik = normalizeCik(cik)
   const normalizedAccession = String(accessionNo || "").replace(/-/g, "").trim()
   const normalizedPrimaryDoc = String(primaryDoc || "").trim()
@@ -251,8 +240,8 @@ async function fetchSecSubmissions(cik: string): Promise<SecSubmissionJson> {
     cache: "no-store",
     headers: {
       "User-Agent": "Market Signal Tracker support@marketsignaltracker.com",
-      "Accept-Encoding": "gzip, deflate",
       Accept: "application/json, text/plain, */*",
+      "Accept-Encoding": "gzip, deflate",
       Host: "data.sec.gov",
     },
   })
@@ -294,7 +283,6 @@ function buildRecentRowsFromSubmission(params: {
   const rows: RawFilingInsertRow[] = []
   let unsupportedFormsSkipped = 0
 
-  // 🔥 30-day cutoff
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - 30)
 
@@ -305,14 +293,20 @@ function buildRecentRowsFromSubmission(params: {
     const formType = normalizeFormType(rawForm)
     const primaryDoc = String(primaryDocuments[i] || "").trim() || null
 
-    if (!accessionNo || !formType || !filedAtRaw) continue
+    if (!accessionNo || !formType || !filedAtRaw) {
+      continue
+    }
 
     const filedAtDate = new Date(filedAtRaw)
 
-    // ⛔ Skip anything older than 30 days
-    if (filedAtDate < cutoff) continue
+    if (Number.isNaN(filedAtDate.getTime())) {
+      continue
+    }
 
-    // ⛔ Only keep insider forms
+    if (filedAtDate < cutoff) {
+      continue
+    }
+
     if (!shouldKeepForm(formType)) {
       unsupportedFormsSkipped += 1
       continue
@@ -338,54 +332,6 @@ function buildRecentRowsFromSubmission(params: {
   }
 }
 
-  const accessionNumbers = recent.accessionNumber || []
-  const filingDates = recent.filingDate || []
-  const forms = recent.form || []
-  const primaryDocuments = recent.primaryDocument || []
-
-  const maxLen = Math.max(
-    accessionNumbers.length,
-    filingDates.length,
-    forms.length,
-    primaryDocuments.length
-  )
-
-  const rows: RawFilingInsertRow[] = []
-  let unsupportedFormsSkipped = 0
-
-  for (let i = 0; i < maxLen; i += 1) {
-    const accessionNo = String(accessionNumbers[i] || "").trim()
-    const filedAt = String(filingDates[i] || "").trim() || null
-    const rawForm = String(forms[i] || "").trim()
-    const formType = normalizeFormType(rawForm)
-    const primaryDoc = String(primaryDocuments[i] || "").trim() || null
-
-    if (!accessionNo || !formType) continue
-
-    if (!shouldKeepForm(formType)) {
-      unsupportedFormsSkipped += 1
-      continue
-    }
-
-    rows.push({
-      company_id: sourceRow.company_id,
-      ticker: sourceRow.ticker,
-      company_name: sourceRow.name ?? submission.name ?? null,
-      filed_at: filedAt,
-      form_type: formType,
-      filing_url: buildFilingUrl(sourceRow.cik, accessionNo, primaryDoc),
-      accession_no: accessionNo,
-      cik: sourceRow.cik,
-      primary_doc: primaryDoc,
-      fetched_at: fetchedAt,
-    })
-  }
-
-  return {
-    rows,
-    unsupportedFormsSkipped,
-  }
-
 function dedupeFilingRows(rows: RawFilingInsertRow[]) {
   const map = new Map<string, RawFilingInsertRow>()
 
@@ -409,6 +355,14 @@ function dedupeFilingRows(rows: RawFilingInsertRow[]) {
   }
 
   return Array.from(map.values())
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
 }
 
 async function upsertInChunksDetailed(
@@ -509,6 +463,7 @@ async function loadCandidateContextSourceRows(
     }
 
     const latestScreenedOn = latestScreenedQuery.data?.screened_on ?? null
+
     if (!latestScreenedOn) {
       return {
         sourceRows: [],
@@ -664,7 +619,7 @@ export async function GET(request: Request) {
       }
 
       const fetchedAt = nowIso()
-      const chunkBuiltRows: RawFilingInsertRow[] = []
+      const builtRows: RawFilingInsertRow[] = []
 
       for (const sourceRow of sourceRows) {
         try {
@@ -678,17 +633,16 @@ export async function GET(request: Request) {
           })
 
           overallDiagnostics.unsupportedFormsSkipped += built.unsupportedFormsSkipped
-          chunkBuiltRows.push(...built.rows)
+          builtRows.push(...built.rows)
         } catch {
           overallDiagnostics.secSubmissionsFailed += 1
         }
       }
 
-      overallDiagnostics.filingRowsBuilt += chunkBuiltRows.length
+      overallDiagnostics.filingRowsBuilt += builtRows.length
 
-      const dedupedRows = dedupeFilingRows(chunkBuiltRows)
-      overallDiagnostics.duplicateRowsCollapsed +=
-        chunkBuiltRows.length - dedupedRows.length
+      const dedupedRows = dedupeFilingRows(builtRows)
+      overallDiagnostics.duplicateRowsCollapsed += builtRows.length - dedupedRows.length
 
       const writeResult =
         dedupedRows.length > 0
