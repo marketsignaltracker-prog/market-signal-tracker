@@ -294,7 +294,7 @@ function buildRecentRowsFromSubmission(params: {
   const rows: RawFilingInsertRow[] = []
   let unsupportedFormsSkipped = 0
 
-  // 🔥 ADD THIS
+  // 🔥 30-day cutoff
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - 30)
 
@@ -309,11 +309,10 @@ function buildRecentRowsFromSubmission(params: {
 
     const filedAtDate = new Date(filedAtRaw)
 
-    // 🔥 HARD FILTER: only last 30 days
-    if (filedAtDate < cutoff) {
-      continue
-    }
+    // ⛔ Skip anything older than 30 days
+    if (filedAtDate < cutoff) continue
 
+    // ⛔ Only keep insider forms
     if (!shouldKeepForm(formType)) {
       unsupportedFormsSkipped += 1
       continue
