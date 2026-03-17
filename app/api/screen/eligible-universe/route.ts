@@ -34,6 +34,16 @@ type SignalRow = {
   signal_category?: string | null
 }
 
+type EligibilityFlags = {
+  hasInsiderTrades: boolean
+  hasOwnershipFilings: boolean
+  hasCatalystFilings: boolean
+  hasPtrForms: boolean
+  hasSignals: boolean
+  isEligible: boolean
+  reasons: string[]
+}
+
 function getSupabaseAdmin(): any {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -90,6 +100,147 @@ function toIsoDateStringDaysAgo(days: number) {
 
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
+}
+
+function normalizeFormType(formType: string | null | undefined) {
+  const normalized = (formType || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .replace(/^FORM\s+/i, "")
+
+  if (normalized === "8K") return "8-K"
+  if (normalized === "6K") return "6-K"
+  if (normalized === "4A" || normalized === "4 /A") return "4/A"
+  if (normalized === "13DA" || normalized === "SCHEDULE 13D/A") return "13D/A"
+  if (normalized === "13GA" || normalized === "SCHEDULE 13G/A") return "13G/A"
+  if (normalized === "SCHEDULE 13D") return "13D"
+  if (normalized === "SCHEDULE 13G") return "13G"
+  if (normalized === "SC13D") return "SC 13D"
+  if (normalized === "SC13D/A") return "SC 13D/A"
+  if (normalized === "SC13G") return "SC 13G"
+  if (normalized === "SC13G/A") return "SC 13G/A"
+
+  return normalized
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.map((value) => (value || "").trim()).filter(Boolean)))
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+  return chunks
+}
+
+function isInsiderTradeForm(formType: string) {
+  return (
+    formType === "3" ||
+    formType === "4" ||
+    formType === "5" ||
+    formType === "3/A" ||
+    formType === "4/A" ||
+    formType === "5/A"
+  )
+}
+
+function isOwnershipForm(formType: string) {
+  return (
+    formType === "13D" ||
+    formType === "13D/A" ||
+    formType === "13G" ||
+    formType === "13G/A" ||
+    formType === "SC 13D" ||
+    formType === "SC 13D/A" ||
+    formType === "SC 13G" ||
+    formType === "SC 13G/A"
+  )
+}
+
+function isCatalystForm(formType: string) {
+  return (
+    formType === "8-K" ||
+    formType === "6-K" ||
+    formType === "10-Q" ||
+    formType === "10-K"
+  )
+}
+
+function buildEligibilityFlags(params: {
+  hasInsiderTrades: boolean
+  hasOwnershipFilings: boolean
+  hasCatalystFilings: boolean
+  hasPtrForms: boolean
+  hasSignals: boolean
+}): EligibilityFlags {
+  const {
+    hasInsiderTrades,
+    hasOwnershipFilings,
+    hasCatalystFilings,
+    hasPtrForms,
+    hasSignals,
+  } = params
+
+  const reasons: string[] = []
+
+  if (hasPtrForms) reasons.push("ptr_forms")
+  if (hasInsiderTrades) reasons.push("insider_trades")
+  if (hasOwnershipFilings) reasons.push("ownership_filings")
+  if (hasCatalystFilings) reasons.push("catalyst_filings")
+  if (hasSignals) reasons.push("signals")
+
+  const priorityEvidenceCount =
+    Number(hasPtrForms) +
+    Number(hasInsiderTrades) +
+    Number(hasOwnershipFilings) +
+    Number(hasCatalystFilings)
+
+  const isEligible =
+    hasPtrForms ||
+    hasInsiderTrades ||
+    hasOwnershipFilings ||
+    (hasCatalystFilings && hasSignals) ||
+    (priorityEvidenceCount >= 2) ||
+    (hasSignals && (hasPtrForms || hasInsiderTrades || hasOwnershipFilings))
+
+  return {
+    hasInsiderTrades,
+    hasOwnershipFilings,
+    hasCatalystFilings,
+    hasPtrForms,
+    hasSignals,
+    isEligible,
+    reasons,
+  }
+}
+
+async function resetEligibilityForTickers(
+  supabase: any,
+  tickers: string[],
+  updatedAt: string
+) {
+  const table = supabase.from("candidate_universe") as any
+  const chunks = chunkArray(tickers, 250)
+
+  for (const chunk of chunks) {
+    const { error } = await table
+      .update({
+        is_eligible: false,
+        has_insider_trades: false,
+        has_ptr_forms: false,
+        has_clusters: false,
+        eligibility_reason: null,
+        updated_at: updatedAt,
+      })
+      .in("ticker", chunk)
+
+    if (error) {
+      throw new Error(`Failed resetting eligibility rows: ${error.message}`)
+    }
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -199,19 +350,14 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    /**
-     * Priority stack:
-     * 1. PTR
-     * 2. Insider / ownership / catalyst filings
-     * 3. Signals
-     */
     const insiderTradeTickers = new Set<string>()
-    const highPriorityFilingTickers = new Set<string>()
+    const ownershipFilingTickers = new Set<string>()
+    const catalystFilingTickers = new Set<string>()
     const ptrTickers = new Set<string>()
     const signalTickers = new Set<string>()
 
     for (const filing of (filings || []) as FilingRow[]) {
-      const formType = String(filing?.form_type || "").toUpperCase().trim()
+      const formType = normalizeFormType(filing?.form_type)
 
       const ticker =
         filing?.ticker
@@ -221,34 +367,11 @@ export async function GET(request: NextRequest) {
             : null
 
       if (!ticker) continue
+      if (!formType) continue
 
-      const isInsiderTradeForm =
-        formType === "3" ||
-        formType === "4" ||
-        formType === "5" ||
-        formType === "3/A" ||
-        formType === "4/A" ||
-        formType === "5/A" ||
-        formType === "FORM 3" ||
-        formType === "FORM 4" ||
-        formType === "FORM 5"
-
-      const isHighPriorityFiling =
-        formType === "13D" ||
-        formType === "13D/A" ||
-        formType === "13G" ||
-        formType === "13G/A" ||
-        formType === "SC 13D" ||
-        formType === "SC 13D/A" ||
-        formType === "SC 13G" ||
-        formType === "SC 13G/A" ||
-        formType === "8-K" ||
-        formType === "6-K" ||
-        formType === "10-Q" ||
-        formType === "10-K"
-
-      if (isInsiderTradeForm) insiderTradeTickers.add(ticker)
-      if (isHighPriorityFiling) highPriorityFilingTickers.add(ticker)
+      if (isInsiderTradeForm(formType)) insiderTradeTickers.add(ticker)
+      if (isOwnershipForm(formType)) ownershipFilingTickers.add(ticker)
+      if (isCatalystForm(formType)) catalystFilingTickers.add(ticker)
     }
 
     for (const ptr of (ptrs || []) as PtrRow[]) {
@@ -268,30 +391,48 @@ export async function GET(request: NextRequest) {
       signalTickers.add(ticker)
     }
 
+    const allCompanyTickers = uniqueStrings(typedCompanies.map((company) => normalizeTicker(company.ticker)))
+
+    if (allCompanyTickers.length > 0) {
+      await resetEligibilityForTickers(supabase, allCompanyTickers, updatedAt)
+    }
+
     const eligibleRows: Array<Record<string, any>> = []
+
+    let eligibleBecausePtr = 0
+    let eligibleBecauseInsider = 0
+    let eligibleBecauseOwnership = 0
+    let eligibleBecauseCatalystAndSignal = 0
+    let eligibleBecauseMultiplePriorityBuckets = 0
 
     for (const company of typedCompanies) {
       const ticker = normalizeTicker(company?.ticker)
       if (!ticker) continue
 
-      const hasInsiderTrades = insiderTradeTickers.has(ticker)
-      const hasHighPriorityFilings = highPriorityFilingTickers.has(ticker)
-      const hasPtrForms = ptrTickers.has(ticker)
-      const hasSignals = signalTickers.has(ticker)
+      const flags = buildEligibilityFlags({
+        hasInsiderTrades: insiderTradeTickers.has(ticker),
+        hasOwnershipFilings: ownershipFilingTickers.has(ticker),
+        hasCatalystFilings: catalystFilingTickers.has(ticker),
+        hasPtrForms: ptrTickers.has(ticker),
+        hasSignals: signalTickers.has(ticker),
+      })
 
-      const isEligible =
-        hasPtrForms ||
-        hasInsiderTrades ||
-        hasHighPriorityFilings ||
-        hasSignals
+      if (!flags.isEligible) continue
 
-      if (!isEligible) continue
+      if (flags.hasPtrForms) eligibleBecausePtr += 1
+      if (flags.hasInsiderTrades) eligibleBecauseInsider += 1
+      if (flags.hasOwnershipFilings) eligibleBecauseOwnership += 1
+      if (flags.hasCatalystFilings && flags.hasSignals) eligibleBecauseCatalystAndSignal += 1
 
-      const reasons: string[] = []
-      if (hasPtrForms) reasons.push("ptr_forms")
-      if (hasInsiderTrades) reasons.push("insider_trades")
-      if (hasHighPriorityFilings) reasons.push("high_priority_filings")
-      if (hasSignals) reasons.push("signals")
+      const priorityBucketCount =
+        Number(flags.hasPtrForms) +
+        Number(flags.hasInsiderTrades) +
+        Number(flags.hasOwnershipFilings) +
+        Number(flags.hasCatalystFilings)
+
+      if (priorityBucketCount >= 2) {
+        eligibleBecauseMultiplePriorityBuckets += 1
+      }
 
       eligibleRows.push({
         company_id: company.id,
@@ -299,11 +440,11 @@ export async function GET(request: NextRequest) {
         cik: company.cik ?? null,
         name: company.name ?? null,
         is_active: company.is_active ?? true,
-        has_insider_trades: hasInsiderTrades,
-        has_ptr_forms: hasPtrForms,
-        has_clusters: hasSignals,
+        has_insider_trades: flags.hasInsiderTrades,
+        has_ptr_forms: flags.hasPtrForms,
+        has_clusters: flags.hasSignals,
         is_eligible: true,
-        eligibility_reason: reasons.join(","),
+        eligibility_reason: flags.reasons.join(","),
         updated_at: updatedAt,
       })
     }
@@ -338,9 +479,15 @@ export async function GET(request: NextRequest) {
         ? {
             companies: typedCompanies.length,
             insiderTradeTickers: insiderTradeTickers.size,
-            highPriorityFilingTickers: highPriorityFilingTickers.size,
+            ownershipFilingTickers: ownershipFilingTickers.size,
+            catalystFilingTickers: catalystFilingTickers.size,
             ptrTickers: ptrTickers.size,
             signalTickers: signalTickers.size,
+            eligibleBecausePtr,
+            eligibleBecauseInsider,
+            eligibleBecauseOwnership,
+            eligibleBecauseCatalystAndSignal,
+            eligibleBecauseMultiplePriorityBuckets,
             eligibleRows: eligibleRows.length,
           }
         : undefined,

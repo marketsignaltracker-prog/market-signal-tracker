@@ -177,21 +177,31 @@ type Diagnostics = {
   filteredBelowSignalScore: number
 }
 
+type MarketBreadthStats = {
+  sectorCounts: Map<string, number>
+  industryCounts: Map<string, number>
+  totalCandidates: number
+}
+
 const DEFAULT_LIMIT = 250
 const MAX_LIMIT = 1000
 const DEFAULT_LOOKBACK_DAYS = 31
 const MAX_LOOKBACK_DAYS = 60
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v9-priority-signals"
+const SCORE_VERSION = "v10-priority-signals-balanced"
 const DB_CHUNK_SIZE = 100
 
-const DEFAULT_MIN_SIGNAL_APP_SCORE = 55
-const MIN_CANDIDATE_SCORE = 56
+const DEFAULT_MIN_SIGNAL_APP_SCORE = 58
+const MIN_CANDIDATE_SCORE = 58
 const PTR_LOOKBACK_DAYS = 60
 const PTR_RECENT_DAYS = 14
 
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
+}
+
+function normalizeLabel(value: string | null | undefined) {
+  return (value || "").trim()
 }
 
 function parseInteger(value: string | null | undefined, fallback: number) {
@@ -293,8 +303,8 @@ async function upsertInChunksDetailed(
 }
 
 function getStrengthBucket(score: number): "Buy" | "Strong Buy" | "Elite Buy" {
-  if (score >= 97) return "Elite Buy"
-  if (score >= 90) return "Strong Buy"
+  if (score >= 95) return "Elite Buy"
+  if (score >= 88) return "Strong Buy"
   return "Buy"
 }
 
@@ -318,6 +328,30 @@ function buildSignalKey(ticker: string, runDate: string) {
 
 function buildHistoryKey(runDate: string, signalKey: string) {
   return `${runDate}_${signalKey}`
+}
+
+function buildMarketBreadthStats(candidateRows: ContextRow[]): MarketBreadthStats {
+  const sectorCounts = new Map<string, number>()
+  const industryCounts = new Map<string, number>()
+
+  for (const row of candidateRows) {
+    const sector = normalizeLabel(row.sector)
+    const industry = normalizeLabel(row.industry)
+
+    if (sector) {
+      sectorCounts.set(sector, (sectorCounts.get(sector) || 0) + 1)
+    }
+
+    if (industry) {
+      industryCounts.set(industry, (industryCounts.get(industry) || 0) + 1)
+    }
+  }
+
+  return {
+    sectorCounts,
+    industryCounts,
+    totalCandidates: candidateRows.length,
+  }
 }
 
 function buildPtrSummaryMap(rows: RawPtrTradeRow[]) {
@@ -480,10 +514,18 @@ function scoreCandidateSignal(params: {
   context: ContextRow
   filingSummary: FilingSummary | null
   ptrSummary: PtrSummary | null
+  breadthStats: MarketBreadthStats
 }) {
-  const { context, filingSummary, ptrSummary } = params
+  const { context, filingSummary, ptrSummary, breadthStats } = params
 
   const candidateScore = Number(context.candidate_score || 0)
+  const sector = normalizeLabel(context.sector)
+  const industry = normalizeLabel(context.industry)
+  const sectorCount = sector ? breadthStats.sectorCounts.get(sector) || 0 : 0
+  const industryCount = industry ? breadthStats.industryCounts.get(industry) || 0 : 0
+  const totalCandidates = Math.max(1, breadthStats.totalCandidates)
+  const sectorShare = sectorCount / totalCandidates
+  const industryShare = industryCount / totalCandidates
 
   const breakdown: Record<string, number> = {}
   const reasons: string[] = []
@@ -495,83 +537,122 @@ function scoreCandidateSignal(params: {
     if (reason) reasons.push(reason)
   }
 
-  add("base", 34, "Base priority signal")
+  const hasPtrEvidence = Boolean(ptrSummary?.buyTradeCount)
+  const hasFilingEvidence =
+    Boolean(filingSummary?.hasForm4) ||
+    Boolean(filingSummary?.has13DOr13G) ||
+    Boolean(filingSummary?.hasCatalystForm)
 
-  if (context.included) add("included", 8, "Already made final candidate set")
+  const hasTechnicalEvidence =
+    Boolean(context.breakout_20d) ||
+    Boolean(context.breakout_10d) ||
+    Boolean(context.above_sma_20) ||
+    (context.relative_strength_20d ?? 0) >= 2 ||
+    (context.volume_ratio ?? 0) >= 1.2
 
-  if (candidateScore >= 90) add("candidate_score", 12, "Strong candidate score")
-  else if (candidateScore >= 80) add("candidate_score", 9, "Good candidate score")
-  else if (candidateScore >= 70) add("candidate_score", 6, "Constructive candidate score")
-  else if (candidateScore >= 60) add("candidate_score", 3, "Passing candidate score")
+  const signalFamilyCount =
+    Number(hasPtrEvidence) + Number(hasFilingEvidence) + Number(hasTechnicalEvidence)
+
+  add("base", 26, "Base priority signal")
+
+  if (context.included) add("included", 6, "Already made final candidate set")
+
+  if (candidateScore >= 92) add("candidate_score", 11, "Strong candidate score")
+  else if (candidateScore >= 84) add("candidate_score", 8, "Good candidate score")
+  else if (candidateScore >= 74) add("candidate_score", 5, "Constructive candidate score")
+  else if (candidateScore >= 64) add("candidate_score", 2, "Passing candidate score")
 
   if (ptrSummary) {
-    if (ptrSummary.buyTradeCount >= 1) add("ptr", 8, "At least one PTR buy")
-    if (ptrSummary.buyTradeCount >= 2) add("ptr", 4, "Multiple PTR buys")
-    if (ptrSummary.buyTradeCount >= 3) add("ptr", 3, "Three or more PTR buys")
+    if (ptrSummary.buyTradeCount >= 1) add("ptr", 7, "At least one PTR buy")
+    if (ptrSummary.buyTradeCount >= 2) add("ptr", 5, "Multiple PTR buys")
+    if (ptrSummary.buyTradeCount >= 3) add("ptr", 4, "Three or more PTR buys")
 
-    if (ptrSummary.uniqueBuyFilers >= 2) add("ptr", 4, "Multiple PTR buyers")
-    if (ptrSummary.uniqueBuyFilers >= 3) add("ptr", 3, "Broad PTR participation")
+    if (ptrSummary.uniqueBuyFilers >= 2) add("ptr", 6, "Multiple PTR buyers")
+    if (ptrSummary.uniqueBuyFilers >= 3) add("ptr", 5, "Broad PTR participation")
 
     if (ptrSummary.recentBuyCount >= 1) add("ptr", 4, "Recent PTR buy")
-    if (ptrSummary.recentBuyCount >= 2) add("ptr", 3, "Multiple recent PTR buys")
+    if (ptrSummary.recentBuyCount >= 2) add("ptr", 4, "Multiple recent PTR buys")
 
     if (ptrSummary.totalBuyAmountLow >= 100_001) add("ptr", 3, "Meaningful PTR size")
     if (ptrSummary.totalBuyAmountLow >= 250_001) add("ptr", 4, "Large PTR size")
-    if (ptrSummary.totalBuyAmountLow >= 500_001) add("ptr", 4, "Very large PTR size")
+    if (ptrSummary.totalBuyAmountLow >= 500_001) add("ptr", 5, "Very large PTR size")
+    if (ptrSummary.totalBuyAmountLow >= 1_000_000) add("ptr", 5, "Institutional-scale PTR size")
 
-    if (ptrSummary.buyCluster) add("ptr", 4, "PTR buy cluster")
-    if (ptrSummary.strongBuying) add("ptr", 5, "Strong PTR buying support")
-    if (ptrSummary.strongSelling) add("ptr_penalty", -4, "PTR selling headwind")
+    if (ptrSummary.buyCluster) add("ptr_cluster", 6, "PTR buy cluster")
+    if (ptrSummary.strongBuying) add("ptr_cluster", 7, "Strong PTR buying support")
+    if (ptrSummary.strongSelling) add("ptr_penalty", -6, "PTR selling headwind")
   }
 
   if (filingSummary) {
-    if (filingSummary.hasForm4) add("filings", 9, "Insider filing support")
+    if (filingSummary.hasForm4) add("filings", 8, "Insider filing support")
     if (filingSummary.insiderFormCount >= 2) add("filings", 3, "Multiple insider filings")
 
     if (filingSummary.has13DOr13G) add("filings", 8, "Ownership filing support")
     if (filingSummary.ownershipFormCount >= 2) add("filings", 3, "Multiple ownership filings")
 
-    if (filingSummary.hasCatalystForm) add("filings", 5, "Corporate catalyst filing support")
+    if (filingSummary.hasCatalystForm) add("filings", 4, "Corporate catalyst filing support")
     if (filingSummary.catalystFormCount >= 2) add("filings", 2, "Multiple catalyst filings")
 
     const filingAge = daysAgo(filingSummary.latestFiledAt)
     if (filingAge !== null) {
-      if (filingAge <= 1) add("freshness", 5, "Fresh filing activity")
-      else if (filingAge <= 3) add("freshness", 4, "Recent filing activity")
-      else if (filingAge <= 7) add("freshness", 2, "Active filing window")
-      else if (filingAge > 21) add("freshness_penalty", -2, "Older filing activity")
+      if (fileingAgeSafe(filingAge) <= 1) add("freshness", 4, "Fresh filing activity")
+      else if (fileingAgeSafe(filingAge) <= 3) add("freshness", 3, "Recent filing activity")
+      else if (fileingAgeSafe(filingAge) <= 7) add("freshness", 1, "Active filing window")
+      else if (fileingAgeSafe(filingAge) > 21) add("freshness_penalty", -2, "Older filing activity")
     }
   }
 
-  if ((context.return_20d ?? 0) >= 12) add("momentum", 5, "Strong 20-day momentum")
-  else if ((context.return_20d ?? 0) >= 6) add("momentum", 3, "Positive 20-day momentum")
+  if ((context.return_20d ?? 0) >= 10) add("momentum", 3, "Strong 20-day momentum")
+  else if ((context.return_20d ?? 0) >= 5) add("momentum", 2, "Positive 20-day momentum")
   else if ((context.return_20d ?? 0) >= 2) add("momentum", 1, "Constructive 20-day momentum")
 
-  if ((context.return_10d ?? 0) >= 5) add("short_momentum", 3, "Strong 10-day momentum")
-  else if ((context.return_10d ?? 0) >= 2) add("short_momentum", 2, "Positive 10-day momentum")
+  if ((context.return_10d ?? 0) >= 4) add("short_momentum", 2, "Strong 10-day momentum")
+  else if ((context.return_10d ?? 0) >= 2) add("short_momentum", 1, "Positive 10-day momentum")
 
-  if ((context.relative_strength_20d ?? 0) >= 6) add("relative_strength", 6, "Strong relative strength")
-  else if ((context.relative_strength_20d ?? 0) >= 3) add("relative_strength", 4, "Positive relative strength")
-  else if ((context.relative_strength_20d ?? 0) >= 1) add("relative_strength", 2, "Constructive relative strength")
+  if ((context.relative_strength_20d ?? 0) >= 7) add("relative_strength", 5, "Strong relative strength")
+  else if ((context.relative_strength_20d ?? 0) >= 4) add("relative_strength", 3, "Positive relative strength")
+  else if ((context.relative_strength_20d ?? 0) >= 2) add("relative_strength", 2, "Constructive relative strength")
 
-  if ((context.volume_ratio ?? 0) >= 2) add("volume", 5, "Heavy volume")
-  else if ((context.volume_ratio ?? 0) >= 1.3) add("volume", 3, "Good volume support")
-  else if ((context.volume_ratio ?? 0) >= 1.0) add("volume", 1, "Normal volume support")
+  if ((context.volume_ratio ?? 0) >= 2.2) add("volume", 4, "Heavy volume")
+  else if ((context.volume_ratio ?? 0) >= 1.5) add("volume", 3, "Good volume support")
+  else if ((context.volume_ratio ?? 0) >= 1.2) add("volume", 1, "Constructive volume support")
 
-  if (context.breakout_20d) add("breakout", 5, "20-day breakout")
-  else if (context.breakout_10d) add("breakout", 3, "10-day breakout")
-  else if ((context.breakout_clearance_pct ?? -999) >= -0.5) add("breakout", 1, "Near breakout")
+  if (context.breakout_20d) add("breakout", 4, "20-day breakout")
+  else if (context.breakout_10d) add("breakout", 2, "10-day breakout")
+  else if ((context.breakout_clearance_pct ?? -999) >= -0.35) add("breakout", 1, "Near breakout")
 
   if (context.above_sma_20) add("trend", 3, "Above 20-day moving average")
 
-  if ((context.close_in_day_range ?? 0) >= 0.75) add("close_strength", 2, "Strong close")
-  else if ((context.close_in_day_range ?? 0) >= 0.55) add("close_strength", 1, "Constructive close")
+  if ((context.close_in_day_range ?? 0) >= 0.8) add("close_strength", 2, "Strong close")
+  else if ((context.close_in_day_range ?? 0) >= 0.6) add("close_strength", 1, "Constructive close")
 
-  if ((context.extension_from_sma20_pct ?? 999) > 18) {
-    add("extension_penalty", -5, "Too extended")
+  if ((context.extension_from_sma20_pct ?? 999) > 20) {
+    add("extension_penalty", -8, "Too extended")
     caps.push("overextended-cap")
-  } else if ((context.extension_from_sma20_pct ?? 999) > 14) {
-    add("extension_penalty", -2, "Somewhat extended")
+  } else if ((context.extension_from_sma20_pct ?? 999) > 15) {
+    add("extension_penalty", -4, "Somewhat extended")
+  } else if ((context.extension_from_sma20_pct ?? 999) > 10) {
+    add("extension_penalty", -2, "Mildly extended")
+  }
+
+  if ((context.return_5d ?? 0) >= 12 && !ptrSummary?.strongBuying) {
+    add("chase_penalty", -4, "Too sharp of a short-term move without strong PTR support")
+  }
+
+  if ((context.return_10d ?? 0) >= 18 && !filingSummary?.has13DOr13G && !ptrSummary?.buyCluster) {
+    add("chase_penalty", -5, "Move may be too crowded or event-driven")
+  }
+
+  if (sectorShare >= 0.24) {
+    add("crowding_penalty", -6, `Sector is overcrowded in current candidate set (${sector})`)
+    caps.push("sector-crowding-cap")
+  } else if (sectorShare >= 0.16) {
+    add("crowding_penalty", -3, `Sector is getting crowded in current candidate set (${sector})`)
+  }
+
+  if (industryShare >= 0.14) {
+    add("industry_penalty", -4, `Industry is crowded in current candidate set (${industry})`)
+    caps.push("industry-crowding-cap")
   }
 
   if (!(context.passes_price ?? true)) add("liquidity_penalty", -5, "Failed minimum price")
@@ -579,31 +660,45 @@ function scoreCandidateSignal(params: {
   if (!(context.passes_dollar_volume ?? true)) add("liquidity_penalty", -5, "Failed minimum dollar volume")
   if (!(context.passes_market_cap ?? true)) add("liquidity_penalty", -4, "Failed minimum market cap")
 
+  if (signalFamilyCount >= 3) add("stacking_bonus", 8, "PTR, filings, and technicals are aligned")
+  else if (signalFamilyCount === 2) add("stacking_bonus", 4, "Multiple signal families are aligned")
+  else add("single_signal_penalty", -5, "Only one signal family is carrying the setup")
+
   let rawScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
   rawScore = clamp(Math.round(rawScore), 0, 100)
 
-  let appScore = Math.round(Math.pow(rawScore / 100, 1.05) * 100)
+  let appScore = Math.round(Math.pow(rawScore / 100, 1.08) * 100)
 
   const hasPriorityEvidence =
-    Boolean(ptrSummary?.buyTradeCount) ||
-    Boolean(filingSummary?.hasForm4) ||
-    Boolean(filingSummary?.has13DOr13G) ||
-    Boolean(filingSummary?.hasCatalystForm)
+    hasPtrEvidence || hasFilingEvidence
 
   if (!hasPriorityEvidence) {
-    appScore = Math.min(appScore, 74)
+    appScore = Math.min(appScore, 70)
     caps.push("no-priority-evidence-cap")
+  }
+
+  if (signalFamilyCount < 2) {
+    appScore = Math.min(appScore, 76)
+    caps.push("single-family-cap")
   }
 
   if (
     !ptrSummary?.strongBuying &&
     !filingSummary?.hasForm4 &&
     !filingSummary?.has13DOr13G &&
-    (context.relative_strength_20d ?? 0) < 2 &&
-    (context.volume_ratio ?? 0) < 1.1
+    (context.relative_strength_20d ?? 0) < 3 &&
+    (context.volume_ratio ?? 0) < 1.25
   ) {
-    appScore = Math.min(appScore, 70)
+    appScore = Math.min(appScore, 68)
     caps.push("weak-confirmation-cap")
+  }
+
+  if ((context.extension_from_sma20_pct ?? 999) > 20) {
+    appScore = Math.min(appScore, 78)
+  }
+
+  if (sectorShare >= 0.24) {
+    appScore = Math.min(appScore, 82)
   }
 
   appScore = clamp(appScore, 0, 100)
@@ -614,13 +709,23 @@ function scoreCandidateSignal(params: {
     breakdown,
     reasons: uniqueStrings(reasons),
     caps: uniqueStrings(caps),
+    signalFamilyCount,
+    sectorCount,
+    industryCount,
+    sectorShare: round2(sectorShare),
+    industryShare: round2(industryShare),
   }
+}
+
+function fileingAgeSafe(value: number) {
+  return Number.isFinite(value) ? value : 999
 }
 
 function buildSignalRow(
   context: ContextRow,
   filingSummary: FilingSummary | null,
   ptrSummary: PtrSummary | null,
+  breadthStats: MarketBreadthStats,
   runDate: string,
   runTimestamp: string
 ) {
@@ -628,12 +733,12 @@ function buildSignalRow(
   if (!ticker) return null
 
   const companyId = getContextCompanyId(context)
-  const scored = scoreCandidateSignal({ context, filingSummary, ptrSummary })
+  const scored = scoreCandidateSignal({ context, filingSummary, ptrSummary, breadthStats })
   const signalKey = buildSignalKey(ticker, runDate)
 
   const title =
     ptrSummary?.strongBuying
-      ? "Strong political buying support"
+      ? "Strong PTR buying support"
       : filingSummary?.hasForm4 && filingSummary?.has13DOr13G
         ? "Insider and ownership support"
         : filingSummary?.hasForm4
@@ -652,8 +757,9 @@ function buildSignalRow(
     context.breakout_20d ? "20-day breakout present" : null,
     context.breakout_10d ? "10-day breakout present" : null,
     context.above_sma_20 ? "trend support is intact" : null,
-    (context.volume_ratio ?? 0) >= 1.3 ? "volume is elevated" : null,
-    (context.relative_strength_20d ?? 0) >= 3 ? "relative strength is positive" : null,
+    (context.volume_ratio ?? 0) >= 1.4 ? "volume is elevated" : null,
+    (context.relative_strength_20d ?? 0) >= 4 ? "relative strength is positive" : null,
+    scored.signalFamilyCount >= 3 ? "multiple signal families are aligned" : null,
     context.screen_reason,
   ])
 
@@ -718,12 +824,22 @@ function buildSignalRow(
       context.above_sma_20 ? "above-sma20" : null,
       (context.volume_ratio ?? 0) >= 1.5 ? "volume-confirmed" : null,
       (context.relative_strength_20d ?? 0) >= 4 ? "relative-strength" : null,
+      scored.signalFamilyCount >= 2 ? "multi-signal" : null,
+      scored.signalFamilyCount >= 3 ? "fully-stacked" : null,
+      scored.caps.includes("sector-crowding-cap") ? "sector-crowded" : null,
+      scored.caps.includes("industry-crowding-cap") ? "industry-crowded" : null,
+      scored.caps.includes("overextended-cap") ? "overextended" : null,
     ]),
     catalyst_type: filingSummary?.hasCatalystForm ? "filing" : null,
     bias: "Bullish",
     score: scored.rawScore,
     app_score: scored.appScore,
-    board_bucket: "Buy",
+    board_bucket:
+      scored.appScore >= 88
+        ? "High Conviction"
+        : scored.appScore >= 76
+          ? "Buy"
+          : "Watch",
     title,
     summary: summaryParts.length
       ? `Why it stands out: ${summaryParts.join(", ")}.`
@@ -751,7 +867,7 @@ function buildSignalRow(
     price_confirmed:
       context.breakout_20d === true ||
       context.breakout_10d === true ||
-      (context.volume_ratio ?? 0) >= 1.3,
+      (context.volume_ratio ?? 0) >= 1.35,
     earnings_surprise_pct: null,
     revenue_growth_pct: null,
     guidance_flag: filingSummary?.hasCatalystForm === true,
@@ -773,7 +889,14 @@ function buildSignalRow(
     last_scored_at: runTimestamp,
     updated_at: runTimestamp,
     created_at: runTimestamp,
-    score_breakdown: scored.breakdown,
+    score_breakdown: {
+      ...scored.breakdown,
+      signal_family_count: scored.signalFamilyCount,
+      sector_count: scored.sectorCount,
+      industry_count: scored.industryCount,
+      sector_share: scored.sectorShare,
+      industry_share: scored.industryShare,
+    },
     score_version: SCORE_VERSION,
     score_updated_at: runTimestamp,
     stacked_signal_count:
@@ -781,7 +904,7 @@ function buildSignalRow(
       (filingSummary?.insiderFormCount || 0) +
       (filingSummary?.ownershipFormCount || 0) +
       (filingSummary?.catalystFormCount || 0) +
-      1,
+      (scored.signalFamilyCount >= 2 ? 1 : 0),
     signal_reasons: scored.reasons,
     score_caps_applied: scored.caps,
     ticker_score_change_1d: null,
@@ -886,7 +1009,6 @@ async function loadCandidateContext(
       .select(
         "id, company_id, ticker, cik, name, is_active, is_eligible, has_insider_trades, has_ptr_forms, has_clusters, eligibility_reason, price, market_cap, pe_ratio, pe_forward, pe_type, sector, industry, business_description, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, relative_strength_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, passes_price, passes_volume, passes_dollar_volume, passes_market_cap, candidate_score, included, screen_reason, last_screened_at, updated_at, screened_on"
       )
-      .eq("screened_on", latestScreenedOn)
       .gte("candidate_score", MIN_CANDIDATE_SCORE)
       .order("candidate_score", { ascending: false })
       .limit(limit)
@@ -1065,6 +1187,7 @@ export async function GET(request: Request) {
 
     const filingSummaryMap = buildFilingSummaryMap(filings)
     const ptrSummaryMap = buildPtrSummaryMap(ptrTrades)
+    const breadthStats = buildMarketBreadthStats(candidateRows)
 
     diagnostics.tickersWithFilings = filingSummaryMap.size
     diagnostics.tickersWithPtrSupport = ptrSummaryMap.size
@@ -1083,6 +1206,7 @@ export async function GET(request: Request) {
         context,
         filingSummary,
         ptrSummary,
+        breadthStats,
         runDate,
         runTimestamp
       )
@@ -1194,7 +1318,7 @@ export async function GET(request: Request) {
       retentionCleanup: retentionMessage,
       diagnostics,
       message:
-        "Priority signals generated using PTR support first, filings second, and technical confirmation third.",
+        "Priority signals generated using stacked PTR, filings, technical confirmation, and crowding-aware penalties.",
     })
   } catch (error: any) {
     return Response.json(

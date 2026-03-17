@@ -119,8 +119,25 @@ type RankedRow = {
   row: CandidateHistoryRow
   ptrSummary: PtrSignalSummary | null
   selectionScore: number
+  adjustedSelectionScore: number
   bucket: "strict" | "balanced" | "fallback"
   reasons: string[]
+  sector: string
+  industry: string
+  sectorCrowdingShare: number
+  industryCrowdingShare: number
+  signalFamilyCount: number
+}
+
+type BreadthStats = {
+  sectorCounts: Map<string, number>
+  industryCounts: Map<string, number>
+  totalRows: number
+}
+
+type SelectionState = {
+  sectorCounts: Map<string, number>
+  industryCounts: Map<string, number>
 }
 
 const DEFAULT_LIMIT = 30
@@ -131,13 +148,16 @@ const MAX_TARGET_MIN = 24
 const MAX_FINAL_CANDIDATES = 30
 const DB_CHUNK_SIZE = 250
 
-const STRICT_MIN_SCORE = 62
-const BALANCED_MIN_SCORE = 56
-const FALLBACK_MIN_SCORE = 50
+const STRICT_MIN_SCORE = 64
+const BALANCED_MIN_SCORE = 58
+const FALLBACK_MIN_SCORE = 52
 
 const PTR_LOOKBACK_DAYS = 45
 const PTR_RECENT_DAYS = 14
 const MAX_PTR_BONUS = 8
+
+const BASE_MAX_PER_SECTOR = 3
+const BASE_MAX_PER_INDUSTRY = 2
 
 function chunkArray<T>(items: T[], size: number) {
   const chunks: T[][] = []
@@ -149,6 +169,10 @@ function chunkArray<T>(items: T[], size: number) {
 
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
+}
+
+function normalizeLabel(value: string | null | undefined) {
+  return (value || "").trim()
 }
 
 function uniqueStrings(values: (string | null | undefined)[]) {
@@ -192,12 +216,89 @@ async function deleteAllUniverseRows(table: any) {
   return error ? error.message : null
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
 function getPtrMetrics(ptr: PtrSignalSummary | null | undefined) {
   return {
     ptrBonus: ptr?.ptrBonus ?? 0,
     buyTradeCount: ptr?.buyTradeCount ?? 0,
     recentBuyCount: ptr?.recentBuyCount ?? 0,
+    uniqueFilers: ptr?.uniqueFilers ?? 0,
   }
+}
+
+function getSignalFamilyCount(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
+  const hasPtr = Boolean((ptr?.buyTradeCount ?? 0) > 0)
+  const hasFiling =
+    Boolean(row.has_insider_trades) ||
+    Boolean(row.has_ptr_forms) ||
+    String(row.eligibility_reason || "").includes("high_priority_filings")
+  const hasTechnical =
+    Boolean(row.above_sma_20) ||
+    Boolean(row.breakout_20d) ||
+    Boolean(row.breakout_10d) ||
+    (row.relative_strength_20d ?? -999) >= 1 ||
+    (row.volume_ratio ?? 0) >= 1
+
+  return Number(hasPtr) + Number(hasFiling) + Number(hasTechnical)
+}
+
+function buildBreadthStats(rows: CandidateHistoryRow[]) {
+  const sectorCounts = new Map<string, number>()
+  const industryCounts = new Map<string, number>()
+
+  for (const row of rows) {
+    const sector = normalizeLabel(row.sector)
+    const industry = normalizeLabel(row.industry)
+
+    if (sector) {
+      sectorCounts.set(sector, (sectorCounts.get(sector) || 0) + 1)
+    }
+
+    if (industry) {
+      industryCounts.set(industry, (industryCounts.get(industry) || 0) + 1)
+    }
+  }
+
+  return {
+    sectorCounts,
+    industryCounts,
+    totalRows: rows.length,
+  }
+}
+
+function getSectorCrowdingShare(
+  row: CandidateHistoryRow,
+  breadthStats: BreadthStats
+) {
+  const sector = normalizeLabel(row.sector)
+  if (!sector || breadthStats.totalRows <= 0) return 0
+  return (breadthStats.sectorCounts.get(sector) || 0) / breadthStats.totalRows
+}
+
+function getIndustryCrowdingShare(
+  row: CandidateHistoryRow,
+  breadthStats: BreadthStats
+) {
+  const industry = normalizeLabel(row.industry)
+  if (!industry || breadthStats.totalRows <= 0) return 0
+  return (breadthStats.industryCounts.get(industry) || 0) / breadthStats.totalRows
+}
+
+function getDynamicSectorCap(row: CandidateHistoryRow, breadthStats: BreadthStats) {
+  const share = getSectorCrowdingShare(row, breadthStats)
+  if (share >= 0.22) return 2
+  if (share >= 0.14) return 2
+  return BASE_MAX_PER_SECTOR
+}
+
+function getDynamicIndustryCap(row: CandidateHistoryRow, breadthStats: BreadthStats) {
+  const share = getIndustryCrowdingShare(row, breadthStats)
+  if (share >= 0.14) return 1
+  if (share >= 0.1) return 1
+  return BASE_MAX_PER_INDUSTRY
 }
 
 function isStrictEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
@@ -210,10 +311,10 @@ function isStrictEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null
     row.passes_market_cap &&
     row.above_sma_20 &&
     ((row.candidate_score ?? 0) >= STRICT_MIN_SCORE || ptrBonus >= 4) &&
-    ((row.return_20d ?? -999) >= 2 || buyTradeCount > 0) &&
+    ((row.return_20d ?? -999) >= 1 || buyTradeCount > 0) &&
     ((row.relative_strength_20d ?? -999) >= 0.5 || buyTradeCount > 0) &&
-    ((row.volume_ratio ?? 0) >= 0.7 || recentBuyCount > 0) &&
-    (row.extension_from_sma20_pct ?? 999) <= 18 &&
+    ((row.volume_ratio ?? 0) >= 0.75 || recentBuyCount > 0) &&
+    (row.extension_from_sma20_pct ?? 999) <= 16 &&
     (row.close_in_day_range ?? 0) >= 0.35
   )
 }
@@ -228,10 +329,10 @@ function isBalancedEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | nu
     row.passes_market_cap &&
     row.above_sma_20 &&
     ((row.candidate_score ?? 0) >= BALANCED_MIN_SCORE || ptrBonus >= 3) &&
-    ((row.return_20d ?? -999) >= 0 || buyTradeCount > 0) &&
+    ((row.return_20d ?? -999) >= -1 || buyTradeCount > 0) &&
     ((row.relative_strength_20d ?? -999) >= -0.5 || buyTradeCount > 0) &&
-    ((row.volume_ratio ?? 0) >= 0.6 || recentBuyCount > 0) &&
-    (row.extension_from_sma20_pct ?? 999) <= 20
+    ((row.volume_ratio ?? 0) >= 0.65 || recentBuyCount > 0) &&
+    (row.extension_from_sma20_pct ?? 999) <= 19
   )
 }
 
@@ -245,10 +346,10 @@ function isFallbackEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | nu
     row.passes_market_cap &&
     row.above_sma_20 &&
     ((row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE || ptrBonus >= 2) &&
-    ((row.return_20d ?? -999) >= -2 || buyTradeCount > 0) &&
+    ((row.return_20d ?? -999) >= -3 || buyTradeCount > 0) &&
     ((row.relative_strength_20d ?? -999) >= -2 || buyTradeCount > 0) &&
-    ((row.volume_ratio ?? 0) >= 0.5 || recentBuyCount > 0) &&
-    (row.extension_from_sma20_pct ?? 999) <= 24
+    ((row.volume_ratio ?? 0) >= 0.55 || recentBuyCount > 0) &&
+    (row.extension_from_sma20_pct ?? 999) <= 23
   )
 }
 
@@ -317,14 +418,29 @@ function buildPtrSignalMap(rows: RawPtrTradeRow[]) {
 
 function getSelectionScore(
   row: CandidateHistoryRow,
-  ptr: PtrSignalSummary | null | undefined
+  ptr: PtrSignalSummary | null | undefined,
+  breadthStats: BreadthStats
 ) {
   let score = Number(row.candidate_score ?? 0)
   const reasons: string[] = []
 
+  const signalFamilyCount = getSignalFamilyCount(row, ptr)
+  const sectorCrowdingShare = getSectorCrowdingShare(row, breadthStats)
+  const industryCrowdingShare = getIndustryCrowdingShare(row, breadthStats)
+
   if (ptr?.ptrBonus) {
-    score += ptr.ptrBonus + 3
-    reasons.push(`PTR priority +${ptr.ptrBonus + 3}`)
+    score += ptr.ptrBonus + 4
+    reasons.push(`PTR support +${ptr.ptrBonus + 4}`)
+  }
+
+  if ((ptr?.buyTradeCount ?? 0) >= 2) {
+    score += 2
+    reasons.push("multiple PTR buys")
+  }
+
+  if ((ptr?.uniqueFilers ?? 0) >= 2) {
+    score += 2
+    reasons.push("multiple PTR filers")
   }
 
   if (row.has_insider_trades) {
@@ -337,9 +453,25 @@ function getSelectionScore(
     reasons.push("high-priority filing support")
   }
 
+  if (row.has_ptr_forms) {
+    score += 2
+    reasons.push("ownership or PTR filing support")
+  }
+
   if (row.has_clusters) {
     score += 2
-    reasons.push("signal support")
+    reasons.push("cluster support")
+  }
+
+  if (signalFamilyCount >= 3) {
+    score += 5
+    reasons.push("three signal families aligned")
+  } else if (signalFamilyCount >= 2) {
+    score += 2.5
+    reasons.push("multi-signal alignment")
+  } else {
+    score -= 4
+    reasons.push("single-signal setup")
   }
 
   if (row.above_sma_20) {
@@ -348,80 +480,115 @@ function getSelectionScore(
   }
 
   if ((row.return_10d ?? 0) >= 1) {
-    score += 2
+    score += 1.5
     reasons.push("10d momentum")
   }
 
-  if ((row.return_20d ?? 0) >= 3) {
+  if ((row.return_20d ?? 0) >= 3 && (row.return_20d ?? 0) <= 14) {
     score += 3
-    reasons.push("20d momentum")
-  } else if ((row.return_20d ?? 0) >= 0) {
-    score += 1.5
+    reasons.push("constructive 20d momentum")
+  } else if ((row.return_20d ?? 0) >= 0 && (row.return_20d ?? 0) < 3) {
+    score += 1.25
+    reasons.push("positive 20d momentum")
+  } else if ((row.return_20d ?? 0) > 18 && !(ptr?.buyTradeCount ?? 0)) {
+    score -= 4
+    reasons.push("too extended on 20d move")
   }
 
-  if ((row.relative_strength_20d ?? 0) >= 3) {
+  if ((row.return_5d ?? 0) >= 10 && !(ptr?.recentBuyCount ?? 0)) {
+    score -= 3
+    reasons.push("sharp 5d move without fresh PTR support")
+  }
+
+  if ((row.relative_strength_20d ?? 0) >= 4) {
     score += 3
     reasons.push("strong relative strength")
-  } else if ((row.relative_strength_20d ?? 0) >= 1) {
+  } else if ((row.relative_strength_20d ?? 0) >= 2) {
     score += 2
-  } else if ((row.relative_strength_20d ?? 0) >= -0.5) {
+  } else if ((row.relative_strength_20d ?? 0) >= 0) {
     score += 1
   }
 
-  if ((row.volume_ratio ?? 0) >= 1.3) {
+  if ((row.volume_ratio ?? 0) >= 1.4 && (row.volume_ratio ?? 0) <= 2.5) {
     score += 2
-    reasons.push("volume expansion")
-  } else if ((row.volume_ratio ?? 0) >= 0.9) {
+    reasons.push("healthy volume expansion")
+  } else if ((row.volume_ratio ?? 0) >= 1.0) {
     score += 1
+  } else if ((row.volume_ratio ?? 0) >= 3 && !(ptr?.recentBuyCount ?? 0)) {
+    score -= 1.5
+    reasons.push("possible event-driven volume spike")
   }
 
   if (row.breakout_20d) {
-    score += 2.5
+    score += 2
     reasons.push("20d breakout")
   } else if (row.breakout_10d) {
-    score += 1.5
+    score += 1.25
     reasons.push("10d breakout")
-  } else if ((row.breakout_clearance_pct ?? -999) >= -1) {
-    score += 0.75
+  } else if ((row.breakout_clearance_pct ?? -999) >= -0.6) {
+    score += 0.5
     reasons.push("near breakout")
   }
 
-  if ((row.close_in_day_range ?? 0) >= 0.6) {
+  if ((row.close_in_day_range ?? 0) >= 0.65) {
     score += 1.5
     reasons.push("strong close")
-  } else if ((row.close_in_day_range ?? 0) >= 0.45) {
+  } else if ((row.close_in_day_range ?? 0) >= 0.5) {
     score += 0.5
   }
 
-  if ((row.extension_from_sma20_pct ?? 999) <= 14) {
-    score += 1
+  if ((row.extension_from_sma20_pct ?? 999) <= 12) {
+    score += 1.5
     reasons.push("not too extended")
+  } else if ((row.extension_from_sma20_pct ?? 999) > 16) {
+    score -= 2
+    reasons.push("extended from trend")
   } else if ((row.extension_from_sma20_pct ?? 999) > 20) {
-    score -= 1.5
+    score -= 3.5
     reasons.push("too extended")
   }
 
   if ((row.avg_dollar_volume_20d ?? 0) >= 50_000_000) {
     score += 1.5
     reasons.push("strong liquidity")
-  } else if ((row.avg_dollar_volume_20d ?? 0) >= 35_000_000) {
-    score += 0.5
+  } else if ((row.avg_dollar_volume_20d ?? 0) >= 30_000_000) {
+    score += 0.75
+  }
+
+  if (sectorCrowdingShare >= 0.22) {
+    score -= 5
+    reasons.push(`crowded sector (${normalizeLabel(row.sector)})`)
+  } else if (sectorCrowdingShare >= 0.14) {
+    score -= 2.5
+    reasons.push(`busy sector (${normalizeLabel(row.sector)})`)
+  }
+
+  if (industryCrowdingShare >= 0.14) {
+    score -= 4
+    reasons.push(`crowded industry (${normalizeLabel(row.industry)})`)
+  } else if (industryCrowdingShare >= 0.1) {
+    score -= 2
+    reasons.push(`busy industry (${normalizeLabel(row.industry)})`)
   }
 
   return {
     selectionScore: Math.round(score * 100) / 100,
-    reasons,
+    reasons: uniqueStrings(reasons),
+    sectorCrowdingShare,
+    industryCrowdingShare,
+    signalFamilyCount,
   }
 }
 
 function buildRankedRows(
   rows: CandidateHistoryRow[],
-  ptrMap: Map<string, PtrSignalSummary>
+  ptrMap: Map<string, PtrSignalSummary>,
+  breadthStats: BreadthStats
 ): RankedRow[] {
   return rows
     .map((row) => {
       const ptrSummary = ptrMap.get(normalizeTicker(row.ticker)) ?? null
-      const { selectionScore, reasons } = getSelectionScore(row, ptrSummary)
+      const scoreResult = getSelectionScore(row, ptrSummary, breadthStats)
 
       let bucket: "strict" | "balanced" | "fallback" = "fallback"
       if (isStrictEligible(row, ptrSummary)) bucket = "strict"
@@ -429,12 +596,23 @@ function buildRankedRows(
       else if (isFallbackEligible(row, ptrSummary)) bucket = "fallback"
       else return null
 
+      let adjustedSelectionScore = scoreResult.selectionScore
+
+      if (bucket === "strict") adjustedSelectionScore += 2
+      else if (bucket === "balanced") adjustedSelectionScore += 1
+
       return {
         row,
         ptrSummary,
-        selectionScore,
+        selectionScore: scoreResult.selectionScore,
+        adjustedSelectionScore: Math.round(adjustedSelectionScore * 100) / 100,
         bucket,
-        reasons,
+        reasons: scoreResult.reasons,
+        sector: normalizeLabel(row.sector),
+        industry: normalizeLabel(row.industry),
+        sectorCrowdingShare: scoreResult.sectorCrowdingShare,
+        industryCrowdingShare: scoreResult.industryCrowdingShare,
+        signalFamilyCount: scoreResult.signalFamilyCount,
       }
     })
     .filter((item): item is RankedRow => item !== null)
@@ -444,8 +622,16 @@ function buildRankedRows(
         return bucketRank[b.bucket] - bucketRank[a.bucket]
       }
 
-      if (b.selectionScore !== a.selectionScore) {
-        return b.selectionScore - a.selectionScore
+      if (b.adjustedSelectionScore !== a.adjustedSelectionScore) {
+        return b.adjustedSelectionScore - a.adjustedSelectionScore
+      }
+
+      if (b.signalFamilyCount !== a.signalFamilyCount) {
+        return b.signalFamilyCount - a.signalFamilyCount
+      }
+
+      if ((b.ptrSummary?.ptrBonus ?? 0) !== (a.ptrSummary?.ptrBonus ?? 0)) {
+        return (b.ptrSummary?.ptrBonus ?? 0) - (a.ptrSummary?.ptrBonus ?? 0)
       }
 
       if ((b.row.candidate_score ?? 0) !== (a.row.candidate_score ?? 0)) {
@@ -468,45 +654,164 @@ function buildRankedRows(
     })
 }
 
-function selectFinalRows(ranked: RankedRow[], limit: number, targetMin: number) {
+function canAddRow(
+  item: RankedRow,
+  state: SelectionState,
+  breadthStats: BreadthStats,
+  relaxed: boolean
+) {
+  const sector = item.sector
+  const industry = item.industry
+
+  const sectorCount = sector ? state.sectorCounts.get(sector) || 0 : 0
+  const industryCount = industry ? state.industryCounts.get(industry) || 0 : 0
+
+  const sectorCap = getDynamicSectorCap(item.row, breadthStats) + (relaxed ? 1 : 0)
+  const industryCap = getDynamicIndustryCap(item.row, breadthStats) + (relaxed ? 1 : 0)
+
+  if (sector && sectorCount >= sectorCap) return false
+  if (industry && industryCount >= industryCap) return false
+
+  return true
+}
+
+function addRowToState(item: RankedRow, state: SelectionState) {
+  if (item.sector) {
+    state.sectorCounts.set(item.sector, (state.sectorCounts.get(item.sector) || 0) + 1)
+  }
+
+  if (item.industry) {
+    state.industryCounts.set(item.industry, (state.industryCounts.get(item.industry) || 0) + 1)
+  }
+}
+
+function selectWithCaps(
+  source: RankedRow[],
+  selected: RankedRow[],
+  state: SelectionState,
+  breadthStats: BreadthStats,
+  maxToAdd: number,
+  relaxed: boolean
+) {
+  const selectedTickers = new Set(selected.map((item) => normalizeTicker(item.row.ticker)))
+  let added = 0
+
+  for (const item of source) {
+    if (added >= maxToAdd) break
+
+    const ticker = normalizeTicker(item.row.ticker)
+    if (!ticker || selectedTickers.has(ticker)) continue
+
+    if (!canAddRow(item, state, breadthStats, relaxed)) continue
+
+    selected.push(item)
+    selectedTickers.add(ticker)
+    addRowToState(item, state)
+    added += 1
+  }
+}
+
+function fillRemainingWithBestAllowed(
+  ranked: RankedRow[],
+  selected: RankedRow[],
+  state: SelectionState,
+  breadthStats: BreadthStats,
+  limit: number,
+  relaxed: boolean
+) {
+  const selectedTickers = new Set(selected.map((item) => normalizeTicker(item.row.ticker)))
+
+  for (const item of ranked) {
+    if (selected.length >= limit) break
+
+    const ticker = normalizeTicker(item.row.ticker)
+    if (!ticker || selectedTickers.has(ticker)) continue
+    if (!canAddRow(item, state, breadthStats, relaxed)) continue
+
+    selected.push(item)
+    selectedTickers.add(ticker)
+    addRowToState(item, state)
+  }
+}
+
+function selectFinalRows(
+  ranked: RankedRow[],
+  limit: number,
+  targetMin: number,
+  breadthStats: BreadthStats
+) {
   const strictRows = ranked.filter((item) => item.bucket === "strict")
   const balancedRows = ranked.filter((item) => item.bucket === "balanced")
   const fallbackRows = ranked.filter((item) => item.bucket === "fallback")
 
-  let selected: RankedRow[] = []
+  const selected: RankedRow[] = []
+  const state: SelectionState = {
+    sectorCounts: new Map<string, number>(),
+    industryCounts: new Map<string, number>(),
+  }
 
-  selected.push(...strictRows.slice(0, Math.min(14, limit)))
+  selectWithCaps(strictRows, selected, state, breadthStats, Math.min(12, limit), false)
 
   if (selected.length < targetMin) {
-    const needed = targetMin - selected.length
-    selected.push(...balancedRows.slice(0, Math.max(needed, 8)))
+    selectWithCaps(
+      balancedRows,
+      selected,
+      state,
+      breadthStats,
+      Math.min(Math.max(targetMin - selected.length, 6), limit - selected.length),
+      false
+    )
   } else {
-    selected.push(...balancedRows.slice(0, 8))
+    selectWithCaps(
+      balancedRows,
+      selected,
+      state,
+      breadthStats,
+      Math.min(6, limit - selected.length),
+      false
+    )
   }
 
   if (selected.length < targetMin) {
-    const stillNeeded = targetMin - selected.length
-    selected.push(...fallbackRows.slice(0, Math.max(stillNeeded, 6)))
+    selectWithCaps(
+      fallbackRows,
+      selected,
+      state,
+      breadthStats,
+      Math.min(Math.max(targetMin - selected.length, 4), limit - selected.length),
+      false
+    )
   } else {
-    selected.push(...fallbackRows.slice(0, 6))
+    selectWithCaps(
+      fallbackRows,
+      selected,
+      state,
+      breadthStats,
+      Math.min(4, limit - selected.length),
+      false
+    )
   }
 
-  const seen = new Set<string>()
-  const deduped = [...selected, ...strictRows, ...balancedRows, ...fallbackRows].filter((item) => {
-    const ticker = normalizeTicker(item.row.ticker)
-    if (!ticker || seen.has(ticker)) return false
-    seen.add(ticker)
-    return true
-  })
+  if (selected.length < targetMin) {
+    fillRemainingWithBestAllowed(ranked, selected, state, breadthStats, targetMin, true)
+  }
 
-  return deduped.slice(0, limit)
+  if (selected.length < limit) {
+    fillRemainingWithBestAllowed(ranked, selected, state, breadthStats, limit, false)
+  }
+
+  if (selected.length < limit) {
+    fillRemainingWithBestAllowed(ranked, selected, state, breadthStats, limit, true)
+  }
+
+  return selected.slice(0, Math.min(limit, MAX_FINAL_CANDIDATES))
 }
 
 function toUniverseRow(
   ranked: RankedRow,
   selectedSource: string
 ): CandidateUniverseRow {
-  const { row, ptrSummary, selectionScore, bucket, reasons } = ranked
+  const { row, ptrSummary, selectionScore, adjustedSelectionScore, bucket, reasons, signalFamilyCount } = ranked
   const ptrReason = ptrSummary?.summary ? `; ${ptrSummary.summary}` : ""
 
   return {
@@ -549,7 +854,7 @@ function toUniverseRow(
     passes_market_cap: row.passes_market_cap,
     candidate_score: row.candidate_score,
     included: true,
-    screen_reason: `Finalized ${selectedSource} ${bucket} candidate (${row.candidate_score}, selection ${selectionScore}): ${reasons.join(", ")}${ptrReason}`,
+    screen_reason: `Finalized ${selectedSource} ${bucket} candidate (candidate ${row.candidate_score}, selection ${selectionScore}, adjusted ${adjustedSelectionScore}, families ${signalFamilyCount}): ${reasons.join(", ")}${ptrReason}`,
     last_screened_at: row.last_screened_at,
     updated_at: new Date().toISOString(),
   }
@@ -653,7 +958,10 @@ export async function GET(request: Request) {
     }
 
     const scoredRows = snapshotRows.filter(
-      (row) => row.candidate_score !== null && row.candidate_score !== undefined
+      (row) =>
+        row.candidate_score !== null &&
+        row.candidate_score !== undefined &&
+        row.is_active !== false
     )
 
     const snapshotTickers = uniqueStrings(scoredRows.map((row) => row.ticker))
@@ -694,12 +1002,14 @@ export async function GET(request: Request) {
       }
     }
 
-    const rankedRows = buildRankedRows(scoredRows, ptrMap)
+    const breadthStats = buildBreadthStats(scoredRows)
+    const rankedRows = buildRankedRows(scoredRows, ptrMap, breadthStats)
+
     const strictCount = rankedRows.filter((item) => item.bucket === "strict").length
     const balancedCount = rankedRows.filter((item) => item.bucket === "balanced").length
     const fallbackCount = rankedRows.filter((item) => item.bucket === "fallback").length
 
-    const selectedRankedRows = selectFinalRows(rankedRows, limit, targetMin)
+    const selectedRankedRows = selectFinalRows(rankedRows, limit, targetMin, breadthStats)
 
     if (!selectedRankedRows.length) {
       return Response.json(
@@ -800,6 +1110,18 @@ export async function GET(request: Request) {
       ptrMap.has(normalizeTicker(item.row.ticker))
     ).length
 
+    const selectedSectorCounts = selectedRankedRows.reduce<Record<string, number>>((acc, item) => {
+      const sector = normalizeLabel(item.row.sector) || "Unknown"
+      acc[sector] = (acc[sector] || 0) + 1
+      return acc
+    }, {})
+
+    const selectedIndustryCounts = selectedRankedRows.reduce<Record<string, number>>((acc, item) => {
+      const industry = normalizeLabel(item.row.industry) || "Unknown"
+      acc[industry] = (acc[industry] || 0) + 1
+      return acc
+    }, {})
+
     return Response.json({
       ok: true,
       screenedOn,
@@ -812,6 +1134,8 @@ export async function GET(request: Request) {
       finalizedCount: universeRows.length,
       ptrDiagnostics,
       ptrSelectedCount,
+      selectedSectorCounts,
+      selectedIndustryCounts,
       firstTicker: universeRows[0]?.ticker ?? null,
       lastTicker: universeRows[universeRows.length - 1]?.ticker ?? null,
     })
