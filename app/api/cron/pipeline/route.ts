@@ -54,7 +54,7 @@ const PIPELINE_JOB_NAME = "market_signal_pipeline"
 const DEFAULT_SCREEN_BATCH = 25
 const MAX_SCREEN_BATCH = 50
 
-const DEFAULT_FILINGS_BATCH = 50
+const DEFAULT_FILINGS_BATCH = 15
 const DEFAULT_PTRS_BATCH = 100
 const DEFAULT_ELIGIBLE_UNIVERSE_LOOKBACK_DAYS = 30
 
@@ -71,6 +71,7 @@ const DEFAULT_FINAL_CANDIDATES_LIMIT = 30
 const DEFAULT_FINAL_CANDIDATES_TARGET_MIN = 12
 
 const DEFAULT_STEP_TIMEOUT_MS = 50_000
+const FILINGS_STEP_TIMEOUT_MS = 55_000
 const SCREENING_STEP_TIMEOUT_MS = 55_000
 const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
 
@@ -442,7 +443,7 @@ export async function GET(request: NextRequest) {
           start: 0,
           batch: DEFAULT_FILINGS_BATCH,
         }),
-        DEFAULT_STEP_TIMEOUT_MS
+        FILINGS_STEP_TIMEOUT_MS
       )
 
       results.push(filingsResult)
@@ -458,17 +459,24 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      const data = filingsResult.data as any
+      const hasMoreFilings =
+        typeof data?.nextStart === "number" && Number(data.nextStart) > 0
+
       await patchPipelineState(supabase, {
-        stage: "ptrs",
+        stage: hasMoreFilings ? "filings" : "ptrs",
         status: "idle",
-        filings_completed_at: nowIso(),
+        filings_completed_at: hasMoreFilings ? null : nowIso(),
         last_run_finished_at: nowIso(),
       })
 
       return NextResponse.json({
         ok: true,
-        message: "Completed filings step.",
-        nextStage: "ptrs",
+        message: hasMoreFilings
+          ? "Completed one filings batch."
+          : "Completed filings step.",
+        nextStage: hasMoreFilings ? "filings" : "ptrs",
+        nextFilingsStart: hasMoreFilings ? data?.nextStart ?? null : null,
         results,
       })
     }
