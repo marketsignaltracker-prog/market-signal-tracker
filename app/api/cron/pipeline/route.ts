@@ -440,56 +440,65 @@ export async function GET(request: NextRequest) {
     }
 
     if (state.stage === "filings") {
-      const filingsStart = getStageCursor(state)
+  const filingsStart = state.screen_next_start ?? state.screen_start ?? 0
 
-      const filingsResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/ingest/filings", {
-          scope: "all",
-          start: filingsStart,
-          batch: DEFAULT_FILINGS_BATCH,
-        }),
-        FILINGS_STEP_TIMEOUT_MS
-      )
+  const filingsResult = await runStep(
+    baseUrl,
+    withSearchParams("/api/ingest/filings", {
+      scope: "all",
+      start: filingsStart,
+      batch: DEFAULT_FILINGS_BATCH,
+      runRetention: true,
+    }),
+    FILINGS_STEP_TIMEOUT_MS
+  )
 
-      results.push(filingsResult)
+  results.push(filingsResult)
 
-      if (!filingsResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          filingsResult,
-          `Filings step failed: ${String(
-            (filingsResult.data as any)?.error || filingsResult.status
-          )}`
-        )
-      }
+  if (!filingsResult.ok) {
+    return await failPipelineForStep(
+      supabase,
+      results,
+      filingsResult,
+      `Filings step failed: ${String(
+        (filingsResult.data as any)?.error || filingsResult.status
+      )}`
+    )
+  }
 
-      const data = filingsResult.data as any
-      const nextFilingsStart =
-        typeof data?.nextStart === "number" ? Number(data.nextStart) : null
+  const filingsData = filingsResult.data as any
+  const nextFilingsStart =
+    typeof filingsData?.nextStart === "number" ? Number(filingsData.nextStart) : null
 
-      const hasMoreFilings = nextFilingsStart !== null
+  const filingsAreComplete = nextFilingsStart === null
 
-      await patchPipelineState(supabase, {
-        stage: hasMoreFilings ? "filings" : "ptrs",
-        status: "idle",
-        screen_start: hasMoreFilings ? nextFilingsStart : 0,
-        screen_next_start: hasMoreFilings ? nextFilingsStart : 0,
-        filings_completed_at: hasMoreFilings ? null : nowIso(),
-        last_run_finished_at: nowIso(),
-      })
+  state = await patchPipelineState(supabase, {
+    stage: filingsAreComplete ? "ptrs" : "filings",
+    status: "idle",
+    screen_start: filingsAreComplete ? 0 : nextFilingsStart,
+    screen_next_start: filingsAreComplete ? 0 : nextFilingsStart,
+    filings_completed_at: filingsAreComplete ? nowIso() : null,
+    last_run_finished_at: nowIso(),
+  })
 
-      return NextResponse.json({
-        ok: true,
-        message: hasMoreFilings
-          ? "Completed one filings batch."
-          : "Completed filings step.",
-        nextStage: hasMoreFilings ? "filings" : "ptrs",
-        nextFilingsStart,
-        results,
-      })
-    }
+  return NextResponse.json({
+    ok: true,
+    message: filingsAreComplete
+      ? "Completed filings step."
+      : "Completed one filings batch.",
+    nextStage: filingsAreComplete ? "ptrs" : "filings",
+    nextFilingsStart,
+    state: {
+      stage: state.stage,
+      status: state.status,
+      screenStart: state.screen_start,
+      screenNextStart: state.screen_next_start,
+      screenBatch: state.screen_batch,
+      screenTotal: state.screen_total,
+    },
+    results,
+  })
+}
 
     if (state.stage === "ptrs") {
       const ptrsStart = getStageCursor(state)
