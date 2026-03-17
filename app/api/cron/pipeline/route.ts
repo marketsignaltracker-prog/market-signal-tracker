@@ -146,6 +146,10 @@ function clampScreenBatch(batch: number | null | undefined) {
   )
 }
 
+function getStageCursor(state: PipelineStateRow) {
+  return state.screen_next_start ?? state.screen_start ?? 0
+}
+
 async function runStep(
   baseUrl: string,
   path: string,
@@ -436,11 +440,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (state.stage === "filings") {
+      const filingsStart = getStageCursor(state)
+
       const filingsResult = await runStep(
         baseUrl,
         withSearchParams("/api/ingest/filings", {
           scope: "all",
-          start: 0,
+          start: filingsStart,
           batch: DEFAULT_FILINGS_BATCH,
         }),
         FILINGS_STEP_TIMEOUT_MS
@@ -460,12 +466,16 @@ export async function GET(request: NextRequest) {
       }
 
       const data = filingsResult.data as any
-      const hasMoreFilings =
-        typeof data?.nextStart === "number" && Number(data.nextStart) > 0
+      const nextFilingsStart =
+        typeof data?.nextStart === "number" ? Number(data.nextStart) : null
+
+      const hasMoreFilings = nextFilingsStart !== null
 
       await patchPipelineState(supabase, {
         stage: hasMoreFilings ? "filings" : "ptrs",
         status: "idle",
+        screen_start: hasMoreFilings ? nextFilingsStart : 0,
+        screen_next_start: hasMoreFilings ? nextFilingsStart : 0,
         filings_completed_at: hasMoreFilings ? null : nowIso(),
         last_run_finished_at: nowIso(),
       })
@@ -476,17 +486,19 @@ export async function GET(request: NextRequest) {
           ? "Completed one filings batch."
           : "Completed filings step.",
         nextStage: hasMoreFilings ? "filings" : "ptrs",
-        nextFilingsStart: hasMoreFilings ? data?.nextStart ?? null : null,
+        nextFilingsStart,
         results,
       })
     }
 
     if (state.stage === "ptrs") {
+      const ptrsStart = getStageCursor(state)
+
       const ptrsResult = await runStep(
         baseUrl,
         withSearchParams("/api/ingest/ptrs", {
           scope: "all",
-          start: 0,
+          start: ptrsStart,
           batch: DEFAULT_PTRS_BATCH,
         }),
         DEFAULT_STEP_TIMEOUT_MS
@@ -505,16 +517,27 @@ export async function GET(request: NextRequest) {
         )
       }
 
+      const data = ptrsResult.data as any
+      const nextPtrsStart =
+        typeof data?.nextStart === "number" ? Number(data.nextStart) : null
+
+      const hasMorePtrs = nextPtrsStart !== null
+
       await patchPipelineState(supabase, {
-        stage: "eligible_universe",
+        stage: hasMorePtrs ? "ptrs" : "eligible_universe",
         status: "idle",
+        screen_start: hasMorePtrs ? nextPtrsStart : 0,
+        screen_next_start: hasMorePtrs ? nextPtrsStart : 0,
         last_run_finished_at: nowIso(),
       })
 
       return NextResponse.json({
         ok: true,
-        message: "Completed PTR step.",
-        nextStage: "eligible_universe",
+        message: hasMorePtrs
+          ? "Completed one PTR batch."
+          : "Completed PTR step.",
+        nextStage: hasMorePtrs ? "ptrs" : "eligible_universe",
+        nextPtrsStart,
         results,
       })
     }
@@ -564,7 +587,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (state.stage === "screening") {
-      const nextStart = state.screen_next_start ?? state.screen_start ?? 0
+      const nextStart = getStageCursor(state)
       const batchSize = clampScreenBatch(
         parseInteger(String(state.screen_batch), DEFAULT_SCREEN_BATCH)
       )
@@ -608,7 +631,7 @@ export async function GET(request: NextRequest) {
       await patchPipelineState(supabase, {
         stage: returnedNextStart === null ? "signals" : "screening",
         status: "idle",
-        screen_start: nextStart,
+        screen_start: returnedNextStart ?? 0,
         screen_batch: batchSize,
         screen_total: returnedTotalCompanies,
         screen_next_start: returnedNextStart,
