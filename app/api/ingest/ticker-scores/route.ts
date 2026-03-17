@@ -701,10 +701,6 @@ function buildTickerScoresCurrentRows(
       scoreCapsApplied.add("sharp-move-penalty")
     }
 
-    if ((primary.price_return_10dFrom20dProxy ?? 0) > 0) {
-      // intentionally unused placeholder removed in data model; no-op
-    }
-
     if ((primary.price_return_20d ?? 0) >= 20 && !ptr?.buyCluster && !has13D) {
       stackedScore -= 5
       scoreBreakdown.chase_penalty = round2((scoreBreakdown.chase_penalty || 0) - 5) ?? 0
