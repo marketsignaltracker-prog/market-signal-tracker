@@ -675,9 +675,16 @@ function buildTickerScoresCurrentRows(
       stackedScore += 3
       scoreBreakdown.family_diversity = round2((scoreBreakdown.family_diversity || 0) + 3) ?? 0
     } else {
-      stackedScore -= 5
-      scoreBreakdown.family_diversity = round2((scoreBreakdown.family_diversity || 0) - 5) ?? 0
-      scoreCapsApplied.add("single-family-penalty")
+      // Strong cluster buy (3+ insiders) exempts from single-family penalty
+      if ((primary.cluster_buyers ?? 0) >= 3) {
+        stackedScore += 2
+        scoreBreakdown.family_diversity = round2((scoreBreakdown.family_diversity || 0) + 2) ?? 0
+        scoreCapsApplied.add("cluster-conviction-exemption")
+      } else {
+        stackedScore -= 5
+        scoreBreakdown.family_diversity = round2((scoreBreakdown.family_diversity || 0) - 5) ?? 0
+        scoreCapsApplied.add("single-family-penalty")
+      }
     }
 
     const positivePillars = countPositiveEvidencePillars(scoreBreakdown)
@@ -743,13 +750,30 @@ function buildTickerScoresCurrentRows(
       }
     }
 
+    // Score momentum: reward tickers whose score is trending up
+    // The primary row is `sorted[0]` which has ticker_score_change_7d
+    const primaryScoreChange7d = primary.ticker_score_change_7d ?? null
+    if (primaryScoreChange7d !== null) {
+      if (primaryScoreChange7d >= 8) {
+        stackedScore += 3
+        scoreBreakdown.momentum = round2((scoreBreakdown.momentum || 0) + 3) ?? 0
+      } else if (primaryScoreChange7d >= 4) {
+        stackedScore += 1.5
+        scoreBreakdown.momentum = round2((scoreBreakdown.momentum || 0) + 1.5) ?? 0
+      } else if (primaryScoreChange7d <= -8) {
+        stackedScore -= 2
+        scoreBreakdown.momentum = round2((scoreBreakdown.momentum || 0) - 2) ?? 0
+        scoreCapsApplied.add("score-declining")
+      }
+    }
+
     if (primaryScore < minCombinedScore && !ptr?.strongBuying && maxSignalFamilyCount < 3) {
       continue
     }
 
     let finalScore = clamp(Math.round(stackedScore), 0, 100)
 
-    if (maxSignalFamilyCount < 2) {
+    if (maxSignalFamilyCount < 2 && (primary.cluster_buyers ?? 0) < 3) {
       finalScore = Math.min(finalScore, 76)
       scoreCapsApplied.add("single-family-cap")
     }
