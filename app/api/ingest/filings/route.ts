@@ -294,6 +294,66 @@ function buildRecentRowsFromSubmission(params: {
   const rows: RawFilingInsertRow[] = []
   let unsupportedFormsSkipped = 0
 
+  // 🔥 ADD THIS
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 30)
+
+  for (let i = 0; i < maxLen; i += 1) {
+    const accessionNo = String(accessionNumbers[i] || "").trim()
+    const filedAtRaw = String(filingDates[i] || "").trim()
+    const rawForm = String(forms[i] || "").trim()
+    const formType = normalizeFormType(rawForm)
+    const primaryDoc = String(primaryDocuments[i] || "").trim() || null
+
+    if (!accessionNo || !formType || !filedAtRaw) continue
+
+    const filedAtDate = new Date(filedAtRaw)
+
+    // 🔥 HARD FILTER: only last 30 days
+    if (filedAtDate < cutoff) {
+      continue
+    }
+
+    if (!shouldKeepForm(formType)) {
+      unsupportedFormsSkipped += 1
+      continue
+    }
+
+    rows.push({
+      company_id: sourceRow.company_id,
+      ticker: sourceRow.ticker,
+      company_name: sourceRow.name ?? submission.name ?? null,
+      filed_at: filedAtRaw,
+      form_type: formType,
+      filing_url: buildFilingUrl(sourceRow.cik, accessionNo, primaryDoc),
+      accession_no: accessionNo,
+      cik: sourceRow.cik,
+      primary_doc: primaryDoc,
+      fetched_at: fetchedAt,
+    })
+  }
+
+  return {
+    rows,
+    unsupportedFormsSkipped,
+  }
+}
+
+  const accessionNumbers = recent.accessionNumber || []
+  const filingDates = recent.filingDate || []
+  const forms = recent.form || []
+  const primaryDocuments = recent.primaryDocument || []
+
+  const maxLen = Math.max(
+    accessionNumbers.length,
+    filingDates.length,
+    forms.length,
+    primaryDocuments.length
+  )
+
+  const rows: RawFilingInsertRow[] = []
+  let unsupportedFormsSkipped = 0
+
   for (let i = 0; i < maxLen; i += 1) {
     const accessionNo = String(accessionNumbers[i] || "").trim()
     const filedAt = String(filingDates[i] || "").trim() || null
