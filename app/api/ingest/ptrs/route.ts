@@ -26,7 +26,6 @@ type RawPtrTradeRow = {
   fetched_at: string
   updated_at: string
 
-  // New-model compatibility columns
   politician_name: string
   transaction_type: "buy" | "sell" | "exchange" | "unknown"
   trade_date: string | null
@@ -65,7 +64,11 @@ type CandidateScreenHistoryRow = {
   is_active?: boolean | null
 }
 
-type SourceRow = CompanyRow | CandidateUniverseRow | CandidateScreenHistoryRow
+type RecentFilingTickerRow = {
+  ticker: string | null
+}
+
+type SourceRow = CompanyRow | CandidateUniverseRow | CandidateScreenHistoryRow | RecentFilingTickerRow
 
 type AInvestTradeRow = {
   ticker?: string | null
@@ -155,6 +158,7 @@ type Diagnostics = {
   companiesRowsLoaded: number
   candidateUniverseRowsLoaded: number
   candidateScreenHistoryRowsLoaded: number
+  filingDrivenRowsLoaded: number
   sourceRowsLoaded: number
   fallbackCandidateHistoryUsed: boolean
   successfulTickerFetches: number
@@ -173,6 +177,8 @@ const DEFAULT_START = 0
 const DEFAULT_LIMIT_PER_TICKER = 20
 const MAX_LIMIT_PER_TICKER = 50
 const CANDIDATE_LOOKBACK_DAYS = 30
+const PTR_LOOKBACK_DAYS = 30
+const RETENTION_DAYS = 30
 const AINVEST_CONGRESS_URL = "https://openapi.ainvest.com/open/ownership/congress"
 
 function getSupabaseAdmin() {
@@ -392,6 +398,45 @@ async function upsertRows(supabase: any, rows: RawPtrTradeRow[]) {
   return inserted
 }
 
+async function loadRecentForm4TickersContext(
+  supabase: any,
+  start: number,
+  batch: number
+): Promise<{
+  rows: RecentFilingTickerRow[]
+  filingDrivenRowsLoaded: number
+}> {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - PTR_LOOKBACK_DAYS)
+  const cutoffIso = cutoff.toISOString()
+
+  const { data, error } = await supabase
+    .from("raw_filings")
+    .select("ticker")
+    .eq("form_type", "4")
+    .gte("filed_at", cutoffIso)
+    .not("ticker", "is", null)
+
+  if (error) throw error
+
+  const uniqueTickers = Array.from(
+    new Set(
+      ((data || []) as RecentFilingTickerRow[])
+        .map((row) => normalizeTicker(row.ticker))
+        .filter((ticker): ticker is string => Boolean(ticker))
+    )
+  ).sort((a, b) => a.localeCompare(b))
+
+  const page = uniqueTickers
+    .slice(start, start + batch)
+    .map((ticker) => ({ ticker }))
+
+  return {
+    rows: page,
+    filingDrivenRowsLoaded: uniqueTickers.length,
+  }
+}
+
 async function loadCompaniesContext(
   supabase: any,
   start: number,
@@ -597,7 +642,7 @@ function normalizeAInvestTrade(
   if (!effectiveDate) return null
 
   const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - 30)
+  cutoff.setDate(cutoff.getDate() - PTR_LOOKBACK_DAYS)
 
   const effectiveDateObj = new Date(`${effectiveDate}T00:00:00.000Z`)
   if (Number.isNaN(effectiveDateObj.getTime())) return null
@@ -636,14 +681,8 @@ function normalizeAInvestTrade(
     asset_type: row.asset_type || row.assetType || "Stock",
     action: normalizedAction,
     amount_range: amountRange,
-    amount_low:
-      safeNumber(row.amountLow) ??
-      safeNumber(row.amount_low) ??
-      amounts.amount_low,
-    amount_high:
-      safeNumber(row.amountHigh) ??
-      safeNumber(row.amount_high) ??
-      amounts.amount_high,
+    amount_low: safeNumber(row.amountLow) ?? safeNumber(row.amount_low) ?? amounts.amount_low,
+    amount_high: safeNumber(row.amountHigh) ?? safeNumber(row.amount_high) ?? amounts.amount_high,
     owner: row.owner || null,
     ptr_url: ptrUrl,
     raw_document_url: ptrUrl,
@@ -680,7 +719,7 @@ export async function GET(request: Request) {
     const supabase = getSupabaseAdmin()
     const { searchParams } = new URL(request.url)
 
-    const scopeParam = (searchParams.get("scope") || "eligible").toLowerCase()
+    const scopeParam = (searchParams.get("scope") || "all").toLowerCase()
     const start = Math.max(0, parseInteger(searchParams.get("start"), DEFAULT_START))
     const batch = Math.min(
       Math.max(1, parseInteger(searchParams.get("batch"), DEFAULT_BATCH)),
@@ -694,6 +733,8 @@ export async function GET(request: Request) {
       (searchParams.get("onlyActive") || "true").toLowerCase() !== "false"
     const includeCounts =
       (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
+    const runRetention =
+      (searchParams.get("runRetention") || "false").toLowerCase() === "true"
 
     if (!["all", "eligible", "candidates"].includes(scopeParam)) {
       return Response.json(
@@ -712,6 +753,7 @@ export async function GET(request: Request) {
       companiesRowsLoaded: 0,
       candidateUniverseRowsLoaded: 0,
       candidateScreenHistoryRowsLoaded: 0,
+      filingDrivenRowsLoaded: 0,
       sourceRowsLoaded: 0,
       fallbackCandidateHistoryUsed: false,
       successfulTickerFetches: 0,
@@ -724,9 +766,9 @@ export async function GET(request: Request) {
     let sourceRows: SourceRow[] = []
 
     if (scope === "all") {
-      const allContext = await loadCompaniesContext(supabase, start, batch, onlyActive)
+      const allContext = await loadRecentForm4TickersContext(supabase, start, batch)
       sourceRows = allContext.rows
-      diagnostics.companiesRowsLoaded = allContext.companiesRowsLoaded
+      diagnostics.filingDrivenRowsLoaded = allContext.filingDrivenRowsLoaded
       diagnostics.sourceRowsLoaded = allContext.rows.length
     }
 
@@ -855,6 +897,21 @@ export async function GET(request: Request) {
     const inserted =
       dedupedRows.length > 0 ? await upsertRows(supabase, dedupedRows) : 0
     diagnostics.insertedOrUpdated = inserted
+
+    if (runRetention) {
+      const cutoff = new Date()
+      cutoff.setDate(cutoff.getDate() - RETENTION_DAYS)
+      const cutoffStr = cutoff.toISOString().slice(0, 10)
+
+      const { error } = await supabase
+        .from("raw_ptr_trades")
+        .delete()
+        .or(`transaction_date.lt.${cutoffStr},report_date.lt.${cutoffStr}`)
+
+      if (error) {
+        throw error
+      }
+    }
 
     let ptrCount: number | null = null
     if (includeCounts) {
