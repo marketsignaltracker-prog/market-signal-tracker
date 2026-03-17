@@ -592,13 +592,26 @@ function normalizeAInvestTrade(
       row.reportDate ||
       row.report_date
   )
+
+  const effectiveDate = transactionDate || reportDate
+  if (!effectiveDate) return null
+
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - 30)
+
+  const effectiveDateObj = new Date(`${effectiveDate}T00:00:00.000Z`)
+  if (Number.isNaN(effectiveDateObj.getTime())) return null
+  if (effectiveDateObj < cutoff) return null
+
   const rawAction =
     row.transaction_type || row.trade_type || row.type || row.action || null
   const normalizedAction = normalizeAction(rawAction)
   const transactionType = normalizeTransactionType(rawAction)
+
   const amountRange =
     String(row.size || row.amount || row.amount_range || "").trim() || null
   const amounts = parseAmountRange(amountRange)
+
   const ptrUrl = row.link || row.url || row.source_url || row.sourceUrl || null
 
   const tradeKey = buildTradeKey({
@@ -623,8 +636,14 @@ function normalizeAInvestTrade(
     asset_type: row.asset_type || row.assetType || "Stock",
     action: normalizedAction,
     amount_range: amountRange,
-    amount_low: safeNumber(row.amountLow) ?? safeNumber(row.amount_low) ?? amounts.amount_low,
-    amount_high: safeNumber(row.amountHigh) ?? safeNumber(row.amount_high) ?? amounts.amount_high,
+    amount_low:
+      safeNumber(row.amountLow) ??
+      safeNumber(row.amount_low) ??
+      amounts.amount_low,
+    amount_high:
+      safeNumber(row.amountHigh) ??
+      safeNumber(row.amount_high) ??
+      amounts.amount_high,
     owner: row.owner || null,
     ptr_url: ptrUrl,
     raw_document_url: ptrUrl,
