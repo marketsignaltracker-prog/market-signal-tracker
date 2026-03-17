@@ -51,27 +51,37 @@ type PipelineStateRow = {
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
-const DEFAULT_SCREEN_BATCH = 200
-const MAX_SCREEN_BATCH = 250
+const DEFAULT_SCREEN_BATCH = 50
+const MAX_SCREEN_BATCH = 100
 
 const DEFAULT_FILINGS_BATCH = 50
 const DEFAULT_PTRS_BATCH = 100
 const DEFAULT_ELIGIBLE_UNIVERSE_LOOKBACK_DAYS = 30
+
 const DEFAULT_SIGNALS_LIMIT = 300
 const DEFAULT_SIGNALS_LOOKBACK_DAYS = 31
+const DEFAULT_SIGNALS_MIN_STRENGTH = 58
+
 const DEFAULT_TICKER_SCORES_LIMIT = 1000
 const DEFAULT_TICKER_SCORES_PTR_LOOKBACK_DAYS = 60
 const DEFAULT_TICKER_SCORES_PTR_RECENT_DAYS = 14
+const DEFAULT_TICKER_SCORES_MIN_COMBINED_SCORE = 60
+
 const DEFAULT_FINAL_CANDIDATES_LIMIT = 30
 const DEFAULT_FINAL_CANDIDATES_TARGET_MIN = 12
 
 const DEFAULT_STEP_TIMEOUT_MS = 240_000
+const SCREENING_STEP_TIMEOUT_MS = 290_000
+const FILINGS_STEP_TIMEOUT_MS = 260_000
+const SIGNALS_STEP_TIMEOUT_MS = 260_000
+const TICKER_SCORES_STEP_TIMEOUT_MS = 260_000
+const FINALIZE_STEP_TIMEOUT_MS = 260_000
 
-const MAX_PIPELINE_RUNTIME_MS = 210_000
-const RUNTIME_SAFETY_BUFFER_MS = 15_000
+const MAX_PIPELINE_RUNTIME_MS = 295_000
+const RUNTIME_SAFETY_BUFFER_MS = 10_000
 
-const MAX_BATCHES_PER_RUN = 8
-const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
+const MAX_BATCHES_PER_RUN = 4
+const RUN_LOCK_WINDOW_MS = 6 * 60 * 1000
 
 function nowIso() {
   return new Date().toISOString()
@@ -510,7 +520,7 @@ export async function GET(request: NextRequest) {
           start: 0,
           batch: DEFAULT_FILINGS_BATCH,
         }),
-        DEFAULT_STEP_TIMEOUT_MS
+        FILINGS_STEP_TIMEOUT_MS
       )
 
       results.push(filingsResult)
@@ -662,7 +672,7 @@ export async function GET(request: NextRequest) {
         const screenResult = await runStep(
           baseUrl,
           screenPath,
-          DEFAULT_STEP_TIMEOUT_MS
+          SCREENING_STEP_TIMEOUT_MS
         )
 
         results.push(screenResult)
@@ -720,11 +730,11 @@ export async function GET(request: NextRequest) {
           mode: "all",
           limit: DEFAULT_SIGNALS_LIMIT,
           lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
-          minSignalStrength: 20,
+          minSignalStrength: DEFAULT_SIGNALS_MIN_STRENGTH,
           onlyActive: true,
           runRetention: false,
         }),
-        DEFAULT_STEP_TIMEOUT_MS
+        SIGNALS_STEP_TIMEOUT_MS
       )
 
       results.push(signalsResult)
@@ -765,10 +775,10 @@ export async function GET(request: NextRequest) {
           lookbackDays: DEFAULT_SIGNALS_LOOKBACK_DAYS,
           ptrLookbackDays: DEFAULT_TICKER_SCORES_PTR_LOOKBACK_DAYS,
           ptrRecentDays: DEFAULT_TICKER_SCORES_PTR_RECENT_DAYS,
-          minCombinedScore: 35,
+          minCombinedScore: DEFAULT_TICKER_SCORES_MIN_COMBINED_SCORE,
           includePreview: false,
         }),
-        DEFAULT_STEP_TIMEOUT_MS
+        TICKER_SCORES_STEP_TIMEOUT_MS
       )
 
       results.push(tickerScoresResult)
@@ -808,7 +818,7 @@ export async function GET(request: NextRequest) {
           targetMin: DEFAULT_FINAL_CANDIDATES_TARGET_MIN,
           includePreview: false,
         }),
-        DEFAULT_STEP_TIMEOUT_MS
+        FINALIZE_STEP_TIMEOUT_MS
       )
 
       results.push(finalizeResult)
