@@ -1127,7 +1127,18 @@ function SwipeStockCard({
       <div className="shrink-0 px-5 pt-4 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <CardRankBadge rank={rank} />
+            <div className="flex items-center gap-2">
+              <CardRankBadge rank={rank} />
+              <a
+                href={`https://robinhood.com/stocks/${row.ticker}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300 transition hover:bg-emerald-400/20"
+              >
+                Buy ↗
+              </a>
+            </div>
             <h2 className="mt-1.5 text-4xl font-black tracking-tight">{row.ticker}</h2>
             {row.company_name ? (
               <p className="mt-0.5 truncate text-sm text-slate-400">
