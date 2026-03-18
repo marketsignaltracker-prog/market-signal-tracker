@@ -34,6 +34,13 @@ type CandidateUniverseRow = {
   screen_reason?: string | null
   last_screened_at?: string | null
   updated_at?: string | null
+  has_insider_trades?: boolean | null
+  has_ptr_forms?: boolean | null
+  has_clusters?: boolean | null
+  pe_ratio?: number | null
+  pe_forward?: number | null
+  sector?: string | null
+  industry?: string | null
 }
 
 type TickerScoreRow = {
@@ -182,6 +189,9 @@ type UnifiedRow = {
 
   has_candidate_data: boolean
   has_signal_data: boolean
+  has_insider_trades: boolean
+  has_ptr_forms: boolean
+  has_clusters: boolean
   data_source_label:
     | "Quality Score + Signals"
     | "Quality Score Only"
@@ -296,10 +306,10 @@ function makeUnifiedRow(
     last_screened_at: candidate?.last_screened_at ?? null,
 
     market_cap: firstNumberOrNull(signal?.market_cap, candidate?.market_cap, null),
-    sector: signal?.sector ?? null,
-    industry: signal?.industry ?? null,
-    pe_ratio: signal?.pe_ratio ?? null,
-    pe_forward: signal?.pe_forward ?? null,
+    sector: signal?.sector ?? candidate?.sector ?? null,
+    industry: signal?.industry ?? candidate?.industry ?? null,
+    pe_ratio: signal?.pe_ratio ?? candidate?.pe_ratio ?? null,
+    pe_forward: signal?.pe_forward ?? candidate?.pe_forward ?? null,
     pe_type: signal?.pe_type ?? null,
 
     one_day_return: candidate?.one_day_return ?? null,
@@ -379,6 +389,9 @@ function makeUnifiedRow(
 
     has_candidate_data: Boolean(candidate),
     has_signal_data: Boolean(signal),
+    has_insider_trades: candidate?.has_insider_trades === true,
+    has_ptr_forms: candidate?.has_ptr_forms === true,
+    has_clusters: candidate?.has_clusters === true,
     data_source_label:
       candidate && signal
         ? "Quality Score + Signals"
@@ -449,7 +462,14 @@ export default function Home() {
               included,
               screen_reason,
               last_screened_at,
-              updated_at
+              updated_at,
+              has_insider_trades,
+              has_ptr_forms,
+              has_clusters,
+              pe_ratio,
+              pe_forward,
+              sector,
+              industry
             `)
             .gte("candidate_score", 50)
             .order("candidate_score", { ascending: false })
@@ -1226,47 +1246,141 @@ function SwipeStockCard({
         </div>
       </div>
 
-      {/* ── Quality Fundamentals ── */}
-      <div className="shrink-0 border-t border-[rgba(255,255,255,0.06)] mx-4 mt-3 pt-3">
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#7a8ba0]">
-          Quality Fundamentals
-        </p>
-        <div className="grid grid-cols-2 gap-1.5">
-          {pillars.map(({ label, score: s, icon }) => {
-            const { barColor } = getPillarVerdict(s)
+      {/* ── Key Tiles ── */}
+      <div className="shrink-0 px-4 pt-3">
+        <div className="grid grid-cols-2 gap-2">
+          {/* Insiders Buying */}
+          {(() => {
+            const hasCluster = (row.cluster_buyers ?? 0) >= 2
+            const active = hasCluster || row.has_insider_trades
+            const value = hasCluster ? "Cluster" : active ? "Yes" : "No"
+            const sub = hasCluster ? `${row.cluster_buyers} insiders buying` : active ? "Form 4 filed" : "No filings"
             return (
-              <div
-                key={label}
-                className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#162038] px-3 py-2"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-[#7a8ba0]">{icon} {label}</span>
-                  <span className="text-[10px] font-bold" style={{ color: barColor }}>
-                    {s !== null ? `${s}` : "—"}
-                  </span>
+              <div className="relative overflow-hidden rounded-2xl p-3" style={{
+                background: active ? "linear-gradient(145deg, rgba(249,115,22,0.18) 0%, rgba(249,115,22,0.04) 100%)" : "#162038",
+                border: active ? "1px solid rgba(249,115,22,0.30)" : "1px solid rgba(255,255,255,0.06)",
+              }}>
+                {active && <div className="absolute top-0 right-0 h-14 w-14 rounded-bl-full" style={{ background: "rgba(249,115,22,0.06)" }} />}
+                <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? "#fb923c" : "#4a5568" }}>Insiders</p>
+                <p className="mt-0.5 text-2xl font-black" style={{ color: active ? "#fed7aa" : "#2d3748" }}>{value}</p>
+                <p className="mt-0.5 text-[10px]" style={{ color: active ? "rgba(253,186,116,0.55)" : "#2d3748" }}>{sub}</p>
+              </div>
+            )
+          })()}
+
+          {/* Congress Buying */}
+          {(() => {
+            const active = row.has_ptr_forms || Boolean(row.ptr_amount)
+            const sub = row.ptr_amount ? `${row.ptr_amount} disclosed` : active ? "PTR filed" : "No PTR trades"
+            return (
+              <div className="relative overflow-hidden rounded-2xl p-3" style={{
+                background: active ? "linear-gradient(145deg, rgba(168,85,247,0.18) 0%, rgba(168,85,247,0.04) 100%)" : "#162038",
+                border: active ? "1px solid rgba(168,85,247,0.30)" : "1px solid rgba(255,255,255,0.06)",
+              }}>
+                {active && <div className="absolute top-0 right-0 h-14 w-14 rounded-bl-full" style={{ background: "rgba(168,85,247,0.06)" }} />}
+                <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? "#c084fc" : "#4a5568" }}>Congress</p>
+                <p className="mt-0.5 text-2xl font-black" style={{ color: active ? "#e9d5ff" : "#2d3748" }}>{active ? "Yes" : "No"}</p>
+                <p className="mt-0.5 text-[10px]" style={{ color: active ? "rgba(196,181,253,0.55)" : "#2d3748" }}>{sub}</p>
+              </div>
+            )
+          })()}
+
+          {/* Vs Market */}
+          {(() => {
+            const rs = row.relative_strength_20d != null ? Number(row.relative_strength_20d) : null
+            const label = rs == null ? "--" : rs >= 15 ? "Dominating" : rs >= 8 ? "Outperforming" : rs >= 3 ? "Beating" : rs >= 0 ? "Inline" : "Lagging"
+            const color = rs == null ? "#2d3748" : rs >= 8 ? "#22d3ee" : rs >= 3 ? "#67e8f9" : rs >= 0 ? "#94a3b8" : "#f87171"
+            const active = rs != null && rs >= 3
+            return (
+              <div className="relative overflow-hidden rounded-2xl p-3" style={{
+                background: active ? "linear-gradient(145deg, rgba(6,182,212,0.16) 0%, rgba(6,182,212,0.03) 100%)" : "#162038",
+                border: active ? "1px solid rgba(6,182,212,0.25)" : "1px solid rgba(255,255,255,0.06)",
+              }}>
+                {active && <div className="absolute top-0 right-0 h-14 w-14 rounded-bl-full" style={{ background: "rgba(6,182,212,0.05)" }} />}
+                <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? "#22d3ee" : "#4a5568" }}>Vs Market</p>
+                <p className="mt-0.5 text-2xl font-black" style={{ color }}>
+                  {rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}%` : "--"}
+                </p>
+                <p className="mt-0.5 text-[10px]" style={{ color: active ? "rgba(103,232,249,0.45)" : "#2d3748" }}>
+                  {rs != null ? `${label} over 20d` : "No data"}
+                </p>
+              </div>
+            )
+          })()}
+
+          {/* Extension / OB-OS */}
+          {(() => {
+            const ext = row.extension_from_sma20_pct
+            if (ext == null) return (
+              <div className="rounded-2xl p-3" style={{ background: "#162038", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#4a5568]">Extension</p>
+                <p className="mt-0.5 text-2xl font-black text-[#2d3748]">--</p>
+              </div>
+            )
+            const pct = Math.min(Math.max((ext + 20) / 40, 0), 1) * 100
+            const isOB = ext >= 12; const isExt = ext >= 6; const isOS = ext <= -5
+            const label = isOB ? "Overbought" : isExt ? "Extended" : isOS ? "Oversold" : "Healthy"
+            const color = isOB ? "#f87171" : isExt ? "#fbbf24" : isOS ? "#4ade80" : "#22d3ee"
+            return (
+              <div className="relative overflow-hidden rounded-2xl p-3" style={{
+                background: `linear-gradient(145deg, ${isOB ? "rgba(248,113,113,0.14)" : isExt ? "rgba(251,191,36,0.12)" : isOS ? "rgba(74,222,128,0.12)" : "rgba(6,182,212,0.10)"} 0%, #0f172200 100%)`,
+                border: `1px solid ${isOB ? "rgba(248,113,113,0.25)" : isExt ? "rgba(251,191,36,0.22)" : isOS ? "rgba(74,222,128,0.22)" : "rgba(6,182,212,0.18)"}`,
+              }}>
+                <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color }}>Extension</p>
+                <p className="mt-0.5 text-xl font-black" style={{ color }}>{label}</p>
+                <div className="relative mt-1.5 h-1.5 rounded-full bg-[#1e2d45]">
+                  <div className="absolute top-0 left-1/2 h-full w-px bg-white/10" />
+                  <div className="absolute top-[-2px] h-[11px] w-[11px] rounded-full" style={{
+                    left: `calc(${pct}% - 5px)`, backgroundColor: color,
+                    boxShadow: `0 0 6px ${color}50`, transition: "left 600ms ease-out",
+                  }} />
                 </div>
-                <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-[#1e2d45]">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${s ?? 0}%`, backgroundColor: barColor }}
-                  />
+                <div className="mt-0.5 flex justify-between text-[8px] text-[#4a5568]">
+                  <span>Oversold</span><span>Overbought</span>
                 </div>
               </div>
             )
-          })}
-        </div>
-      </div>
+          })()}
 
-      {/* ── Plain-English bullets ── */}
-      <div className="shrink-0 px-4 pt-2">
-        <ul className="space-y-1.5">
-          {whyBullets.slice(0, 2).map((bullet, i) => (
-            <li key={i} className="flex items-start gap-2 text-[11px] leading-[1.45] text-[#b0bec8]">
-              <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#f0a500]" />
-              <span>{bullet}</span>
-            </li>
-          ))}
-        </ul>
+          {/* P/E Valuation (full width) */}
+          {row.pe_ratio != null && (() => {
+            const pe = row.pe_ratio; const fwd = row.pe_forward
+            const pct = Math.min(Math.max(pe / 60, 0), 1) * 100
+            const isExp = pe >= 40; const isCheap = pe < 15
+            const label = isExp ? "Expensive" : isCheap ? "Cheap" : "Fair Value"
+            const color = isExp ? "#f87171" : isCheap ? "#4ade80" : "#fbbf24"
+            return (
+              <div className="col-span-2 relative overflow-hidden rounded-2xl p-3" style={{
+                background: `linear-gradient(145deg, ${isExp ? "rgba(248,113,113,0.10)" : isCheap ? "rgba(74,222,128,0.10)" : "rgba(251,191,36,0.08)"} 0%, #0f172200 100%)`,
+                border: `1px solid ${isExp ? "rgba(248,113,113,0.22)" : isCheap ? "rgba(74,222,128,0.22)" : "rgba(251,191,36,0.18)"}`,
+              }}>
+                <div className="flex items-center justify-between">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color }}>Valuation</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xl font-black" style={{ color }}>{pe.toFixed(1)}</span>
+                    <span className="text-[10px] text-[#4a5568]">P/E</span>
+                    {fwd != null && <>
+                      <span className="text-sm font-bold text-[#7a8ba0]">{fwd.toFixed(1)}</span>
+                      <span className="text-[10px] text-[#4a5568]">Fwd</span>
+                    </>}
+                  </div>
+                </div>
+                <div className="relative mt-2 h-2 rounded-full" style={{ background: "linear-gradient(90deg, rgba(74,222,128,0.20), rgba(251,191,36,0.20), rgba(248,113,113,0.20))" }}>
+                  <div className="absolute top-[-2px] h-[12px] w-[12px] rounded-full" style={{
+                    left: `calc(${pct}% - 6px)`, backgroundColor: color,
+                    boxShadow: `0 0 8px ${color}50`, transition: "left 600ms ease-out",
+                  }} />
+                </div>
+                <div className="mt-0.5 flex justify-between text-[8px] text-[#4a5568]">
+                  <span>Cheap</span><span>Fair</span><span>Expensive</span>
+                </div>
+                <p className="mt-1 text-[10px] text-[#4a5568]">
+                  {isExp ? "Premium — market expects high growth" : isCheap ? "Below average — value play or concern" : "Reasonable relative to earnings"}
+                </p>
+              </div>
+            )
+          })()}
+        </div>
       </div>
 
       {/* ── CTA ── */}
