@@ -223,7 +223,7 @@ type CandidateScoreOutput = {
 }
 
 const yahooFinance = new YahooFinance({
-  queue: { concurrency: 12 },
+  queue: { concurrency: 4 },
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
