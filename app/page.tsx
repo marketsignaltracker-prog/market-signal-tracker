@@ -1246,149 +1246,128 @@ function SwipeStockCard({
         </div>
       </div>
 
-      {/* ── Key Tiles ── */}
-      <div className="shrink-0 px-4 pt-3">
+      {/* ── Fundamentals Scanner ── */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-1">
         <div className="grid grid-cols-2 gap-2">
-          {/* Insiders Buying */}
           {(() => {
-            const hasCluster = (row.cluster_buyers ?? 0) >= 2
-            const active = hasCluster || row.has_insider_trades
-            const value = hasCluster ? "Cluster" : active ? "Yes" : "No"
-            const sub = hasCluster ? `${row.cluster_buyers} insiders buying` : active ? "Form 4 filed" : "No filings"
-            return (
-              <div className="relative overflow-hidden rounded-2xl p-3" style={{
-                background: active ? "linear-gradient(145deg, rgba(249,115,22,0.18) 0%, rgba(249,115,22,0.04) 100%)" : "#162038",
-                border: active ? "1px solid rgba(249,115,22,0.30)" : "1px solid rgba(255,255,255,0.06)",
-              }}>
-                {active && <div className="absolute top-0 right-0 h-14 w-14 rounded-bl-full" style={{ background: "rgba(249,115,22,0.06)" }} />}
-                <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? "#fb923c" : "#4a5568" }}>Insiders</p>
-                <p className="mt-0.5 text-2xl font-black" style={{ color: active ? "#fed7aa" : "#2d3748" }}>{value}</p>
-                <p className="mt-0.5 text-[10px]" style={{ color: active ? "rgba(253,186,116,0.55)" : "#2d3748" }}>{sub}</p>
-              </div>
-            )
-          })()}
+            const ltcs = parseScreenReasonScores(row.screen_reason)
 
-          {/* Congress Buying */}
-          {(() => {
-            const active = row.has_ptr_forms || Boolean(row.ptr_amount)
-            const sub = row.ptr_amount ? `${row.ptr_amount} disclosed` : active ? "PTR filed" : "No PTR trades"
-            return (
-              <div className="relative overflow-hidden rounded-2xl p-3" style={{
-                background: active ? "linear-gradient(145deg, rgba(168,85,247,0.18) 0%, rgba(168,85,247,0.04) 100%)" : "#162038",
-                border: active ? "1px solid rgba(168,85,247,0.30)" : "1px solid rgba(255,255,255,0.06)",
-              }}>
-                {active && <div className="absolute top-0 right-0 h-14 w-14 rounded-bl-full" style={{ background: "rgba(168,85,247,0.06)" }} />}
-                <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? "#c084fc" : "#4a5568" }}>Congress</p>
-                <p className="mt-0.5 text-2xl font-black" style={{ color: active ? "#e9d5ff" : "#2d3748" }}>{active ? "Yes" : "No"}</p>
-                <p className="mt-0.5 text-[10px]" style={{ color: active ? "rgba(196,181,253,0.55)" : "#2d3748" }}>{sub}</p>
-              </div>
-            )
-          })()}
-
-          {/* Vs Market */}
-          {(() => {
-            const rs = row.relative_strength_20d != null ? Number(row.relative_strength_20d) : null
-            const label = rs == null ? "--" : rs >= 15 ? "Dominating" : rs >= 8 ? "Outperforming" : rs >= 3 ? "Beating" : rs >= 0 ? "Inline" : "Lagging"
-            const color = rs == null ? "#2d3748" : rs >= 8 ? "#22d3ee" : rs >= 3 ? "#67e8f9" : rs >= 0 ? "#94a3b8" : "#f87171"
-            const active = rs != null && rs >= 3
-            return (
-              <div className="relative overflow-hidden rounded-2xl p-3" style={{
-                background: active ? "linear-gradient(145deg, rgba(6,182,212,0.16) 0%, rgba(6,182,212,0.03) 100%)" : "#162038",
-                border: active ? "1px solid rgba(6,182,212,0.25)" : "1px solid rgba(255,255,255,0.06)",
-              }}>
-                {active && <div className="absolute top-0 right-0 h-14 w-14 rounded-bl-full" style={{ background: "rgba(6,182,212,0.05)" }} />}
-                <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? "#22d3ee" : "#4a5568" }}>Vs Market</p>
-                <p className="mt-0.5 text-2xl font-black" style={{ color }}>
-                  {rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}%` : "--"}
-                </p>
-                <p className="mt-0.5 text-[10px]" style={{ color: active ? "rgba(103,232,249,0.45)" : "#2d3748" }}>
-                  {rs != null ? `${label} over 20d` : "No data"}
-                </p>
-              </div>
-            )
-          })()}
-
-          {/* Extension / OB-OS */}
-          {(() => {
-            const ext = row.extension_from_sma20_pct
-            if (ext == null) return (
-              <div className="rounded-2xl p-3" style={{ background: "#162038", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-[#4a5568]">Extension</p>
-                <p className="mt-0.5 text-2xl font-black text-[#2d3748]">--</p>
-              </div>
-            )
-            const pct = Math.min(Math.max((ext + 20) / 40, 0), 1) * 100
-            const isOB = ext >= 12; const isExt = ext >= 6; const isOS = ext <= -5
-            const label = isOB ? "Overbought" : isExt ? "Extended" : isOS ? "Oversold" : "Healthy"
-            const color = isOB ? "#f87171" : isExt ? "#fbbf24" : isOS ? "#4ade80" : "#22d3ee"
-            return (
-              <div className="relative overflow-hidden rounded-2xl p-3" style={{
-                background: `linear-gradient(145deg, ${isOB ? "rgba(248,113,113,0.14)" : isExt ? "rgba(251,191,36,0.12)" : isOS ? "rgba(74,222,128,0.12)" : "rgba(6,182,212,0.10)"} 0%, #0f172200 100%)`,
-                border: `1px solid ${isOB ? "rgba(248,113,113,0.25)" : isExt ? "rgba(251,191,36,0.22)" : isOS ? "rgba(74,222,128,0.22)" : "rgba(6,182,212,0.18)"}`,
-              }}>
-                <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color }}>Extension</p>
-                <p className="mt-0.5 text-xl font-black" style={{ color }}>{label}</p>
-                <div className="relative mt-1.5 h-1.5 rounded-full bg-[#1e2d45]">
-                  <div className="absolute top-0 left-1/2 h-full w-px bg-white/10" />
-                  <div className="absolute top-[-2px] h-[11px] w-[11px] rounded-full" style={{
-                    left: `calc(${pct}% - 5px)`, backgroundColor: color,
-                    boxShadow: `0 0 6px ${color}50`, transition: "left 600ms ease-out",
-                  }} />
+            // Mini gauge bar component
+            function Gauge({ value, max, color }: { value: number | null; max: number; color: string }) {
+              const pct = value != null ? Math.min((value / max) * 100, 100) : 0
+              return (
+                <div className="mt-2 h-[5px] overflow-hidden rounded-full bg-[#1a2540]">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}90, ${color})`, boxShadow: `0 0 8px ${color}40` }}
+                  />
                 </div>
-                <div className="mt-0.5 flex justify-between text-[8px] text-[#4a5568]">
-                  <span>Oversold</span><span>Overbought</span>
-                </div>
-              </div>
-            )
-          })()}
+              )
+            }
 
-          {/* P/E Valuation (full width) */}
-          {row.pe_ratio != null && (() => {
-            const pe = row.pe_ratio; const fwd = row.pe_forward
-            const pct = Math.min(Math.max(pe / 60, 0), 1) * 100
-            const isExp = pe >= 40; const isCheap = pe < 15
-            const label = isExp ? "Expensive" : isCheap ? "Cheap" : "Fair Value"
-            const color = isExp ? "#f87171" : isCheap ? "#4ade80" : "#fbbf24"
-            return (
-              <div className="col-span-2 relative overflow-hidden rounded-2xl p-3" style={{
-                background: `linear-gradient(145deg, ${isExp ? "rgba(248,113,113,0.10)" : isCheap ? "rgba(74,222,128,0.10)" : "rgba(251,191,36,0.08)"} 0%, #0f172200 100%)`,
-                border: `1px solid ${isExp ? "rgba(248,113,113,0.22)" : isCheap ? "rgba(74,222,128,0.22)" : "rgba(251,191,36,0.18)"}`,
-              }}>
-                <div className="flex items-center justify-between">
-                  <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color }}>Valuation</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xl font-black" style={{ color }}>{pe.toFixed(1)}</span>
-                    <span className="text-[10px] text-[#4a5568]">P/E</span>
-                    {fwd != null && <>
-                      <span className="text-sm font-bold text-[#7a8ba0]">{fwd.toFixed(1)}</span>
-                      <span className="text-[10px] text-[#4a5568]">Fwd</span>
-                    </>}
+            function Tile({ label, icon, value, sub, score, maxScore, color, borderColor }: {
+              label: string; icon: string; value: string; sub: string
+              score: number | null; maxScore: number; color: string; borderColor: string
+            }) {
+              const active = score != null && score > 0
+              return (
+                <div className="relative overflow-hidden rounded-2xl p-3" style={{
+                  background: active ? `linear-gradient(160deg, ${color}18 0%, ${color}04 100%)` : "#111827",
+                  border: `1px solid ${active ? borderColor : "rgba(255,255,255,0.05)"}`,
+                }}>
+                  {active && (
+                    <div className="absolute top-0 right-0 h-10 w-10 opacity-20" style={{
+                      background: `radial-gradient(circle at top right, ${color}, transparent 70%)`,
+                    }} />
+                  )}
+                  <div className="flex items-center justify-between">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? color : "#374151" }}>
+                      {icon} {label}
+                    </p>
+                    {score != null && (
+                      <span className="text-[10px] font-black" style={{ color }}>{score}</span>
+                    )}
                   </div>
+                  <p className="mt-1 text-lg font-black leading-tight" style={{ color: active ? "#f0f0f0" : "#1f2937" }}>
+                    {value}
+                  </p>
+                  <Gauge value={score} max={maxScore} color={color} />
+                  <p className="mt-1.5 text-[9px] leading-tight" style={{ color: active ? `${color}99` : "#1f2937" }}>
+                    {sub}
+                  </p>
                 </div>
-                <div className="relative mt-2 h-2 rounded-full" style={{ background: "linear-gradient(90deg, rgba(74,222,128,0.20), rgba(251,191,36,0.20), rgba(248,113,113,0.20))" }}>
-                  <div className="absolute top-[-2px] h-[12px] w-[12px] rounded-full" style={{
-                    left: `calc(${pct}% - 6px)`, backgroundColor: color,
-                    boxShadow: `0 0 8px ${color}50`, transition: "left 600ms ease-out",
-                  }} />
-                </div>
-                <div className="mt-0.5 flex justify-between text-[8px] text-[#4a5568]">
-                  <span>Cheap</span><span>Fair</span><span>Expensive</span>
-                </div>
-                <p className="mt-1 text-[10px] text-[#4a5568]">
-                  {isExp ? "Premium — market expects high growth" : isCheap ? "Below average — value play or concern" : "Reasonable relative to earnings"}
-                </p>
-              </div>
+              )
+            }
+
+            // Earnings / Profitability
+            const profScore = ltcs.profitability
+            const profLabel = profScore == null ? "—" : profScore >= 75 ? "Strong" : profScore >= 40 ? "Growing" : "Weak"
+
+            // Free Cash Flow (part of profitability)
+            const fcfScore = ltcs.profitability
+            const fcfLabel = fcfScore == null ? "—" : fcfScore >= 65 ? "Positive" : fcfScore >= 35 ? "Mixed" : "Negative"
+
+            // Debt / Financial Health
+            const debtScore = ltcs.financial
+            const debtLabel = debtScore == null ? "—" : debtScore >= 70 ? "Low Debt" : debtScore >= 40 ? "Moderate" : "High Debt"
+
+            // Moat / Competitive Advantage
+            const moatScore = ltcs.moat
+            const moatLabel = moatScore == null ? "—" : moatScore >= 75 ? "Wide" : moatScore >= 50 ? "Narrow" : "None"
+
+            // PEG / Valuation
+            const valScore = ltcs.valuation
+            const valLabel = valScore == null ? "—" : valScore >= 70 ? "Attractive" : valScore >= 35 ? "Fair" : "Expensive"
+
+            // Relative Strength / Near Highs
+            const rs = row.relative_strength_20d != null ? Number(row.relative_strength_20d) : null
+            const rsScore = rs != null ? Math.min(Math.round(rs * 4), 100) : null
+            const rsLabel = rs == null ? "—" : rs >= 15 ? "Near Highs" : rs >= 8 ? "Strong" : rs >= 0 ? "Neutral" : "Weak"
+
+            return (
+              <>
+                <Tile
+                  icon="📈" label="EPS Growth" value={profLabel}
+                  sub="Earnings growth 25%+, ROE above 15%"
+                  score={profScore} maxScore={100} color="#22d3ee" borderColor="rgba(34,211,238,0.25)"
+                />
+                <Tile
+                  icon="💵" label="Cash Flow" value={fcfLabel}
+                  sub="Free cash flow funds growth without debt"
+                  score={fcfScore} maxScore={100} color="#34d399" borderColor="rgba(52,211,153,0.25)"
+                />
+                <Tile
+                  icon="🏦" label="Debt Level" value={debtLabel}
+                  sub="Debt-to-equity vs peers, current ratio"
+                  score={debtScore} maxScore={100} color="#a78bfa" borderColor="rgba(167,139,250,0.25)"
+                />
+                <Tile
+                  icon="🏰" label="Moat" value={moatLabel}
+                  sub="Margins, growth, and scale advantage"
+                  score={moatScore} maxScore={100} color="#f59e0b" borderColor="rgba(245,158,11,0.25)"
+                />
+                <Tile
+                  icon="⚖️" label="PEG Ratio" value={valLabel}
+                  sub="Price vs growth rate — under 1.5 is ideal"
+                  score={valScore} maxScore={100} color="#fb923c" borderColor="rgba(251,146,60,0.25)"
+                />
+                <Tile
+                  icon="🎯" label="Rel Strength" value={rsLabel}
+                  sub={rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}% vs market — near 12mo highs` : "Near 12-month highs signal momentum"}
+                  score={rsScore} maxScore={100} color="#ec4899" borderColor="rgba(236,72,153,0.25)"
+                />
+              </>
             )
           })()}
         </div>
       </div>
 
       {/* ── CTA ── */}
-      <div className="mt-auto shrink-0 px-4 py-4">
+      <div className="shrink-0 px-4 py-3">
         <button
           type="button"
           onClick={onOpen}
-          className="w-full rounded-2xl bg-[#f0a500] px-5 py-3.5 text-sm font-bold text-black transition active:scale-[0.98] hover:bg-[#ffb733]"
+          className="w-full rounded-2xl bg-[#f0a500] px-5 py-3 text-sm font-bold text-black transition active:scale-[0.98] hover:bg-[#ffb733]"
         >
           View Analysis →
         </button>
