@@ -1162,64 +1162,47 @@ function SwipeStockCard({
       style={{ borderColor: "rgba(255,255,255,0.08)", background: "#0f1729" }}
     >
       {/* ── Header ── */}
-      <div className="shrink-0 px-4 pt-4 pb-0">
-        {/* Rank + Buy row */}
-        <div className="mb-2 flex items-center gap-2">
-          <CardRankBadge rank={rank} />
+      <div className="shrink-0 px-4 pt-4 pb-2">
+        <div className="flex items-center gap-3">
+          <ScoreRing score={score} palette={palette} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-3xl font-black tracking-tight text-white">{row.ticker}</h2>
+              {row.price ? (
+                <span className="text-base font-bold text-white/70">{formatMoney(row.price)}</span>
+              ) : null}
+            </div>
+            <p className="truncate text-xs text-white/40">
+              {[row.company_name, row.sector].filter(Boolean).join(" · ")}
+            </p>
+          </div>
           <a
             href={`https://robinhood.com/stocks/${row.ticker}`}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 rounded-full border border-[rgba(240,165,0,0.30)] bg-[rgba(240,165,0,0.12)] px-2.5 py-1 text-[10px] font-bold text-[#f0a500] transition hover:bg-[rgba(240,165,0,0.20)]"
+            className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500/25 active:scale-95"
           >
             Buy ↗
           </a>
-          <div className="ml-auto">
-            <FreshnessBadge row={row} />
-          </div>
         </div>
-
-        {/* Ticker + score ring row */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-4xl font-black tracking-tight text-white">{row.ticker}</h2>
-            {row.company_name ? (
-              <p className="mt-0.5 truncate text-[13px] font-medium text-[#7a8ba0]">
-                {truncateText(row.company_name, 28)}
-              </p>
-            ) : null}
-            {row.sector ? (
-              <span className="mt-1 inline-block rounded-full border border-[rgba(255,255,255,0.08)] bg-[#162038] px-2 py-0.5 text-[10px] text-[#7a8ba0]">
-                {row.sector}
-              </span>
-            ) : null}
-          </div>
-          <ScoreRing score={score} palette={palette} />
-        </div>
-
-        {/* Price */}
-        {row.price ? (
-          <p className="mt-2 text-2xl font-black tracking-tight text-white">
-            {formatMoney(row.price)}
-          </p>
-        ) : null}
       </div>
 
       {/* ── Returns strip ── */}
-      <div className="shrink-0 px-4 pt-2 pb-0">
-        <div className="grid grid-cols-3 gap-1.5">
+      <div className="shrink-0 px-4 pb-0">
+        <div className="grid grid-cols-4 gap-1.5">
           {[
-            { label: "1 Day", value: row.one_day_return },
-            { label: "5 Day", value: row.price_return_5d },
-            { label: "20 Day", value: row.price_return_20d },
+            { label: "1D", value: row.one_day_return },
+            { label: "5D", value: row.price_return_5d },
+            { label: "10D", value: row.return_10d },
+            { label: "20D", value: row.price_return_20d },
           ].map(({ label, value }) => {
             const hasVal = value !== null && value !== undefined
             const isPos = hasVal && value! >= 0
             return (
               <div
                 key={label}
-                className="flex flex-col items-center justify-center rounded-xl border py-2.5"
+                className="flex flex-col items-center justify-center rounded-lg border py-2"
                 style={{
                   borderColor: hasVal
                     ? isPos ? "rgba(48,209,88,0.22)" : "rgba(255,69,58,0.22)"
@@ -1229,12 +1212,10 @@ function SwipeStockCard({
                     : "#162038",
                 }}
               >
-                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[#7a8ba0]">
-                  {label}
-                </span>
+                <span className="text-[9px] font-medium text-white/40">{label}</span>
                 <span
-                  className="mt-1 text-sm font-bold leading-none"
-                  style={{ color: hasVal ? (isPos ? "#30d158" : "#ff453a") : "#7a8ba0" }}
+                  className="mt-0.5 text-sm font-black"
+                  style={{ color: hasVal ? (isPos ? "#4ade80" : "#f87171") : "#7a8ba0" }}
                 >
                   {hasVal
                     ? `${isPos ? "+" : ""}${round1(value!)?.toFixed(1)}%`
