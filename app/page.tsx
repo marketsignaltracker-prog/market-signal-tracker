@@ -1087,6 +1087,33 @@ function SwipeDeck({
   )
 }
 
+function ScoreRing({ score, palette }: { score: number; palette: ReturnType<typeof getScorePalette> }) {
+  const radius = 26
+  const strokeWidth = 5
+  const circumference = 2 * Math.PI * radius
+  const dashOffset = circumference - (score / 100) * circumference
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: 68, height: 68 }}>
+      <svg width="68" height="68" viewBox="0 0 68 68" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="34" cy="34" r={radius} fill="none" stroke="#1e2d45" strokeWidth={strokeWidth} />
+        <circle
+          cx="34" cy="34" r={radius} fill="none"
+          stroke={palette.start}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          style={{ transition: "stroke-dashoffset 600ms ease-out" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-lg font-black leading-none text-white">{score}</span>
+        <span className="text-[9px] leading-none text-[#7a8ba0] mt-0.5">/100</span>
+      </div>
+    </div>
+  )
+}
+
 function SwipeStockCard({
   row,
   rank,
@@ -1099,146 +1126,157 @@ function SwipeStockCard({
   const score = row.display_score
   const palette = getScorePalette(score)
   const whyBullets = getSimpleCardBullets(row)
-
   const ltcs = parseScreenReasonScores(row.screen_reason)
+
+  const pillars = [
+    { label: "Moat", score: ltcs.moat, icon: "🏔" },
+    { label: "Balance", score: ltcs.financial, icon: "💪" },
+    { label: "Profit", score: ltcs.profitability, icon: "💰" },
+    { label: "Stability", score: ltcs.stability, icon: "🛡" },
+    { label: "Valuation", score: ltcs.valuation, icon: "📊" },
+  ]
 
   return (
     <div
       className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl"
-      style={{
-        borderColor: "rgba(255,255,255,0.08)",
-        background: "#0f1729",
-      }}
+      style={{ borderColor: "rgba(255,255,255,0.08)", background: "#0f1729" }}
     >
-      {/* Header: rank + buy + ticker + score */}
-      <div className="shrink-0 px-5 pt-4 pb-2">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <CardRankBadge rank={rank} />
-              <a
-                href={`https://robinhood.com/stocks/${row.ticker}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 rounded-full border border-[rgba(240,165,0,0.30)] bg-[rgba(240,165,0,0.12)] px-2.5 py-1 text-[10px] font-bold text-[#f0a500] transition hover:bg-[rgba(240,165,0,0.20)]"
-              >
-                Buy ↗
-              </a>
-            </div>
-            <h2 className="mt-1.5 text-4xl font-black tracking-tight text-white">{row.ticker}</h2>
-            {row.company_name ? (
-              <p className="mt-0.5 truncate text-sm text-[#7a8ba0]">
-                {truncateText(row.company_name, 36)}
-              </p>
-            ) : null}
-            {row.sector ? (
-              <p className="text-[11px] text-[#7a8ba0]">{row.sector}</p>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <ScoreBadge row={row} large />
+      {/* ── Header ── */}
+      <div className="shrink-0 px-4 pt-4 pb-0">
+        {/* Rank + Buy row */}
+        <div className="mb-2 flex items-center gap-2">
+          <CardRankBadge rank={rank} />
+          <a
+            href={`https://robinhood.com/stocks/${row.ticker}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 rounded-full border border-[rgba(240,165,0,0.30)] bg-[rgba(240,165,0,0.12)] px-2.5 py-1 text-[10px] font-bold text-[#f0a500] transition hover:bg-[rgba(240,165,0,0.20)]"
+          >
+            Buy ↗
+          </a>
+          <div className="ml-auto">
             <FreshnessBadge row={row} />
           </div>
         </div>
 
-        {/* Quality Score bar */}
-        <div className="mt-2.5">
-          <div className="mb-1 flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#7a8ba0]">
-              Quality Score
-            </span>
-            <span className="text-xs font-semibold text-white">{score}/100</span>
+        {/* Ticker + score ring row */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-4xl font-black tracking-tight text-white">{row.ticker}</h2>
+            {row.company_name ? (
+              <p className="mt-0.5 truncate text-[13px] font-medium text-[#7a8ba0]">
+                {truncateText(row.company_name, 28)}
+              </p>
+            ) : null}
+            {row.sector ? (
+              <span className="mt-1 inline-block rounded-full border border-[rgba(255,255,255,0.08)] bg-[#162038] px-2 py-0.5 text-[10px] text-[#7a8ba0]">
+                {row.sector}
+              </span>
+            ) : null}
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-[#1e2d45]">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${score}%`,
-                background: "#f0a500",
-                transition: "width 600ms ease-out",
-              }}
-            />
-          </div>
+          <ScoreRing score={score} palette={palette} />
         </div>
 
-        {/* Price + 1D / 5D / 20D returns */}
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {row.price ? (
-            <span className="mr-0.5 shrink-0 text-sm font-bold text-white">
-              {formatMoney(row.price)}
-            </span>
-          ) : null}
+        {/* Price */}
+        {row.price ? (
+          <p className="mt-2 text-2xl font-black tracking-tight text-white">
+            {formatMoney(row.price)}
+          </p>
+        ) : null}
+      </div>
+
+      {/* ── Returns strip ── */}
+      <div className="shrink-0 px-4 pt-2 pb-0">
+        <div className="grid grid-cols-3 gap-1.5">
           {[
-            { label: "1D", value: row.one_day_return },
-            { label: "5D", value: row.price_return_5d },
-            { label: "20D", value: row.price_return_20d },
-          ].map(({ label, value }) =>
-            value !== null && value !== undefined ? (
-              <span
+            { label: "1 Day", value: row.one_day_return },
+            { label: "5 Day", value: row.price_return_5d },
+            { label: "20 Day", value: row.price_return_20d },
+          ].map(({ label, value }) => {
+            const hasVal = value !== null && value !== undefined
+            const isPos = hasVal && value! >= 0
+            return (
+              <div
                 key={label}
-                className={[
-                  "rounded-full px-2 py-0.5 text-[10px] font-bold",
-                  value >= 0 ? "bg-[rgba(48,209,88,0.12)] text-[#30d158]" : "bg-[rgba(255,69,58,0.12)] text-[#ff453a]",
-                ].join(" ")}
+                className="flex flex-col items-center justify-center rounded-xl border py-2.5"
+                style={{
+                  borderColor: hasVal
+                    ? isPos ? "rgba(48,209,88,0.22)" : "rgba(255,69,58,0.22)"
+                    : "rgba(255,255,255,0.06)",
+                  background: hasVal
+                    ? isPos ? "rgba(48,209,88,0.07)" : "rgba(255,69,58,0.07)"
+                    : "#162038",
+                }}
               >
-                {label} {value >= 0 ? "+" : ""}{round1(value)?.toFixed(1)}%
-              </span>
-            ) : null
-          )}
+                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-[#7a8ba0]">
+                  {label}
+                </span>
+                <span
+                  className="mt-1 text-sm font-bold leading-none"
+                  style={{ color: hasVal ? (isPos ? "#30d158" : "#ff453a") : "#7a8ba0" }}
+                >
+                  {hasVal
+                    ? `${isPos ? "+" : ""}${round1(value!)?.toFixed(1)}%`
+                    : "—"}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      {/* Quality Fundamentals */}
-      <div className="shrink-0 border-t border-[rgba(255,255,255,0.06)] px-4 py-3">
+      {/* ── Quality Fundamentals ── */}
+      <div className="shrink-0 border-t border-[rgba(255,255,255,0.06)] mx-4 mt-3 pt-3">
         <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#7a8ba0]">
           Quality Fundamentals
         </p>
-
-        {/* 5 pillar mini-bars */}
-        <div className="flex gap-1.5 mb-3">
-          {[
-            { emoji: "🏔", label: "Moat", score: ltcs.moat },
-            { emoji: "💪", label: "Balance", score: ltcs.financial },
-            { emoji: "💰", label: "Profit", score: ltcs.profitability },
-            { emoji: "🛡", label: "Stable", score: ltcs.stability },
-            { emoji: "📊", label: "Value", score: ltcs.valuation },
-          ].map(({ emoji, label, score: s }) => {
+        <div className="grid grid-cols-2 gap-1.5">
+          {pillars.map(({ label, score: s, icon }) => {
             const { barColor } = getPillarVerdict(s)
             return (
-              <div key={label} className="flex-1 text-center">
-                <div className="text-base leading-none">{emoji}</div>
-                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#1e2d45]">
+              <div
+                key={label}
+                className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#162038] px-3 py-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-[#7a8ba0]">{icon} {label}</span>
+                  <span className="text-[10px] font-bold" style={{ color: barColor }}>
+                    {s !== null ? `${s}` : "—"}
+                  </span>
+                </div>
+                <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-[#1e2d45]">
                   <div
                     className="h-full rounded-full transition-all duration-500"
                     style={{ width: `${s ?? 0}%`, backgroundColor: barColor }}
                   />
                 </div>
-                <p className="mt-0.5 text-[9px] text-[#7a8ba0]">{label}</p>
               </div>
             )
           })}
         </div>
+      </div>
 
-        {/* 2 plain-English bullets */}
+      {/* ── Plain-English bullets ── */}
+      <div className="shrink-0 px-4 pt-2">
         <ul className="space-y-1.5">
           {whyBullets.slice(0, 2).map((bullet, i) => (
-            <li key={i} className="flex items-start gap-1.5 text-[11px] leading-[1.4] text-[#b0bec8]">
-              <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#f0a500]" />
+            <li key={i} className="flex items-start gap-2 text-[11px] leading-[1.45] text-[#b0bec8]">
+              <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#f0a500]" />
               <span>{bullet}</span>
             </li>
           ))}
         </ul>
       </div>
 
-      {/* CTA */}
-      <div className="mt-auto shrink-0 px-5 py-4">
+      {/* ── CTA ── */}
+      <div className="mt-auto shrink-0 px-4 py-4">
         <button
           type="button"
           onClick={onOpen}
           className="w-full rounded-2xl bg-[#f0a500] px-5 py-3.5 text-sm font-bold text-black transition active:scale-[0.98] hover:bg-[#ffb733]"
         >
-          View Analysis
+          View Analysis →
         </button>
       </div>
     </div>
