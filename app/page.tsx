@@ -404,6 +404,8 @@ export default function Home() {
   const [sectorFilter, setSectorFilter] = useState<SectorFilterType>("all")
   const [sourceFilter, setSourceFilter] = useState<SourceFilterType>("all")
 
+  const [beginnerMode, setBeginnerMode] = useState(true)
+
   const [detailInitialTab, setDetailInitialTab] = useState(0)
 
   useEffect(() => {
@@ -611,8 +613,24 @@ export default function Home() {
 
     loadData()
 
+    // Subscribe to realtime updates on ticker_scores_current
+    // When the pipeline finishes a cycle, scores update and we refresh automatically
+    const channel = supabase
+      .channel("board-refresh")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "ticker_scores_current" },
+        () => {
+          if (isMounted) {
+            loadData()
+          }
+        }
+      )
+      .subscribe()
+
     return () => {
       isMounted = false
+      supabase.removeChannel(channel)
     }
   }, [])
 
@@ -907,13 +925,27 @@ export default function Home() {
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={resetFilters}
-                      className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200 lg:w-auto"
-                    >
-                      Reset filters
-                    </button>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <button
+                        type="button"
+                        onClick={resetFilters}
+                        className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200 lg:w-auto"
+                      >
+                        Reset filters
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setBeginnerMode((prev) => !prev)}
+                        className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold transition lg:w-auto ${
+                          beginnerMode
+                            ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                            : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20"
+                        }`}
+                      >
+                        {beginnerMode ? "Beginner mode: On" : "Beginner mode: Off"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
@@ -930,17 +962,19 @@ export default function Home() {
                       ]}
                     />
 
-                    <FilterSelect
-                      label="Valuation"
-                      value={peFilter}
-                      onChange={(value) => setPeFilter(value as PeFilterType)}
-                      options={[
-                        { value: "all", label: "All valuations" },
-                        { value: "20", label: "P/E ≤ 20" },
-                        { value: "30", label: "P/E ≤ 30" },
-                        { value: "50", label: "P/E ≤ 50" },
-                      ]}
-                    />
+                    {!beginnerMode && (
+                      <FilterSelect
+                        label="Valuation"
+                        value={peFilter}
+                        onChange={(value) => setPeFilter(value as PeFilterType)}
+                        options={[
+                          { value: "all", label: "All valuations" },
+                          { value: "20", label: "P/E ≤ 20" },
+                          { value: "30", label: "P/E ≤ 30" },
+                          { value: "50", label: "P/E ≤ 50" },
+                        ]}
+                      />
+                    )}
 
                     <FilterSelect
                       label="How recent"
@@ -981,17 +1015,19 @@ export default function Home() {
                       }))}
                     />
 
-                    <FilterSelect
-                      label="Why it’s here"
-                      value={sourceFilter}
-                      onChange={(value) => setSourceFilter(value as SourceFilterType)}
-                      options={[
-                        { value: "all", label: "All reasons" },
-                        { value: "both", label: "Price strength + signals" },
-                        { value: "technical_only", label: "Price strength only" },
-                        { value: "filing_only", label: "Signals only" },
-                      ]}
-                    />
+                    {!beginnerMode && (
+                      <FilterSelect
+                        label="Why it’s here"
+                        value={sourceFilter}
+                        onChange={(value) => setSourceFilter(value as SourceFilterType)}
+                        options={[
+                          { value: "all", label: "All reasons" },
+                          { value: "both", label: "Price strength + signals" },
+                          { value: "technical_only", label: "Price strength only" },
+                          { value: "filing_only", label: "Signals only" },
+                        ]}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
@@ -1069,6 +1105,11 @@ export default function Home() {
             </>
           )}
         </section>
+
+        <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/5 px-4 py-4 text-sm leading-6 text-amber-200/80">
+          <span className="font-semibold text-amber-300">Important: </span>
+          This is not financial advice. Stock signals are based on public data about insider filings and price patterns — not guarantees. Never invest more than you can afford to lose. Always do your own research before acting on any idea shown here.
+        </div>
 
         <footer className="mt-10 border-t border-white/10 pt-8 text-sm leading-6 text-slate-500">
           This board is meant to help you find ideas faster, not make the decision for you.
@@ -1420,6 +1461,40 @@ function getRowKey(row: UnifiedRow, index: number) {
   return `${row.ticker}-${accessionKey}-${index}`
 }
 
+function humanizeSignalLabel(tag: string): string {
+  const map: Record<string, string> = {
+    "ptr-cluster-bonus": "Multiple politicians bought this",
+    "ptr-strong-buying-bonus": "Strong political buying interest",
+    "ptr-plus-insider-bonus": "Politicians + insiders buying together",
+    "ptr-plus-ownership-bonus": "Politicians buying a large stakeholder's stock",
+    "ptr-selling-headwind": "Some political selling recently",
+    "single-family-penalty": "Signal from only one category",
+    "single-family-cap": "Limited to one signal type",
+    "cluster-conviction-exemption": "Strong insider cluster buy",
+    "limited-evidence-cap": "Few supporting data points",
+    "broad-confirmation-cap": "Needs more confirming signals",
+    "sharp-move-penalty": "Stock moved sharply — may be chasing",
+    "crowded-move-penalty": "Large recent move without strong conviction",
+    "volume-spike-penalty": "Unusual volume spike without clear catalyst",
+    "sector-crowding-penalty": "Many stocks in this sector are signaling",
+    "sector-crowding-warning": "Busy sector — may dilute opportunity",
+    "industry-crowding-penalty": "Many stocks in this industry are signaling",
+    "industry-crowding-warning": "Busy industry group",
+    "score-declining": "Score has been declining recently",
+    "ptr-priority": "Congressional trading activity present",
+    "ptr-strong-buying": "Strong political buying",
+    "ptr-buy-cluster": "Multiple politicians buying same stock",
+    "breakout-20d": "Broke out to a 20-day high",
+    "breakout-10d": "Broke out to a 10-day high",
+    "above-sma20": "Trading above its 20-day average",
+    "volume-confirmed": "Volume backs up the move",
+    "relative-strength": "Outperforming the broader market",
+    "insider-filing": "Insider filed a trade report",
+    "ownership-filing": "Large ownership stake reported",
+  }
+  return map[tag] || tag
+}
+
 function TopSignalCard({
   row,
   onClick,
@@ -1708,6 +1783,11 @@ function ScoreBadge({
       }}
     >
       <span>{score}</span>
+      {row.ticker_score_change_7d !== null && row.ticker_score_change_7d !== undefined && (
+        <span className="text-xs opacity-80">
+          {row.ticker_score_change_7d >= 3 ? "↑" : row.ticker_score_change_7d <= -3 ? "↓" : ""}
+        </span>
+      )}
       <span className="opacity-90">• {tier}</span>
     </div>
   )
@@ -2150,6 +2230,11 @@ function SignalDetailsModal({
                       label="Filed at"
                       value={row.filed_at ? formatDateLong(row.filed_at) : null}
                     />
+                    {row.ptr_amount ? (
+                      <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-200/70">
+                        Note: Politicians have up to 45 days to report trades. The actual trade may have occurred before the date shown.
+                      </div>
+                    ) : null}
                     <MetricRow
                       label="Last screened"
                       value={
@@ -2417,6 +2502,11 @@ function SignalDetailsModal({
                           label="Filed at"
                           value={row.filed_at ? formatDateLong(row.filed_at) : null}
                         />
+                        {row.ptr_amount ? (
+                          <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-200/70">
+                            Note: Politicians have up to 45 days to report trades. The actual trade may have occurred before the date shown.
+                          </div>
+                        ) : null}
                         <MetricRow
                           label="Last screened"
                           value={
@@ -2877,7 +2967,7 @@ function getSimpleSetupBullets(row: UnifiedRow) {
 
 function normalizeTags(tags: string[] | null | undefined) {
   if (!tags) return []
-  if (Array.isArray(tags)) return tags.filter(Boolean)
+  if (Array.isArray(tags)) return tags.filter(Boolean).map(humanizeSignalLabel)
   return []
 }
 

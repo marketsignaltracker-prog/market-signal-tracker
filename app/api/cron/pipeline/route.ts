@@ -38,6 +38,7 @@ type PipelineStateRow = {
   screen_next_start: number | null
   cycle_started_at: string | null
   cycle_completed_at: string | null
+  companies_completed_at?: string | null
   filings_completed_at: string | null
   signals_completed_at: string | null
   ticker_scores_completed_at?: string | null
@@ -74,7 +75,9 @@ const DEFAULT_STEP_TIMEOUT_MS = 50_000
 const FILINGS_STEP_TIMEOUT_MS = 55_000
 const PTRS_STEP_TIMEOUT_MS = 45_000
 const SCREENING_STEP_TIMEOUT_MS = 55_000
-const RUN_LOCK_WINDOW_MS = 4 * 60 * 1000
+const RUN_LOCK_WINDOW_MS = 2 * 60 * 1000
+const COMPANIES_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000
+const CHAIN_BUDGET_MS = 45_000
 
 function nowIso() {
   return new Date().toISOString()
@@ -249,6 +252,7 @@ async function getPipelineState(supabase: any): Promise<PipelineStateRow> {
     screen_next_start: 0,
     cycle_started_at: null,
     cycle_completed_at: null,
+    companies_completed_at: null,
     filings_completed_at: null,
     signals_completed_at: null,
     ticker_scores_completed_at: null,
@@ -349,6 +353,7 @@ export async function GET(request: NextRequest) {
   }
 
   const runStartedIso = nowIso()
+  const runStartMs = Date.now()
 
   try {
     const baseUrl = getBaseUrl()
@@ -400,6 +405,34 @@ export async function GET(request: NextRequest) {
       state.stage === "complete" ||
       state.stage === "error"
     ) {
+      const companiesRecentlyRun = isRecentRun(
+        state.companies_completed_at,
+        COMPANIES_REFRESH_INTERVAL_MS
+      )
+
+      if (companiesRecentlyRun) {
+        state = await patchPipelineState(supabase, {
+          stage: "screening",
+          status: "idle",
+          screen_start: 0,
+          screen_next_start: 0,
+          screen_batch: clampScreenBatch(state.screen_batch),
+          screen_total: null,
+          filings_completed_at: null,
+          signals_completed_at: null,
+          ticker_scores_completed_at: null,
+          cycle_completed_at: null,
+          last_run_finished_at: nowIso(),
+        })
+
+        return NextResponse.json({
+          ok: true,
+          message: "Skipped companies step (ran recently). Moving to screening.",
+          nextStage: state.stage,
+          results,
+        })
+      }
+
       const companiesResult = await runStep(
         baseUrl,
         "/api/ingest/companies",
@@ -425,6 +458,7 @@ export async function GET(request: NextRequest) {
         screen_next_start: 0,
         screen_batch: clampScreenBatch(state.screen_batch),
         screen_total: null,
+        companies_completed_at: nowIso(),
         filings_completed_at: null,
         signals_completed_at: null,
         ticker_scores_completed_at: null,
@@ -549,12 +583,15 @@ export async function GET(request: NextRequest) {
         last_run_finished_at: nowIso(),
       })
 
-      return NextResponse.json({
-        ok: true,
-        message: "Completed eligible universe step.",
-        nextStage: state.stage,
-        results,
-      })
+      if (Date.now() - runStartMs >= CHAIN_BUDGET_MS) {
+        return NextResponse.json({
+          ok: true,
+          message: "Completed eligible universe step.",
+          nextStage: state.stage,
+          results,
+        })
+      }
+      // else: fall through to filings stage below
     }
 
     if (state.stage === "filings") {
@@ -719,12 +756,15 @@ export async function GET(request: NextRequest) {
         last_run_finished_at: nowIso(),
       })
 
-      return NextResponse.json({
-        ok: true,
-        message: "Completed signals step.",
-        nextStage: state.stage,
-        results,
-      })
+      if (Date.now() - runStartMs >= CHAIN_BUDGET_MS) {
+        return NextResponse.json({
+          ok: true,
+          message: "Completed signals step.",
+          nextStage: state.stage,
+          results,
+        })
+      }
+      // else: fall through to ticker_scores stage below
     }
 
     if (state.stage === "ticker_scores") {
@@ -762,12 +802,15 @@ export async function GET(request: NextRequest) {
         last_run_finished_at: nowIso(),
       })
 
-      return NextResponse.json({
-        ok: true,
-        message: "Completed ticker scores step.",
-        nextStage: state.stage,
-        results,
-      })
+      if (Date.now() - runStartMs >= CHAIN_BUDGET_MS) {
+        return NextResponse.json({
+          ok: true,
+          message: "Completed ticker scores step.",
+          nextStage: state.stage,
+          results,
+        })
+      }
+      // else: fall through to finalize_candidates stage below
     }
 
     if (state.stage === "finalize_candidates") {
