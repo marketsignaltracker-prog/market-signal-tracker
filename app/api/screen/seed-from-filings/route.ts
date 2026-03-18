@@ -33,13 +33,13 @@ export async function GET(request: Request) {
   const lookbackIso = lookbackDate.toISOString()
   const lookbackDateStr = lookbackDate.toISOString().split("T")[0]
 
-  // --- 1. Collect CIKs with recent Form 3/4/5 filings ---
+  // --- 1. Collect tickers with recent Form 3/4/5 filings ---
   const { data: filingRows, error: filingError } = await supabase
     .from("raw_filings")
-    .select("ticker, cik, company_name")
+    .select("ticker")
     .in("form_type", ["3", "3/A", "4", "4/A", "5", "5/A"])
     .gte("filed_at", lookbackIso)
-    .not("cik", "is", null)
+    .not("ticker", "is", null)
 
   if (filingError) {
     return NextResponse.json(
@@ -63,41 +63,18 @@ export async function GET(request: Request) {
 
   const ptrTickerSet = new Set((ptrRows || []).map((r: any) => r.ticker as string))
 
-  // Deduplicate filing companies by CIK
-  const filingByCik = new Map<string, { ticker: string; cik: string }>()
+  // Deduplicate all tickers (filings + PTRs)
+  const allTickerSet = new Set<string>()
   for (const row of filingRows || []) {
-    if (row.cik && row.ticker && !filingByCik.has(row.cik)) {
-      filingByCik.set(row.cik, { ticker: row.ticker, cik: row.cik })
-    }
+    if (row.ticker) allTickerSet.add(row.ticker)
+  }
+  for (const ticker of ptrTickerSet) {
+    if (ticker) allTickerSet.add(ticker)
   }
 
-  const cikList = [...filingByCik.keys()]
+  const allTickers = [...allTickerSet]
 
-  // Also find CIKs for PTR-only tickers not in filingByCik
-  const ptrOnlyTickers = [...ptrTickerSet].filter(
-    (t) => ![...filingByCik.values()].some((v) => v.ticker === t)
-  )
-
-  if (ptrOnlyTickers.length > 0) {
-    const CHUNK = 300
-    for (let i = 0; i < ptrOnlyTickers.length; i += CHUNK) {
-      const chunk = ptrOnlyTickers.slice(i, i + CHUNK)
-      const { data: ptrCompanies } = await supabase
-        .from("companies")
-        .select("ticker, cik")
-        .in("ticker", chunk)
-        .not("cik", "is", null)
-        .eq("is_active", true)
-      for (const row of ptrCompanies || []) {
-        if (row.cik && row.ticker && !filingByCik.has(row.cik)) {
-          cikList.push(row.cik)
-          filingByCik.set(row.cik, { ticker: row.ticker, cik: row.cik })
-        }
-      }
-    }
-  }
-
-  if (cikList.length === 0) {
+  if (allTickers.length === 0) {
     return NextResponse.json({
       ok: true,
       seeded: 0,
@@ -105,17 +82,16 @@ export async function GET(request: Request) {
     })
   }
 
-  // --- 3. Look up company metadata for those CIKs ---
+  // --- 3. Look up company metadata for those tickers ---
   const CHUNK_SIZE = 400
   const companyRows: any[] = []
-  for (let i = 0; i < cikList.length; i += CHUNK_SIZE) {
-    const chunk = cikList.slice(i, i + CHUNK_SIZE)
+  for (let i = 0; i < allTickers.length; i += CHUNK_SIZE) {
+    const chunk = allTickers.slice(i, i + CHUNK_SIZE)
     const { data: rows } = await supabase
       .from("companies")
       .select("id, ticker, cik, name, is_active")
-      .in("cik", chunk)
+      .in("ticker", chunk)
       .eq("is_active", true)
-      .not("cik", "is", null)
     companyRows.push(...(rows || []))
   }
 
@@ -172,7 +148,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     ok: true,
     seeded: insertedCount,
-    fromFilings: filingByCik.size,
+    fromFilings: allTickerSet.size - ptrTickerSet.size,
     fromPtrs: ptrTickerSet.size,
     lookbackDays: FILINGS_LOOKBACK_DAYS,
     message: `Seeded candidate_universe with ${insertedCount} companies from insider filings and PTR trades (${FILINGS_LOOKBACK_DAYS}d lookback).`,

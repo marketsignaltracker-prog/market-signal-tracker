@@ -34,14 +34,6 @@ type CandidateUniverseRow = {
   screen_reason?: string | null
   last_screened_at?: string | null
   updated_at?: string | null
-  pe_ratio?: number | null
-  pe_forward?: number | null
-  sector?: string | null
-  industry?: string | null
-  has_insider_trades?: boolean | null
-  has_ptr_forms?: boolean | null
-  has_clusters?: boolean | null
-  eligibility_reason?: string | null
 }
 
 type TickerScoreRow = {
@@ -190,13 +182,9 @@ type UnifiedRow = {
 
   has_candidate_data: boolean
   has_signal_data: boolean
-  has_insider_trades: boolean
-  has_ptr_forms: boolean
-  has_clusters: boolean
-  eligibility_reason: string | null
   data_source_label:
-    | "Price Strength + Signals"
-    | "Price Strength Only"
+    | "Quality Score + Signals"
+    | "Quality Score Only"
     | "Signals Only"
 }
 
@@ -226,7 +214,7 @@ type ReasonLine = {
 }
 
 const CARDS_PER_PAGE = 18
-const DETAIL_TABS = ["Overview", "Why it’s here", "Numbers"] as const
+const DETAIL_TABS = ["Overview", "Fundamentals", "Numbers"] as const
 
 function normalizeTicker(value: string | null | undefined) {
   return (value || "").trim().toUpperCase()
@@ -308,10 +296,10 @@ function makeUnifiedRow(
     last_screened_at: candidate?.last_screened_at ?? null,
 
     market_cap: firstNumberOrNull(signal?.market_cap, candidate?.market_cap, null),
-    sector: signal?.sector ?? candidate?.sector ?? null,
-    industry: signal?.industry ?? candidate?.industry ?? null,
-    pe_ratio: signal?.pe_ratio ?? candidate?.pe_ratio ?? null,
-    pe_forward: signal?.pe_forward ?? candidate?.pe_forward ?? null,
+    sector: signal?.sector ?? null,
+    industry: signal?.industry ?? null,
+    pe_ratio: signal?.pe_ratio ?? null,
+    pe_forward: signal?.pe_forward ?? null,
     pe_type: signal?.pe_type ?? null,
 
     one_day_return: candidate?.one_day_return ?? null,
@@ -391,15 +379,11 @@ function makeUnifiedRow(
 
     has_candidate_data: Boolean(candidate),
     has_signal_data: Boolean(signal),
-    has_insider_trades: candidate?.has_insider_trades === true,
-    has_ptr_forms: candidate?.has_ptr_forms === true,
-    has_clusters: candidate?.has_clusters === true,
-    eligibility_reason: candidate?.eligibility_reason ?? null,
     data_source_label:
       candidate && signal
-        ? "Price Strength + Signals"
+        ? "Quality Score + Signals"
         : candidate
-          ? "Price Strength Only"
+          ? "Quality Score Only"
           : "Signals Only",
   }
 }
@@ -416,7 +400,7 @@ export default function Home() {
   const [priceFilter, setPriceFilter] = useState<PriceFilterType>("all")
   const [peFilter, setPeFilter] = useState<PeFilterType>("all")
   const [freshnessFilter, setFreshnessFilter] = useState<FreshnessFilterType>("all")
-  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("70")
+  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("all")
   const [sectorFilter, setSectorFilter] = useState<SectorFilterType>("all")
   const [sourceFilter, setSourceFilter] = useState<SourceFilterType>("all")
 
@@ -465,17 +449,9 @@ export default function Home() {
               included,
               screen_reason,
               last_screened_at,
-              updated_at,
-              pe_ratio,
-              pe_forward,
-              sector,
-              industry,
-              has_insider_trades,
-              has_ptr_forms,
-              has_clusters,
-              eligibility_reason
+              updated_at
             `)
-            .gte("candidate_score", 70)
+            .gte("candidate_score", 50)
             .order("candidate_score", { ascending: false })
             .limit(1000),
 
@@ -617,8 +593,8 @@ export default function Home() {
           if (!unified) continue
 
           const include =
-            (unified.candidate_score ?? -1) >= 70 ||
-            (unified.signal_score ?? -1) >= 70
+            (unified.candidate_score ?? -1) >= 50 ||
+            (unified.signal_score ?? -1) >= 50
 
           if (include) merged.push(unified)
         }
@@ -703,7 +679,7 @@ export default function Home() {
     if (priceFilter !== "all") count += 1
     if (peFilter !== "all") count += 1
     if (freshnessFilter !== "all") count += 1
-    if (scoreFilter !== "70") count += 1
+    if (scoreFilter !== "all") count += 1
     if (sectorFilter !== "all") count += 1
     if (sourceFilter !== "all") count += 1
     return count
@@ -737,7 +713,7 @@ export default function Home() {
     setPriceFilter("all")
     setPeFilter("all")
     setFreshnessFilter("all")
-    setScoreFilter("70")
+    setScoreFilter("all")
     setSectorFilter("all")
     setSourceFilter("all")
     setSelectedTicker(null)
@@ -1036,29 +1012,61 @@ function SwipeDeck({
 
   return (
     <div className="flex h-full flex-col items-center px-3 pb-2 pt-3">
-      {/* Pagination dots */}
-      <div className="mb-2 flex shrink-0 items-center gap-1.5">
-        {dots.map((i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => {
-              setSwipeDir(i > cardIndex ? "left" : "right")
-              onIndexChange(i)
-              setAnimKey((k) => k + 1)
-            }}
-            aria-label={`Go to stock ${i + 1}`}
-            className={[
-              "rounded-full transition-all duration-200",
-              i === cardIndex
-                ? "h-2 w-5 bg-cyan-400"
-                : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
-            ].join(" ")}
-          />
-        ))}
-        <span className="ml-1.5 text-[11px] text-slate-500">
-          {cardIndex + 1}/{rows.length}
-        </span>
+      {/* Nav row */}
+      <div className="mb-2.5 flex w-full max-w-md shrink-0 items-center justify-between">
+        <button
+          type="button"
+          onClick={goPrev}
+          disabled={!hasPrev}
+          aria-label="Previous idea"
+          className={[
+            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition",
+            hasPrev
+              ? "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 active:scale-95"
+              : "cursor-default border-transparent text-transparent",
+          ].join(" ")}
+        >
+          ‹
+        </button>
+
+        <div className="flex items-center gap-1.5">
+          {dots.map((i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                setSwipeDir(i > cardIndex ? "left" : "right")
+                onIndexChange(i)
+                setAnimKey((k) => k + 1)
+              }}
+              aria-label={`Go to idea ${i + 1}`}
+              className={[
+                "rounded-full transition-all duration-200",
+                i === cardIndex
+                  ? "h-2 w-5 bg-cyan-400"
+                  : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
+              ].join(" ")}
+            />
+          ))}
+          <span className="ml-1.5 text-[11px] text-slate-500">
+            {cardIndex + 1}/{rows.length}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={goNext}
+          disabled={!hasNext}
+          aria-label="Next idea"
+          className={[
+            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition",
+            hasNext
+              ? "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 active:scale-95"
+              : "cursor-default border-transparent text-transparent",
+          ].join(" ")}
+        >
+          ›
+        </button>
       </div>
 
       {/* Swipeable card */}
@@ -1077,11 +1085,8 @@ function SwipeDeck({
         >
           <SwipeStockCard
             row={row}
+            rank={cardIndex + 1}
             onOpen={() => onOpenDetails(row.ticker)}
-            onNext={goNext}
-            onPrev={goPrev}
-            hasNext={hasNext}
-            hasPrev={hasPrev}
           />
         </div>
       </div>
@@ -1089,402 +1094,160 @@ function SwipeDeck({
   )
 }
 
-function ScoreRing({ score, size = 56 }: { score: number; size?: number }) {
-  const palette = getScorePalette(score)
-  const r = (size - 6) / 2
-  const circ = 2 * Math.PI * r
-  const offset = circ - (score / 100) * circ
-  return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="rgba(255,255,255,0.06)"
-          strokeWidth={5}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={palette.end}
-          strokeWidth={5}
-          strokeLinecap="round"
-          strokeDasharray={circ}
-          strokeDashoffset={offset}
-          style={{ transition: "stroke-dashoffset 800ms ease-out" }}
-        />
-      </svg>
-      <span
-        className="absolute inset-0 flex items-center justify-center text-lg font-black"
-        style={{ color: palette.end }}
-      >
-        {score}
-      </span>
-    </div>
-  )
-}
-
 function SwipeStockCard({
   row,
+  rank,
   onOpen,
-  onNext,
-  onPrev,
-  hasNext,
-  hasPrev,
 }: {
   row: UnifiedRow
+  rank: number
   onOpen: () => void
-  onNext: () => void
-  onPrev: () => void
-  hasNext: boolean
-  hasPrev: boolean
 }) {
   const score = row.display_score
   const palette = getScorePalette(score)
-  const { insider, tech } = getCardSignals(row)
-  const hasAnyInsider = insider.length > 0
+  const whyBullets = getSimpleCardBullets(row)
 
-  // Returns grid
-  const returns: Array<{ label: string; value: number }> = []
-  if (row.one_day_return != null) returns.push({ label: "1D", value: row.one_day_return })
-  if (row.price_return_5d != null) returns.push({ label: "5D", value: row.price_return_5d })
-  if (row.return_10d != null) returns.push({ label: "10D", value: row.return_10d })
-  if (row.price_return_20d != null) returns.push({ label: "20D", value: row.price_return_20d })
-
-  // Stat pills
-  const stats: Array<{ label: string; value: string; accent?: boolean }> = []
-  if (row.volume_ratio != null && row.volume_ratio > 0)
-    stats.push({ label: "Vol", value: `${row.volume_ratio.toFixed(1)}x`, accent: row.volume_ratio >= 1.5 })
-  if (row.relative_strength_20d != null)
-    stats.push({ label: "RS", value: Number(row.relative_strength_20d).toFixed(1), accent: Number(row.relative_strength_20d) >= 5 })
-  if (row.pe_ratio != null)
-    stats.push({ label: "P/E", value: row.pe_ratio.toFixed(1) })
-  if (row.market_cap != null)
-    stats.push({ label: "Cap", value: formatMarketCap(row.market_cap) })
-
-  // Status checks
-  const checks: string[] = []
-  if (row.breakout_20d || row.breakout_10d) checks.push("Breakout")
-  if (row.above_sma_20) checks.push("Above 20 MA")
-  if (row.above_50dma) checks.push("Above 50 MA")
-  if (row.trend_aligned) checks.push("Trend Aligned")
-  if (row.price_confirmed) checks.push("Confirmed")
+  const ltcs = parseScreenReasonScores(row.screen_reason)
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-[1.5rem] border shadow-2xl"
+      className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl"
       style={{
-        borderColor: "rgba(255,255,255,0.08)",
-        background: "linear-gradient(180deg, #1a1018 0%, #0d0b10 40%, #080810 100%)",
-        boxShadow: `0 0 80px -20px ${palette.end}40, 0 25px 50px -12px rgba(0,0,0,0.6)`,
+        borderColor: `${palette.end}40`,
+        background: `linear-gradient(155deg, ${palette.start}16 0%, rgba(10,18,38,0.97) 38%, rgba(2,6,23,1) 100%)`,
       }}
     >
-      {/* Header */}
-      <div className="shrink-0 px-4 pt-4 pb-2">
-        <div className="flex items-center gap-3">
-          <ScoreRing score={score} />
+      {/* Header: rank + buy + ticker + score */}
+      <div className="shrink-0 px-5 pt-4 pb-2">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-2">
-              <h2 className="text-3xl font-black tracking-tight text-white">{row.ticker}</h2>
-              {row.price ? (
-                <span className="text-base font-bold text-white/70">
-                  {formatMoney(row.price)}
-                </span>
-              ) : null}
+            <div className="flex items-center gap-2">
+              <CardRankBadge rank={rank} />
+              <a
+                href={`https://robinhood.com/stocks/${row.ticker}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300 transition hover:bg-emerald-400/20"
+              >
+                Buy ↗
+              </a>
             </div>
-            <p className="truncate text-xs text-white/40">
-              {[row.company_name, row.sector].filter(Boolean).join(" · ")}
-            </p>
+            <h2 className="mt-1.5 text-4xl font-black tracking-tight">{row.ticker}</h2>
+            {row.company_name ? (
+              <p className="mt-0.5 truncate text-sm text-slate-400">
+                {truncateText(row.company_name, 36)}
+              </p>
+            ) : null}
+            {row.sector ? (
+              <p className="text-[11px] text-slate-500">{row.sector}</p>
+            ) : null}
           </div>
-          <a
-            href={`https://robinhood.com/stocks/${row.ticker}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="flex h-9 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500/25 active:scale-95"
-          >
-            Buy ↗
-          </a>
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <ScoreBadge row={row} large />
+            <FreshnessBadge row={row} />
+          </div>
+        </div>
+
+        {/* Quality Score bar */}
+        <div className="mt-2.5">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Quality Score
+            </span>
+            <span className="text-xs font-semibold text-white">{score}/100</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-slate-800/80">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${score}%`,
+                background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
+                transition: "width 600ms ease-out",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Price + 1D / 5D / 20D returns */}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {row.price ? (
+            <span className="mr-0.5 shrink-0 text-sm font-bold text-white">
+              {formatMoney(row.price)}
+            </span>
+          ) : null}
+          {[
+            { label: "1D", value: row.one_day_return },
+            { label: "5D", value: row.price_return_5d },
+            { label: "20D", value: row.price_return_20d },
+          ].map(({ label, value }) =>
+            value !== null && value !== undefined ? (
+              <span
+                key={label}
+                className={[
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                  value >= 0 ? "bg-emerald-400/15 text-emerald-300" : "bg-rose-400/15 text-rose-300",
+                ].join(" ")}
+              >
+                {label} {value >= 0 ? "+" : ""}{round1(value)?.toFixed(1)}%
+              </span>
+            ) : null
+          )}
         </div>
       </div>
 
-      {/* Scrollable body */}
-      <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-4 pt-1 pb-2">
+      {/* Quality Fundamentals */}
+      <div className="shrink-0 border-t border-white/[0.07] px-4 py-3">
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/80">
+          Quality Fundamentals
+        </p>
 
-        {/* Returns bar */}
-        {returns.length > 0 && (
-          <div className="flex gap-1.5">
-            {returns.map((r, i) => {
-              const pos = r.value >= 0
-              return (
-                <div
-                  key={i}
-                  className="flex flex-1 flex-col items-center rounded-lg py-2"
-                  style={{
-                    background: pos
-                      ? "rgba(34,197,94,0.08)"
-                      : "rgba(248,113,113,0.08)",
-                    border: `1px solid ${pos ? "rgba(34,197,94,0.20)" : "rgba(248,113,113,0.20)"}`,
-                  }}
-                >
-                  <span className="text-[10px] font-medium text-white/40">{r.label}</span>
-                  <span
-                    className="text-sm font-black"
-                    style={{ color: pos ? "#4ade80" : "#f87171" }}
-                  >
-                    {pos ? "+" : ""}{r.value.toFixed(1)}%
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Two-column info grid */}
-        <div className="grid grid-cols-2 gap-2">
-          {/* Box 1: Insiders are Buying */}
-          <div className="rounded-xl border border-orange-500/25 p-3" style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.12) 0%, rgba(249,115,22,0.03) 100%)" }}>
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <span className="text-sm">👤</span>
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-400">
-                Insiders Buying
-              </p>
-            </div>
-            {(() => {
-              const hasCluster = (row.cluster_buyers ?? 0) >= 2
-              if (hasCluster) {
-                return (
-                  <div className="space-y-1.5">
-                    <p className="text-xl font-black text-orange-200">Cluster</p>
-                    <p className="text-[11px] text-orange-300/60">
-                      👥 {row.cluster_buyers} insiders buying together
-                    </p>
-                  </div>
-                )
-              }
-              if (row.has_insider_trades) {
-                return (
-                  <div className="space-y-1.5">
-                    <p className="text-xl font-black text-orange-200">Yes</p>
-                    <p className="text-[11px] text-orange-300/60">SEC Form 4 filed</p>
-                  </div>
-                )
-              }
-              return (
-                <div className="space-y-1.5">
-                  <p className="text-xl font-black text-white/20">No</p>
-                  <p className="text-[11px] text-white/20">No recent filings</p>
-                </div>
-              )
-            })()}
-          </div>
-
-          {/* Box 2: Congress is Buying */}
-          <div className="rounded-xl border border-purple-500/25 p-3" style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.12) 0%, rgba(168,85,247,0.03) 100%)" }}>
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <span className="text-sm">🏛️</span>
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-purple-400">
-                Congress Buying
-              </p>
-            </div>
-            {row.has_ptr_forms || row.ptr_amount ? (
-              <div className="space-y-1.5">
-                <p className="text-xl font-black text-purple-200">Yes</p>
-                <p className="text-[11px] text-purple-300/60">
-                  {row.ptr_amount ? `${row.ptr_amount} disclosed` : "PTR disclosure filed"}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                <p className="text-xl font-black text-white/20">No</p>
-                <p className="text-[11px] text-white/20">No PTR trades</p>
-              </div>
-            )}
-          </div>
-
-          {/* Box 3: Relative Strength */}
-          <div className="rounded-xl border border-cyan-500/20 p-3" style={{ background: "linear-gradient(135deg, rgba(6,182,212,0.10) 0%, rgba(6,182,212,0.02) 100%)" }}>
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <span className="text-sm">💪</span>
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-400">
-                Vs. Market
-              </p>
-            </div>
-            {row.relative_strength_20d != null ? (() => {
-              const rs = Number(row.relative_strength_20d)
-              const label = rs >= 15 ? "Dominating" : rs >= 8 ? "Outperforming" : rs >= 3 ? "Beating" : rs >= 0 ? "In line" : "Lagging"
-              const color = rs >= 8 ? "#22d3ee" : rs >= 3 ? "#67e8f9" : rs >= 0 ? "#94a3b8" : "#f87171"
-              return (
-                <div className="space-y-1.5">
-                  <p className="text-xl font-black" style={{ color }}>
-                    +{rs.toFixed(1)}%
-                  </p>
-                  <p className="text-[11px] text-cyan-300/60">
-                    {label} the market over 20 days
-                  </p>
-                </div>
-              )
-            })() : (
-              <div>
-                <p className="text-lg font-black text-white/20">--</p>
-                <p className="text-[11px] text-white/20">No data yet</p>
-              </div>
-            )}
-          </div>
-
-          {/* Box 4: Overbought / Oversold gauge */}
-          <div className="rounded-xl border border-white/[0.08] p-3" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)" }}>
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <span className="text-sm">📈</span>
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/50">
-                Extension
-              </p>
-            </div>
-            {row.extension_from_sma20_pct != null ? (() => {
-              const ext = row.extension_from_sma20_pct
-              const absExt = Math.abs(ext)
-              // Gauge: -20% to +20% range, clamped
-              const pct = Math.min(Math.max((ext + 20) / 40, 0), 1) * 100
-              const isOverBought = ext >= 12
-              const isExtended = ext >= 6
-              const isOversold = ext <= -5
-              const label = isOverBought ? "Overbought" : isExtended ? "Extended" : isOversold ? "Oversold" : "Healthy"
-              const color = isOverBought ? "#f87171" : isExtended ? "#fbbf24" : isOversold ? "#4ade80" : "#22d3ee"
-              return (
-                <div className="space-y-2">
-                  <p className="text-sm font-black" style={{ color }}>
-                    {ext >= 0 ? "+" : ""}{ext.toFixed(1)}% <span className="text-[11px] font-bold text-white/40">from avg</span>
-                  </p>
-                  {/* Gauge bar */}
-                  <div className="relative h-2 rounded-full bg-white/[0.06]">
-                    {/* Center line */}
-                    <div className="absolute top-0 left-1/2 h-full w-px bg-white/20" />
-                    {/* Marker */}
-                    <div
-                      className="absolute top-[-1px] h-[10px] w-[10px] rounded-full border-2"
-                      style={{
-                        left: `calc(${pct}% - 5px)`,
-                        backgroundColor: color,
-                        borderColor: `${color}80`,
-                        transition: "left 600ms ease-out",
-                      }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[9px] text-white/25">
-                    <span>Oversold</span>
-                    <span>Overbought</span>
-                  </div>
-                  <p className="text-[11px] font-semibold" style={{ color }}>{label}</p>
-                </div>
-              )
-            })() : (
-              <div>
-                <p className="text-lg font-black text-white/20">--</p>
-                <p className="text-[11px] text-white/20">No data yet</p>
-              </div>
-            )}
-          </div>
-
-          {/* Box 5: P/E Ratio (full width) */}
-          {row.pe_ratio != null && (() => {
-            const pe = row.pe_ratio
-            const fwd = row.pe_forward
-            // Gauge from 0-60 P/E range
-            const pct = Math.min(Math.max(pe / 60, 0), 1) * 100
-            const isExpensive = pe >= 40
-            const isFair = pe >= 15 && pe < 40
-            const isCheap = pe < 15
-            const label = isExpensive ? "Expensive" : isFair ? "Fair Value" : "Cheap"
-            const color = isExpensive ? "#f87171" : isFair ? "#fbbf24" : "#4ade80"
+        {/* 5 pillar mini-bars */}
+        <div className="flex gap-1.5 mb-3">
+          {[
+            { emoji: "🏔", label: "Moat", score: ltcs.moat },
+            { emoji: "💪", label: "Balance", score: ltcs.financial },
+            { emoji: "💰", label: "Profit", score: ltcs.profitability },
+            { emoji: "🛡", label: "Stable", score: ltcs.stability },
+            { emoji: "📊", label: "Value", score: ltcs.valuation },
+          ].map(({ emoji, label, score: s }) => {
+            const { barColor } = getPillarVerdict(s)
             return (
-              <div className="col-span-2 rounded-xl border border-white/[0.08] p-3" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)" }}>
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm">💲</span>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/50">
-                      Valuation (P/E)
-                    </p>
-                  </div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-lg font-black" style={{ color }}>{pe.toFixed(1)}</span>
-                    {fwd != null && (
-                      <span className="text-xs text-white/40">Fwd {fwd.toFixed(1)}</span>
-                    )}
-                  </div>
-                </div>
-                {/* P/E gauge bar */}
-                <div className="relative mb-1.5 h-2.5 rounded-full" style={{ background: "linear-gradient(90deg, #4ade8030, #fbbf2430, #f8717130)" }}>
+              <div key={label} className="flex-1 text-center">
+                <div className="text-base leading-none">{emoji}</div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-800">
                   <div
-                    className="absolute top-[-1px] h-3 w-3 rounded-full border-2"
-                    style={{
-                      left: `calc(${pct}% - 6px)`,
-                      backgroundColor: color,
-                      borderColor: `${color}80`,
-                      transition: "left 600ms ease-out",
-                    }}
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${s ?? 0}%`, backgroundColor: barColor }}
                   />
                 </div>
-                <div className="mb-1.5 flex justify-between text-[9px] text-white/25">
-                  <span>Cheap</span>
-                  <span>Fair</span>
-                  <span>Expensive</span>
-                </div>
-                <p className="text-[11px] text-white/40">
-                  {isExpensive
-                    ? "Trading at a premium — market expects high growth"
-                    : isCheap
-                      ? "Trading below average — potential value or concern"
-                      : "Reasonable valuation relative to earnings"}
-                </p>
+                <p className="mt-0.5 text-[9px] text-slate-500">{label}</p>
               </div>
             )
-          })()}
+          })}
         </div>
+
+        {/* 2 plain-English bullets */}
+        <ul className="space-y-1.5">
+          {whyBullets.slice(0, 2).map((bullet, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-[11px] leading-[1.4] text-slate-300">
+              <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
       </div>
 
-      {/* Action bar */}
-      <div className="shrink-0 border-t border-white/[0.06] px-4 py-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onPrev}
-            disabled={!hasPrev}
-            className={[
-              "flex h-10 w-10 items-center justify-center rounded-full text-base transition active:scale-90",
-              hasPrev
-                ? "bg-white/5 text-white/50 hover:bg-white/10"
-                : "text-transparent",
-            ].join(" ")}
-            aria-label="Previous"
-          >
-            ←
-          </button>
-          <button
-            type="button"
-            onClick={onOpen}
-            className="flex flex-1 items-center justify-center rounded-xl bg-white/[0.08] py-2.5 text-sm font-bold text-white transition hover:bg-white/[0.14] active:scale-[0.97]"
-          >
-            Full Details
-          </button>
-          <button
-            type="button"
-            onClick={onNext}
-            disabled={!hasNext}
-            className={[
-              "flex h-10 w-10 items-center justify-center rounded-full text-base transition active:scale-90",
-              hasNext
-                ? "bg-white/5 text-white/50 hover:bg-white/10"
-                : "text-transparent",
-            ].join(" ")}
-            aria-label="Next"
-          >
-            →
-          </button>
-        </div>
+      {/* CTA */}
+      <div className="mt-auto shrink-0 px-5 py-4">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[0.07] px-5 py-3 text-sm font-semibold text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10 active:scale-[0.98]"
+        >
+          <span>See full details</span>
+          <span className="rounded-full bg-white/10 px-3 py-1 text-xs">Explore →</span>
+        </button>
       </div>
     </div>
   )
@@ -2448,26 +2211,39 @@ function SignalDetailsModal({
 
                   <div className="mb-5">
                     <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Biggest score drivers
+                      Quality fundamentals
                     </p>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      {reasons.map((reason) => (
-                        <ReasonCard
-                          key={`${reason.label}-${reason.value}`}
-                          reason={reason}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mb-5">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Score movement
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
-                      <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
-                    </div>
+                    {(() => {
+                      const ltcs = parseScreenReasonScores(row.screen_reason)
+                      return (
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {[
+                            { emoji: "🏔", label: "Economic Moat", score: ltcs.moat, how: "Margins, revenue growth, and scale." },
+                            { emoji: "💪", label: "Balance Sheet", score: ltcs.financial, how: "Debt-to-equity, current ratio, and profitability." },
+                            { emoji: "💰", label: "Profitability & FCF", score: ltcs.profitability, how: "ROE, free cash flow, earnings growth." },
+                            { emoji: "🛡", label: "Stability", score: ltcs.stability, how: "Beta and sector risk profile." },
+                            { emoji: "📊", label: "Valuation", score: ltcs.valuation, how: "PEG ratio, forward P/E, and 200-day MA." },
+                          ].map(({ emoji, label, score: s, how }) => {
+                            const { label: verdict, color, barColor } = getPillarVerdict(s)
+                            return (
+                              <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                                <div className="mb-2 flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-base">{emoji}</span>
+                                    <span className="text-sm font-bold text-white">{label}</span>
+                                  </div>
+                                  <span className={`text-sm font-bold ${color}`}>{verdict}</span>
+                                </div>
+                                <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                                  <div className="h-full rounded-full" style={{ width: `${s ?? 0}%`, backgroundColor: barColor }} />
+                                </div>
+                                <p className="text-xs text-slate-400">{how}</p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -2482,58 +2258,6 @@ function SignalDetailsModal({
                         </li>
                       ))}
                     </ul>
-
-                    {!!tags.length && (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {tags.slice(0, 12).map((tag) => (
-                          <TagPill key={tag} tag={tag} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      What confirms the setup
-                    </p>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <ConfirmationRow
-                        label="Price confirmation"
-                        value={formatPriceConfirmation(row)}
-                      />
-                      <ConfirmationRow
-                        label="Breakout"
-                        value={
-                          row.breakout_52w
-                            ? "52-week breakout"
-                            : row.breakout_20d
-                              ? "20-day breakout"
-                              : "No breakout flag"
-                        }
-                      />
-                      <ConfirmationRow
-                        label="Trend"
-                        value={
-                          row.trend_aligned === true
-                            ? "Aligned"
-                            : row.above_sma_20
-                              ? "Constructive"
-                              : "Mixed"
-                        }
-                      />
-                      <ConfirmationRow
-                        label="Vs market"
-                        value={formatRelativeStrengthForDisplay(row)}
-                      />
-                      <ConfirmationRow
-                        label="Volume"
-                        value={formatRatio(row.volume_ratio)}
-                      />
-                      <ConfirmationRow
-                        label="Signals stacked"
-                        value={formatSignalStack(row.stacked_signal_count, row)}
-                      />
-                    </div>
                   </div>
                 </div>
 
@@ -2736,74 +2460,77 @@ function SignalDetailsModal({
                 ) : null}
 
                 {activeSlide === 1 ? (
-                  <div className="space-y-5">
-                    <div>
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Biggest score drivers
+                  <div className="space-y-4">
+                    <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(2,6,23,0.95)_55%)] p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                        What we look for
                       </p>
-                      <div className="grid gap-3">
-                        {reasons.map((reason) => (
-                          <ReasonCard
-                            key={`${reason.label}-${reason.value}`}
-                            reason={reason}
-                          />
-                        ))}
-                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                        Every stock on this board passes a quality screen built for long-term investors. We look for companies with durable competitive advantages, healthy finances, and reasonable valuations — not short-term momentum.
+                      </p>
                     </div>
 
-                    <div>
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Score movement
-                      </p>
-                      <div className="grid gap-3">
-                        <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
-                        <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        What confirms the setup
-                      </p>
-                      <div className="mt-4 grid gap-3">
-                        <ConfirmationRow
-                          label="Price confirmation"
-                          value={formatPriceConfirmation(row)}
-                        />
-                        <ConfirmationRow
-                          label="Breakout"
-                          value={
-                            row.breakout_52w
-                              ? "52-week breakout"
-                              : row.breakout_20d
-                                ? "20-day breakout"
-                                : "No breakout flag"
-                          }
-                        />
-                        <ConfirmationRow
-                          label="Trend"
-                          value={
-                            row.trend_aligned === true
-                              ? "Aligned"
-                              : row.above_sma_20
-                                ? "Constructive"
-                                : "Mixed"
-                          }
-                        />
-                        <ConfirmationRow
-                          label="Vs market"
-                          value={formatRelativeStrengthForDisplay(row)}
-                        />
-                        <ConfirmationRow
-                          label="Volume"
-                          value={formatRatio(row.volume_ratio)}
-                        />
-                        <ConfirmationRow
-                          label="Signals stacked"
-                          value={formatSignalStack(row.stacked_signal_count, row)}
-                        />
-                      </div>
-                    </div>
+                    {(() => {
+                      const ltcs = parseScreenReasonScores(row.screen_reason)
+                      return [
+                        {
+                          emoji: "🏔",
+                          label: "Economic Moat",
+                          score: ltcs.moat,
+                          what: "Does the company have a lasting competitive edge?",
+                          how: "Checks gross margin >40%, operating margin >12%, revenue growth >5%, and market cap >$10B. A wide moat means rivals can't easily steal customers.",
+                        },
+                        {
+                          emoji: "💪",
+                          label: "Balance Sheet Health",
+                          score: ltcs.financial,
+                          what: "Is the company's debt manageable?",
+                          how: "Looks at debt-to-equity ratio ≤2×, current ratio, and profit margin. Low debt gives flexibility in downturns and avoids interest-rate risk.",
+                        },
+                        {
+                          emoji: "💰",
+                          label: "Profitability & FCF",
+                          score: ltcs.profitability,
+                          what: "Is the business generating real cash?",
+                          how: "Measures ROE >15%, positive free cash flow, and earnings growth >5%. Strong FCF means the company can fund growth, dividends, or buybacks without borrowing.",
+                        },
+                        {
+                          emoji: "🛡",
+                          label: "Stability",
+                          score: ltcs.stability,
+                          what: "How volatile is this stock?",
+                          how: "Uses beta — a measure of price swings vs. the market. Beta below 1.0 means the stock moves less than the index, which is better for long-term holders.",
+                        },
+                        {
+                          emoji: "📊",
+                          label: "Valuation",
+                          score: ltcs.valuation,
+                          what: "Is the price reasonable?",
+                          how: "Checks PEG ratio <2 (growth-adjusted P/E), forward P/E <30, and whether price sits below the 200-day moving average. Great companies at fair prices outperform over time.",
+                        },
+                      ].map(({ emoji, label, score: s, what, how }) => {
+                        const { label: verdict, color, barColor } = getPillarVerdict(s)
+                        return (
+                          <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg">{emoji}</span>
+                                <span className="text-sm font-bold text-white">{label}</span>
+                              </div>
+                              <span className={`text-sm font-bold ${color}`}>{verdict}</span>
+                            </div>
+                            <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${s ?? 0}%`, backgroundColor: barColor }}
+                              />
+                            </div>
+                            <p className="mb-1 text-xs font-semibold text-slate-300">{what}</p>
+                            <p className="text-xs leading-5 text-slate-400">{how}</p>
+                          </div>
+                        )
+                      })
+                    })()}
                   </div>
                 ) : null}
 
@@ -2817,7 +2544,7 @@ function SignalDetailsModal({
                       <div className="mt-4 space-y-3">
                         <MetricRow label="Overall score" value={`${row.display_score}`} />
                         <MetricRow
-                          label="Price strength score"
+                          label="Quality score"
                           value={formatSimpleNumber(row.candidate_score)}
                         />
                         <MetricRow
@@ -2832,7 +2559,7 @@ function SignalDetailsModal({
                         <MetricRow label="Price" value={formatMoney(row.price)} />
                         <MetricRow
                           label="Main reason"
-                          value={row.primary_title || "Price strength"}
+                          value={row.primary_title || "Quality screen"}
                         />
                         <MetricRow
                           label="Signal source"
@@ -3050,231 +2777,98 @@ function TagPill({ tag }: { tag: string }) {
   )
 }
 
-type SignalPill = { emoji: string; text: string; highlight?: boolean }
-
-function getCardSignals(row: UnifiedRow): {
-  insider: SignalPill[]
-  tech: SignalPill[]
-} {
-  const insider: (SignalPill & { priority: number })[] = []
-  const tech: (SignalPill & { priority: number })[] = []
-
-  const clusterBuyers = row.cluster_buyers ?? 0
-  const hasPtr = Boolean(row.ptr_amount)
-  const insiderValue = formatInsiderValue(row)
-  const hasInsiderBuy =
-    hasDisplayValue(insiderValue) ||
-    Boolean(row.insider_action) ||
-    (row.insider_shares ?? 0) > 0
-
-  // --- Insider signals ---
-
-  // Platinum conviction
-  if (clusterBuyers >= 3 && hasPtr) {
-    insider.push({
-      emoji: "⚡",
-      text: "Insiders + Congress buying",
-      highlight: true,
-      priority: 100,
-    })
-  }
-
-  // Cluster buy (from signal data)
-  if (clusterBuyers >= 2) {
-    insider.push({
-      emoji: "👥",
-      text: `${clusterBuyers} insiders bought`,
-      highlight: true,
-      priority: 90,
-    })
-  }
-
-  // Congressional buy (from signal data or candidate flag)
-  if (hasPtr) {
-    insider.push({
-      emoji: "🏛️",
-      text: `Congress bought ${row.ptr_amount || ""}`.trim(),
-      priority: 85,
-    })
-  } else if (row.has_ptr_forms) {
-    insider.push({
-      emoji: "🏛️",
-      text: "Congressional trade filed",
-      priority: 84,
-    })
-  }
-
-  // Cluster from candidate flag
-  if (row.has_clusters && clusterBuyers < 2) {
-    insider.push({
-      emoji: "👥",
-      text: "Cluster buy detected",
-      highlight: true,
-      priority: 88,
-    })
-  }
-
-  // Insider buy (from signal data or candidate flag)
-  if (hasInsiderBuy && clusterBuyers < 2) {
-    insider.push({
-      emoji: "👤",
-      text: hasDisplayValue(insiderValue)
-        ? `Insider bought ${insiderValue}`
-        : "Insider purchase filed",
-      priority: 45,
-    })
-  } else if (row.has_insider_trades && !hasInsiderBuy && clusterBuyers < 2 && insider.length === 0) {
-    insider.push({
-      emoji: "👤",
-      text: "Insider trade on file",
-      priority: 40,
-    })
-  }
-
-  // --- Tech / price signals ---
-
-  // Breakout
-  if (row.breakout_52w) {
-    tech.push({ emoji: "🚀", text: "New 52-week high", priority: 80 })
-  } else if (row.breakout_20d || row.breakout_10d) {
-    tech.push({ emoji: "📈", text: "Price breakout", priority: 75 })
-  }
-
-  // Volume surge
-  if ((row.volume_ratio ?? 0) >= 2) {
-    tech.push({
-      emoji: "🔥",
-      text: `Volume ${Math.round(row.volume_ratio!)}x normal`,
-      priority: 70,
-    })
-  } else if ((row.volume_ratio ?? 0) >= 1.5) {
-    tech.push({ emoji: "🔥", text: "High volume", priority: 60 })
-  }
-
-  // Earnings beat
-  if ((row.earnings_surprise_pct ?? 0) >= 10) {
-    tech.push({
-      emoji: "💰",
-      text: `Earnings +${Math.round(row.earnings_surprise_pct!)}%`,
-      priority: 65,
-    })
-  }
-
-  // Revenue growth
-  if ((row.revenue_growth_pct ?? 0) >= 15) {
-    tech.push({
-      emoji: "📊",
-      text: `Rev growth ${Math.round(row.revenue_growth_pct!)}%`,
-      priority: 55,
-    })
-  }
-
-  // Relative strength
-  if ((row.relative_strength_20d ?? 0) >= 8) {
-    tech.push({ emoji: "💪", text: "Outperforming market", priority: 50 })
-  } else if ((row.relative_strength_20d ?? 0) >= 5) {
-    tech.push({ emoji: "💪", text: "Beating the market", priority: 40 })
-  }
-
-  // Guidance
-  if (row.guidance_flag === true) {
-    tech.push({ emoji: "🎯", text: "Guidance raised", priority: 35 })
-  }
-
-  // Trend aligned
-  if (row.trend_aligned) {
-    tech.push({ emoji: "📐", text: "All trends up", priority: 25 })
-  }
-
-  // Price confirmed
-  if (row.price_confirmed) {
-    tech.push({ emoji: "✅", text: "Price confirmed", priority: 20 })
-  }
-
-  // Above key moving averages
-  if (row.above_50dma) {
-    tech.push({ emoji: "📊", text: "Above 50-day MA", priority: 15 })
-  }
-
-  // Fallback for tech
-  if (tech.length === 0) {
-    tech.push({ emoji: "✨", text: "Multiple signals aligning", priority: 10 })
-  }
-
-  return {
-    insider: insider
-      .sort((a, b) => b.priority - a.priority)
-      .slice(0, 4)
-      .map(({ emoji, text, highlight }) => ({ emoji, text, highlight })),
-    tech: tech
-      .sort((a, b) => b.priority - a.priority)
-      .slice(0, 4)
-      .map(({ emoji, text, highlight }) => ({ emoji, text, highlight })),
-  }
-}
-
 function getFeaturedThesis(row: UnifiedRow) {
-  if (row.primary_signal_source === "breakout" && (row.volume_ratio ?? 0) >= 2) {
-    return "Fresh breakout with strong buying interest"
+  const ltcs = parseScreenReasonScores(row.screen_reason)
+
+  if ((row.cluster_buyers ?? 0) >= 3 && row.ptr_amount) {
+    return "Multiple insiders and Congress are buying — a rare alignment of conviction"
   }
 
   if ((row.cluster_buyers ?? 0) >= 2) {
-    return "More than one good signal is showing up at the same time"
+    return "Multiple insiders are buying at current prices — a strong vote of confidence"
   }
 
-  if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
-    return "Business strength is helping support the move"
+  if (row.ptr_amount) {
+    return "A Congressional trade is supporting this thesis"
   }
 
-  if ((row.relative_strength_20d ?? 0) >= 8) {
-    return "This stock has been acting stronger than much of the market"
+  if (
+    ltcs.moat !== null && ltcs.moat >= 75 &&
+    ltcs.profitability !== null && ltcs.profitability >= 75
+  ) {
+    return "A high-moat, cash-generative compounder at a quality price"
   }
 
-  if ((row.candidate_score ?? 0) >= 85 && !row.has_signal_data) {
-    return "A very strong price-based setup on its own"
+  if (ltcs.financial !== null && ltcs.financial >= 100 && ltcs.profitability !== null && ltcs.profitability >= 75) {
+    return "Rock-solid balance sheet with consistently strong earnings"
   }
 
-  return "Several things are lining up well right now"
+  if (ltcs.valuation !== null && ltcs.valuation >= 65 && row.display_score >= 70) {
+    return "A quality business available at an attractive valuation"
+  }
+
+  if (row.display_score >= 80) {
+    return "Multiple quality factors are scoring well for this company"
+  }
+
+  return "Passes the long-term quality screen with several positive signals"
 }
 
 function getSimpleCardBullets(row: UnifiedRow) {
   const points: string[] = []
 
-  if (row.primary_signal_source === "breakout" || row.breakout_20d || row.breakout_52w) {
-    points.push("The stock is pushing above recent price levels.")
-  }
+  // Parse LTCS sub-scores from screen_reason: "LTCS 72/100: moat: 75/100, financial health: 100/100..."
+  const reason = row.screen_reason ?? ""
+  const moatMatch = reason.match(/moat:\s*(\d+)\/100/)
+  const financialMatch = reason.match(/financial health:\s*(\d+)\/100/)
+  const profitabilityMatch = reason.match(/profitability:\s*(\d+)\/100/)
+  const stabilityMatch = reason.match(/stability:\s*(\d+)\/100/)
+  const valuationMatch = reason.match(/valuation:\s*(\d+)\/100/)
 
-  if ((row.volume_ratio ?? 0) >= 1.5) {
-    points.push("Trading activity is stronger than usual.")
-  }
+  const moat = moatMatch ? Number(moatMatch[1]) : null
+  const financial = financialMatch ? Number(financialMatch[1]) : null
+  const profitability = profitabilityMatch ? Number(profitabilityMatch[1]) : null
+  const stability = stabilityMatch ? Number(stabilityMatch[1]) : null
+  const valuation = valuationMatch ? Number(valuationMatch[1]) : null
 
-  if ((row.relative_strength_20d ?? 0) >= 5) {
-    points.push("It has been outperforming the market recently.")
-  }
-
-  if ((row.cluster_buyers ?? 0) >= 2) {
-    points.push("Multiple positive signals are showing up together.")
-  }
+  if (moat !== null && moat >= 75) points.push("Strong business moat — high margins and solid revenue growth.")
+  if (financial !== null && financial >= 80) points.push("Healthy balance sheet with manageable debt.")
+  if (profitability !== null && profitability >= 75) points.push("Consistently profitable with strong free cash flow.")
+  if (stability !== null && stability >= 60) points.push("Lower volatility, suitable for long-term holding.")
+  if (valuation !== null && valuation >= 65) points.push("Trading at a reasonable valuation relative to growth.")
 
   if ((row.earnings_surprise_pct ?? 0) >= 10) {
     points.push("Recent earnings came in stronger than expected.")
   }
 
-  if ((row.revenue_growth_pct ?? 0) >= 15) {
-    points.push("The business is still growing at a healthy pace.")
-  }
-
-  if (row.guidance_flag === true) {
-    points.push("Management outlook appears supportive.")
-  }
-
   if (points.length === 0) {
-    points.push(
-      "Enough good things are happening right now to keep this stock on today’s board."
-    )
+    points.push("Passes the quality screen for long-term hold candidates.")
   }
 
   return points.slice(0, 3)
+}
+
+function parseScreenReasonScores(reason: string | null | undefined) {
+  const r = reason ?? ""
+  const moatMatch = r.match(/moat:\s*(\d+)\/100/)
+  const financialMatch = r.match(/financial health:\s*(\d+)\/100/)
+  const profitabilityMatch = r.match(/profitability:\s*(\d+)\/100/)
+  const stabilityMatch = r.match(/stability:\s*(\d+)\/100/)
+  const valuationMatch = r.match(/valuation:\s*(\d+)\/100/)
+  return {
+    moat: moatMatch ? Number(moatMatch[1]) : null,
+    financial: financialMatch ? Number(financialMatch[1]) : null,
+    profitability: profitabilityMatch ? Number(profitabilityMatch[1]) : null,
+    stability: stabilityMatch ? Number(stabilityMatch[1]) : null,
+    valuation: valuationMatch ? Number(valuationMatch[1]) : null,
+  }
+}
+
+function getPillarVerdict(score: number | null) {
+  if (score === null) return { label: "No data", color: "text-slate-500", barColor: "#475569" }
+  if (score >= 75) return { label: "Strong", color: "text-emerald-300", barColor: "#34d399" }
+  if (score >= 50) return { label: "Fair", color: "text-yellow-300", barColor: "#facc15" }
+  return { label: "Weak", color: "text-rose-400", barColor: "#f87171" }
 }
 
 function getPremiumSummaryBullets(row: UnifiedRow) {
@@ -3383,52 +2977,48 @@ function getTopReasonLines(row: UnifiedRow): ReasonLine[] {
 }
 
 function getConfidenceBullets(row: UnifiedRow) {
-  const score = row.display_score
-  const tags = normalizeTags(row.signal_tags)
-
+  const ltcs = parseScreenReasonScores(row.screen_reason)
   const bullets: string[] = []
 
-  if (row.has_candidate_data && !row.has_signal_data) {
+  if ((row.cluster_buyers ?? 0) >= 2) {
     bullets.push(
-      "This made the board mostly because the price-based setup was strong enough on its own."
+      `${row.cluster_buyers} company insiders recently bought shares — people with inside knowledge of the business.`
     )
   }
 
-  if ((row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")) {
-    bullets.push("More than one positive signal is showing up at the same time.")
+  if (row.ptr_amount) {
+    bullets.push(
+      `A U.S. Congress member filed a trade for ${row.ptr_amount}. Politicians often trade ahead of policy moves.`
+    )
   }
 
-  if (
-    row.primary_signal_source === "breakout" ||
-    row.breakout_20d === true ||
-    row.breakout_52w === true
-  ) {
-    bullets.push("The stock is pushing above important price levels.")
+  if (ltcs.moat !== null && ltcs.moat >= 75) {
+    bullets.push(
+      "The company has strong margins and revenue growth — signs of a lasting competitive edge over rivals."
+    )
   }
 
-  if ((row.volume_ratio ?? 0) >= 1.5 || tags.includes("volume-confirmed")) {
-    bullets.push("Volume is elevated, which often means stronger buyer interest.")
+  if (ltcs.financial !== null && ltcs.financial >= 80) {
+    bullets.push(
+      "Balance sheet looks healthy: debt is manageable and the company is generating profit."
+    )
   }
 
-  if (
-    (row.earnings_surprise_pct ?? 0) >= 10 ||
-    (row.revenue_growth_pct ?? 0) >= 15 ||
-    row.guidance_flag === true
-  ) {
-    bullets.push("Recent business results are helping support the setup.")
+  if (ltcs.profitability !== null && ltcs.profitability >= 75) {
+    bullets.push(
+      "Return on equity is strong and the business generates positive free cash flow — it funds its own growth."
+    )
   }
 
-  if ((row.relative_strength_20d ?? 0) > 0) {
-    bullets.push("The stock has been outperforming the market recently.")
-  }
-
-  if (score >= 90) {
-    bullets.push("Its overall score is near the top of today’s board.")
+  if (ltcs.valuation !== null && ltcs.valuation >= 65) {
+    bullets.push(
+      "The stock looks reasonably priced relative to its growth prospects."
+    )
   }
 
   if (!bullets.length) {
     bullets.push(
-      "The original signal is still holding up well enough to keep this name on the board."
+      "This company passes the quality screen and has enough positives to deserve attention."
     )
   }
 
@@ -3436,37 +3026,48 @@ function getConfidenceBullets(row: UnifiedRow) {
 }
 
 function getSimpleSetupBullets(row: UnifiedRow) {
+  const ltcs = parseScreenReasonScores(row.screen_reason)
   const parts: string[] = []
 
-  if (row.breakout_20d) {
+  if (ltcs.moat !== null && ltcs.moat >= 75) {
     parts.push(
-      "The stock just moved above recent price levels, which can be a sign of fresh buying interest."
+      "Wide economic moat: high margins, strong revenue growth, and significant market scale make it hard for rivals to compete."
     )
   }
 
-  if ((row.relative_strength_20d ?? 0) > 0) {
-    parts.push("It has been outperforming the overall market recently.")
-  }
-
-  if ((row.volume_ratio ?? 0) > 1.3) {
+  if (ltcs.financial !== null && ltcs.financial >= 80) {
     parts.push(
-      "Trading volume is higher than usual, which suggests stronger participation."
+      "Healthy balance sheet with a debt-to-equity ratio under 1× — financial flexibility without the interest-rate risk."
     )
   }
 
-  if ((row.earnings_surprise_pct ?? 0) > 0) {
+  if (ltcs.profitability !== null && ltcs.profitability >= 75) {
     parts.push(
-      "Recent earnings were better than expected, which can attract new buyers."
+      "Consistently profitable with strong return on equity and positive free cash flow — the business funds its own growth."
+    )
+  }
+
+  if (ltcs.stability !== null && ltcs.stability >= 60) {
+    parts.push(
+      "Lower price volatility than the average stock — a smoother ride for long-term investors."
+    )
+  }
+
+  if (ltcs.valuation !== null && ltcs.valuation >= 65) {
+    parts.push(
+      "Valuation looks attractive: P/E or PEG ratio is reasonable relative to expected earnings growth — a fair price for quality."
     )
   }
 
   if ((row.revenue_growth_pct ?? 0) > 10) {
-    parts.push("The company is also showing solid revenue growth.")
+    parts.push(
+      "Revenue is growing meaningfully — the business is expanding, not just coasting."
+    )
   }
 
   if (parts.length === 0) {
     parts.push(
-      "This stock is showing enough strength versus the rest of the market to deserve a closer look."
+      "This company passes quality checks across moat, balance sheet, and profitability for long-term investors."
     )
   }
 

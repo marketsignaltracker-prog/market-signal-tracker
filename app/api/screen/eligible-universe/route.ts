@@ -282,7 +282,7 @@ export async function GET(request: NextRequest) {
 
     const minCandidateScore = parseInteger(
       request.nextUrl.searchParams.get("minCandidateScore"),
-      70
+      50
     )
 
     const onlyActive =

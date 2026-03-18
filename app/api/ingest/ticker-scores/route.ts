@@ -118,7 +118,7 @@ const MAX_LOOKBACK_DAYS = 90
 const DEFAULT_LIMIT = 1000
 const MAX_LIMIT = 3000
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v11-ticker-scores-balanced"
+const SCORE_VERSION = "v12-ltcs-compounder"
 
 const DEFAULT_PTR_LOOKBACK_DAYS = 60
 const MAX_PTR_LOOKBACK_DAYS = 120
@@ -503,7 +503,8 @@ function buildTickerScoresCurrentRows(
   runTimestamp: string,
   ptrMap: Map<string, PtrSummary>,
   breadthStats: BreadthStats,
-  minCombinedScore: number
+  minCombinedScore: number,
+  ltcsScoreMap: Map<string, number>
 ) {
   const byTicker = new Map<string, SignalRow[]>()
 
@@ -767,24 +768,29 @@ function buildTickerScoresCurrentRows(
       }
     }
 
-    if (primaryScore < minCombinedScore && !ptr?.strongBuying && maxSignalFamilyCount < 3) {
-      continue
+    const ltcsBase = ltcsScoreMap.get(ticker) ?? 0
+
+    // Insider catalyst bonus (max 30 points)
+    let insiderBonus = 0
+    const clusterBuyers = primary.cluster_buyers ?? 0
+    const hasPtrBuy = (ptr?.buyTradeCount ?? 0) > 0
+
+    if (clusterBuyers >= 3 && hasPtrBuy) {
+      insiderBonus = 30  // platinum: cluster + congress
+    } else if (clusterBuyers >= 2) {
+      insiderBonus = 20  // cluster buying
+    } else if (hasPtrBuy) {
+      insiderBonus = 15  // congressional buy
+    } else if (primary.insider_action === "buy" || ((primary as any).transaction_type || "").includes("buy")) {
+      insiderBonus = 10  // solo insider buy
     }
 
-    let finalScore = clamp(Math.round(stackedScore), 0, 100)
+    // Freshness bonus (max 5 points)
+    const ageDays = primary.age_days ?? 999
+    if (ageDays <= 2) insiderBonus += 5
+    else if (ageDays <= 7) insiderBonus += 3
 
-    if (maxSignalFamilyCount < 2 && (primary.cluster_buyers ?? 0) < 3) {
-      finalScore = Math.min(finalScore, 76)
-      scoreCapsApplied.add("single-family-cap")
-    }
-
-    if (sectorShare >= 0.24) {
-      finalScore = Math.min(finalScore, 82)
-    }
-
-    if ((primary.price_return_20d ?? 0) >= 20 && !ptr?.strongBuying && !has13D) {
-      finalScore = Math.min(finalScore, 84)
-    }
+    let finalScore = clamp(Math.round(ltcsBase + insiderBonus), 0, 100)
 
     // Platinum conviction: 3+ cluster buyers + PTR activity + solid primary signal
     // This combination is the highest-confidence setup — override all caps with score 100
@@ -797,7 +803,8 @@ function buildTickerScoresCurrentRows(
       scoreCapsApplied.add("platinum-conviction")
     }
 
-    if (finalScore < MIN_TICKER_APP_SCORE) continue
+    if (ltcsBase < 40 && insiderBonus === 0) continue
+    if (finalScore < 40) continue
 
     const sourceList = Array.from(signalSources)
     const primaryTitle =
@@ -1068,6 +1075,24 @@ export async function GET(request: Request) {
       )
     }
 
+    // Load latest LTCS scores from candidate_screen_history
+    const { data: ltcsRows } = await supabase
+      .from("candidate_screen_history")
+      .select("ticker, candidate_score, screened_on")
+      .gte("candidate_score", 40)
+      .order("screened_on", { ascending: false })
+      .order("candidate_score", { ascending: false })
+      .limit(5000)
+
+    // Build map of ticker → best LTCS score (most recent screen date)
+    const ltcsScoreMap = new Map<string, number>()
+    for (const row of (ltcsRows || []) as any[]) {
+      const t = (row.ticker || "").toUpperCase()
+      if (t && !ltcsScoreMap.has(t)) {
+        ltcsScoreMap.set(t, row.candidate_score ?? 0)
+      }
+    }
+
     const signalRows = (allSignalRows || []) as SignalRow[]
     const ptrSummaryMap = buildPtrSummaryMap((ptrRows || []) as RawPtrTradeRow[], ptrRecentDays)
     const breadthStats = buildBreadthStats(signalRows)
@@ -1077,7 +1102,8 @@ export async function GET(request: Request) {
       runTimestamp,
       ptrSummaryMap,
       breadthStats,
-      minCombinedScore
+      minCombinedScore,
+      ltcsScoreMap
     )
 
     const tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(
