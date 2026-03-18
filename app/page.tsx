@@ -1244,201 +1244,204 @@ function SwipeStockCard({
           </div>
         )}
 
-        {/* Two-column info grid */}
-        <div className="grid grid-cols-2 gap-2">
-          {/* Box 1: Insiders are Buying */}
-          <div className="rounded-xl border border-orange-500/25 p-3" style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.12) 0%, rgba(249,115,22,0.03) 100%)" }}>
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <span className="text-sm">👤</span>
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-400">
-                Insiders Buying
-              </p>
-            </div>
-            {(() => {
-              const hasCluster = (row.cluster_buyers ?? 0) >= 2
-              if (hasCluster) {
-                return (
-                  <div className="space-y-1.5">
-                    <p className="text-xl font-black text-orange-200">Cluster</p>
-                    <p className="text-[11px] text-orange-300/60">
-                      👥 {row.cluster_buyers} insiders buying together
-                    </p>
-                  </div>
-                )
-              }
-              if (row.has_insider_trades) {
-                return (
-                  <div className="space-y-1.5">
-                    <p className="text-xl font-black text-orange-200">Yes</p>
-                    <p className="text-[11px] text-orange-300/60">SEC Form 4 filed</p>
-                  </div>
-                )
-              }
-              return (
-                <div className="space-y-1.5">
-                  <p className="text-xl font-black text-white/20">No</p>
-                  <p className="text-[11px] text-white/20">No recent filings</p>
-                </div>
-              )
-            })()}
-          </div>
-
-          {/* Box 2: Congress is Buying */}
-          <div className="rounded-xl border border-purple-500/25 p-3" style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.12) 0%, rgba(168,85,247,0.03) 100%)" }}>
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <span className="text-sm">🏛️</span>
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-purple-400">
-                Congress Buying
-              </p>
-            </div>
-            {row.has_ptr_forms || row.ptr_amount ? (
-              <div className="space-y-1.5">
-                <p className="text-xl font-black text-purple-200">Yes</p>
-                <p className="text-[11px] text-purple-300/60">
-                  {row.ptr_amount ? `${row.ptr_amount} disclosed` : "PTR disclosure filed"}
+        {/* Two-column tiles */}
+        <div className="grid grid-cols-2 gap-2.5">
+          {/* Tile: Insiders Buying */}
+          {(() => {
+            const hasCluster = (row.cluster_buyers ?? 0) >= 2
+            const active = hasCluster || row.has_insider_trades
+            const value = hasCluster ? "Cluster" : active ? "Yes" : "No"
+            const sub = hasCluster
+              ? `${row.cluster_buyers} insiders buying`
+              : active ? "Form 4 filed" : "No filings"
+            return (
+              <div
+                className="relative overflow-hidden rounded-2xl p-3.5"
+                style={{
+                  background: active
+                    ? "linear-gradient(145deg, rgba(249,115,22,0.20) 0%, rgba(249,115,22,0.06) 100%)"
+                    : "linear-gradient(145deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)",
+                  border: active ? "1px solid rgba(249,115,22,0.35)" : "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                {active && <div className="absolute top-0 right-0 h-16 w-16 rounded-bl-full" style={{ background: "rgba(249,115,22,0.08)" }} />}
+                <p className="text-[9px] font-bold uppercase tracking-[0.15em]" style={{ color: active ? "#fb923c" : "rgba(255,255,255,0.3)" }}>
+                  Insiders
+                </p>
+                <p className="mt-1 text-2xl font-black" style={{ color: active ? "#fed7aa" : "rgba(255,255,255,0.15)" }}>
+                  {value}
+                </p>
+                <p className="mt-1 text-[10px]" style={{ color: active ? "rgba(253,186,116,0.6)" : "rgba(255,255,255,0.15)" }}>
+                  {sub}
                 </p>
               </div>
-            ) : (
-              <div className="space-y-1.5">
-                <p className="text-xl font-black text-white/20">No</p>
-                <p className="text-[11px] text-white/20">No PTR trades</p>
-              </div>
-            )}
-          </div>
+            )
+          })()}
 
-          {/* Box 3: Relative Strength */}
-          <div className="rounded-xl border border-cyan-500/20 p-3" style={{ background: "linear-gradient(135deg, rgba(6,182,212,0.10) 0%, rgba(6,182,212,0.02) 100%)" }}>
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <span className="text-sm">💪</span>
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-400">
-                Vs. Market
-              </p>
-            </div>
-            {row.relative_strength_20d != null ? (() => {
-              const rs = Number(row.relative_strength_20d)
-              const label = rs >= 15 ? "Dominating" : rs >= 8 ? "Outperforming" : rs >= 3 ? "Beating" : rs >= 0 ? "In line" : "Lagging"
-              const color = rs >= 8 ? "#22d3ee" : rs >= 3 ? "#67e8f9" : rs >= 0 ? "#94a3b8" : "#f87171"
-              return (
-                <div className="space-y-1.5">
-                  <p className="text-xl font-black" style={{ color }}>
-                    +{rs.toFixed(1)}%
-                  </p>
-                  <p className="text-[11px] text-cyan-300/60">
-                    {label} the market over 20 days
-                  </p>
-                </div>
-              )
-            })() : (
-              <div>
-                <p className="text-lg font-black text-white/20">--</p>
-                <p className="text-[11px] text-white/20">No data yet</p>
-              </div>
-            )}
-          </div>
-
-          {/* Box 4: Overbought / Oversold gauge */}
-          <div className="rounded-xl border border-white/[0.08] p-3" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)" }}>
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <span className="text-sm">📈</span>
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/50">
-                Extension
-              </p>
-            </div>
-            {row.extension_from_sma20_pct != null ? (() => {
-              const ext = row.extension_from_sma20_pct
-              const absExt = Math.abs(ext)
-              // Gauge: -20% to +20% range, clamped
-              const pct = Math.min(Math.max((ext + 20) / 40, 0), 1) * 100
-              const isOverBought = ext >= 12
-              const isExtended = ext >= 6
-              const isOversold = ext <= -5
-              const label = isOverBought ? "Overbought" : isExtended ? "Extended" : isOversold ? "Oversold" : "Healthy"
-              const color = isOverBought ? "#f87171" : isExtended ? "#fbbf24" : isOversold ? "#4ade80" : "#22d3ee"
-              return (
-                <div className="space-y-2">
-                  <p className="text-sm font-black" style={{ color }}>
-                    {ext >= 0 ? "+" : ""}{ext.toFixed(1)}% <span className="text-[11px] font-bold text-white/40">from avg</span>
-                  </p>
-                  {/* Gauge bar */}
-                  <div className="relative h-2 rounded-full bg-white/[0.06]">
-                    {/* Center line */}
-                    <div className="absolute top-0 left-1/2 h-full w-px bg-white/20" />
-                    {/* Marker */}
-                    <div
-                      className="absolute top-[-1px] h-[10px] w-[10px] rounded-full border-2"
-                      style={{
-                        left: `calc(${pct}% - 5px)`,
-                        backgroundColor: color,
-                        borderColor: `${color}80`,
-                        transition: "left 600ms ease-out",
-                      }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[9px] text-white/25">
-                    <span>Oversold</span>
-                    <span>Overbought</span>
-                  </div>
-                  <p className="text-[11px] font-semibold" style={{ color }}>{label}</p>
-                </div>
-              )
-            })() : (
-              <div>
-                <p className="text-lg font-black text-white/20">--</p>
-                <p className="text-[11px] text-white/20">No data yet</p>
-              </div>
-            )}
-          </div>
-
-          {/* Box 5: P/E Ratio (full width) */}
-          {row.pe_ratio != null && (() => {
-            const pe = row.pe_ratio
-            const fwd = row.pe_forward
-            // Gauge from 0-60 P/E range
-            const pct = Math.min(Math.max(pe / 60, 0), 1) * 100
-            const isExpensive = pe >= 40
-            const isFair = pe >= 15 && pe < 40
-            const isCheap = pe < 15
-            const label = isExpensive ? "Expensive" : isFair ? "Fair Value" : "Cheap"
-            const color = isExpensive ? "#f87171" : isFair ? "#fbbf24" : "#4ade80"
+          {/* Tile: Congress Buying */}
+          {(() => {
+            const active = row.has_ptr_forms || Boolean(row.ptr_amount)
+            const sub = row.ptr_amount ? `${row.ptr_amount} disclosed` : active ? "PTR filed" : "No PTR trades"
             return (
-              <div className="col-span-2 rounded-xl border border-white/[0.08] p-3" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)" }}>
-                <div className="mb-2 flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm">💲</span>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/50">
-                      Valuation (P/E)
-                    </p>
-                  </div>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-lg font-black" style={{ color }}>{pe.toFixed(1)}</span>
-                    {fwd != null && (
-                      <span className="text-xs text-white/40">Fwd {fwd.toFixed(1)}</span>
-                    )}
-                  </div>
+              <div
+                className="relative overflow-hidden rounded-2xl p-3.5"
+                style={{
+                  background: active
+                    ? "linear-gradient(145deg, rgba(168,85,247,0.20) 0%, rgba(168,85,247,0.06) 100%)"
+                    : "linear-gradient(145deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)",
+                  border: active ? "1px solid rgba(168,85,247,0.35)" : "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                {active && <div className="absolute top-0 right-0 h-16 w-16 rounded-bl-full" style={{ background: "rgba(168,85,247,0.08)" }} />}
+                <p className="text-[9px] font-bold uppercase tracking-[0.15em]" style={{ color: active ? "#c084fc" : "rgba(255,255,255,0.3)" }}>
+                  Congress
+                </p>
+                <p className="mt-1 text-2xl font-black" style={{ color: active ? "#e9d5ff" : "rgba(255,255,255,0.15)" }}>
+                  {active ? "Yes" : "No"}
+                </p>
+                <p className="mt-1 text-[10px]" style={{ color: active ? "rgba(196,181,253,0.6)" : "rgba(255,255,255,0.15)" }}>
+                  {sub}
+                </p>
+              </div>
+            )
+          })()}
+
+          {/* Tile: Vs Market */}
+          {(() => {
+            const rs = row.relative_strength_20d != null ? Number(row.relative_strength_20d) : null
+            const label = rs == null ? "--" : rs >= 15 ? "Dominating" : rs >= 8 ? "Outperforming" : rs >= 3 ? "Beating" : rs >= 0 ? "Inline" : "Lagging"
+            const color = rs == null ? "rgba(255,255,255,0.15)" : rs >= 8 ? "#22d3ee" : rs >= 3 ? "#67e8f9" : rs >= 0 ? "#94a3b8" : "#f87171"
+            const active = rs != null && rs >= 3
+            return (
+              <div
+                className="relative overflow-hidden rounded-2xl p-3.5"
+                style={{
+                  background: active
+                    ? "linear-gradient(145deg, rgba(6,182,212,0.18) 0%, rgba(6,182,212,0.04) 100%)"
+                    : "linear-gradient(145deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)",
+                  border: active ? "1px solid rgba(6,182,212,0.30)" : "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                {active && <div className="absolute top-0 right-0 h-16 w-16 rounded-bl-full" style={{ background: "rgba(6,182,212,0.06)" }} />}
+                <p className="text-[9px] font-bold uppercase tracking-[0.15em]" style={{ color: active ? "#22d3ee" : "rgba(255,255,255,0.3)" }}>
+                  Vs Market
+                </p>
+                <p className="mt-1 text-2xl font-black" style={{ color }}>
+                  {rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}%` : "--"}
+                </p>
+                <p className="mt-1 text-[10px]" style={{ color: active ? "rgba(103,232,249,0.5)" : "rgba(255,255,255,0.15)" }}>
+                  {rs != null ? `${label} over 20 days` : "No data"}
+                </p>
+              </div>
+            )
+          })()}
+
+          {/* Tile: Overbought / Oversold */}
+          {(() => {
+            const ext = row.extension_from_sma20_pct
+            if (ext == null) {
+              return (
+                <div className="rounded-2xl p-3.5" style={{ background: "linear-gradient(145deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-white/30">Extension</p>
+                  <p className="mt-1 text-2xl font-black text-white/15">--</p>
+                  <p className="mt-1 text-[10px] text-white/15">No data</p>
                 </div>
-                {/* P/E gauge bar */}
-                <div className="relative mb-1.5 h-2.5 rounded-full" style={{ background: "linear-gradient(90deg, #4ade8030, #fbbf2430, #f8717130)" }}>
+              )
+            }
+            const pct = Math.min(Math.max((ext + 20) / 40, 0), 1) * 100
+            const isOB = ext >= 12
+            const isExt = ext >= 6
+            const isOS = ext <= -5
+            const label = isOB ? "Overbought" : isExt ? "Extended" : isOS ? "Oversold" : "Healthy"
+            const color = isOB ? "#f87171" : isExt ? "#fbbf24" : isOS ? "#4ade80" : "#22d3ee"
+            const bgColor = isOB ? "rgba(248,113,113,0.15)" : isExt ? "rgba(251,191,36,0.12)" : isOS ? "rgba(74,222,128,0.12)" : "rgba(6,182,212,0.10)"
+            const borderColor = isOB ? "rgba(248,113,113,0.30)" : isExt ? "rgba(251,191,36,0.25)" : isOS ? "rgba(74,222,128,0.25)" : "rgba(6,182,212,0.20)"
+            return (
+              <div
+                className="relative overflow-hidden rounded-2xl p-3.5"
+                style={{
+                  background: `linear-gradient(145deg, ${bgColor} 0%, rgba(255,255,255,0.01) 100%)`,
+                  border: `1px solid ${borderColor}`,
+                }}
+              >
+                <p className="text-[9px] font-bold uppercase tracking-[0.15em]" style={{ color }}>
+                  Extension
+                </p>
+                <p className="mt-1 text-2xl font-black" style={{ color }}>
+                  {label}
+                </p>
+                {/* Mini gauge */}
+                <div className="relative mt-2 h-1.5 rounded-full bg-white/[0.06]">
+                  <div className="absolute top-0 left-1/2 h-full w-px bg-white/15" />
                   <div
-                    className="absolute top-[-1px] h-3 w-3 rounded-full border-2"
+                    className="absolute top-[-2px] h-[11px] w-[11px] rounded-full"
                     style={{
-                      left: `calc(${pct}% - 6px)`,
+                      left: `calc(${pct}% - 5px)`,
                       backgroundColor: color,
-                      borderColor: `${color}80`,
+                      boxShadow: `0 0 6px ${color}60`,
                       transition: "left 600ms ease-out",
                     }}
                   />
                 </div>
-                <div className="mb-1.5 flex justify-between text-[9px] text-white/25">
+                <div className="mt-1 flex justify-between text-[8px] text-white/20">
+                  <span>Oversold</span>
+                  <span>Overbought</span>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Tile: P/E Valuation (full width) */}
+          {row.pe_ratio != null && (() => {
+            const pe = row.pe_ratio
+            const fwd = row.pe_forward
+            const pct = Math.min(Math.max(pe / 60, 0), 1) * 100
+            const isExpensive = pe >= 40
+            const isCheap = pe < 15
+            const label = isExpensive ? "Expensive" : isCheap ? "Cheap" : "Fair Value"
+            const color = isExpensive ? "#f87171" : isCheap ? "#4ade80" : "#fbbf24"
+            return (
+              <div
+                className="col-span-2 relative overflow-hidden rounded-2xl p-3.5"
+                style={{
+                  background: `linear-gradient(145deg, ${isExpensive ? "rgba(248,113,113,0.10)" : isCheap ? "rgba(74,222,128,0.10)" : "rgba(251,191,36,0.08)"} 0%, rgba(255,255,255,0.01) 100%)`,
+                  border: `1px solid ${isExpensive ? "rgba(248,113,113,0.25)" : isCheap ? "rgba(74,222,128,0.25)" : "rgba(251,191,36,0.20)"}`,
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.15em]" style={{ color }}>
+                    Valuation
+                  </p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xl font-black" style={{ color }}>{pe.toFixed(1)}</span>
+                    <span className="text-[10px] text-white/30">P/E</span>
+                    {fwd != null && (
+                      <>
+                        <span className="text-sm font-bold text-white/50">{fwd.toFixed(1)}</span>
+                        <span className="text-[10px] text-white/30">Fwd</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {/* Gauge */}
+                <div className="relative mt-2.5 h-2 rounded-full" style={{ background: "linear-gradient(90deg, rgba(74,222,128,0.25), rgba(251,191,36,0.25), rgba(248,113,113,0.25))" }}>
+                  <div
+                    className="absolute top-[-2px] h-[12px] w-[12px] rounded-full"
+                    style={{
+                      left: `calc(${pct}% - 6px)`,
+                      backgroundColor: color,
+                      boxShadow: `0 0 8px ${color}60`,
+                      transition: "left 600ms ease-out",
+                    }}
+                  />
+                </div>
+                <div className="mt-1 flex justify-between text-[8px] text-white/20">
                   <span>Cheap</span>
                   <span>Fair</span>
                   <span>Expensive</span>
                 </div>
-                <p className="text-[11px] text-white/40">
-                  {isExpensive
-                    ? "Trading at a premium — market expects high growth"
-                    : isCheap
-                      ? "Trading below average — potential value or concern"
-                      : "Reasonable valuation relative to earnings"}
+                <p className="mt-1.5 text-[10px] text-white/30">
+                  {isExpensive ? "Premium — market expects high growth" : isCheap ? "Below average — value play or concern" : "Reasonable relative to earnings"}
                 </p>
               </div>
             )
