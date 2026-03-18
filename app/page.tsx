@@ -1244,75 +1244,119 @@ function SwipeStockCard({
           </div>
         )}
 
-        {/* Insider Activity */}
-        {hasAnyInsider && (
-          <div
-            className="rounded-xl px-3 py-2.5"
-            style={{
-              background: "linear-gradient(135deg, rgba(251,146,60,0.10) 0%, rgba(251,146,60,0.03) 100%)",
-              border: "1px solid rgba(251,146,60,0.25)",
-            }}
-          >
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-400/90">
-              Insider Activity
+        {/* Two-column info grid */}
+        <div className="grid grid-cols-2 gap-2">
+          {/* Box 1: Insider Trades (Form 4) */}
+          <div className="rounded-xl border border-orange-400/20 bg-orange-400/[0.05] p-3">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-400/80">
+              👤 Form 4 Insider
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              {insider.map((pill, i) => (
+            {row.has_insider_trades ? (
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-orange-200">Active</p>
+                {(row.insider_buy_value ?? 0) > 0 ? (
+                  <p className="text-xs text-orange-300/70">
+                    {formatMoney(row.insider_buy_value!)} bought
+                  </p>
+                ) : (row.insider_shares ?? 0) > 0 ? (
+                  <p className="text-xs text-orange-300/70">
+                    {formatWholeNumber(row.insider_shares!)} shares
+                  </p>
+                ) : (
+                  <p className="text-xs text-orange-300/60">Filing on record</p>
+                )}
+                {(row.cluster_buyers ?? 0) >= 2 && (
+                  <p className="text-xs font-semibold text-orange-200">
+                    👥 {row.cluster_buyers} insiders (cluster)
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-white/25">No filings</p>
+            )}
+          </div>
+
+          {/* Box 2: Congressional Trades (PTR) */}
+          <div className="rounded-xl border border-purple-400/20 bg-purple-400/[0.05] p-3">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-purple-400/80">
+              🏛️ Congress (PTR)
+            </p>
+            {row.has_ptr_forms || row.ptr_amount ? (
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-purple-200">Active</p>
+                {row.ptr_amount ? (
+                  <p className="text-xs text-purple-300/70">{row.ptr_amount} bought</p>
+                ) : (
+                  <p className="text-xs text-purple-300/60">Trade disclosed</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-white/25">No PTR filings</p>
+            )}
+          </div>
+
+          {/* Box 3: Signals */}
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">
+              ⚡ Signals
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {tech.map((pill, i) => (
                 <span
                   key={i}
-                  className="inline-flex items-center gap-1 rounded-full border border-orange-400/30 bg-orange-400/10 px-2.5 py-1 text-[11px] font-semibold text-orange-200"
+                  className="inline-flex items-center gap-0.5 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-white/70"
                 >
                   {pill.emoji} {pill.text}
                 </span>
               ))}
+              {checks.map((c, i) => (
+                <span
+                  key={`c-${i}`}
+                  className="inline-flex items-center gap-0.5 rounded-md bg-cyan-400/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-cyan-300/70"
+                >
+                  &#10003; {c}
+                </span>
+              ))}
             </div>
           </div>
-        )}
 
-        {/* Tech signals + status checks */}
-        <div>
-          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/30">
-            Signals
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {tech.map((pill, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-white/70"
-              >
-                {pill.emoji} {pill.text}
-              </span>
-            ))}
-            {checks.map((c, i) => (
-              <span
-                key={`c-${i}`}
-                className="inline-flex items-center gap-1 rounded-full border border-cyan-400/15 bg-cyan-400/[0.05] px-2.5 py-1 text-[11px] font-medium text-cyan-300/70"
-              >
-                &#10003; {c}
-              </span>
-            ))}
+          {/* Box 4: Key Stats */}
+          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">
+              📊 Stats
+            </p>
+            <div className="space-y-1">
+              {row.volume_ratio != null && row.volume_ratio > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-white/40">Volume</span>
+                  <span className="font-bold" style={{ color: row.volume_ratio >= 1.5 ? "#fbbf24" : "#e2e8f0" }}>
+                    {row.volume_ratio.toFixed(1)}x
+                  </span>
+                </div>
+              )}
+              {row.relative_strength_20d != null && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-white/40">Rel Str</span>
+                  <span className="font-bold" style={{ color: Number(row.relative_strength_20d) >= 5 ? "#22d3ee" : "#e2e8f0" }}>
+                    {Number(row.relative_strength_20d).toFixed(1)}
+                  </span>
+                </div>
+              )}
+              {row.pe_ratio != null && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-white/40">P/E</span>
+                  <span className="font-bold text-white/80">{row.pe_ratio.toFixed(1)}</span>
+                </div>
+              )}
+              {row.market_cap != null && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-white/40">Mkt Cap</span>
+                  <span className="font-bold text-white/80">{formatMarketCap(row.market_cap)}</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-
-        {/* Stats grid */}
-        {stats.length > 0 && (
-          <div className="grid grid-cols-4 gap-1.5">
-            {stats.map((s, i) => (
-              <div
-                key={i}
-                className="flex flex-col items-center rounded-lg border border-white/[0.06] bg-white/[0.02] py-2"
-              >
-                <span className="text-[10px] text-white/30">{s.label}</span>
-                <span
-                  className="text-xs font-bold"
-                  style={{ color: s.accent ? "#fbbf24" : "#e2e8f0" }}
-                >
-                  {s.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {/* Action bar */}
