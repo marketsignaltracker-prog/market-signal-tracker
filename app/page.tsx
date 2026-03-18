@@ -1012,61 +1012,29 @@ function SwipeDeck({
 
   return (
     <div className="flex h-full flex-col items-center px-3 pb-2 pt-3">
-      {/* Nav row */}
-      <div className="mb-2.5 flex w-full max-w-md shrink-0 items-center justify-between">
-        <button
-          type="button"
-          onClick={goPrev}
-          disabled={!hasPrev}
-          aria-label="Previous idea"
-          className={[
-            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition",
-            hasPrev
-              ? "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 active:scale-95"
-              : "cursor-default border-transparent text-transparent",
-          ].join(" ")}
-        >
-          ‹
-        </button>
-
-        <div className="flex items-center gap-1.5">
-          {dots.map((i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => {
-                setSwipeDir(i > cardIndex ? "left" : "right")
-                onIndexChange(i)
-                setAnimKey((k) => k + 1)
-              }}
-              aria-label={`Go to idea ${i + 1}`}
-              className={[
-                "rounded-full transition-all duration-200",
-                i === cardIndex
-                  ? "h-2 w-5 bg-cyan-400"
-                  : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
-              ].join(" ")}
-            />
-          ))}
-          <span className="ml-1.5 text-[11px] text-slate-500">
-            {cardIndex + 1}/{rows.length}
-          </span>
-        </div>
-
-        <button
-          type="button"
-          onClick={goNext}
-          disabled={!hasNext}
-          aria-label="Next idea"
-          className={[
-            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition",
-            hasNext
-              ? "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 active:scale-95"
-              : "cursor-default border-transparent text-transparent",
-          ].join(" ")}
-        >
-          ›
-        </button>
+      {/* Pagination dots */}
+      <div className="mb-2 flex shrink-0 items-center gap-1.5">
+        {dots.map((i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => {
+              setSwipeDir(i > cardIndex ? "left" : "right")
+              onIndexChange(i)
+              setAnimKey((k) => k + 1)
+            }}
+            aria-label={`Go to stock ${i + 1}`}
+            className={[
+              "rounded-full transition-all duration-200",
+              i === cardIndex
+                ? "h-2 w-5 bg-cyan-400"
+                : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
+            ].join(" ")}
+          />
+        ))}
+        <span className="ml-1.5 text-[11px] text-slate-500">
+          {cardIndex + 1}/{rows.length}
+        </span>
       </div>
 
       {/* Swipeable card */}
@@ -1085,8 +1053,11 @@ function SwipeDeck({
         >
           <SwipeStockCard
             row={row}
-            rank={cardIndex + 1}
             onOpen={() => onOpenDetails(row.ticker)}
+            onNext={goNext}
+            onPrev={goPrev}
+            hasNext={hasNext}
+            hasPrev={hasPrev}
           />
         </div>
       </div>
@@ -1096,217 +1067,205 @@ function SwipeDeck({
 
 function SwipeStockCard({
   row,
-  rank,
   onOpen,
+  onNext,
+  onPrev,
+  hasNext,
+  hasPrev,
 }: {
   row: UnifiedRow
-  rank: number
   onOpen: () => void
+  onNext: () => void
+  onPrev: () => void
+  hasNext: boolean
+  hasPrev: boolean
 }) {
   const score = row.display_score
   const palette = getScorePalette(score)
-  const whyBullets = getSimpleCardBullets(row)
+  const thesis = getFeaturedThesis(row)
+  const reasons = getDateCardReasons(row)
 
   const clusterBuyers = row.cluster_buyers ?? 0
   const hasCluster = clusterBuyers >= 2
   const hasPtr = Boolean(row.ptr_amount)
-  const insiderValue = formatInsiderValue(row)
-  const hasInsiderBuy =
-    hasDisplayValue(insiderValue) ||
-    Boolean(row.insider_action) ||
-    (row.insider_shares ?? 0) > 0
   const hasPlatinum = clusterBuyers >= 3 && hasPtr
-  const hasAnyInsiderSignal = hasCluster || hasPtr || hasInsiderBuy
+
+  const glowColor = hasPlatinum
+    ? "rgba(251,191,36,0.5)"
+    : hasCluster
+      ? "rgba(52,211,153,0.5)"
+      : `${palette.end}80`
 
   return (
     <div
       className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl"
       style={{
         borderColor: hasPlatinum
-          ? "rgba(251,191,36,0.35)"
+          ? "rgba(251,191,36,0.4)"
           : hasCluster
-            ? "rgba(52,211,153,0.35)"
-            : `${palette.end}40`,
+            ? "rgba(52,211,153,0.4)"
+            : `${palette.end}50`,
         background: hasPlatinum
-          ? "linear-gradient(155deg, rgba(251,191,36,0.12) 0%, rgba(10,18,38,0.97) 35%, rgba(2,6,23,1) 100%)"
+          ? "linear-gradient(170deg, rgba(251,191,36,0.18) 0%, rgba(251,191,36,0.06) 20%, rgba(10,18,38,0.98) 50%, rgba(2,6,23,1) 100%)"
           : hasCluster
-            ? "linear-gradient(155deg, rgba(52,211,153,0.10) 0%, rgba(10,18,38,0.97) 35%, rgba(2,6,23,1) 100%)"
-            : `linear-gradient(155deg, ${palette.start}16 0%, rgba(10,18,38,0.97) 38%, rgba(2,6,23,1) 100%)`,
+            ? "linear-gradient(170deg, rgba(52,211,153,0.15) 0%, rgba(52,211,153,0.05) 20%, rgba(10,18,38,0.98) 50%, rgba(2,6,23,1) 100%)"
+            : `linear-gradient(170deg, ${palette.start}22 0%, ${palette.start}08 20%, rgba(10,18,38,0.98) 50%, rgba(2,6,23,1) 100%)`,
+        boxShadow: `0 0 60px -10px ${glowColor}, 0 25px 50px -12px rgba(0,0,0,0.5)`,
       }}
     >
-      {/* Header: rank + buy + ticker + score */}
-      <div className="shrink-0 px-5 pt-4 pb-3">
+      {/* Name badge: ticker + price + score */}
+      <div className="shrink-0 px-5 pt-5 pb-2">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <CardRankBadge rank={rank} />
-              <a
-                href={`https://robinhood.com/stocks/${row.ticker}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300 transition hover:bg-emerald-400/20"
-              >
-                Buy ↗
-              </a>
+            <h2 className="text-5xl font-black tracking-tight text-white">{row.ticker}</h2>
+            <div className="mt-1 flex items-center gap-2">
+              {row.company_name ? (
+                <span className="truncate text-sm text-slate-400">
+                  {truncateText(row.company_name, 30)}
+                </span>
+              ) : null}
+              {row.company_name && row.sector ? (
+                <span className="text-slate-600">·</span>
+              ) : null}
+              {row.sector ? (
+                <span className="text-xs text-slate-500">{row.sector}</span>
+              ) : null}
             </div>
-            <h2 className="mt-1.5 text-4xl font-black tracking-tight">{row.ticker}</h2>
-            {row.company_name ? (
-              <p className="mt-0.5 truncate text-sm text-slate-400">
-                {truncateText(row.company_name, 40)}
-              </p>
-            ) : null}
-            {row.sector ? (
-              <p className="text-[11px] text-slate-500">{row.sector}</p>
-            ) : null}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
-            <ScoreBadge row={row} large />
-            <FreshnessBadge row={row} />
-          </div>
-        </div>
-
-        {/* Score bar */}
-        <div className="mt-3">
-          <div className="mb-1 flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Score
-            </span>
-            <span className="text-xs font-semibold text-white">{score}/100</span>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-slate-800/80">
+          <div className="flex shrink-0 flex-col items-end gap-1">
             <div
-              className="h-full rounded-full"
+              className="flex items-baseline gap-1 rounded-2xl px-3 py-1.5"
               style={{
-                width: `${score}%`,
-                background: hasPlatinum
-                  ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
-                  : `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
-                transition: "width 600ms ease-out",
+                background: `linear-gradient(135deg, ${palette.start}30, ${palette.end}20)`,
+                border: `1px solid ${palette.end}40`,
               }}
-            />
+            >
+              <span
+                className="text-3xl font-black"
+                style={{ color: palette.end }}
+              >
+                {score}
+              </span>
+              <span className="text-xs font-semibold text-slate-400">/100</span>
+            </div>
+            {row.price ? (
+              <span className="text-sm font-semibold text-slate-300">
+                {formatMoney(row.price)}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
 
-      {/* Insider conviction section */}
-      {hasAnyInsiderSignal ? (
-        <div
-          className="shrink-0 border-t px-5 py-3"
+      {/* Hero headline — the "profile photo" equivalent */}
+      <div className="flex flex-1 items-center px-6 py-4">
+        <p
+          className="text-2xl leading-snug font-bold"
           style={{
-            borderColor: hasPlatinum
-              ? "rgba(251,191,36,0.20)"
-              : hasCluster
-                ? "rgba(52,211,153,0.15)"
-                : "rgba(255,255,255,0.07)",
+            color: hasPlatinum ? "#fbbf24" : hasCluster ? "#6ee7b7" : palette.end,
           }}
         >
-          {/* Platinum banner */}
-          {hasPlatinum && (
-            <div className="mb-3 flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2">
-              <span className="text-base">⚡</span>
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
-                  Platinum Conviction
-                </p>
-                <p className="text-[10px] text-amber-200/70">
-                  Cluster buy + Congressional activity
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            {/* Cluster */}
-            {hasCluster && (
-              <div className="flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">👥</span>
-                  <div>
-                    <p className="text-xs font-bold text-emerald-300">
-                      {clusterBuyers} insiders bought
-                    </p>
-                    <p className="text-[10px] text-emerald-400/70">Cluster buy</p>
-                  </div>
-                </div>
-                {hasDisplayValue(insiderValue) && (
-                  <span className="text-sm font-bold text-emerald-200">{insiderValue}</span>
-                )}
-              </div>
-            )}
-
-            {/* PTR */}
-            {hasPtr && (
-              <div className="flex items-center justify-between rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">🏛</span>
-                  <div>
-                    <p className="text-xs font-bold text-cyan-300">Congressional buy</p>
-                    <p className="text-[10px] text-cyan-400/70">PTR filing</p>
-                  </div>
-                </div>
-                <span className="text-sm font-bold text-cyan-200">{row.ptr_amount}</span>
-              </div>
-            )}
-
-            {/* Insider buy (no cluster) */}
-            {hasInsiderBuy && !hasCluster && (
-              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">👤</span>
-                  <div>
-                    <p className="text-xs font-bold text-white">Insider buy</p>
-                    <p className="text-[10px] text-slate-400">
-                      {row.insider_action || "Purchase filed"}
-                    </p>
-                  </div>
-                </div>
-                {hasDisplayValue(insiderValue) && (
-                  <span className="text-sm font-bold text-slate-200">{insiderValue}</span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
-
-      {/* Why it's here */}
-      <div className="shrink-0 border-t border-white/[0.07] px-5 py-3">
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/80">
-          {hasAnyInsiderSignal ? "Also" : "Why it made the list"}
+          &ldquo;{thesis}&rdquo;
         </p>
-        <ul className="space-y-1.5">
-          {whyBullets.slice(0, hasAnyInsiderSignal ? 1 : 2).map((bullet, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm leading-5 text-white">
-              <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
-              <span>{bullet}</span>
-            </li>
-          ))}
-        </ul>
       </div>
 
-      {/* Price */}
-      {row.price ? (
-        <div className="shrink-0 border-t border-white/[0.07] px-5 py-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Price
-            </span>
-            <span className="text-sm font-bold text-white">{formatMoney(row.price)}</span>
-          </div>
+      {/* Reasons to swipe right — Hinge-style prompts */}
+      <div className="shrink-0 px-4 pb-2">
+        <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+          Why you might swipe right
+        </p>
+        <div className="space-y-2">
+          {reasons.map((reason, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 rounded-2xl border px-4 py-3"
+              style={{
+                borderColor: reason.highlight
+                  ? hasPlatinum
+                    ? "rgba(251,191,36,0.3)"
+                    : "rgba(52,211,153,0.3)"
+                  : "rgba(255,255,255,0.08)",
+                background: reason.highlight
+                  ? hasPlatinum
+                    ? "rgba(251,191,36,0.08)"
+                    : "rgba(52,211,153,0.08)"
+                  : "rgba(255,255,255,0.03)",
+              }}
+            >
+              <span className="text-lg">{reason.emoji}</span>
+              <span
+                className="text-sm font-semibold"
+                style={{
+                  color: reason.highlight
+                    ? hasPlatinum
+                      ? "#fde68a"
+                      : "#a7f3d0"
+                    : "#e2e8f0",
+                }}
+              >
+                {reason.text}
+              </span>
+            </div>
+          ))}
         </div>
-      ) : null}
+      </div>
 
-      {/* CTA */}
-      <div className="mt-auto shrink-0 px-5 py-4">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[0.07] px-5 py-3 text-sm font-semibold text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10 active:scale-[0.98]"
-        >
-          <span>See full details</span>
-          <span className="rounded-full bg-white/10 px-3 py-1 text-xs">Explore →</span>
-        </button>
+      {/* Action bar — dating app style */}
+      <div className="mt-auto shrink-0 px-5 pt-3 pb-5">
+        <div className="flex items-center justify-between gap-3">
+          {/* Skip / Pass */}
+          <button
+            type="button"
+            onClick={onPrev}
+            disabled={!hasPrev}
+            className={[
+              "flex h-12 w-12 items-center justify-center rounded-full border text-lg transition active:scale-90",
+              hasPrev
+                ? "border-white/15 bg-white/5 text-slate-400 hover:border-rose-400/40 hover:bg-rose-400/10 hover:text-rose-300"
+                : "cursor-default border-transparent text-transparent",
+            ].join(" ")}
+            aria-label="Previous stock"
+          >
+            ←
+          </button>
+
+          {/* Details — center CTA */}
+          <button
+            type="button"
+            onClick={onOpen}
+            className="flex flex-1 items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-6 py-3 text-sm font-bold text-white transition hover:border-cyan-400/50 hover:bg-cyan-400/10 active:scale-[0.97]"
+          >
+            See Profile
+          </button>
+
+          {/* Buy — "super like" */}
+          <a
+            href={`https://robinhood.com/stocks/${row.ticker}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-400/15 text-lg text-emerald-300 transition hover:bg-emerald-400/25 active:scale-90"
+            aria-label={`Buy ${row.ticker}`}
+          >
+            $
+          </a>
+
+          {/* Next */}
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={!hasNext}
+            className={[
+              "flex h-12 w-12 items-center justify-center rounded-full border text-lg transition active:scale-90",
+              hasNext
+                ? "border-white/15 bg-white/5 text-slate-400 hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300"
+                : "cursor-default border-transparent text-transparent",
+            ].join(" ")}
+            aria-label="Next stock"
+          >
+            →
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -2870,6 +2829,169 @@ function TagPill({ tag }: { tag: string }) {
       {pretty}
     </span>
   )
+}
+
+function getDateCardReasons(
+  row: UnifiedRow
+): Array<{ emoji: string; text: string; highlight?: boolean }> {
+  const reasons: Array<{
+    emoji: string
+    text: string
+    highlight?: boolean
+    priority: number
+  }> = []
+
+  const clusterBuyers = row.cluster_buyers ?? 0
+  const hasPtr = Boolean(row.ptr_amount)
+  const insiderValue = formatInsiderValue(row)
+  const hasInsiderBuy =
+    hasDisplayValue(insiderValue) ||
+    Boolean(row.insider_action) ||
+    (row.insider_shares ?? 0) > 0
+
+  // Platinum conviction
+  if (clusterBuyers >= 3 && hasPtr) {
+    reasons.push({
+      emoji: "⚡",
+      text: "Insiders AND Congress are buying",
+      highlight: true,
+      priority: 100,
+    })
+  }
+
+  // Cluster buy
+  if (clusterBuyers >= 2) {
+    reasons.push({
+      emoji: "👥",
+      text: `${clusterBuyers} insiders just bought shares`,
+      highlight: true,
+      priority: 90,
+    })
+  }
+
+  // Congressional buy
+  if (hasPtr) {
+    reasons.push({
+      emoji: "🏛️",
+      text: `Congress member bought ${row.ptr_amount || ""}`.trim(),
+      priority: 85,
+    })
+  }
+
+  // Breakout
+  if (row.breakout_52w) {
+    reasons.push({
+      emoji: "🚀",
+      text: "Breaking to new 52-week highs",
+      priority: 80,
+    })
+  } else if (row.breakout_20d || row.breakout_10d) {
+    reasons.push({
+      emoji: "📈",
+      text: "Breaking above key price levels",
+      priority: 75,
+    })
+  }
+
+  // Volume surge
+  if ((row.volume_ratio ?? 0) >= 2) {
+    reasons.push({
+      emoji: "🔥",
+      text: `Volume ${Math.round(row.volume_ratio!)}x above normal`,
+      priority: 70,
+    })
+  } else if ((row.volume_ratio ?? 0) >= 1.5) {
+    reasons.push({
+      emoji: "🔥",
+      text: "Unusually high trading volume",
+      priority: 60,
+    })
+  }
+
+  // Earnings beat
+  if ((row.earnings_surprise_pct ?? 0) >= 10) {
+    reasons.push({
+      emoji: "💰",
+      text: `Earnings beat estimates by ${Math.round(row.earnings_surprise_pct!)}%`,
+      priority: 65,
+    })
+  }
+
+  // Revenue growth
+  if ((row.revenue_growth_pct ?? 0) >= 15) {
+    reasons.push({
+      emoji: "📊",
+      text: `Revenue growing ${Math.round(row.revenue_growth_pct!)}%`,
+      priority: 55,
+    })
+  }
+
+  // Relative strength
+  if ((row.relative_strength_20d ?? 0) >= 8) {
+    reasons.push({
+      emoji: "💪",
+      text: "Outperforming most of the market",
+      priority: 50,
+    })
+  } else if ((row.relative_strength_20d ?? 0) >= 5) {
+    reasons.push({
+      emoji: "💪",
+      text: "Stronger than the broader market",
+      priority: 40,
+    })
+  }
+
+  // Single insider buy (not cluster)
+  if (hasInsiderBuy && clusterBuyers < 2) {
+    reasons.push({
+      emoji: "👤",
+      text: hasDisplayValue(insiderValue)
+        ? `An insider just bought ${insiderValue} worth`
+        : "An insider just bought shares",
+      priority: 45,
+    })
+  }
+
+  // Guidance
+  if (row.guidance_flag === true) {
+    reasons.push({
+      emoji: "🎯",
+      text: "Management raised their outlook",
+      priority: 35,
+    })
+  }
+
+  // Price + signal convergence
+  if (row.has_candidate_data && row.has_signal_data && reasons.length < 3) {
+    reasons.push({
+      emoji: "✅",
+      text: "Price action and signals both look strong",
+      priority: 30,
+    })
+  }
+
+  // Trend aligned
+  if (row.trend_aligned && reasons.length < 3) {
+    reasons.push({
+      emoji: "📐",
+      text: "All major trends pointing up",
+      priority: 25,
+    })
+  }
+
+  // Fallback
+  if (reasons.length === 0) {
+    reasons.push({
+      emoji: "✨",
+      text: "Multiple signals lining up right now",
+      priority: 10,
+    })
+  }
+
+  return reasons
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 4)
+    .map(({ emoji, text, highlight }) => ({ emoji, text, highlight }))
 }
 
 function getFeaturedThesis(row: UnifiedRow) {
