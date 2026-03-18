@@ -214,7 +214,7 @@ type ReasonLine = {
 }
 
 const CARDS_PER_PAGE = 18
-const DETAIL_TABS = ["Overview", "Why it’s here", "Numbers"] as const
+const DETAIL_TABS = ["Overview", "Fundamentals", "Numbers"] as const
 
 function normalizeTicker(value: string | null | undefined) {
   return (value || "").trim().toUpperCase()
@@ -1118,6 +1118,8 @@ function SwipeStockCard({
   const hasPlatinum = clusterBuyers >= 3 && hasPtr
   const hasAnyInsiderSignal = hasCluster || hasPtr || hasInsiderBuy
 
+  const ltcs = parseScreenReasonScores(row.screen_reason)
+
   return (
     <div
       className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl"
@@ -1135,7 +1137,7 @@ function SwipeStockCard({
       }}
     >
       {/* Header: rank + buy + ticker + score */}
-      <div className="shrink-0 px-5 pt-4 pb-3">
+      <div className="shrink-0 px-5 pt-4 pb-2">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -1153,7 +1155,7 @@ function SwipeStockCard({
             <h2 className="mt-1.5 text-4xl font-black tracking-tight">{row.ticker}</h2>
             {row.company_name ? (
               <p className="mt-0.5 truncate text-sm text-slate-400">
-                {truncateText(row.company_name, 40)}
+                {truncateText(row.company_name, 36)}
               </p>
             ) : null}
             {row.sector ? (
@@ -1166,11 +1168,11 @@ function SwipeStockCard({
           </div>
         </div>
 
-        {/* Score bar */}
-        <div className="mt-3">
+        {/* Quality Score bar */}
+        <div className="mt-2.5">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Score
+              Quality Score
             </span>
             <span className="text-xs font-semibold text-white">{score}/100</span>
           </div>
@@ -1187,12 +1189,38 @@ function SwipeStockCard({
             />
           </div>
         </div>
+
+        {/* Price + 1D / 5D / 20D returns */}
+        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+          {row.price ? (
+            <span className="shrink-0 text-sm font-bold text-white mr-0.5">
+              {formatMoney(row.price)}
+            </span>
+          ) : null}
+          {[
+            { label: "1D", value: row.one_day_return },
+            { label: "5D", value: row.price_return_5d },
+            { label: "20D", value: row.price_return_20d },
+          ].map(({ label, value }) =>
+            value !== null && value !== undefined ? (
+              <span
+                key={label}
+                className={[
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold",
+                  value >= 0 ? "bg-emerald-400/15 text-emerald-300" : "bg-rose-400/15 text-rose-300",
+                ].join(" ")}
+              >
+                {label} {value >= 0 ? "+" : ""}{round1(value)?.toFixed(1)}%
+              </span>
+            ) : null
+          )}
+        </div>
       </div>
 
-      {/* Insider conviction section */}
+      {/* Insider conviction section — compact */}
       {hasAnyInsiderSignal ? (
         <div
-          className="shrink-0 border-t px-5 py-3"
+          className="shrink-0 border-t px-4 py-2"
           style={{
             borderColor: hasPlatinum
               ? "rgba(251,191,36,0.20)"
@@ -1201,101 +1229,87 @@ function SwipeStockCard({
                 : "rgba(255,255,255,0.07)",
           }}
         >
-          {/* Platinum banner */}
           {hasPlatinum && (
-            <div className="mb-3 flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2">
-              <span className="text-base">⚡</span>
+            <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-2.5 py-1.5">
+              <span className="text-sm">⚡</span>
               <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-300">
                   Platinum Conviction
                 </p>
-                <p className="text-[10px] text-amber-200/70">
-                  Cluster buy + Congressional activity
-                </p>
+                <p className="text-[10px] text-amber-200/70">Cluster + Congressional buy</p>
               </div>
             </div>
           )}
-
-          <div className="space-y-2">
-            {/* Cluster */}
+          <div className="flex flex-wrap gap-1.5">
             {hasCluster && (
-              <div className="flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">👥</span>
-                  <div>
-                    <p className="text-xs font-bold text-emerald-300">
-                      {clusterBuyers} insiders bought
-                    </p>
-                    <p className="text-[10px] text-emerald-400/70">Cluster buy</p>
-                  </div>
-                </div>
-                {hasDisplayValue(insiderValue) && (
-                  <span className="text-sm font-bold text-emerald-200">{insiderValue}</span>
-                )}
+              <div className="flex items-center gap-1.5 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1.5">
+                <span className="text-xs">👥</span>
+                <span className="text-[11px] font-bold text-emerald-300">
+                  {clusterBuyers} insiders bought{hasDisplayValue(insiderValue) ? ` · ${insiderValue}` : ""}
+                </span>
               </div>
             )}
-
-            {/* PTR */}
             {hasPtr && (
-              <div className="flex items-center justify-between rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">🏛</span>
-                  <div>
-                    <p className="text-xs font-bold text-cyan-300">Congressional buy</p>
-                    <p className="text-[10px] text-cyan-400/70">PTR filing</p>
-                  </div>
-                </div>
-                <span className="text-sm font-bold text-cyan-200">{row.ptr_amount}</span>
+              <div className="flex items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1.5">
+                <span className="text-xs">🏛</span>
+                <span className="text-[11px] font-bold text-cyan-300">
+                  Congress · {row.ptr_amount}
+                </span>
               </div>
             )}
-
-            {/* Insider buy (no cluster) */}
             {hasInsiderBuy && !hasCluster && (
-              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">👤</span>
-                  <div>
-                    <p className="text-xs font-bold text-white">Insider buy</p>
-                    <p className="text-[10px] text-slate-400">
-                      {row.insider_action || "Purchase filed"}
-                    </p>
-                  </div>
-                </div>
-                {hasDisplayValue(insiderValue) && (
-                  <span className="text-sm font-bold text-slate-200">{insiderValue}</span>
-                )}
+              <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5">
+                <span className="text-xs">👤</span>
+                <span className="text-[11px] font-bold text-white">
+                  Insider buy{hasDisplayValue(insiderValue) ? ` · ${insiderValue}` : ""}
+                </span>
               </div>
             )}
           </div>
         </div>
       ) : null}
 
-      {/* Why it's here */}
-      <div className="shrink-0 border-t border-white/[0.07] px-5 py-3">
+      {/* Quality Fundamentals */}
+      <div className="shrink-0 border-t border-white/[0.07] px-4 py-3">
         <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/80">
-          {hasAnyInsiderSignal ? "Also" : "Why it made the list"}
+          Quality Fundamentals
         </p>
+
+        {/* 5 pillar mini-bars */}
+        <div className="flex gap-1.5 mb-3">
+          {[
+            { emoji: "🏔", label: "Moat", score: ltcs.moat },
+            { emoji: "💪", label: "Balance", score: ltcs.financial },
+            { emoji: "💰", label: "Profit", score: ltcs.profitability },
+            { emoji: "🛡", label: "Stable", score: ltcs.stability },
+            { emoji: "📊", label: "Value", score: ltcs.valuation },
+          ].map(({ emoji, label, score: s }) => {
+            const { barColor } = getPillarVerdict(s)
+            return (
+              <div key={label} className="flex-1 text-center">
+                <div className="text-base leading-none">{emoji}</div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${s ?? 0}%`, backgroundColor: barColor }}
+                  />
+                </div>
+                <p className="mt-0.5 text-[9px] text-slate-500">{label}</p>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* 2 plain-English bullets */}
         <ul className="space-y-1.5">
-          {whyBullets.slice(0, hasAnyInsiderSignal ? 1 : 2).map((bullet, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm leading-5 text-white">
-              <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
+          {whyBullets.slice(0, 2).map((bullet, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-[11px] leading-[1.4] text-slate-300">
+              <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
               <span>{bullet}</span>
             </li>
           ))}
         </ul>
       </div>
-
-      {/* Price */}
-      {row.price ? (
-        <div className="shrink-0 border-t border-white/[0.07] px-5 py-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Price
-            </span>
-            <span className="text-sm font-bold text-white">{formatMoney(row.price)}</span>
-          </div>
-        </div>
-      ) : null}
 
       {/* CTA */}
       <div className="mt-auto shrink-0 px-5 py-4">
@@ -2270,26 +2284,39 @@ function SignalDetailsModal({
 
                   <div className="mb-5">
                     <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Biggest score drivers
+                      Quality fundamentals
                     </p>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      {reasons.map((reason) => (
-                        <ReasonCard
-                          key={`${reason.label}-${reason.value}`}
-                          reason={reason}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="mb-5">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Score movement
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
-                      <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
-                    </div>
+                    {(() => {
+                      const ltcs = parseScreenReasonScores(row.screen_reason)
+                      return (
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {[
+                            { emoji: "🏔", label: "Economic Moat", score: ltcs.moat, how: "Margins, revenue growth, and scale." },
+                            { emoji: "💪", label: "Balance Sheet", score: ltcs.financial, how: "Debt-to-equity, current ratio, and profitability." },
+                            { emoji: "💰", label: "Profitability & FCF", score: ltcs.profitability, how: "ROE, free cash flow, earnings growth." },
+                            { emoji: "🛡", label: "Stability", score: ltcs.stability, how: "Beta and sector risk profile." },
+                            { emoji: "📊", label: "Valuation", score: ltcs.valuation, how: "PEG ratio, forward P/E, and 200-day MA." },
+                          ].map(({ emoji, label, score: s, how }) => {
+                            const { label: verdict, color, barColor } = getPillarVerdict(s)
+                            return (
+                              <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                                <div className="mb-2 flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-base">{emoji}</span>
+                                    <span className="text-sm font-bold text-white">{label}</span>
+                                  </div>
+                                  <span className={`text-sm font-bold ${color}`}>{verdict}</span>
+                                </div>
+                                <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                                  <div className="h-full rounded-full" style={{ width: `${s ?? 0}%`, backgroundColor: barColor }} />
+                                </div>
+                                <p className="text-xs text-slate-400">{how}</p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -2304,58 +2331,6 @@ function SignalDetailsModal({
                         </li>
                       ))}
                     </ul>
-
-                    {!!tags.length && (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {tags.slice(0, 12).map((tag) => (
-                          <TagPill key={tag} tag={tag} />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      What confirms the setup
-                    </p>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <ConfirmationRow
-                        label="Price confirmation"
-                        value={formatPriceConfirmation(row)}
-                      />
-                      <ConfirmationRow
-                        label="Breakout"
-                        value={
-                          row.breakout_52w
-                            ? "52-week breakout"
-                            : row.breakout_20d
-                              ? "20-day breakout"
-                              : "No breakout flag"
-                        }
-                      />
-                      <ConfirmationRow
-                        label="Trend"
-                        value={
-                          row.trend_aligned === true
-                            ? "Aligned"
-                            : row.above_sma_20
-                              ? "Constructive"
-                              : "Mixed"
-                        }
-                      />
-                      <ConfirmationRow
-                        label="Vs market"
-                        value={formatRelativeStrengthForDisplay(row)}
-                      />
-                      <ConfirmationRow
-                        label="Volume"
-                        value={formatRatio(row.volume_ratio)}
-                      />
-                      <ConfirmationRow
-                        label="Signals stacked"
-                        value={formatSignalStack(row.stacked_signal_count, row)}
-                      />
-                    </div>
                   </div>
                 </div>
 
@@ -2558,74 +2533,77 @@ function SignalDetailsModal({
                 ) : null}
 
                 {activeSlide === 1 ? (
-                  <div className="space-y-5">
-                    <div>
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Biggest score drivers
+                  <div className="space-y-4">
+                    <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(2,6,23,0.95)_55%)] p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                        What we look for
                       </p>
-                      <div className="grid gap-3">
-                        {reasons.map((reason) => (
-                          <ReasonCard
-                            key={`${reason.label}-${reason.value}`}
-                            reason={reason}
-                          />
-                        ))}
-                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                        Every stock on this board passes a quality screen built for long-term investors. We look for companies with durable competitive advantages, healthy finances, and reasonable valuations — not short-term momentum.
+                      </p>
                     </div>
 
-                    <div>
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Score movement
-                      </p>
-                      <div className="grid gap-3">
-                        <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
-                        <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        What confirms the setup
-                      </p>
-                      <div className="mt-4 grid gap-3">
-                        <ConfirmationRow
-                          label="Price confirmation"
-                          value={formatPriceConfirmation(row)}
-                        />
-                        <ConfirmationRow
-                          label="Breakout"
-                          value={
-                            row.breakout_52w
-                              ? "52-week breakout"
-                              : row.breakout_20d
-                                ? "20-day breakout"
-                                : "No breakout flag"
-                          }
-                        />
-                        <ConfirmationRow
-                          label="Trend"
-                          value={
-                            row.trend_aligned === true
-                              ? "Aligned"
-                              : row.above_sma_20
-                                ? "Constructive"
-                                : "Mixed"
-                          }
-                        />
-                        <ConfirmationRow
-                          label="Vs market"
-                          value={formatRelativeStrengthForDisplay(row)}
-                        />
-                        <ConfirmationRow
-                          label="Volume"
-                          value={formatRatio(row.volume_ratio)}
-                        />
-                        <ConfirmationRow
-                          label="Signals stacked"
-                          value={formatSignalStack(row.stacked_signal_count, row)}
-                        />
-                      </div>
-                    </div>
+                    {(() => {
+                      const ltcs = parseScreenReasonScores(row.screen_reason)
+                      return [
+                        {
+                          emoji: "🏔",
+                          label: "Economic Moat",
+                          score: ltcs.moat,
+                          what: "Does the company have a lasting competitive edge?",
+                          how: "Checks gross margin >40%, operating margin >12%, revenue growth >5%, and market cap >$10B. A wide moat means rivals can't easily steal customers.",
+                        },
+                        {
+                          emoji: "💪",
+                          label: "Balance Sheet Health",
+                          score: ltcs.financial,
+                          what: "Is the company's debt manageable?",
+                          how: "Looks at debt-to-equity ratio ≤2×, current ratio, and profit margin. Low debt gives flexibility in downturns and avoids interest-rate risk.",
+                        },
+                        {
+                          emoji: "💰",
+                          label: "Profitability & FCF",
+                          score: ltcs.profitability,
+                          what: "Is the business generating real cash?",
+                          how: "Measures ROE >15%, positive free cash flow, and earnings growth >5%. Strong FCF means the company can fund growth, dividends, or buybacks without borrowing.",
+                        },
+                        {
+                          emoji: "🛡",
+                          label: "Stability",
+                          score: ltcs.stability,
+                          what: "How volatile is this stock?",
+                          how: "Uses beta — a measure of price swings vs. the market. Beta below 1.0 means the stock moves less than the index, which is better for long-term holders.",
+                        },
+                        {
+                          emoji: "📊",
+                          label: "Valuation",
+                          score: ltcs.valuation,
+                          what: "Is the price reasonable?",
+                          how: "Checks PEG ratio <2 (growth-adjusted P/E), forward P/E <30, and whether price sits below the 200-day moving average. Great companies at fair prices outperform over time.",
+                        },
+                      ].map(({ emoji, label, score: s, what, how }) => {
+                        const { label: verdict, color, barColor } = getPillarVerdict(s)
+                        return (
+                          <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg">{emoji}</span>
+                                <span className="text-sm font-bold text-white">{label}</span>
+                              </div>
+                              <span className={`text-sm font-bold ${color}`}>{verdict}</span>
+                            </div>
+                            <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ width: `${s ?? 0}%`, backgroundColor: barColor }}
+                              />
+                            </div>
+                            <p className="mb-1 text-xs font-semibold text-slate-300">{what}</p>
+                            <p className="text-xs leading-5 text-slate-400">{how}</p>
+                          </div>
+                        )
+                      })
+                    })()}
                   </div>
                 ) : null}
 
@@ -2639,7 +2617,7 @@ function SignalDetailsModal({
                       <div className="mt-4 space-y-3">
                         <MetricRow label="Overall score" value={`${row.display_score}`} />
                         <MetricRow
-                          label="Price strength score"
+                          label="Quality score"
                           value={formatSimpleNumber(row.candidate_score)}
                         />
                         <MetricRow
@@ -2654,7 +2632,7 @@ function SignalDetailsModal({
                         <MetricRow label="Price" value={formatMoney(row.price)} />
                         <MetricRow
                           label="Main reason"
-                          value={row.primary_title || "Price strength"}
+                          value={row.primary_title || "Quality screen"}
                         />
                         <MetricRow
                           label="Signal source"
@@ -2873,27 +2851,40 @@ function TagPill({ tag }: { tag: string }) {
 }
 
 function getFeaturedThesis(row: UnifiedRow) {
-  if (row.primary_signal_source === "breakout" && (row.volume_ratio ?? 0) >= 2) {
-    return "Fresh breakout with strong buying interest"
+  const ltcs = parseScreenReasonScores(row.screen_reason)
+
+  if ((row.cluster_buyers ?? 0) >= 3 && row.ptr_amount) {
+    return "Multiple insiders and Congress are buying — a rare alignment of conviction"
   }
 
   if ((row.cluster_buyers ?? 0) >= 2) {
-    return "More than one good signal is showing up at the same time"
+    return "Multiple insiders are buying at current prices — a strong vote of confidence"
   }
 
-  if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
-    return "Business strength is helping support the move"
+  if (row.ptr_amount) {
+    return "A Congressional trade is supporting this thesis"
   }
 
-  if ((row.relative_strength_20d ?? 0) >= 8) {
-    return "This stock has been acting stronger than much of the market"
+  if (
+    ltcs.moat !== null && ltcs.moat >= 75 &&
+    ltcs.profitability !== null && ltcs.profitability >= 75
+  ) {
+    return "A high-moat, cash-generative compounder at a quality price"
   }
 
-  if ((row.candidate_score ?? 0) >= 85 && !row.has_signal_data) {
-    return "A very strong price-based setup on its own"
+  if (ltcs.financial !== null && ltcs.financial >= 100 && ltcs.profitability !== null && ltcs.profitability >= 75) {
+    return "Rock-solid balance sheet with consistently strong earnings"
   }
 
-  return "Several things are lining up well right now"
+  if (ltcs.valuation !== null && ltcs.valuation >= 65 && row.display_score >= 70) {
+    return "A quality business available at an attractive valuation"
+  }
+
+  if (row.display_score >= 80) {
+    return "Multiple quality factors are scoring well for this company"
+  }
+
+  return "Passes the long-term quality screen with several positive signals"
 }
 
 function getSimpleCardBullets(row: UnifiedRow) {
@@ -2932,6 +2923,29 @@ function getSimpleCardBullets(row: UnifiedRow) {
   }
 
   return points.slice(0, 3)
+}
+
+function parseScreenReasonScores(reason: string | null | undefined) {
+  const r = reason ?? ""
+  const moatMatch = r.match(/moat:\s*(\d+)\/100/)
+  const financialMatch = r.match(/financial health:\s*(\d+)\/100/)
+  const profitabilityMatch = r.match(/profitability:\s*(\d+)\/100/)
+  const stabilityMatch = r.match(/stability:\s*(\d+)\/100/)
+  const valuationMatch = r.match(/valuation:\s*(\d+)\/100/)
+  return {
+    moat: moatMatch ? Number(moatMatch[1]) : null,
+    financial: financialMatch ? Number(financialMatch[1]) : null,
+    profitability: profitabilityMatch ? Number(profitabilityMatch[1]) : null,
+    stability: stabilityMatch ? Number(stabilityMatch[1]) : null,
+    valuation: valuationMatch ? Number(valuationMatch[1]) : null,
+  }
+}
+
+function getPillarVerdict(score: number | null) {
+  if (score === null) return { label: "No data", color: "text-slate-500", barColor: "#475569" }
+  if (score >= 75) return { label: "Strong", color: "text-emerald-300", barColor: "#34d399" }
+  if (score >= 50) return { label: "Fair", color: "text-yellow-300", barColor: "#facc15" }
+  return { label: "Weak", color: "text-rose-400", barColor: "#f87171" }
 }
 
 function getPremiumSummaryBullets(row: UnifiedRow) {
@@ -3040,52 +3054,48 @@ function getTopReasonLines(row: UnifiedRow): ReasonLine[] {
 }
 
 function getConfidenceBullets(row: UnifiedRow) {
-  const score = row.display_score
-  const tags = normalizeTags(row.signal_tags)
-
+  const ltcs = parseScreenReasonScores(row.screen_reason)
   const bullets: string[] = []
 
-  if (row.has_candidate_data && !row.has_signal_data) {
+  if ((row.cluster_buyers ?? 0) >= 2) {
     bullets.push(
-      "This made the board mostly because the price-based setup was strong enough on its own."
+      `${row.cluster_buyers} company insiders recently bought shares — people with inside knowledge of the business.`
     )
   }
 
-  if ((row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")) {
-    bullets.push("More than one positive signal is showing up at the same time.")
+  if (row.ptr_amount) {
+    bullets.push(
+      `A U.S. Congress member filed a trade for ${row.ptr_amount}. Politicians often trade ahead of policy moves.`
+    )
   }
 
-  if (
-    row.primary_signal_source === "breakout" ||
-    row.breakout_20d === true ||
-    row.breakout_52w === true
-  ) {
-    bullets.push("The stock is pushing above important price levels.")
+  if (ltcs.moat !== null && ltcs.moat >= 75) {
+    bullets.push(
+      "The company has strong margins and revenue growth — signs of a lasting competitive edge over rivals."
+    )
   }
 
-  if ((row.volume_ratio ?? 0) >= 1.5 || tags.includes("volume-confirmed")) {
-    bullets.push("Volume is elevated, which often means stronger buyer interest.")
+  if (ltcs.financial !== null && ltcs.financial >= 80) {
+    bullets.push(
+      "Balance sheet looks healthy: debt is manageable and the company is generating profit."
+    )
   }
 
-  if (
-    (row.earnings_surprise_pct ?? 0) >= 10 ||
-    (row.revenue_growth_pct ?? 0) >= 15 ||
-    row.guidance_flag === true
-  ) {
-    bullets.push("Recent business results are helping support the setup.")
+  if (ltcs.profitability !== null && ltcs.profitability >= 75) {
+    bullets.push(
+      "Return on equity is strong and the business generates positive free cash flow — it funds its own growth."
+    )
   }
 
-  if ((row.relative_strength_20d ?? 0) > 0) {
-    bullets.push("The stock has been outperforming the market recently.")
-  }
-
-  if (score >= 90) {
-    bullets.push("Its overall score is near the top of today’s board.")
+  if (ltcs.valuation !== null && ltcs.valuation >= 65) {
+    bullets.push(
+      "The stock looks reasonably priced relative to its growth prospects."
+    )
   }
 
   if (!bullets.length) {
     bullets.push(
-      "The original signal is still holding up well enough to keep this name on the board."
+      "This company passes the quality screen and has enough positives to deserve attention."
     )
   }
 
@@ -3093,37 +3103,48 @@ function getConfidenceBullets(row: UnifiedRow) {
 }
 
 function getSimpleSetupBullets(row: UnifiedRow) {
+  const ltcs = parseScreenReasonScores(row.screen_reason)
   const parts: string[] = []
 
-  if (row.breakout_20d) {
+  if (ltcs.moat !== null && ltcs.moat >= 75) {
     parts.push(
-      "The stock just moved above recent price levels, which can be a sign of fresh buying interest."
+      "Wide economic moat: high margins, strong revenue growth, and significant market scale make it hard for rivals to compete."
     )
   }
 
-  if ((row.relative_strength_20d ?? 0) > 0) {
-    parts.push("It has been outperforming the overall market recently.")
-  }
-
-  if ((row.volume_ratio ?? 0) > 1.3) {
+  if (ltcs.financial !== null && ltcs.financial >= 80) {
     parts.push(
-      "Trading volume is higher than usual, which suggests stronger participation."
+      "Healthy balance sheet with a debt-to-equity ratio under 1× — financial flexibility without the interest-rate risk."
     )
   }
 
-  if ((row.earnings_surprise_pct ?? 0) > 0) {
+  if (ltcs.profitability !== null && ltcs.profitability >= 75) {
     parts.push(
-      "Recent earnings were better than expected, which can attract new buyers."
+      "Consistently profitable with strong return on equity and positive free cash flow — the business funds its own growth."
+    )
+  }
+
+  if (ltcs.stability !== null && ltcs.stability >= 60) {
+    parts.push(
+      "Lower price volatility than the average stock — a smoother ride for long-term investors."
+    )
+  }
+
+  if (ltcs.valuation !== null && ltcs.valuation >= 65) {
+    parts.push(
+      "Valuation looks attractive: P/E or PEG ratio is reasonable relative to expected earnings growth — a fair price for quality."
     )
   }
 
   if ((row.revenue_growth_pct ?? 0) > 10) {
-    parts.push("The company is also showing solid revenue growth.")
+    parts.push(
+      "Revenue is growing meaningfully — the business is expanding, not just coasting."
+    )
   }
 
   if (parts.length === 0) {
     parts.push(
-      "This stock is showing enough strength versus the rest of the market to deserve a closer look."
+      "This company passes quality checks across moat, balance sheet, and profitability for long-term investors."
     )
   }
 
