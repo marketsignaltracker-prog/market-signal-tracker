@@ -1065,49 +1065,24 @@ function SwipeDeck({
   )
 }
 
-function SignalPillGrid({
+function CardMetric({
   label,
-  pills,
-  accentColor,
+  value,
+  color,
 }: {
   label: string
-  pills: SignalPill[]
-  accentColor?: string
+  value: string
+  color?: string
 }) {
-  if (pills.length === 0) return null
   return (
-    <div>
-      <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
-        {label}
-      </p>
-      <div className="flex flex-wrap gap-1.5">
-        {pills.map((pill, i) => (
-          <span
-            key={i}
-            className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold"
-            style={{
-              borderColor: pill.highlight
-                ? accentColor
-                  ? `${accentColor}50`
-                  : "rgba(52,211,153,0.3)"
-                : "rgba(255,255,255,0.10)",
-              background: pill.highlight
-                ? accentColor
-                  ? `${accentColor}15`
-                  : "rgba(52,211,153,0.08)"
-                : "rgba(255,255,255,0.04)",
-              color: pill.highlight
-                ? accentColor
-                  ? accentColor
-                  : "#a7f3d0"
-                : "#cbd5e1",
-            }}
-          >
-            <span>{pill.emoji}</span>
-            <span>{pill.text}</span>
-          </span>
-        ))}
-      </div>
+    <div className="flex items-center justify-between py-[3px]">
+      <span className="text-[11px] text-slate-500">{label}</span>
+      <span
+        className="text-xs font-bold"
+        style={{ color: color || "#e2e8f0" }}
+      >
+        {value}
+      </span>
     </div>
   )
 }
@@ -1129,13 +1104,13 @@ function SwipeStockCard({
 }) {
   const score = row.display_score
   const palette = getScorePalette(score)
-  const thesis = getFeaturedThesis(row)
   const { insider, tech } = getCardSignals(row)
 
   const clusterBuyers = row.cluster_buyers ?? 0
   const hasCluster = clusterBuyers >= 2
   const hasPtr = Boolean(row.ptr_amount)
   const hasPlatinum = clusterBuyers >= 3 && hasPtr
+  const hasAnyInsider = insider.length > 0
 
   const glowColor = hasPlatinum
     ? "rgba(251,191,36,0.5)"
@@ -1143,7 +1118,63 @@ function SwipeStockCard({
       ? "rgba(52,211,153,0.5)"
       : `${palette.end}80`
 
-  const accentColor = hasPlatinum ? "#fbbf24" : hasCluster ? "#6ee7b7" : undefined
+  // Build key metrics
+  const metrics: Array<{ label: string; value: string; color?: string }> = []
+
+  if (row.one_day_return != null) {
+    const v = row.one_day_return
+    metrics.push({
+      label: "Today",
+      value: `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`,
+      color: v >= 0 ? "#4ade80" : "#f87171",
+    })
+  }
+  if (row.price_return_5d != null) {
+    const v = row.price_return_5d
+    metrics.push({
+      label: "5-day",
+      value: `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`,
+      color: v >= 0 ? "#4ade80" : "#f87171",
+    })
+  }
+  if (row.price_return_20d != null) {
+    const v = row.price_return_20d
+    metrics.push({
+      label: "20-day",
+      value: `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`,
+      color: v >= 0 ? "#4ade80" : "#f87171",
+    })
+  }
+  if (row.volume_ratio != null && row.volume_ratio > 0) {
+    metrics.push({
+      label: "Volume",
+      value: `${row.volume_ratio.toFixed(1)}x avg`,
+      color: row.volume_ratio >= 1.5 ? "#fbbf24" : "#e2e8f0",
+    })
+  }
+  if (row.relative_strength_20d != null) {
+    metrics.push({
+      label: "Rel Strength",
+      value: `${Number(row.relative_strength_20d).toFixed(1)}`,
+      color: Number(row.relative_strength_20d) >= 5 ? "#22d3ee" : "#e2e8f0",
+    })
+  }
+  if (row.pe_ratio != null) {
+    metrics.push({ label: "P/E", value: row.pe_ratio.toFixed(1) })
+  }
+  if (row.market_cap != null) {
+    metrics.push({ label: "Mkt Cap", value: formatMarketCap(row.market_cap) })
+  }
+
+  // Status flags
+  const flags: Array<{ label: string; on: boolean }> = [
+    { label: "Breakout", on: Boolean(row.breakout_20d || row.breakout_10d) },
+    { label: "Above 20d MA", on: Boolean(row.above_sma_20) },
+    { label: "Trend Aligned", on: Boolean(row.trend_aligned) },
+    { label: "Price Confirmed", on: Boolean(row.price_confirmed) },
+    { label: "Above 50d MA", on: Boolean(row.above_50dma) },
+  ]
+  const activeFlags = flags.filter((f) => f.on)
 
   return (
     <div
@@ -1162,123 +1193,149 @@ function SwipeStockCard({
         boxShadow: `0 0 60px -10px ${glowColor}, 0 25px 50px -12px rgba(0,0,0,0.5)`,
       }}
     >
-      {/* Name badge: ticker + price + score */}
-      <div className="shrink-0 px-5 pt-5 pb-2">
-        <div className="flex items-start justify-between gap-3">
+      {/* Header: ticker + score + price */}
+      <div className="shrink-0 px-4 pt-4 pb-1">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <h2 className="text-5xl font-black tracking-tight text-white">{row.ticker}</h2>
-            <div className="mt-1 flex items-center gap-2">
-              {row.company_name ? (
-                <span className="truncate text-sm text-slate-400">
-                  {truncateText(row.company_name, 30)}
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-4xl font-black tracking-tight text-white">{row.ticker}</h2>
+              {row.price ? (
+                <span className="text-lg font-bold text-slate-300">
+                  {formatMoney(row.price)}
                 </span>
               ) : null}
-              {row.company_name && row.sector ? (
-                <span className="text-slate-600">·</span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              {row.company_name ? (
+                <span className="truncate text-xs text-slate-400">
+                  {truncateText(row.company_name, 28)}
+                </span>
               ) : null}
               {row.sector ? (
-                <span className="text-xs text-slate-500">{row.sector}</span>
+                <>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-[11px] text-slate-500">{row.sector}</span>
+                </>
               ) : null}
             </div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1">
-            <div
-              className="flex items-baseline gap-1 rounded-2xl px-3 py-1.5"
-              style={{
-                background: `linear-gradient(135deg, ${palette.start}30, ${palette.end}20)`,
-                border: `1px solid ${palette.end}40`,
-              }}
-            >
-              <span
-                className="text-3xl font-black"
-                style={{ color: palette.end }}
-              >
-                {score}
-              </span>
-              <span className="text-xs font-semibold text-slate-400">/100</span>
-            </div>
-            {row.price ? (
-              <span className="text-sm font-semibold text-slate-300">
-                {formatMoney(row.price)}
-              </span>
-            ) : null}
+          <div
+            className="flex shrink-0 items-baseline gap-0.5 rounded-xl px-2.5 py-1"
+            style={{
+              background: `linear-gradient(135deg, ${palette.start}30, ${palette.end}20)`,
+              border: `1px solid ${palette.end}40`,
+            }}
+          >
+            <span className="text-2xl font-black" style={{ color: palette.end }}>
+              {score}
+            </span>
+            <span className="text-[10px] font-semibold text-slate-400">/100</span>
           </div>
         </div>
       </div>
 
-      {/* Hero headline */}
-      <div className="shrink-0 px-6 py-3">
-        <p
-          className="text-xl leading-snug font-bold"
-          style={{
-            color: hasPlatinum ? "#fbbf24" : hasCluster ? "#6ee7b7" : palette.end,
-          }}
-        >
-          &ldquo;{thesis}&rdquo;
-        </p>
-      </div>
-
-      {/* Signal pills — insider first, then tech */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-2">
-        {insider.length > 0 && (
-          <SignalPillGrid
-            label="Insider Activity"
-            pills={insider}
-            accentColor={accentColor}
-          />
+      {/* Scrollable content area */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2 pb-1">
+        {/* Insider Activity section — front and center */}
+        {hasAnyInsider && (
+          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2">
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400/80">
+              Insider Activity
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {insider.map((pill, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200"
+                >
+                  <span>{pill.emoji}</span>
+                  <span>{pill.text}</span>
+                </span>
+              ))}
+            </div>
+          </div>
         )}
-        <SignalPillGrid label="Technical Signals" pills={tech} />
+
+        {/* Technical signals */}
+        <div>
+          <p className="mb-1.5 px-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+            Signals
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {tech.map((pill, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-slate-300"
+              >
+                <span>{pill.emoji}</span>
+                <span>{pill.text}</span>
+              </span>
+            ))}
+            {activeFlags.map((flag, i) => (
+              <span
+                key={`f-${i}`}
+                className="inline-flex items-center gap-1 rounded-full border border-cyan-400/15 bg-cyan-400/[0.06] px-2.5 py-1 text-[11px] font-medium text-cyan-300/80"
+              >
+                <span className="text-[9px]">&#10003;</span>
+                <span>{flag.label}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Key metrics grid */}
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2">
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+            Key Numbers
+          </p>
+          {metrics.map((m, i) => (
+            <CardMetric key={i} label={m.label} value={m.value} color={m.color} />
+          ))}
+        </div>
       </div>
 
       {/* Action bar */}
-      <div className="mt-auto shrink-0 px-5 pt-3 pb-5">
-        <div className="flex items-center justify-between gap-3">
-          {/* Previous */}
+      <div className="shrink-0 px-4 pt-2 pb-4">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onPrev}
             disabled={!hasPrev}
             className={[
-              "flex h-12 w-12 items-center justify-center rounded-full border text-lg transition active:scale-90",
+              "flex h-10 w-10 items-center justify-center rounded-full border text-base transition active:scale-90",
               hasPrev
-                ? "border-white/15 bg-white/5 text-slate-400 hover:border-white/30 hover:bg-white/10 hover:text-white"
+                ? "border-white/15 bg-white/5 text-slate-400 hover:bg-white/10"
                 : "cursor-default border-transparent text-transparent",
             ].join(" ")}
             aria-label="Previous stock"
           >
             ←
           </button>
-
-          {/* Details — center CTA */}
           <button
             type="button"
             onClick={onOpen}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-6 py-3 text-sm font-bold text-white transition hover:border-cyan-400/50 hover:bg-cyan-400/10 active:scale-[0.97]"
+            className="flex flex-1 items-center justify-center rounded-full border border-white/15 bg-white/[0.07] py-2.5 text-sm font-bold text-white transition hover:border-cyan-400/50 hover:bg-cyan-400/10 active:scale-[0.97]"
           >
             Full Details
           </button>
-
-          {/* Buy */}
           <a
             href={`https://robinhood.com/stocks/${row.ticker}`}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-400/15 text-lg text-emerald-300 transition hover:bg-emerald-400/25 active:scale-90"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-400/15 text-sm font-bold text-emerald-300 transition hover:bg-emerald-400/25 active:scale-90"
             aria-label={`Buy ${row.ticker}`}
           >
             $
           </a>
-
-          {/* Next */}
           <button
             type="button"
             onClick={onNext}
             disabled={!hasNext}
             className={[
-              "flex h-12 w-12 items-center justify-center rounded-full border text-lg transition active:scale-90",
+              "flex h-10 w-10 items-center justify-center rounded-full border text-base transition active:scale-90",
               hasNext
-                ? "border-white/15 bg-white/5 text-slate-400 hover:border-white/30 hover:bg-white/10 hover:text-white"
+                ? "border-white/15 bg-white/5 text-slate-400 hover:bg-white/10"
                 : "cursor-default border-transparent text-transparent",
             ].join(" ")}
             aria-label="Next stock"
