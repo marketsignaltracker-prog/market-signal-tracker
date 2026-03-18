@@ -401,13 +401,14 @@ async function upsertRows(supabase: any, rows: RawPtrTradeRow[]) {
 async function loadRecentForm4TickersContext(
   supabase: any,
   start: number,
-  batch: number
+  batch: number,
+  lookbackDays: number
 ): Promise<{
   rows: RecentFilingTickerRow[]
   filingDrivenRowsLoaded: number
 }> {
   const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - PTR_LOOKBACK_DAYS)
+  cutoff.setDate(cutoff.getDate() - lookbackDays)
   const cutoffIso = cutoff.toISOString()
 
   const { data, error } = await supabase
@@ -619,7 +620,8 @@ function extractTradeArray(parsed: AInvestResponse): AInvestTradeRow[] {
 function normalizeAInvestTrade(
   requestedTicker: string,
   row: AInvestTradeRow,
-  fetchedAt: string
+  fetchedAt: string,
+  ptrLookbackDays: number
 ): RawPtrTradeRow | null {
   const filerName = String(
     row.name || row.politician || row.filer || row.member || ""
@@ -642,7 +644,7 @@ function normalizeAInvestTrade(
   if (!effectiveDate) return null
 
   const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - PTR_LOOKBACK_DAYS)
+  cutoff.setDate(cutoff.getDate() - ptrLookbackDays)
 
   const effectiveDateObj = new Date(`${effectiveDate}T00:00:00.000Z`)
   if (Number.isNaN(effectiveDateObj.getTime())) return null
@@ -735,6 +737,10 @@ export async function GET(request: Request) {
       (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
     const runRetention =
       (searchParams.get("runRetention") || "false").toLowerCase() === "true"
+    const lookbackDays = Math.min(
+      Math.max(1, parseInteger(searchParams.get("lookbackDays"), PTR_LOOKBACK_DAYS)),
+      90
+    )
 
     if (!["all", "eligible", "candidates"].includes(scopeParam)) {
       return Response.json(
@@ -766,7 +772,7 @@ export async function GET(request: Request) {
     let sourceRows: SourceRow[] = []
 
     if (scope === "all") {
-      const allContext = await loadRecentForm4TickersContext(supabase, start, batch)
+      const allContext = await loadRecentForm4TickersContext(supabase, start, batch, lookbackDays)
       sourceRows = allContext.rows
       diagnostics.filingDrivenRowsLoaded = allContext.filingDrivenRowsLoaded
       diagnostics.sourceRowsLoaded = allContext.rows.length
@@ -856,7 +862,7 @@ export async function GET(request: Request) {
 
           const tradeRows = extractTradeArray(parsed)
           const normalizedRows = tradeRows
-            .map((trade) => normalizeAInvestTrade(ticker, trade, fetchedAt))
+            .map((trade) => normalizeAInvestTrade(ticker, trade, fetchedAt, lookbackDays))
             .filter((trade): trade is RawPtrTradeRow => trade !== null)
 
           return {
