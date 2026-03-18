@@ -1168,9 +1168,9 @@ function SwipeStockCard({
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
               <h2 className="text-3xl font-black tracking-tight text-white">{row.ticker}</h2>
-              {row.price ? (
-                <span className="text-base font-bold text-white/70">{formatMoney(row.price)}</span>
-              ) : null}
+              <span className="text-base font-bold text-white/70">
+                {row.price ? formatMoney(row.price) : ""}
+              </span>
             </div>
             <p className="truncate text-xs text-white/40">
               {[row.company_name, row.sector].filter(Boolean).join(" · ")}
@@ -1181,9 +1181,12 @@ function SwipeStockCard({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500/25 active:scale-95"
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3.5 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500/25 active:scale-95"
           >
-            Buy ↗
+            Buy
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="inline-block">
+              <path d="M3 9L9 3M9 3H4M9 3V8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </a>
         </div>
       </div>
