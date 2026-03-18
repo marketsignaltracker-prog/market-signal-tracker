@@ -183,8 +183,8 @@ type UnifiedRow = {
   has_candidate_data: boolean
   has_signal_data: boolean
   data_source_label:
-    | "Price Strength + Signals"
-    | "Price Strength Only"
+    | "Quality Score + Signals"
+    | "Quality Score Only"
     | "Signals Only"
 }
 
