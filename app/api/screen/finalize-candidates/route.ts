@@ -462,7 +462,7 @@ function buildRankedRows(
   breadthStats: BreadthStats
 ): RankedRow[] {
   return rows
-    .map((row) => {
+    .map((row): RankedRow | null => {
       const ptrSummary = ptrMap.get(normalizeTicker(row.ticker)) ?? null
       const scoreResult = getSelectionScore(row, ptrSummary, breadthStats)
 
