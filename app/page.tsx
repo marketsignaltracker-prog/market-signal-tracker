@@ -1332,33 +1332,33 @@ function SwipeStockCard({
             return (
               <>
                 <Tile
-                  iconPath={iconPaths.eps} label="EPS Growth" value={profLabel}
-                  sub="Earnings growth 25%+, ROE above 15%"
+                  iconPath={iconPaths.eps} label="Profit Growth" value={profLabel}
+                  sub="Is the company making more money each year?"
                   score={profScore} maxScore={100} color="#22d3ee" borderColor="rgba(34,211,238,0.25)"
                 />
                 <Tile
-                  iconPath={iconPaths.cash} label="Cash Flow" value={fcfLabel}
-                  sub="Free cash flow funds growth without debt"
+                  iconPath={iconPaths.cash} label="Money In" value={fcfLabel}
+                  sub="Does it generate real cash, not just paper profit?"
                   score={fcfScore} maxScore={100} color="#34d399" borderColor="rgba(52,211,153,0.25)"
                 />
                 <Tile
-                  iconPath={iconPaths.debt} label="Debt Level" value={debtLabel}
-                  sub="Debt-to-equity vs peers, current ratio"
+                  iconPath={iconPaths.debt} label="Financial Health" value={debtLabel}
+                  sub="Can it pay its bills without borrowing more?"
                   score={debtScore} maxScore={100} color="#a78bfa" borderColor="rgba(167,139,250,0.25)"
                 />
                 <Tile
-                  iconPath={iconPaths.moat} label="Moat" value={moatLabel}
-                  sub="Margins, growth, and scale advantage"
+                  iconPath={iconPaths.moat} label="Edge" value={moatLabel}
+                  sub="How hard is it for competitors to catch up?"
                   score={moatScore} maxScore={100} color="#f59e0b" borderColor="rgba(245,158,11,0.25)"
                 />
                 <Tile
-                  iconPath={iconPaths.peg} label="PEG Ratio" value={valLabel}
-                  sub="Price vs growth rate — under 1.5 is ideal"
+                  iconPath={iconPaths.peg} label="Fair Price" value={valLabel}
+                  sub="Is the stock priced right for how fast it's growing?"
                   score={valScore} maxScore={100} color="#fb923c" borderColor="rgba(251,146,60,0.25)"
                 />
                 <Tile
-                  iconPath={iconPaths.rs} label="Rel Strength" value={rsLabel}
-                  sub={rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}% vs market — near 12mo highs` : "Near 12-month highs signal momentum"}
+                  iconPath={iconPaths.rs} label="Momentum" value={rsLabel}
+                  sub={rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}% ahead of the market recently` : "Is the stock outperforming most others?"}
                   score={rsScore} maxScore={100} color="#ec4899" borderColor="rgba(236,72,153,0.25)"
                 />
               </>
