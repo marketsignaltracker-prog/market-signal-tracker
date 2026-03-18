@@ -1065,6 +1065,53 @@ function SwipeDeck({
   )
 }
 
+function SignalPillGrid({
+  label,
+  pills,
+  accentColor,
+}: {
+  label: string
+  pills: SignalPill[]
+  accentColor?: string
+}) {
+  if (pills.length === 0) return null
+  return (
+    <div>
+      <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+        {label}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {pills.map((pill, i) => (
+          <span
+            key={i}
+            className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold"
+            style={{
+              borderColor: pill.highlight
+                ? accentColor
+                  ? `${accentColor}50`
+                  : "rgba(52,211,153,0.3)"
+                : "rgba(255,255,255,0.10)",
+              background: pill.highlight
+                ? accentColor
+                  ? `${accentColor}15`
+                  : "rgba(52,211,153,0.08)"
+                : "rgba(255,255,255,0.04)",
+              color: pill.highlight
+                ? accentColor
+                  ? accentColor
+                  : "#a7f3d0"
+                : "#cbd5e1",
+            }}
+          >
+            <span>{pill.emoji}</span>
+            <span>{pill.text}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function SwipeStockCard({
   row,
   onOpen,
@@ -1083,7 +1130,7 @@ function SwipeStockCard({
   const score = row.display_score
   const palette = getScorePalette(score)
   const thesis = getFeaturedThesis(row)
-  const reasons = getDateCardReasons(row)
+  const { insider, tech } = getCardSignals(row)
 
   const clusterBuyers = row.cluster_buyers ?? 0
   const hasCluster = clusterBuyers >= 2
@@ -1095,6 +1142,8 @@ function SwipeStockCard({
     : hasCluster
       ? "rgba(52,211,153,0.5)"
       : `${palette.end}80`
+
+  const accentColor = hasPlatinum ? "#fbbf24" : hasCluster ? "#6ee7b7" : undefined
 
   return (
     <div
@@ -1157,10 +1206,10 @@ function SwipeStockCard({
         </div>
       </div>
 
-      {/* Hero headline — the "profile photo" equivalent */}
-      <div className="flex flex-1 items-center px-6 py-4">
+      {/* Hero headline */}
+      <div className="shrink-0 px-6 py-3">
         <p
-          className="text-2xl leading-snug font-bold"
+          className="text-xl leading-snug font-bold"
           style={{
             color: hasPlatinum ? "#fbbf24" : hasCluster ? "#6ee7b7" : palette.end,
           }}
@@ -1169,51 +1218,22 @@ function SwipeStockCard({
         </p>
       </div>
 
-      {/* Reasons to swipe right — Hinge-style prompts */}
-      <div className="shrink-0 px-4 pb-2">
-        <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
-          Why you might swipe right
-        </p>
-        <div className="space-y-2">
-          {reasons.map((reason, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 rounded-2xl border px-4 py-3"
-              style={{
-                borderColor: reason.highlight
-                  ? hasPlatinum
-                    ? "rgba(251,191,36,0.3)"
-                    : "rgba(52,211,153,0.3)"
-                  : "rgba(255,255,255,0.08)",
-                background: reason.highlight
-                  ? hasPlatinum
-                    ? "rgba(251,191,36,0.08)"
-                    : "rgba(52,211,153,0.08)"
-                  : "rgba(255,255,255,0.03)",
-              }}
-            >
-              <span className="text-lg">{reason.emoji}</span>
-              <span
-                className="text-sm font-semibold"
-                style={{
-                  color: reason.highlight
-                    ? hasPlatinum
-                      ? "#fde68a"
-                      : "#a7f3d0"
-                    : "#e2e8f0",
-                }}
-              >
-                {reason.text}
-              </span>
-            </div>
-          ))}
-        </div>
+      {/* Signal pills — insider first, then tech */}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pb-2">
+        {insider.length > 0 && (
+          <SignalPillGrid
+            label="Insider Activity"
+            pills={insider}
+            accentColor={accentColor}
+          />
+        )}
+        <SignalPillGrid label="Technical Signals" pills={tech} />
       </div>
 
-      {/* Action bar — dating app style */}
+      {/* Action bar */}
       <div className="mt-auto shrink-0 px-5 pt-3 pb-5">
         <div className="flex items-center justify-between gap-3">
-          {/* Skip / Pass */}
+          {/* Previous */}
           <button
             type="button"
             onClick={onPrev}
@@ -1221,7 +1241,7 @@ function SwipeStockCard({
             className={[
               "flex h-12 w-12 items-center justify-center rounded-full border text-lg transition active:scale-90",
               hasPrev
-                ? "border-white/15 bg-white/5 text-slate-400 hover:border-rose-400/40 hover:bg-rose-400/10 hover:text-rose-300"
+                ? "border-white/15 bg-white/5 text-slate-400 hover:border-white/30 hover:bg-white/10 hover:text-white"
                 : "cursor-default border-transparent text-transparent",
             ].join(" ")}
             aria-label="Previous stock"
@@ -1235,10 +1255,10 @@ function SwipeStockCard({
             onClick={onOpen}
             className="flex flex-1 items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-6 py-3 text-sm font-bold text-white transition hover:border-cyan-400/50 hover:bg-cyan-400/10 active:scale-[0.97]"
           >
-            See Profile
+            Full Details
           </button>
 
-          {/* Buy — "super like" */}
+          {/* Buy */}
           <a
             href={`https://robinhood.com/stocks/${row.ticker}`}
             target="_blank"
@@ -1258,7 +1278,7 @@ function SwipeStockCard({
             className={[
               "flex h-12 w-12 items-center justify-center rounded-full border text-lg transition active:scale-90",
               hasNext
-                ? "border-white/15 bg-white/5 text-slate-400 hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300"
+                ? "border-white/15 bg-white/5 text-slate-400 hover:border-white/30 hover:bg-white/10 hover:text-white"
                 : "cursor-default border-transparent text-transparent",
             ].join(" ")}
             aria-label="Next stock"
@@ -2831,15 +2851,14 @@ function TagPill({ tag }: { tag: string }) {
   )
 }
 
-function getDateCardReasons(
-  row: UnifiedRow
-): Array<{ emoji: string; text: string; highlight?: boolean }> {
-  const reasons: Array<{
-    emoji: string
-    text: string
-    highlight?: boolean
-    priority: number
-  }> = []
+type SignalPill = { emoji: string; text: string; highlight?: boolean }
+
+function getCardSignals(row: UnifiedRow): {
+  insider: SignalPill[]
+  tech: SignalPill[]
+} {
+  const insider: (SignalPill & { priority: number })[] = []
+  const tech: (SignalPill & { priority: number })[] = []
 
   const clusterBuyers = row.cluster_buyers ?? 0
   const hasPtr = Boolean(row.ptr_amount)
@@ -2849,11 +2868,13 @@ function getDateCardReasons(
     Boolean(row.insider_action) ||
     (row.insider_shares ?? 0) > 0
 
+  // --- Insider signals ---
+
   // Platinum conviction
   if (clusterBuyers >= 3 && hasPtr) {
-    reasons.push({
+    insider.push({
       emoji: "⚡",
-      text: "Insiders AND Congress are buying",
+      text: "Insiders + Congress buying",
       highlight: true,
       priority: 100,
     })
@@ -2861,9 +2882,9 @@ function getDateCardReasons(
 
   // Cluster buy
   if (clusterBuyers >= 2) {
-    reasons.push({
+    insider.push({
       emoji: "👥",
-      text: `${clusterBuyers} insiders just bought shares`,
+      text: `${clusterBuyers} insiders bought`,
       highlight: true,
       priority: 90,
     })
@@ -2871,127 +2892,104 @@ function getDateCardReasons(
 
   // Congressional buy
   if (hasPtr) {
-    reasons.push({
+    insider.push({
       emoji: "🏛️",
-      text: `Congress member bought ${row.ptr_amount || ""}`.trim(),
+      text: `Congress bought ${row.ptr_amount || ""}`.trim(),
       priority: 85,
     })
   }
 
+  // Single insider buy (not cluster)
+  if (hasInsiderBuy && clusterBuyers < 2) {
+    insider.push({
+      emoji: "👤",
+      text: hasDisplayValue(insiderValue)
+        ? `Insider bought ${insiderValue}`
+        : "Insider purchase filed",
+      priority: 45,
+    })
+  }
+
+  // --- Tech / price signals ---
+
   // Breakout
   if (row.breakout_52w) {
-    reasons.push({
-      emoji: "🚀",
-      text: "Breaking to new 52-week highs",
-      priority: 80,
-    })
+    tech.push({ emoji: "🚀", text: "New 52-week high", priority: 80 })
   } else if (row.breakout_20d || row.breakout_10d) {
-    reasons.push({
-      emoji: "📈",
-      text: "Breaking above key price levels",
-      priority: 75,
-    })
+    tech.push({ emoji: "📈", text: "Price breakout", priority: 75 })
   }
 
   // Volume surge
   if ((row.volume_ratio ?? 0) >= 2) {
-    reasons.push({
+    tech.push({
       emoji: "🔥",
-      text: `Volume ${Math.round(row.volume_ratio!)}x above normal`,
+      text: `Volume ${Math.round(row.volume_ratio!)}x normal`,
       priority: 70,
     })
   } else if ((row.volume_ratio ?? 0) >= 1.5) {
-    reasons.push({
-      emoji: "🔥",
-      text: "Unusually high trading volume",
-      priority: 60,
-    })
+    tech.push({ emoji: "🔥", text: "High volume", priority: 60 })
   }
 
   // Earnings beat
   if ((row.earnings_surprise_pct ?? 0) >= 10) {
-    reasons.push({
+    tech.push({
       emoji: "💰",
-      text: `Earnings beat estimates by ${Math.round(row.earnings_surprise_pct!)}%`,
+      text: `Earnings +${Math.round(row.earnings_surprise_pct!)}%`,
       priority: 65,
     })
   }
 
   // Revenue growth
   if ((row.revenue_growth_pct ?? 0) >= 15) {
-    reasons.push({
+    tech.push({
       emoji: "📊",
-      text: `Revenue growing ${Math.round(row.revenue_growth_pct!)}%`,
+      text: `Rev growth ${Math.round(row.revenue_growth_pct!)}%`,
       priority: 55,
     })
   }
 
   // Relative strength
   if ((row.relative_strength_20d ?? 0) >= 8) {
-    reasons.push({
-      emoji: "💪",
-      text: "Outperforming most of the market",
-      priority: 50,
-    })
+    tech.push({ emoji: "💪", text: "Outperforming market", priority: 50 })
   } else if ((row.relative_strength_20d ?? 0) >= 5) {
-    reasons.push({
-      emoji: "💪",
-      text: "Stronger than the broader market",
-      priority: 40,
-    })
-  }
-
-  // Single insider buy (not cluster)
-  if (hasInsiderBuy && clusterBuyers < 2) {
-    reasons.push({
-      emoji: "👤",
-      text: hasDisplayValue(insiderValue)
-        ? `An insider just bought ${insiderValue} worth`
-        : "An insider just bought shares",
-      priority: 45,
-    })
+    tech.push({ emoji: "💪", text: "Beating the market", priority: 40 })
   }
 
   // Guidance
   if (row.guidance_flag === true) {
-    reasons.push({
-      emoji: "🎯",
-      text: "Management raised their outlook",
-      priority: 35,
-    })
-  }
-
-  // Price + signal convergence
-  if (row.has_candidate_data && row.has_signal_data && reasons.length < 3) {
-    reasons.push({
-      emoji: "✅",
-      text: "Price action and signals both look strong",
-      priority: 30,
-    })
+    tech.push({ emoji: "🎯", text: "Guidance raised", priority: 35 })
   }
 
   // Trend aligned
-  if (row.trend_aligned && reasons.length < 3) {
-    reasons.push({
-      emoji: "📐",
-      text: "All major trends pointing up",
-      priority: 25,
-    })
+  if (row.trend_aligned) {
+    tech.push({ emoji: "📐", text: "All trends up", priority: 25 })
   }
 
-  // Fallback
-  if (reasons.length === 0) {
-    reasons.push({
-      emoji: "✨",
-      text: "Multiple signals lining up right now",
-      priority: 10,
-    })
+  // Price confirmed
+  if (row.price_confirmed) {
+    tech.push({ emoji: "✅", text: "Price confirmed", priority: 20 })
   }
 
-  return reasons
-    .sort((a, b) => b.priority - a.priority)
-    .slice(0, 4)
-    .map(({ emoji, text, highlight }) => ({ emoji, text, highlight }))
+  // Above key moving averages
+  if (row.above_50dma) {
+    tech.push({ emoji: "📊", text: "Above 50-day MA", priority: 15 })
+  }
+
+  // Fallback for tech
+  if (tech.length === 0) {
+    tech.push({ emoji: "✨", text: "Multiple signals aligning", priority: 10 })
+  }
+
+  return {
+    insider: insider
+      .sort((a, b) => b.priority - a.priority)
+      .slice(0, 4)
+      .map(({ emoji, text, highlight }) => ({ emoji, text, highlight })),
+    tech: tech
+      .sort((a, b) => b.priority - a.priority)
+      .slice(0, 4)
+      .map(({ emoji, text, highlight }) => ({ emoji, text, highlight })),
+  }
 }
 
 function getFeaturedThesis(row: UnifiedRow) {
