@@ -1902,25 +1902,30 @@ export async function GET(request: Request) {
       transientErrorRate > MAX_TRANSIENT_ERROR_RATE
 
     if (severeYahooFailure) {
+      // Yahoo's daily rate limit is exhausted for this Vercel IP.
+      // Rather than blocking the pipeline indefinitely, treat this as
+      // "done screening for today" so eligible_universe → signals →
+      // ticker_scores can run on whatever companies were screened so far.
+      // The next daily cycle will pick up where we left off (skip-already-
+      // screened prevents re-fetching tickers we've already processed).
       const sampleErrors = preparation
         .filter((item): item is Extract<typeof item, { kind: "error" }> => item.kind === "error" && item.errorKind === "transient_yahoo_error")
         .slice(0, 5)
         .map((item) => ({ ticker: item.ticker, error: item.error }))
-      return Response.json(
-        {
-          ok: false,
-          error: "Aborting candidate batch because Yahoo transient error rate is too high",
-          debug: {
-            processedCount,
-            transientYahooErrorsInBatch,
-            transientErrorRate,
-            batchStart: safeStart,
-            batchSize: safeBatch,
-            sampleErrors,
-          },
-        },
-        { status: 503 }
-      )
+      return Response.json({
+        ok: true,
+        yahooRateLimitReached: true,
+        nextStart: null,  // advance pipeline to eligible_universe
+        processedCompanies: companyList.length,
+        totalCompanies: totalCountError ? null : totalCompanies,
+        start: safeStart,
+        batch: safeBatch,
+        screenedOn,
+        transientYahooErrorsInBatch,
+        transientErrorRate: round2(transientErrorRate * 100),
+        message: `Yahoo rate limit reached at batch start=${safeStart}. Advancing pipeline with partial screening data.`,
+        debug: { sampleErrors },
+      })
     }
 
     const historyWriteResult = await upsertRowsInChunksDetailed(
