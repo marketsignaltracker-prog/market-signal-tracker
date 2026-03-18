@@ -1249,8 +1249,26 @@ function SwipeStockCard({
               )
             }
 
-            function Tile({ label, icon, value, sub, score, maxScore, color, borderColor }: {
-              label: string; icon: string; value: string; sub: string
+            function TileIcon({ d, color }: { d: string; color: string }) {
+              return (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="inline-block shrink-0">
+                  <path d={d} stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )
+            }
+
+            // SVG path data for each tile icon
+            const iconPaths = {
+              eps: "M2 9L4.5 4L7 6.5L10 2M10 2H7.5M10 2V4.5",         // trending up arrow
+              cash: "M6 1V11M3 3.5H7.5C8.88 3.5 10 4.34 10 5.25S8.88 7 7.5 7H3M3 7H8C9.38 7 10.5 7.84 10.5 8.75S9.38 10.5 8 10.5H3", // dollar sign
+              debt: "M1.5 10V4L6 1.5L10.5 4V10M4 10V7H8V10",           // building/bank
+              moat: "M1 8L3 6L5 8L7 4L9 7L11 5M1 10H11",              // castle battlements
+              peg: "M2 2V10H10M4 8V6M6.5 8V4M9 8V5",                  // bar chart
+              rs: "M6 1L8.5 4H7V7.5H5V4H3.5L6 1M2 9.5H10",           // rocket/target up
+            }
+
+            function Tile({ label, iconPath, value, sub, score, maxScore, color, borderColor }: {
+              label: string; iconPath: string; value: string; sub: string
               score: number | null; maxScore: number; color: string; borderColor: string
             }) {
               const active = score != null && score > 0
@@ -1265,9 +1283,12 @@ function SwipeStockCard({
                     }} />
                   )}
                   <div className="flex items-center justify-between">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? color : "#374151" }}>
-                      {icon} {label}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <TileIcon d={iconPath} color={active ? color : "#374151"} />
+                      <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? color : "#374151" }}>
+                        {label}
+                      </p>
+                    </div>
                     {score != null && (
                       <span className="text-[10px] font-black" style={{ color }}>{score}</span>
                     )}
@@ -1311,32 +1332,32 @@ function SwipeStockCard({
             return (
               <>
                 <Tile
-                  icon="📈" label="EPS Growth" value={profLabel}
+                  iconPath={iconPaths.eps} label="EPS Growth" value={profLabel}
                   sub="Earnings growth 25%+, ROE above 15%"
                   score={profScore} maxScore={100} color="#22d3ee" borderColor="rgba(34,211,238,0.25)"
                 />
                 <Tile
-                  icon="💵" label="Cash Flow" value={fcfLabel}
+                  iconPath={iconPaths.cash} label="Cash Flow" value={fcfLabel}
                   sub="Free cash flow funds growth without debt"
                   score={fcfScore} maxScore={100} color="#34d399" borderColor="rgba(52,211,153,0.25)"
                 />
                 <Tile
-                  icon="🏦" label="Debt Level" value={debtLabel}
+                  iconPath={iconPaths.debt} label="Debt Level" value={debtLabel}
                   sub="Debt-to-equity vs peers, current ratio"
                   score={debtScore} maxScore={100} color="#a78bfa" borderColor="rgba(167,139,250,0.25)"
                 />
                 <Tile
-                  icon="🏰" label="Moat" value={moatLabel}
+                  iconPath={iconPaths.moat} label="Moat" value={moatLabel}
                   sub="Margins, growth, and scale advantage"
                   score={moatScore} maxScore={100} color="#f59e0b" borderColor="rgba(245,158,11,0.25)"
                 />
                 <Tile
-                  icon="⚖️" label="PEG Ratio" value={valLabel}
+                  iconPath={iconPaths.peg} label="PEG Ratio" value={valLabel}
                   sub="Price vs growth rate — under 1.5 is ideal"
                   score={valScore} maxScore={100} color="#fb923c" borderColor="rgba(251,146,60,0.25)"
                 />
                 <Tile
-                  icon="🎯" label="Rel Strength" value={rsLabel}
+                  iconPath={iconPaths.rs} label="Rel Strength" value={rsLabel}
                   sub={rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}% vs market — near 12mo highs` : "Near 12-month highs signal momentum"}
                   score={rsScore} maxScore={100} color="#ec4899" borderColor="rgba(236,72,153,0.25)"
                 />
