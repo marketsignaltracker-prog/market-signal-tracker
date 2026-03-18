@@ -1251,16 +1251,14 @@ function SwipeStockCard({
             <div className="mb-1.5 flex items-center gap-1.5">
               <span className="text-sm">👤</span>
               <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-400">
-                Insiders are Buying
+                Insiders Buying
               </p>
             </div>
             {row.has_insider_trades ? (() => {
               const hasDollar = (row.insider_buy_value ?? 0) > 0
               const hasShares = (row.insider_shares ?? 0) > 0
               const hasCluster = (row.cluster_buyers ?? 0) >= 2
-              // Parse screen_reason for insider detail
               const reason = row.screen_reason ?? ""
-              const catalysts = row.catalyst_count ?? 0
               return (
                 <div className="space-y-1.5">
                   {hasDollar ? (
@@ -1275,12 +1273,8 @@ function SwipeStockCard({
                     <p className="text-xl font-black text-orange-200">
                       {row.cluster_buyers} <span className="text-sm font-bold">buyers</span>
                     </p>
-                  ) : catalysts > 0 ? (
-                    <p className="text-xl font-black text-orange-200">
-                      {catalysts} <span className="text-sm font-bold">signals</span>
-                    </p>
                   ) : (
-                    <p className="text-xl font-black text-orange-200">Filed</p>
+                    <p className="text-xl font-black text-orange-200">Active</p>
                   )}
                   <p className="text-[11px] text-orange-300/60">
                     {hasCluster
@@ -1304,7 +1298,7 @@ function SwipeStockCard({
             <div className="mb-1.5 flex items-center gap-1.5">
               <span className="text-sm">🏛️</span>
               <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-purple-400">
-                Congress is Buying
+                Congress Buying
               </p>
             </div>
             {row.has_ptr_forms || row.ptr_amount ? (
