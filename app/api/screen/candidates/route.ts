@@ -1571,8 +1571,21 @@ export async function GET(request: Request) {
       eligibility_reason: row.eligibility_reason ?? null,
     }))
 
+    // Skip tickers already screened today to avoid exhausting Yahoo Finance rate limits.
+    // They remain in candidate_screen_history from the earlier run and will be picked
+    // up by the eligible_universe stage normally.
+    const tickersInBatch = companyList.map((c) => c.ticker)
+    const { data: alreadyScreened } = await supabase
+      .from("candidate_screen_history")
+      .select("ticker")
+      .in("ticker", tickersInBatch)
+      .eq("screened_on", screenedOn)
+    const alreadyScreenedSet = new Set((alreadyScreened || []).map((r: any) => r.ticker))
+    const tickersNeedingYahoo = companyList.filter((c) => !alreadyScreenedSet.has(c.ticker))
+    const skippedCount = companyList.length - tickersNeedingYahoo.length
+
     const preparation = await mapWithConcurrency(
-      companyList,
+      tickersNeedingYahoo,
       TICKER_CONCURRENCY,
       async (company) =>
         prepareTickerForScoring(company, benchmarkReturns, nowIso, screenedOn, includeResults)
@@ -1879,7 +1892,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const processedCount = companyList.length
+    const processedCount = tickersNeedingYahoo.length
     const transientErrorRate =
       processedCount > 0 ? transientYahooErrorsInBatch / processedCount : 0
 
@@ -1972,6 +1985,7 @@ export async function GET(request: Request) {
     return Response.json({
       ok: true,
       processedCompanies: companyList.length,
+      skippedAlreadyScreened: skippedCount,
       totalCompanies: totalCountError ? null : totalCompanies,
       start: safeStart,
       batch: safeBatch,
