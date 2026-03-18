@@ -1072,6 +1072,7 @@ function SwipeDeck({
       {/* Swipeable card */}
       <div
         className="min-h-0 w-full max-w-md flex-1 overflow-hidden"
+        style={{ touchAction: "pan-y" }}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
@@ -1116,44 +1117,42 @@ function SwipeStockCard({
 
   return (
     <div
-      className="flex h-full flex-col overflow-y-auto overflow-x-hidden rounded-[1.75rem] border shadow-2xl"
+      className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl"
       style={{
         borderColor: `${palette.end}40`,
         background: `linear-gradient(155deg, ${palette.start}16 0%, rgba(10,18,38,0.97) 38%, rgba(2,6,23,1) 100%)`,
       }}
     >
       {/* Ticker + score */}
-      <div className="shrink-0 p-5 pb-4">
+      <div className="shrink-0 px-5 pt-4 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <CardRankBadge rank={rank} />
-            <h2 className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">
-              {row.ticker}
-            </h2>
+            <h2 className="mt-1.5 text-4xl font-black tracking-tight">{row.ticker}</h2>
             {row.company_name ? (
-              <p className="mt-1 truncate text-sm text-slate-400">
+              <p className="mt-0.5 truncate text-sm text-slate-400">
                 {truncateText(row.company_name, 40)}
               </p>
             ) : null}
             {row.sector ? (
-              <p className="mt-0.5 text-[11px] text-slate-500">{row.sector}</p>
+              <p className="text-[11px] text-slate-500">{row.sector}</p>
             ) : null}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
             <ScoreBadge row={row} large />
             <FreshnessBadge row={row} />
           </div>
         </div>
 
         {/* Score bar */}
-        <div className="mt-4">
-          <div className="mb-1.5 flex items-center justify-between">
+        <div className="mt-3">
+          <div className="mb-1 flex items-center justify-between">
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Overall score
+              Score
             </span>
             <span className="text-xs font-semibold text-white">{score}/100</span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-slate-800/80">
+          <div className="h-1.5 overflow-hidden rounded-full bg-slate-800/80">
             <div
               className="h-full rounded-full"
               style={{
@@ -1167,14 +1166,14 @@ function SwipeStockCard({
       </div>
 
       {/* Why it's here */}
-      <div className="shrink-0 border-t border-white/[0.07] px-5 py-4">
-        <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/80">
+      <div className="shrink-0 border-t border-white/[0.07] px-5 py-3">
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/80">
           Why it made the list
         </p>
-        <ul className="space-y-2">
-          {whyBullets.map((bullet, i) => (
-            <li key={i} className="flex items-start gap-2 text-sm leading-6 text-white">
-              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
+        <ul className="space-y-1.5">
+          {whyBullets.slice(0, 2).map((bullet, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm leading-5 text-white">
+              <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
               <span>{bullet}</span>
             </li>
           ))}
@@ -1183,18 +1182,9 @@ function SwipeStockCard({
 
       {/* Metrics */}
       {metricItems.length > 0 ? (
-        <div className="shrink-0 border-t border-white/[0.07] px-5 py-4">
-          <div
-            className={[
-              "grid gap-2.5",
-              metricItems.length >= 4
-                ? "grid-cols-2 sm:grid-cols-4"
-                : metricItems.length === 3
-                  ? "grid-cols-3"
-                  : "grid-cols-2",
-            ].join(" ")}
-          >
-            {metricItems.map((item) => (
+        <div className="shrink-0 border-t border-white/[0.07] px-5 py-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {metricItems.slice(0, 4).map((item) => (
               <MiniMetric key={item.label} label={item.label} value={item.value} />
             ))}
           </div>
@@ -1203,14 +1193,14 @@ function SwipeStockCard({
 
       {/* Plain-English takeaway */}
       {takeawayBullets.length > 0 ? (
-        <div className="shrink-0 border-t border-white/[0.07] px-5 py-4">
-          <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-300/80">
-            Plain-English takeaway
+        <div className="shrink-0 border-t border-white/[0.07] px-5 py-3">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-300/80">
+            Takeaway
           </p>
-          <ul className="space-y-2">
-            {takeawayBullets.map((bullet, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm leading-6 text-slate-200">
-                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+          <ul className="space-y-1.5">
+            {takeawayBullets.slice(0, 2).map((bullet, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm leading-5 text-slate-200">
+                <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
                 <span>{bullet}</span>
               </li>
             ))}
@@ -1219,11 +1209,11 @@ function SwipeStockCard({
       ) : null}
 
       {/* CTA */}
-      <div className="mt-auto shrink-0 p-5 pt-3">
+      <div className="mt-auto shrink-0 px-5 py-4">
         <button
           type="button"
           onClick={onOpen}
-          className="flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[0.07] px-5 py-3.5 text-sm font-semibold text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10 active:scale-[0.98]"
+          className="flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[0.07] px-5 py-3 text-sm font-semibold text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10 active:scale-[0.98]"
         >
           <span>See full details</span>
           <span className="rounded-full bg-white/10 px-3 py-1 text-xs">Explore →</span>
