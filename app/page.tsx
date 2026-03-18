@@ -1106,24 +1106,35 @@ function SwipeStockCard({
   const score = row.display_score
   const palette = getScorePalette(score)
   const whyBullets = getSimpleCardBullets(row)
-  const takeawayBullets = getPremiumSummaryBullets(row)
 
-  const metricItems: MiniMetricItem[] = [
-    { label: "Price", value: formatMoney(row.price) },
-    { label: "Insider value", value: formatInsiderValue(row) },
-    { label: "Vs market", value: formatRelativeStrengthForDisplay(row) },
-    { label: "PTR amount", value: row.ptr_amount || "—" },
-  ].filter((item) => hasDisplayValue(item.value))
+  const clusterBuyers = row.cluster_buyers ?? 0
+  const hasCluster = clusterBuyers >= 2
+  const hasPtr = Boolean(row.ptr_amount)
+  const insiderValue = formatInsiderValue(row)
+  const hasInsiderBuy =
+    hasDisplayValue(insiderValue) ||
+    Boolean(row.insider_action) ||
+    (row.insider_shares ?? 0) > 0
+  const hasPlatinum = clusterBuyers >= 3 && hasPtr
+  const hasAnyInsiderSignal = hasCluster || hasPtr || hasInsiderBuy
 
   return (
     <div
       className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl"
       style={{
-        borderColor: `${palette.end}40`,
-        background: `linear-gradient(155deg, ${palette.start}16 0%, rgba(10,18,38,0.97) 38%, rgba(2,6,23,1) 100%)`,
+        borderColor: hasPlatinum
+          ? "rgba(251,191,36,0.35)"
+          : hasCluster
+            ? "rgba(52,211,153,0.35)"
+            : `${palette.end}40`,
+        background: hasPlatinum
+          ? "linear-gradient(155deg, rgba(251,191,36,0.12) 0%, rgba(10,18,38,0.97) 35%, rgba(2,6,23,1) 100%)"
+          : hasCluster
+            ? "linear-gradient(155deg, rgba(52,211,153,0.10) 0%, rgba(10,18,38,0.97) 35%, rgba(2,6,23,1) 100%)"
+            : `linear-gradient(155deg, ${palette.start}16 0%, rgba(10,18,38,0.97) 38%, rgba(2,6,23,1) 100%)`,
       }}
     >
-      {/* Ticker + score */}
+      {/* Header: rank + buy + ticker + score */}
       <div className="shrink-0 px-5 pt-4 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -1168,7 +1179,9 @@ function SwipeStockCard({
               className="h-full rounded-full"
               style={{
                 width: `${score}%`,
-                background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
+                background: hasPlatinum
+                  ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
+                  : `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
                 transition: "width 600ms ease-out",
               }}
             />
@@ -1176,13 +1189,94 @@ function SwipeStockCard({
         </div>
       </div>
 
+      {/* Insider conviction section */}
+      {hasAnyInsiderSignal ? (
+        <div
+          className="shrink-0 border-t px-5 py-3"
+          style={{
+            borderColor: hasPlatinum
+              ? "rgba(251,191,36,0.20)"
+              : hasCluster
+                ? "rgba(52,211,153,0.15)"
+                : "rgba(255,255,255,0.07)",
+          }}
+        >
+          {/* Platinum banner */}
+          {hasPlatinum && (
+            <div className="mb-3 flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2">
+              <span className="text-base">⚡</span>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
+                  Platinum Conviction
+                </p>
+                <p className="text-[10px] text-amber-200/70">
+                  Cluster buy + Congressional activity
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {/* Cluster */}
+            {hasCluster && (
+              <div className="flex items-center justify-between rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">👥</span>
+                  <div>
+                    <p className="text-xs font-bold text-emerald-300">
+                      {clusterBuyers} insiders bought
+                    </p>
+                    <p className="text-[10px] text-emerald-400/70">Cluster buy</p>
+                  </div>
+                </div>
+                {hasDisplayValue(insiderValue) && (
+                  <span className="text-sm font-bold text-emerald-200">{insiderValue}</span>
+                )}
+              </div>
+            )}
+
+            {/* PTR */}
+            {hasPtr && (
+              <div className="flex items-center justify-between rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">🏛</span>
+                  <div>
+                    <p className="text-xs font-bold text-cyan-300">Congressional buy</p>
+                    <p className="text-[10px] text-cyan-400/70">PTR filing</p>
+                  </div>
+                </div>
+                <span className="text-sm font-bold text-cyan-200">{row.ptr_amount}</span>
+              </div>
+            )}
+
+            {/* Insider buy (no cluster) */}
+            {hasInsiderBuy && !hasCluster && (
+              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">👤</span>
+                  <div>
+                    <p className="text-xs font-bold text-white">Insider buy</p>
+                    <p className="text-[10px] text-slate-400">
+                      {row.insider_action || "Purchase filed"}
+                    </p>
+                  </div>
+                </div>
+                {hasDisplayValue(insiderValue) && (
+                  <span className="text-sm font-bold text-slate-200">{insiderValue}</span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {/* Why it's here */}
       <div className="shrink-0 border-t border-white/[0.07] px-5 py-3">
         <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/80">
-          Why it made the list
+          {hasAnyInsiderSignal ? "Also" : "Why it made the list"}
         </p>
         <ul className="space-y-1.5">
-          {whyBullets.slice(0, 2).map((bullet, i) => (
+          {whyBullets.slice(0, hasAnyInsiderSignal ? 1 : 2).map((bullet, i) => (
             <li key={i} className="flex items-start gap-2 text-sm leading-5 text-white">
               <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
               <span>{bullet}</span>
@@ -1191,31 +1285,15 @@ function SwipeStockCard({
         </ul>
       </div>
 
-      {/* Metrics */}
-      {metricItems.length > 0 ? (
+      {/* Price */}
+      {row.price ? (
         <div className="shrink-0 border-t border-white/[0.07] px-5 py-3">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {metricItems.slice(0, 4).map((item) => (
-              <MiniMetric key={item.label} label={item.label} value={item.value} />
-            ))}
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Price
+            </span>
+            <span className="text-sm font-bold text-white">{formatMoney(row.price)}</span>
           </div>
-        </div>
-      ) : null}
-
-      {/* Plain-English takeaway */}
-      {takeawayBullets.length > 0 ? (
-        <div className="shrink-0 border-t border-white/[0.07] px-5 py-3">
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-300/80">
-            Takeaway
-          </p>
-          <ul className="space-y-1.5">
-            {takeawayBullets.slice(0, 2).map((bullet, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm leading-5 text-slate-200">
-                <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
-                <span>{bullet}</span>
-              </li>
-            ))}
-          </ul>
         </div>
       ) : null}
 
