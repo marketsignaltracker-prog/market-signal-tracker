@@ -1231,8 +1231,8 @@ function SwipeStockCard({
       </div>
 
       {/* ── Fundamentals Scanner ── */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3 pb-1">
-        <div className="grid grid-cols-2 gap-2">
+      <div className="min-h-0 flex-1 overflow-hidden px-4 pt-2 pb-1">
+        <div className="grid grid-cols-2 gap-1.5">
           {(() => {
             const ltcs = parseScreenReasonScores(row.screen_reason)
 
@@ -1273,12 +1273,12 @@ function SwipeStockCard({
             }) {
               const active = score != null && score > 0
               return (
-                <div className="relative overflow-hidden rounded-2xl p-3" style={{
+                <div className="relative overflow-hidden rounded-xl p-2.5" style={{
                   background: active ? `linear-gradient(160deg, ${color}18 0%, ${color}04 100%)` : "#111827",
                   border: `1px solid ${active ? borderColor : "rgba(255,255,255,0.05)"}`,
                 }}>
                   {active && (
-                    <div className="absolute top-0 right-0 h-10 w-10 opacity-20" style={{
+                    <div className="absolute top-0 right-0 h-8 w-8 opacity-20" style={{
                       background: `radial-gradient(circle at top right, ${color}, transparent 70%)`,
                     }} />
                   )}
@@ -1293,11 +1293,11 @@ function SwipeStockCard({
                       <span className="text-[10px] font-black" style={{ color }}>{score}</span>
                     )}
                   </div>
-                  <p className="mt-1 text-lg font-black leading-tight" style={{ color: active ? "#f0f0f0" : "#1f2937" }}>
+                  <p className="mt-0.5 text-base font-black leading-tight" style={{ color: active ? "#f0f0f0" : "#1f2937" }}>
                     {value}
                   </p>
                   <Gauge value={score} max={maxScore} color={color} />
-                  <p className="mt-1.5 text-[9px] leading-tight" style={{ color: active ? `${color}99` : "#1f2937" }}>
+                  <p className="mt-1 text-[8px] leading-tight" style={{ color: active ? `${color}99` : "#1f2937" }}>
                     {sub}
                   </p>
                 </div>
@@ -1368,7 +1368,7 @@ function SwipeStockCard({
       </div>
 
       {/* ── CTA ── */}
-      <div className="shrink-0 px-4 pt-6 pb-2">
+      <div className="shrink-0 px-4 pt-3 pb-3">
         <button
           type="button"
           onClick={onOpen}
