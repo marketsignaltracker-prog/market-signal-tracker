@@ -1254,28 +1254,44 @@ function SwipeStockCard({
                 Insiders are Buying
               </p>
             </div>
-            {row.has_insider_trades ? (
-              <div className="space-y-1.5">
-                {(row.insider_buy_value ?? 0) > 0 ? (
-                  <p className="text-xl font-black text-orange-200">
-                    {formatMoney(row.insider_buy_value!)}
+            {row.has_insider_trades ? (() => {
+              const hasDollar = (row.insider_buy_value ?? 0) > 0
+              const hasShares = (row.insider_shares ?? 0) > 0
+              const hasCluster = (row.cluster_buyers ?? 0) >= 2
+              // Parse screen_reason for insider detail
+              const reason = row.screen_reason ?? ""
+              const catalysts = row.catalyst_count ?? 0
+              return (
+                <div className="space-y-1.5">
+                  {hasDollar ? (
+                    <p className="text-xl font-black text-orange-200">
+                      {formatMoney(row.insider_buy_value!)}
+                    </p>
+                  ) : hasShares ? (
+                    <p className="text-xl font-black text-orange-200">
+                      {formatWholeNumber(row.insider_shares!)} <span className="text-sm font-bold">shares</span>
+                    </p>
+                  ) : hasCluster ? (
+                    <p className="text-xl font-black text-orange-200">
+                      {row.cluster_buyers} <span className="text-sm font-bold">buyers</span>
+                    </p>
+                  ) : catalysts > 0 ? (
+                    <p className="text-xl font-black text-orange-200">
+                      {catalysts} <span className="text-sm font-bold">signals</span>
+                    </p>
+                  ) : (
+                    <p className="text-xl font-black text-orange-200">Filed</p>
+                  )}
+                  <p className="text-[11px] text-orange-300/60">
+                    {hasCluster
+                      ? `👥 ${row.cluster_buyers} insiders buying together`
+                      : reason.includes("insider filing support")
+                        ? "Recent insider filing activity"
+                        : "SEC Form 4 on record"}
                   </p>
-                ) : (row.insider_shares ?? 0) > 0 ? (
-                  <p className="text-xl font-black text-orange-200">
-                    {formatWholeNumber(row.insider_shares!)} <span className="text-sm font-bold">shares</span>
-                  </p>
-                ) : (
-                  <p className="text-lg font-black text-orange-200">Yes</p>
-                )}
-                {(row.cluster_buyers ?? 0) >= 2 ? (
-                  <p className="text-[11px] text-orange-300/70">
-                    👥 {row.cluster_buyers} insiders buying together
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-orange-300/60">SEC Form 4 filed</p>
-                )}
-              </div>
-            ) : (
+                </div>
+              )
+            })() : (
               <div>
                 <p className="text-lg font-black text-white/20">None</p>
                 <p className="text-[11px] text-white/20">No recent filings</p>
