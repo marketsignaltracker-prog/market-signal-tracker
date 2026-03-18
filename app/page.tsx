@@ -1368,7 +1368,7 @@ function SwipeStockCard({
       </div>
 
       {/* ── CTA ── */}
-      <div className="shrink-0 px-4 py-3">
+      <div className="shrink-0 px-4 pt-4 pb-3">
         <button
           type="button"
           onClick={onOpen}
