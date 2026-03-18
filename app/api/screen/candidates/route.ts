@@ -223,7 +223,7 @@ type CandidateScoreOutput = {
 }
 
 const yahooFinance = new YahooFinance({
-  queue: { concurrency: 1 },
+  queue: { concurrency: 12 },
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
@@ -252,11 +252,11 @@ const MIN_CATALYST_COUNT = 8
 
 const MIN_STRONG_COMPANY_SCORE = 72
 
-const TICKER_CONCURRENCY = 1
+const TICKER_CONCURRENCY = 4
 const DB_CHUNK_SIZE = 250
 
-const YAHOO_RETRY_ATTEMPTS = 4
-const YAHOO_RETRY_BASE_DELAY_MS = 1500
+const YAHOO_RETRY_ATTEMPTS = 2
+const YAHOO_RETRY_BASE_DELAY_MS = 800
 const MAX_TRANSIENT_ERROR_RATE = 0.5
 const MIN_TRANSIENT_ERRORS_TO_ABORT = 10
 
