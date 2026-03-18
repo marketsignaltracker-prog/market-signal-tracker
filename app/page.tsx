@@ -394,7 +394,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
 
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [cardIndex, setCardIndex] = useState(0)
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   const [priceFilter, setPriceFilter] = useState<PriceFilterType>("all")
@@ -635,7 +635,7 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    setCurrentPage(1)
+    setCardIndex(0)
   }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
 
   const sectorOptions = useMemo(() => {
@@ -657,17 +657,8 @@ export default function Home() {
       .sort(compareRows)
   }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
 
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / CARDS_PER_PAGE))
-  const safeCurrentPage = Math.min(currentPage, totalPages)
-
-  const paginatedRows = useMemo(() => {
-    const startIndex = (safeCurrentPage - 1) * CARDS_PER_PAGE
-    return filteredRows.slice(startIndex, startIndex + CARDS_PER_PAGE)
-  }, [filteredRows, safeCurrentPage])
-
-  const pageStart =
-    filteredRows.length === 0 ? 0 : (safeCurrentPage - 1) * CARDS_PER_PAGE + 1
-  const pageEnd = Math.min(safeCurrentPage * CARDS_PER_PAGE, filteredRows.length)
+  const safeCardIndex =
+    filteredRows.length === 0 ? 0 : Math.min(cardIndex, filteredRows.length - 1)
 
   const selectedRow = useMemo(() => {
     if (!selectedTicker) return null
@@ -708,12 +699,14 @@ export default function Home() {
     if (selectedIndex <= 0) return
     setDetailInitialTab(0)
     setSelectedTicker(filteredRows[selectedIndex - 1]?.ticker ?? null)
+    setCardIndex(selectedIndex - 1)
   }
 
   function goToNextSelected() {
     if (selectedIndex < 0 || selectedIndex >= filteredRows.length - 1) return
     setDetailInitialTab(0)
     setSelectedTicker(filteredRows[selectedIndex + 1]?.ticker ?? null)
+    setCardIndex(selectedIndex + 1)
   }
 
   function resetFilters() {
@@ -728,403 +721,214 @@ export default function Home() {
     setFiltersOpen(false)
   }
 
-  function scrollToSection(id: string) {
-    const element = document.getElementById(id)
-    if (!element) return
-    element.scrollIntoView({ behavior: "smooth", block: "start" })
-  }
+  useEffect(() => {
+    if (selectedTicker) return
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "ArrowRight")
+        setCardIndex((i) => Math.min(i + 1, filteredRows.length - 1))
+      if (e.key === "ArrowLeft") setCardIndex((i) => Math.max(i - 1, 0))
+    }
+    window.addEventListener("keydown", handleKey)
+    return () => window.removeEventListener("keydown", handleKey)
+  }, [selectedTicker, filteredRows.length])
 
   return (
-    <main className="min-h-screen w-full overflow-x-hidden bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.10),_transparent_20%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_24%),linear-gradient(to_bottom,_#020617,_#081122_45%,_#020617)] text-white">
+    <main className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.08),_transparent_20%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.06),_transparent_24%),linear-gradient(to_bottom,_#020617,_#081122_50%,_#020617)] text-white">
       <style jsx global>{`
         @keyframes cardFadeUp {
-          from {
-            opacity: 0;
-            transform: translateY(16px) scale(0.985);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
+          from { opacity: 0; transform: translateY(16px) scale(0.985); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
-
         @keyframes scoreGlow {
-          0%, 100% {
-            box-shadow: 0 0 0 rgba(34, 197, 94, 0);
-          }
-          50% {
-            box-shadow: 0 0 24px rgba(34, 197, 94, 0.18);
-          }
+          0%, 100% { box-shadow: 0 0 0 rgba(34, 197, 94, 0); }
+          50% { box-shadow: 0 0 24px rgba(34, 197, 94, 0.18); }
         }
-
         @keyframes scoreGlowCyan {
-          0%, 100% {
-            box-shadow: 0 0 0 rgba(34, 211, 238, 0);
-          }
-          50% {
-            box-shadow: 0 0 24px rgba(34, 211, 238, 0.18);
-          }
+          0%, 100% { box-shadow: 0 0 0 rgba(34, 211, 238, 0); }
+          50% { box-shadow: 0 0 24px rgba(34, 211, 238, 0.18); }
+        }
+        @keyframes slideFromRight {
+          from { opacity: 0; transform: translateX(52px) scale(0.97); }
+          to { opacity: 1; transform: translateX(0) scale(1); }
+        }
+        @keyframes slideFromLeft {
+          from { opacity: 0; transform: translateX(-52px) scale(0.97); }
+          to { opacity: 1; transform: translateX(0) scale(1); }
         }
       `}</style>
 
-      <div className="mx-auto w-full max-w-7xl overflow-x-hidden px-3 py-4 pb-40 sm:px-6 sm:py-8 sm:pb-8 lg:px-8">
-        <section
-          id="hero"
-          className="relative overflow-hidden rounded-[1.75rem] border border-cyan-400/10 bg-white/[0.04] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.42)] backdrop-blur-md sm:p-5 lg:p-6"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(34,211,238,0.10),_transparent_24%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.08),_transparent_28%)]" />
-          <div className="pointer-events-none absolute -right-16 top-6 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
-          <div className="pointer-events-none absolute -left-12 bottom-0 h-36 w-36 rounded-full bg-emerald-400/10 blur-3xl" />
-
-          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="max-w-3xl min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="inline-flex rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-emerald-300 sm:text-xs">
-                  Market Signal Tracker
-                </p>
-                <span className="inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[10px] font-semibold tracking-[0.04em] text-cyan-200 sm:text-xs">
-                  {lastUpdated ? `Updated ${lastUpdated}` : "Updated —"}
-                </span>
-              </div>
-
-              <h1 className="mt-3 max-w-3xl text-2xl font-bold leading-tight tracking-tight sm:text-4xl lg:text-[2.85rem]">
-                Stock ideas for regular people.
-              </h1>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base sm:leading-7">
-                We surface stocks that are showing unusual strength, fresh signal support,
-                or both — then rank them in plain English so you can understand what stands
-                out fast.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:w-[320px]">
-              <CompactStatCard
-                label="Ideas on the board"
-                value={loading ? "…" : String(strongBuyCount)}
-                tone="emerald"
-              />
-              <CompactStatCard
-                label="Top tier"
-                value={loading ? "…" : String(eliteCount)}
-                tone="cyan"
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_0.85fr] sm:mt-7">
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 shadow-xl backdrop-blur-md sm:p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-              How to use this board
+      {/* Header */}
+      <header className="shrink-0 border-b border-white/[0.07] bg-black/30 px-4 py-3 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-lg items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-emerald-400/90">
+              Market Signal Tracker
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-white sm:text-2xl">
-              Start simple
-            </h2>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <SimpleExplainerCard
-                step="1"
-                title="Open a stock card"
-                body="Every card tells you, in plain language, why a stock made the list today."
-              />
-              <SimpleExplainerCard
-                step="2"
-                title="Check the score"
-                body="Higher scores usually mean more pieces are lining up at the same time."
-              />
-              <SimpleExplainerCard
-                step="3"
-                title="Read the details"
-                body="Use the guided detail view to see what’s supporting the idea before you decide anything."
-              />
-            </div>
-          </div>
-
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-4 shadow-xl backdrop-blur-md sm:p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-              What the score means
+            <p className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-white">
+              {loading ? (
+                <span className="text-slate-500">Loading…</span>
+              ) : (
+                <>
+                  <span>{filteredRows.length} ideas</span>
+                  {eliteCount > 0 && (
+                    <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                      {eliteCount} top tier
+                    </span>
+                  )}
+                  {lastUpdated && (
+                    <span className="text-[11px] font-normal text-slate-500">
+                      {lastUpdated}
+                    </span>
+                  )}
+                </>
+              )}
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-white sm:text-2xl">
-              Quick score guide
-            </h2>
-
-            <div className="mt-4 space-y-3">
-              <ConfidenceLegendCard
-                color="bg-yellow-400"
-                label="70–79"
-                body="Worth a look. Something good is happening, but the setup is less complete."
-              />
-              <ConfidenceLegendCard
-                color="bg-cyan-400"
-                label="80–89"
-                body="Stronger setup. More evidence is lining up."
-              />
-              <ConfidenceLegendCard
-                color="bg-emerald-400"
-                label="90+"
-                body="Top tier. Usually the strongest mix of momentum, confirmation, and signal support."
-              />
-            </div>
           </div>
-        </section>
 
-        <section
-          id="filters"
-          className="mt-5 overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.04] shadow-xl backdrop-blur-md sm:mt-7"
-        >
-          <div className="p-4 sm:p-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                  Narrow it down
-                </p>
-                <h2 className="mt-1 text-lg font-semibold text-white sm:text-2xl">
-                  Filters
-                </h2>
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen((prev) => !prev)}
-                  aria-expanded={filtersOpen}
-                  aria-controls="filter-board-panel"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200"
-                >
-                  <span>{filtersOpen ? "Hide filters" : "Show filters"}</span>
-                  <span
-                    className={`text-xs text-slate-400 transition-transform duration-300 ${
-                      filtersOpen ? "rotate-180" : "rotate-0"
-                    }`}
-                  >
-                    ▼
-                  </span>
-                </button>
-
-                {activeFilterCount > 0 ? (
-                  <div className="inline-flex items-center justify-center rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-200">
-                    {activeFilterCount} active
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div
-              id="filter-board-panel"
-              className={`grid transition-all duration-300 ease-out ${
-                filtersOpen ? "mt-5 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-              }`}
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((prev) => !prev)}
+            aria-expanded={filtersOpen}
+            className="relative inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200"
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
             >
-              <div className="overflow-hidden">
-                <div className="border-t border-white/10 pt-5">
-                  <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                      <p className="text-sm text-slate-400">
-                        Use filters when you want a smaller, cleaner list that fits your style.
-                      </p>
-                    </div>
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+              <line x1="11" y1="18" x2="13" y2="18" />
+            </svg>
+            <span>Filters</span>
+            {activeFilterCount > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-400 text-[9px] font-bold text-slate-900">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        </div>
+      </header>
 
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <button
-                        type="button"
-                        onClick={resetFilters}
-                        className="inline-flex w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200 lg:w-auto"
-                      >
-                        Reset filters
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setBeginnerMode((prev) => !prev)}
-                        className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold transition lg:w-auto ${
-                          beginnerMode
-                            ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
-                            : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20"
-                        }`}
-                      >
-                        {beginnerMode ? "Beginner mode: On" : "Beginner mode: Off"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-                    <FilterSelect
-                      label="Price"
-                      value={priceFilter}
-                      onChange={(value) => setPriceFilter(value as PriceFilterType)}
-                      options={[
-                        { value: "all", label: "All prices" },
-                        { value: "under10", label: "Under $10" },
-                        { value: "10to25", label: "$10 to $25" },
-                        { value: "25to100", label: "$25 to $100" },
-                        { value: "100plus", label: "$100+" },
-                      ]}
-                    />
-
-                    {!beginnerMode && (
-                      <FilterSelect
-                        label="Valuation"
-                        value={peFilter}
-                        onChange={(value) => setPeFilter(value as PeFilterType)}
-                        options={[
-                          { value: "all", label: "All valuations" },
-                          { value: "20", label: "P/E ≤ 20" },
-                          { value: "30", label: "P/E ≤ 30" },
-                          { value: "50", label: "P/E ≤ 50" },
-                        ]}
-                      />
-                    )}
-
-                    <FilterSelect
-                      label="How recent"
-                      value={freshnessFilter}
-                      onChange={(value) =>
-                        setFreshnessFilter(value as FreshnessFilterType)
-                      }
-                      options={[
-                        { value: "all", label: "Any time" },
-                        { value: "today", label: "Today" },
-                        { value: "3d", label: "Last 3 days" },
-                        { value: "7d", label: "Last 7 days" },
-                        { value: "14d", label: "Last 14 days" },
-                      ]}
-                    />
-
-                    <FilterSelect
-                      label="Minimum score"
-                      value={scoreFilter}
-                      onChange={(value) => setScoreFilter(value as ScoreFilterType)}
-                      options={[
-                        { value: "all", label: "Any score" },
-                        { value: "70", label: "70+" },
-                        { value: "75", label: "75+" },
-                        { value: "80", label: "80+" },
-                        { value: "85", label: "85+" },
-                        { value: "90", label: "90+" },
-                      ]}
-                    />
-
-                    <FilterSelect
-                      label="Business area"
-                      value={sectorFilter}
-                      onChange={(value) => setSectorFilter(value)}
-                      options={sectorOptions.map((sector) => ({
-                        value: sector,
-                        label: sector === "all" ? "All business areas" : sector,
-                      }))}
-                    />
-
-                    {!beginnerMode && (
-                      <FilterSelect
-                        label="Why it’s here"
-                        value={sourceFilter}
-                        onChange={(value) => setSourceFilter(value as SourceFilterType)}
-                        options={[
-                          { value: "all", label: "All reasons" },
-                          { value: "both", label: "Price strength + signals" },
-                          { value: "technical_only", label: "Price strength only" },
-                          { value: "filing_only", label: "Signals only" },
-                        ]}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="board" className="mt-6 sm:mt-8">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                Ranked board
-              </p>
-              <h2 className="mt-1 text-xl font-semibold text-white sm:text-3xl">
-                Today’s ideas
-              </h2>
-              <p className="mt-2 text-sm leading-7 text-slate-400 sm:text-base">
-                Sorted from strongest overall setup down.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {safeCurrentPage > 1 ? (
+      {/* Collapsible filters */}
+      <div
+        className={[
+          "shrink-0 overflow-hidden border-b border-white/[0.07] bg-black/25 backdrop-blur-sm transition-all duration-300 ease-out",
+          filtersOpen ? "max-h-80 opacity-100" : "max-h-0 opacity-0",
+        ].join(" ")}
+      >
+        <div className="mx-auto max-w-lg px-4 pb-5 pt-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <FilterSelect
+              label="Min score"
+              value={scoreFilter}
+              onChange={(v) => setScoreFilter(v as ScoreFilterType)}
+              options={[
+                { value: "all", label: "Any score" },
+                { value: "70", label: "70+" },
+                { value: "75", label: "75+" },
+                { value: "80", label: "80+" },
+                { value: "85", label: "85+" },
+                { value: "90", label: "90+" },
+              ]}
+            />
+            <FilterSelect
+              label="Price"
+              value={priceFilter}
+              onChange={(v) => setPriceFilter(v as PriceFilterType)}
+              options={[
+                { value: "all", label: "All prices" },
+                { value: "under10", label: "Under $10" },
+                { value: "10to25", label: "$10–$25" },
+                { value: "25to100", label: "$25–$100" },
+                { value: "100plus", label: "$100+" },
+              ]}
+            />
+            <FilterSelect
+              label="How recent"
+              value={freshnessFilter}
+              onChange={(v) => setFreshnessFilter(v as FreshnessFilterType)}
+              options={[
+                { value: "all", label: "Any time" },
+                { value: "today", label: "Today" },
+                { value: "3d", label: "Last 3 days" },
+                { value: "7d", label: "Last 7 days" },
+                { value: "14d", label: "Last 14 days" },
+              ]}
+            />
+            <FilterSelect
+              label="Business area"
+              value={sectorFilter}
+              onChange={(v) => setSectorFilter(v)}
+              options={sectorOptions.map((s) => ({
+                value: s,
+                label: s === "all" ? "All sectors" : s,
+              }))}
+            />
+            <FilterSelect
+              label="Valuation"
+              value={peFilter}
+              onChange={(v) => setPeFilter(v as PeFilterType)}
+              options={[
+                { value: "all", label: "Any P/E" },
+                { value: "20", label: "P/E ≤ 20" },
+                { value: "30", label: "P/E ≤ 30" },
+                { value: "50", label: "P/E ≤ 50" },
+              ]}
+            />
+            {activeFilterCount > 0 && (
+              <div className="flex items-end">
                 <button
                   type="button"
-                  onClick={() => {
-                    setCurrentPage(1)
-                    window.scrollTo({ top: 0, behavior: "smooth" })
-                  }}
-                  className="rounded-full border border-cyan-400/25 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/40 hover:bg-cyan-400/15"
+                  onClick={resetFilters}
+                  className="w-full rounded-2xl border border-white/10 bg-white/5 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200"
                 >
-                  Back to top ideas
+                  Reset
                 </button>
-              ) : null}
-
-              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300">
-                {filteredRows.length === 0
-                  ? "No names"
-                  : `${pageStart}-${pageEnd} of ${filteredRows.length}`}
               </div>
-            </div>
+            )}
           </div>
-
-          {loading ? (
-            <LoadingPanel />
-          ) : error ? (
-            <ErrorPanel message={error} />
-          ) : !filteredRows.length ? (
-            <EmptyPanel />
-          ) : (
-            <>
-              <div className="grid items-start gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {paginatedRows.map((row, i) => (
-                  <TopSignalCard
-                    key={getRowKey(row, i)}
-                    row={row}
-                    isSelected={row.ticker === selectedTicker}
-                    onClick={() => openDetails(row.ticker, 0)}
-                    rank={(safeCurrentPage - 1) * CARDS_PER_PAGE + i + 1}
-                    animationIndex={i}
-                  />
-                ))}
-              </div>
-
-              {filteredRows.length > CARDS_PER_PAGE ? (
-                <PaginationControls
-                  currentPage={safeCurrentPage}
-                  totalPages={totalPages}
-                  onPageChange={(page) => {
-                    setCurrentPage(page)
-                    window.scrollTo({ top: 0, behavior: "smooth" })
-                  }}
-                />
-              ) : null}
-            </>
-          )}
-        </section>
-
-        <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/5 px-4 py-4 text-sm leading-6 text-amber-200/80">
-          <span className="font-semibold text-amber-300">Important: </span>
-          This is not financial advice. Stock signals are based on public data about insider filings and price patterns — not guarantees. Never invest more than you can afford to lose. Always do your own research before acting on any idea shown here.
         </div>
-
-        <footer className="mt-10 border-t border-white/10 pt-8 text-sm leading-6 text-slate-500">
-          This board is meant to help you find ideas faster, not make the decision for you.
-          A high score means more things are lining up right now — not that a stock is guaranteed to work.
-        </footer>
       </div>
 
-      {!selectedRow ? (
-        <MobileAppNav
-          onGoTop={() => scrollToSection("hero")}
-          onGoBoard={() => scrollToSection("board")}
-          onGoFilters={() => scrollToSection("filters")}
-        />
-      ) : null}
+      {/* Main swipe area */}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {loading ? (
+          <div className="flex h-full items-center justify-center">
+            <LoadingPanel />
+          </div>
+        ) : error ? (
+          <div className="flex h-full items-center justify-center px-4">
+            <ErrorPanel message={error} />
+          </div>
+        ) : filteredRows.length === 0 ? (
+          <div className="flex h-full items-center justify-center px-4">
+            <EmptyPanel />
+          </div>
+        ) : (
+          <SwipeDeck
+            rows={filteredRows}
+            cardIndex={safeCardIndex}
+            onIndexChange={setCardIndex}
+            onOpenDetails={(ticker) => openDetails(ticker, 0)}
+          />
+        )}
+      </div>
 
+      {/* Disclaimer */}
+      {!loading && !error && (
+        <div className="shrink-0 px-4 py-2 text-center text-[10px] leading-5 text-slate-600">
+          Not financial advice. Always do your own research before acting on any idea shown here.
+        </div>
+      )}
+
+      {/* Detail modal */}
       {selectedRow ? (
         <SignalDetailsModal
           row={selectedRow}
@@ -1142,6 +946,290 @@ export default function Home() {
         />
       ) : null}
     </main>
+  )
+}
+
+function getDotRange(current: number, total: number, maxDots = 7): number[] {
+  if (total <= maxDots) return Array.from({ length: total }, (_, i) => i)
+  const half = Math.floor(maxDots / 2)
+  let start = Math.max(0, current - half)
+  const end = Math.min(total - 1, start + maxDots - 1)
+  start = Math.max(0, end - maxDots + 1)
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+}
+
+function SwipeDeck({
+  rows,
+  cardIndex,
+  onIndexChange,
+  onOpenDetails,
+}: {
+  rows: UnifiedRow[]
+  cardIndex: number
+  onIndexChange: (index: number) => void
+  onOpenDetails: (ticker: string) => void
+}) {
+  const touchStartX = useRef<number | null>(null)
+  const touchStartY = useRef<number | null>(null)
+  const [swipeDir, setSwipeDir] = useState<"left" | "right">("right")
+  const [animKey, setAnimKey] = useState(0)
+
+  function goNext() {
+    if (cardIndex >= rows.length - 1) return
+    setSwipeDir("left")
+    onIndexChange(cardIndex + 1)
+    setAnimKey((k) => k + 1)
+  }
+
+  function goPrev() {
+    if (cardIndex <= 0) return
+    setSwipeDir("right")
+    onIndexChange(cardIndex - 1)
+    setAnimKey((k) => k + 1)
+  }
+
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current === null) return
+    const dx = e.changedTouches[0].clientX - touchStartX.current
+    const dy = Math.abs(e.changedTouches[0].clientY - (touchStartY.current ?? 0))
+    if (Math.abs(dx) > 48 && Math.abs(dx) > dy) {
+      if (dx < 0) goNext()
+      else goPrev()
+    }
+    touchStartX.current = null
+    touchStartY.current = null
+  }
+
+  const row = rows[cardIndex]
+  const hasPrev = cardIndex > 0
+  const hasNext = cardIndex < rows.length - 1
+  const dots = getDotRange(cardIndex, rows.length)
+
+  return (
+    <div className="flex h-full flex-col items-center px-3 pb-2 pt-3">
+      {/* Nav row */}
+      <div className="mb-2.5 flex w-full max-w-md shrink-0 items-center justify-between">
+        <button
+          type="button"
+          onClick={goPrev}
+          disabled={!hasPrev}
+          aria-label="Previous idea"
+          className={[
+            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition",
+            hasPrev
+              ? "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 active:scale-95"
+              : "cursor-default border-transparent text-transparent",
+          ].join(" ")}
+        >
+          ‹
+        </button>
+
+        <div className="flex items-center gap-1.5">
+          {dots.map((i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                setSwipeDir(i > cardIndex ? "left" : "right")
+                onIndexChange(i)
+                setAnimKey((k) => k + 1)
+              }}
+              aria-label={`Go to idea ${i + 1}`}
+              className={[
+                "rounded-full transition-all duration-200",
+                i === cardIndex
+                  ? "h-2 w-5 bg-cyan-400"
+                  : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
+              ].join(" ")}
+            />
+          ))}
+          <span className="ml-1.5 text-[11px] text-slate-500">
+            {cardIndex + 1}/{rows.length}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={goNext}
+          disabled={!hasNext}
+          aria-label="Next idea"
+          className={[
+            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition",
+            hasNext
+              ? "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 active:scale-95"
+              : "cursor-default border-transparent text-transparent",
+          ].join(" ")}
+        >
+          ›
+        </button>
+      </div>
+
+      {/* Swipeable card */}
+      <div
+        className="min-h-0 w-full max-w-md flex-1 overflow-hidden"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div
+          key={`${row.ticker}-${animKey}`}
+          className="h-full"
+          style={{
+            animation: `${swipeDir === "left" ? "slideFromRight" : "slideFromLeft"} 260ms ease-out both`,
+          }}
+        >
+          <SwipeStockCard
+            row={row}
+            rank={cardIndex + 1}
+            onOpen={() => onOpenDetails(row.ticker)}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SwipeStockCard({
+  row,
+  rank,
+  onOpen,
+}: {
+  row: UnifiedRow
+  rank: number
+  onOpen: () => void
+}) {
+  const score = row.display_score
+  const palette = getScorePalette(score)
+  const whyBullets = getSimpleCardBullets(row)
+  const takeawayBullets = getPremiumSummaryBullets(row)
+
+  const metricItems: MiniMetricItem[] = [
+    { label: "Price", value: formatMoney(row.price) },
+    { label: "Insider value", value: formatInsiderValue(row) },
+    { label: "Vs market", value: formatRelativeStrengthForDisplay(row) },
+    { label: "PTR amount", value: row.ptr_amount || "—" },
+  ].filter((item) => hasDisplayValue(item.value))
+
+  return (
+    <div
+      className="flex h-full flex-col overflow-y-auto overflow-x-hidden rounded-[1.75rem] border shadow-2xl"
+      style={{
+        borderColor: `${palette.end}40`,
+        background: `linear-gradient(155deg, ${palette.start}16 0%, rgba(10,18,38,0.97) 38%, rgba(2,6,23,1) 100%)`,
+      }}
+    >
+      {/* Ticker + score */}
+      <div className="shrink-0 p-5 pb-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <CardRankBadge rank={rank} />
+            <h2 className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">
+              {row.ticker}
+            </h2>
+            {row.company_name ? (
+              <p className="mt-1 truncate text-sm text-slate-400">
+                {truncateText(row.company_name, 40)}
+              </p>
+            ) : null}
+            {row.sector ? (
+              <p className="mt-0.5 text-[11px] text-slate-500">{row.sector}</p>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <ScoreBadge row={row} large />
+            <FreshnessBadge row={row} />
+          </div>
+        </div>
+
+        {/* Score bar */}
+        <div className="mt-4">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Overall score
+            </span>
+            <span className="text-xs font-semibold text-white">{score}/100</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-800/80">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${score}%`,
+                background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
+                transition: "width 600ms ease-out",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Why it's here */}
+      <div className="shrink-0 border-t border-white/[0.07] px-5 py-4">
+        <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/80">
+          Why it made the list
+        </p>
+        <ul className="space-y-2">
+          {whyBullets.map((bullet, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm leading-6 text-white">
+              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Metrics */}
+      {metricItems.length > 0 ? (
+        <div className="shrink-0 border-t border-white/[0.07] px-5 py-4">
+          <div
+            className={[
+              "grid gap-2.5",
+              metricItems.length >= 4
+                ? "grid-cols-2 sm:grid-cols-4"
+                : metricItems.length === 3
+                  ? "grid-cols-3"
+                  : "grid-cols-2",
+            ].join(" ")}
+          >
+            {metricItems.map((item) => (
+              <MiniMetric key={item.label} label={item.label} value={item.value} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Plain-English takeaway */}
+      {takeawayBullets.length > 0 ? (
+        <div className="shrink-0 border-t border-white/[0.07] px-5 py-4">
+          <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-300/80">
+            Plain-English takeaway
+          </p>
+          <ul className="space-y-2">
+            {takeawayBullets.map((bullet, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm leading-6 text-slate-200">
+                <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                <span>{bullet}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {/* CTA */}
+      <div className="mt-auto shrink-0 p-5 pt-3">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[0.07] px-5 py-3.5 text-sm font-semibold text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10 active:scale-[0.98]"
+        >
+          <span>See full details</span>
+          <span className="rounded-full bg-white/10 px-3 py-1 text-xs">Explore →</span>
+        </button>
+      </div>
+    </div>
   )
 }
 
