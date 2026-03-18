@@ -1107,33 +1107,14 @@ function SwipeStockCard({
   const palette = getScorePalette(score)
   const whyBullets = getSimpleCardBullets(row)
 
-  const clusterBuyers = row.cluster_buyers ?? 0
-  const hasCluster = clusterBuyers >= 2
-  const hasPtr = Boolean(row.ptr_amount)
-  const insiderValue = formatInsiderValue(row)
-  const hasInsiderBuy =
-    hasDisplayValue(insiderValue) ||
-    Boolean(row.insider_action) ||
-    (row.insider_shares ?? 0) > 0
-  const hasPlatinum = clusterBuyers >= 3 && hasPtr
-  const hasAnyInsiderSignal = hasCluster || hasPtr || hasInsiderBuy
-
   const ltcs = parseScreenReasonScores(row.screen_reason)
 
   return (
     <div
       className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl"
       style={{
-        borderColor: hasPlatinum
-          ? "rgba(251,191,36,0.35)"
-          : hasCluster
-            ? "rgba(52,211,153,0.35)"
-            : `${palette.end}40`,
-        background: hasPlatinum
-          ? "linear-gradient(155deg, rgba(251,191,36,0.12) 0%, rgba(10,18,38,0.97) 35%, rgba(2,6,23,1) 100%)"
-          : hasCluster
-            ? "linear-gradient(155deg, rgba(52,211,153,0.10) 0%, rgba(10,18,38,0.97) 35%, rgba(2,6,23,1) 100%)"
-            : `linear-gradient(155deg, ${palette.start}16 0%, rgba(10,18,38,0.97) 38%, rgba(2,6,23,1) 100%)`,
+        borderColor: `${palette.end}40`,
+        background: `linear-gradient(155deg, ${palette.start}16 0%, rgba(10,18,38,0.97) 38%, rgba(2,6,23,1) 100%)`,
       }}
     >
       {/* Header: rank + buy + ticker + score */}
@@ -1181,9 +1162,7 @@ function SwipeStockCard({
               className="h-full rounded-full"
               style={{
                 width: `${score}%`,
-                background: hasPlatinum
-                  ? "linear-gradient(90deg, #f59e0b, #fbbf24)"
-                  : `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
+                background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
                 transition: "width 600ms ease-out",
               }}
             />
@@ -1191,9 +1170,9 @@ function SwipeStockCard({
         </div>
 
         {/* Price + 1D / 5D / 20D returns */}
-        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {row.price ? (
-            <span className="shrink-0 text-sm font-bold text-white mr-0.5">
+            <span className="mr-0.5 shrink-0 text-sm font-bold text-white">
               {formatMoney(row.price)}
             </span>
           ) : null}
@@ -1216,58 +1195,6 @@ function SwipeStockCard({
           )}
         </div>
       </div>
-
-      {/* Insider conviction section — compact */}
-      {hasAnyInsiderSignal ? (
-        <div
-          className="shrink-0 border-t px-4 py-2"
-          style={{
-            borderColor: hasPlatinum
-              ? "rgba(251,191,36,0.20)"
-              : hasCluster
-                ? "rgba(52,211,153,0.15)"
-                : "rgba(255,255,255,0.07)",
-          }}
-        >
-          {hasPlatinum && (
-            <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-2.5 py-1.5">
-              <span className="text-sm">⚡</span>
-              <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-300">
-                  Platinum Conviction
-                </p>
-                <p className="text-[10px] text-amber-200/70">Cluster + Congressional buy</p>
-              </div>
-            </div>
-          )}
-          <div className="flex flex-wrap gap-1.5">
-            {hasCluster && (
-              <div className="flex items-center gap-1.5 rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1.5">
-                <span className="text-xs">👥</span>
-                <span className="text-[11px] font-bold text-emerald-300">
-                  {clusterBuyers} insiders bought{hasDisplayValue(insiderValue) ? ` · ${insiderValue}` : ""}
-                </span>
-              </div>
-            )}
-            {hasPtr && (
-              <div className="flex items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1.5">
-                <span className="text-xs">🏛</span>
-                <span className="text-[11px] font-bold text-cyan-300">
-                  Congress · {row.ptr_amount}
-                </span>
-              </div>
-            )}
-            {hasInsiderBuy && !hasCluster && (
-              <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-2.5 py-1.5">
-                <span className="text-xs">👤</span>
-                <span className="text-[11px] font-bold text-white">
-                  Insider buy{hasDisplayValue(insiderValue) ? ` · ${insiderValue}` : ""}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : null}
 
       {/* Quality Fundamentals */}
       <div className="shrink-0 border-t border-white/[0.07] px-4 py-3">
@@ -2909,10 +2836,6 @@ function getSimpleCardBullets(row: UnifiedRow) {
   if (profitability !== null && profitability >= 75) points.push("Consistently profitable with strong free cash flow.")
   if (stability !== null && stability >= 60) points.push("Lower volatility, suitable for long-term holding.")
   if (valuation !== null && valuation >= 65) points.push("Trading at a reasonable valuation relative to growth.")
-
-  if ((row.cluster_buyers ?? 0) >= 2) {
-    points.push("Multiple insiders are buying at current prices.")
-  }
 
   if ((row.earnings_surprise_pct ?? 0) >= 10) {
     points.push("Recent earnings came in stronger than expected.")
