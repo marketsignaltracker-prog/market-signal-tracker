@@ -733,19 +733,11 @@ export default function Home() {
   }, [selectedTicker, filteredRows.length])
 
   return (
-    <main className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.08),_transparent_20%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.06),_transparent_24%),linear-gradient(to_bottom,_#020617,_#081122_50%,_#020617)] text-white">
+    <main className="flex h-[100dvh] w-full flex-col overflow-hidden bg-black text-white">
       <style jsx global>{`
         @keyframes cardFadeUp {
           from { opacity: 0; transform: translateY(16px) scale(0.985); }
           to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes scoreGlow {
-          0%, 100% { box-shadow: 0 0 0 rgba(34, 197, 94, 0); }
-          50% { box-shadow: 0 0 24px rgba(34, 197, 94, 0.18); }
-        }
-        @keyframes scoreGlowCyan {
-          0%, 100% { box-shadow: 0 0 0 rgba(34, 211, 238, 0); }
-          50% { box-shadow: 0 0 24px rgba(34, 211, 238, 0.18); }
         }
         @keyframes slideFromRight {
           from { opacity: 0; transform: translateX(52px) scale(0.97); }
@@ -758,25 +750,25 @@ export default function Home() {
       `}</style>
 
       {/* Header */}
-      <header className="shrink-0 border-b border-white/[0.07] bg-black/30 px-4 py-3 backdrop-blur-sm">
+      <header className="shrink-0 border-b border-[rgba(255,255,255,0.06)] bg-black px-4 py-3">
         <div className="mx-auto flex max-w-lg items-center justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-emerald-400/90">
+            <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-[#00c805]">
               Market Signal Tracker
             </p>
             <p className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-white">
               {loading ? (
-                <span className="text-slate-500">Loading…</span>
+                <span className="text-[#666]">Loading…</span>
               ) : (
                 <>
                   <span>{filteredRows.length} ideas</span>
                   {eliteCount > 0 && (
-                    <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                    <span className="rounded-full bg-[rgba(0,200,5,0.12)] px-2 py-0.5 text-[10px] font-bold text-[#00c805]">
                       {eliteCount} top tier
                     </span>
                   )}
                   {lastUpdated && (
-                    <span className="text-[11px] font-normal text-slate-500">
+                    <span className="text-[11px] font-normal text-[#666]">
                       {lastUpdated}
                     </span>
                   )}
@@ -789,7 +781,7 @@ export default function Home() {
             type="button"
             onClick={() => setFiltersOpen((prev) => !prev)}
             aria-expanded={filtersOpen}
-            className="relative inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200"
+            className="relative inline-flex items-center gap-2 rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-4 py-2.5 text-sm font-semibold text-white transition hover:border-[rgba(0,200,5,0.30)] hover:bg-[rgba(0,200,5,0.10)]"
           >
             <svg
               width="13"
@@ -808,7 +800,7 @@ export default function Home() {
             </svg>
             <span>Filters</span>
             {activeFilterCount > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-400 text-[9px] font-bold text-slate-900">
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#00c805] text-[9px] font-bold text-black">
                 {activeFilterCount}
               </span>
             )}
@@ -819,7 +811,7 @@ export default function Home() {
       {/* Collapsible filters */}
       <div
         className={[
-          "shrink-0 overflow-hidden border-b border-white/[0.07] bg-black/25 backdrop-blur-sm transition-all duration-300 ease-out",
+          "shrink-0 overflow-hidden border-b border-[rgba(255,255,255,0.06)] bg-[#0a0a0a] transition-all duration-300 ease-out",
           filtersOpen ? "max-h-80 opacity-100" : "max-h-0 opacity-0",
         ].join(" ")}
       >
@@ -887,7 +879,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={resetFilters}
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200"
+                  className="w-full rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] py-2.5 text-sm font-semibold text-white transition hover:border-[rgba(0,200,5,0.25)] hover:bg-[rgba(0,200,5,0.08)]"
                 >
                   Reset
                 </button>
@@ -923,7 +915,7 @@ export default function Home() {
 
       {/* Disclaimer */}
       {!loading && !error && (
-        <div className="shrink-0 px-4 py-2 text-center text-[10px] leading-5 text-slate-600">
+        <div className="shrink-0 px-4 py-2 text-center text-[10px] leading-5 text-[#444]">
           Not financial advice. Always do your own research before acting on any idea shown here.
         </div>
       )}
@@ -1022,7 +1014,7 @@ function SwipeDeck({
           className={[
             "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition",
             hasPrev
-              ? "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 active:scale-95"
+              ? "border-[rgba(255,255,255,0.08)] bg-[#1c1c1c] text-white hover:bg-[#2a2a2a] active:scale-95"
               : "cursor-default border-transparent text-transparent",
           ].join(" ")}
         >
@@ -1043,12 +1035,12 @@ function SwipeDeck({
               className={[
                 "rounded-full transition-all duration-200",
                 i === cardIndex
-                  ? "h-2 w-5 bg-cyan-400"
-                  : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
+                  ? "h-2 w-5 bg-[#00c805]"
+                  : "h-1.5 w-1.5 bg-[#2a2a2a] hover:bg-[#444]",
               ].join(" ")}
             />
           ))}
-          <span className="ml-1.5 text-[11px] text-slate-500">
+          <span className="ml-1.5 text-[11px] text-[#666]">
             {cardIndex + 1}/{rows.length}
           </span>
         </div>
@@ -1061,7 +1053,7 @@ function SwipeDeck({
           className={[
             "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition",
             hasNext
-              ? "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10 active:scale-95"
+              ? "border-[rgba(255,255,255,0.08)] bg-[#1c1c1c] text-white hover:bg-[#2a2a2a] active:scale-95"
               : "cursor-default border-transparent text-transparent",
           ].join(" ")}
         >
@@ -1113,8 +1105,8 @@ function SwipeStockCard({
     <div
       className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl"
       style={{
-        borderColor: `${palette.end}40`,
-        background: `linear-gradient(155deg, ${palette.start}16 0%, rgba(10,18,38,0.97) 38%, rgba(2,6,23,1) 100%)`,
+        borderColor: "rgba(255,255,255,0.08)",
+        background: "#141414",
       }}
     >
       {/* Header: rank + buy + ticker + score */}
@@ -1128,19 +1120,19 @@ function SwipeStockCard({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300 transition hover:bg-emerald-400/20"
+                className="inline-flex items-center gap-1 rounded-full border border-[rgba(0,200,5,0.25)] bg-[rgba(0,200,5,0.12)] px-2.5 py-1 text-[10px] font-bold text-[#00c805] transition hover:bg-[rgba(0,200,5,0.20)]"
               >
                 Buy ↗
               </a>
             </div>
             <h2 className="mt-1.5 text-4xl font-black tracking-tight">{row.ticker}</h2>
             {row.company_name ? (
-              <p className="mt-0.5 truncate text-sm text-slate-400">
+              <p className="mt-0.5 truncate text-sm text-[#8a8a8a]">
                 {truncateText(row.company_name, 36)}
               </p>
             ) : null}
             {row.sector ? (
-              <p className="text-[11px] text-slate-500">{row.sector}</p>
+              <p className="text-[11px] text-[#666]">{row.sector}</p>
             ) : null}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -1152,17 +1144,17 @@ function SwipeStockCard({
         {/* Quality Score bar */}
         <div className="mt-2.5">
           <div className="mb-1 flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#666]">
               Quality Score
             </span>
             <span className="text-xs font-semibold text-white">{score}/100</span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-slate-800/80">
+          <div className="h-1.5 overflow-hidden rounded-full bg-[#1c1c1c]">
             <div
               className="h-full rounded-full"
               style={{
                 width: `${score}%`,
-                background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
+                background: "#00c805",
                 transition: "width 600ms ease-out",
               }}
             />
@@ -1186,7 +1178,7 @@ function SwipeStockCard({
                 key={label}
                 className={[
                   "rounded-full px-2 py-0.5 text-[10px] font-bold",
-                  value >= 0 ? "bg-emerald-400/15 text-emerald-300" : "bg-rose-400/15 text-rose-300",
+                  value >= 0 ? "bg-[rgba(0,200,5,0.12)] text-[#00c805]" : "bg-[rgba(255,80,0,0.12)] text-[#ff5000]",
                 ].join(" ")}
               >
                 {label} {value >= 0 ? "+" : ""}{round1(value)?.toFixed(1)}%
@@ -1197,8 +1189,8 @@ function SwipeStockCard({
       </div>
 
       {/* Quality Fundamentals */}
-      <div className="shrink-0 border-t border-white/[0.07] px-4 py-3">
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-300/80">
+      <div className="shrink-0 border-t border-[rgba(255,255,255,0.06)] px-4 py-3">
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#666]">
           Quality Fundamentals
         </p>
 
@@ -1215,13 +1207,13 @@ function SwipeStockCard({
             return (
               <div key={label} className="flex-1 text-center">
                 <div className="text-base leading-none">{emoji}</div>
-                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#1c1c1c]">
                   <div
                     className="h-full rounded-full transition-all duration-500"
                     style={{ width: `${s ?? 0}%`, backgroundColor: barColor }}
                   />
                 </div>
-                <p className="mt-0.5 text-[9px] text-slate-500">{label}</p>
+                <p className="mt-0.5 text-[9px] text-[#666]">{label}</p>
               </div>
             )
           })}
@@ -1230,8 +1222,8 @@ function SwipeStockCard({
         {/* 2 plain-English bullets */}
         <ul className="space-y-1.5">
           {whyBullets.slice(0, 2).map((bullet, i) => (
-            <li key={i} className="flex items-start gap-1.5 text-[11px] leading-[1.4] text-slate-300">
-              <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
+            <li key={i} className="flex items-start gap-1.5 text-[11px] leading-[1.4] text-[#b0b0b0]">
+              <span className="mt-[4px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#00c805]" />
               <span>{bullet}</span>
             </li>
           ))}
@@ -1243,10 +1235,9 @@ function SwipeStockCard({
         <button
           type="button"
           onClick={onOpen}
-          className="flex w-full items-center justify-between rounded-2xl border border-white/15 bg-white/[0.07] px-5 py-3 text-sm font-semibold text-white transition hover:border-cyan-400/40 hover:bg-cyan-400/10 active:scale-[0.98]"
+          className="w-full rounded-xl bg-[#00c805] px-5 py-3.5 text-sm font-bold text-black transition active:scale-[0.98] hover:bg-[#00e006]"
         >
-          <span>See full details</span>
-          <span className="rounded-full bg-white/10 px-3 py-1 text-xs">Explore →</span>
+          View Analysis
         </button>
       </div>
     </div>
@@ -1263,12 +1254,12 @@ function SimpleExplainerCard({
   body: string
 }) {
   return (
-    <div className="rounded-[1.25rem] border border-white/10 bg-black/20 p-4">
-      <div className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-cyan-400/25 bg-cyan-400/10 text-sm font-bold text-cyan-200">
+    <div className="rounded-[1.25rem] border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
+      <div className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(0,200,5,0.20)] bg-[rgba(0,200,5,0.10)] text-sm font-bold text-[#00c805]">
         {step}
       </div>
       <h3 className="mt-3 text-base font-semibold text-white">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-300">{body}</p>
+      <p className="mt-2 text-sm leading-6 text-[#b0b0b0]">{body}</p>
     </div>
   )
 }
@@ -1283,12 +1274,12 @@ function ConfidenceLegendCard({
   body: string
 }) {
   return (
-    <div className="rounded-[1.25rem] border border-white/10 bg-black/20 p-4">
+    <div className="rounded-[1.25rem] border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
       <div className="flex items-center gap-3">
         <span className={`h-3 w-3 rounded-full ${color}`} />
         <span className="text-sm font-semibold text-white">{label}</span>
       </div>
-      <p className="mt-2 text-sm leading-6 text-slate-300">{body}</p>
+      <p className="mt-2 text-sm leading-6 text-[#b0b0b0]">{body}</p>
     </div>
   )
 }
@@ -1302,10 +1293,7 @@ function CompactStatCard({
   value: string
   tone: "emerald" | "cyan"
 }) {
-  const styles =
-    tone === "emerald"
-      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
-      : "border-cyan-400/20 bg-cyan-400/10 text-cyan-200"
+  const styles = "border-[rgba(0,200,5,0.20)] bg-[rgba(0,200,5,0.08)] text-[#00c805]"
 
   return (
     <div className={`rounded-[1.25rem] border px-3 py-3 sm:px-4 ${styles}`}>
@@ -1353,28 +1341,28 @@ function MobileAppNav({
 }) {
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/90 px-3 pt-3 backdrop-blur-md sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-[rgba(255,255,255,0.06)] bg-black px-3 pt-3 sm:hidden"
       style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
     >
       <div className="mx-auto grid max-w-xl grid-cols-3 gap-2">
         <button
           type="button"
           onClick={onGoTop}
-          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
+          className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-3 text-xs font-semibold text-white"
         >
           Home
         </button>
         <button
           type="button"
           onClick={onGoBoard}
-          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
+          className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-3 text-xs font-semibold text-white"
         >
           Board
         </button>
         <button
           type="button"
           onClick={onGoFilters}
-          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
+          className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-3 text-xs font-semibold text-white"
         >
           Filters
         </button>
@@ -1396,19 +1384,19 @@ function FilterSelect({
 }) {
   return (
     <div>
-      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#8a8a8a]">
         {label}
       </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3.5 text-white outline-none transition focus:border-cyan-400/40 focus:bg-slate-950 sm:py-4"
+        className="w-full rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] px-4 py-3.5 text-white outline-none transition focus:border-[rgba(0,200,5,0.40)] sm:py-4"
       >
         {options.map((option) => (
           <option
             key={`${label}-${option.value}`}
             value={option.value}
-            className="bg-slate-900"
+            className="bg-[#141414]"
           >
             {option.label}
           </option>
@@ -1420,16 +1408,16 @@ function FilterSelect({
 
 function LoadingPanel() {
   return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
+    <div className="rounded-3xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-8 shadow-2xl">
       <h2 className="text-2xl font-semibold">Loading today’s ideas…</h2>
-      <p className="mt-2 text-slate-400">Pulling the board together now.</p>
+      <p className="mt-2 text-[#8a8a8a]">Pulling the board together now.</p>
     </div>
   )
 }
 
 function ErrorPanel({ message }: { message: string }) {
   return (
-    <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
+    <div className="rounded-2xl border border-[rgba(255,80,0,0.20)] bg-[rgba(255,80,0,0.08)] p-4 text-[#ff5000]">
       {message}
     </div>
   )
@@ -1437,9 +1425,9 @@ function ErrorPanel({ message }: { message: string }) {
 
 function EmptyPanel() {
   return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
+    <div className="rounded-3xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-8 shadow-2xl">
       <h2 className="text-2xl font-semibold">Nothing matched those filters</h2>
-      <p className="mt-2 text-slate-400">
+      <p className="mt-2 text-[#8a8a8a]">
         Try widening the score, freshness, or valuation filters.
       </p>
     </div>
@@ -1647,11 +1635,11 @@ function TopSignalCard({
       onClick={onClick}
       className={[
         "flex w-full self-start flex-col overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-xl transition duration-300 hover:-translate-y-1 hover:scale-[1.01] sm:p-5",
-        isSelected ? "ring-2 ring-cyan-300/25" : "hover:ring-1 hover:ring-white/10",
+        isSelected ? "ring-2 ring-[rgba(0,200,5,0.25)]" : "hover:ring-1 hover:ring-[rgba(255,255,255,0.06)]",
       ].join(" ")}
       style={{
-        borderColor: isSelected ? `${palette.end}80` : `${palette.end}33`,
-        background: `linear-gradient(135deg, ${palette.start}12 0%, rgba(15,23,42,0.92) 40%, rgba(2,6,23,1) 100%)`,
+        borderColor: isSelected ? "rgba(0,200,5,0.30)" : "rgba(255,255,255,0.08)",
+        background: "#141414",
         animation: `cardFadeUp 480ms ease-out both`,
         animationDelay: `${animationIndex * 45}ms`,
       }}
@@ -1665,7 +1653,7 @@ function TopSignalCard({
           <h3 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{row.ticker}</h3>
 
           {row.company_name ? (
-            <p className="mt-1 truncate text-sm text-slate-400">
+            <p className="mt-1 truncate text-sm text-[#8a8a8a]">
               {truncateText(row.company_name, 40)}
             </p>
           ) : null}
@@ -1677,7 +1665,7 @@ function TopSignalCard({
                 e.stopPropagation()
                 setShowCompanyInfo((prev) => !prev)
               }}
-              className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
+              className="inline-flex items-center rounded-full border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-1 text-[11px] font-semibold text-[#8a8a8a] transition hover:border-[rgba(0,200,5,0.25)] hover:bg-[rgba(0,200,5,0.08)] hover:text-[#00c805]"
             >
               {showCompanyInfo
                 ? "Hide details"
@@ -1701,12 +1689,12 @@ function TopSignalCard({
         ].join(" ")}
       >
         <div className="overflow-hidden">
-          <div className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300/80">
+          <div className="w-full rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-4 py-4">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8a8a8a]">
               {infoTitle}
             </p>
 
-            <p className="text-sm leading-6 text-slate-300">{infoBody}</p>
+            <p className="text-sm leading-6 text-[#b0b0b0]">{infoBody}</p>
 
             <div className="mt-4 flex justify-end">
               <button
@@ -1722,7 +1710,7 @@ function TopSignalCard({
                     })
                   }, 150)
                 }}
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
+                className="rounded-full border border-[rgba(255,255,255,0.07)] bg-[#141414] px-4 py-1.5 text-xs font-semibold text-[#8a8a8a] transition hover:border-[rgba(0,200,5,0.25)] hover:bg-[rgba(0,200,5,0.08)] hover:text-[#00c805]"
               >
                 Close
               </button>
@@ -1735,15 +1723,15 @@ function TopSignalCard({
         <ScoreBar row={row} compact />
       </div>
 
-      <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+      <div className="mb-4 rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
           Why it made the list
         </p>
 
         <ul className="mt-3 space-y-2 text-sm leading-6 text-white">
           {whyBullets.map((item, i) => (
             <li key={i} className="flex items-start gap-2">
-              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
+              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-[#00c805]" />
               <span>{item}</span>
             </li>
           ))}
@@ -1758,25 +1746,25 @@ function TopSignalCard({
         </div>
       )}
 
-      <div className="mt-auto rounded-2xl bg-black/20 p-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+      <div className="mt-auto rounded-2xl bg-[#1c1c1c] p-4">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#00c805]">
           Plain-English takeaway
         </p>
 
-        <ul className="space-y-2 text-sm leading-6 text-slate-100">
+        <ul className="space-y-2 text-sm leading-6 text-white">
           {takeawayBullets.map((item, i) => (
             <li key={i} className="flex items-start gap-2">
-              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-[#00c805]" />
               <span>{item}</span>
             </li>
           ))}
         </ul>
       </div>
 
-      <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-        <span className="text-sm text-slate-300">Open guided details</span>
+      <div className="mt-4 flex items-center justify-between rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-4 py-3">
+        <span className="text-sm text-[#8a8a8a]">Open guided details</span>
 
-        <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white">
+        <span className="rounded-full border border-[rgba(255,255,255,0.07)] bg-[#141414] px-3 py-1 text-xs font-semibold text-white">
           Explore →
         </span>
       </div>
@@ -1792,38 +1780,28 @@ function ScoreBar({
   compact?: boolean
 }) {
   const score = row.display_score
-  const palette = getScorePalette(score)
-  const glowAnimation =
-    score >= 90
-      ? "scoreGlow 3.2s ease-in-out infinite"
-      : score >= 80
-        ? "scoreGlowCyan 3.6s ease-in-out infinite"
-        : undefined
 
   return (
-    <div
-      className="w-full rounded-2xl border border-white/10 bg-white/5 p-4"
-      style={glowAnimation ? { animation: glowAnimation } : undefined}
-    >
+    <div className="w-full rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
           Overall score
         </p>
         <p className="shrink-0 text-sm font-semibold text-white">{score}/100</p>
       </div>
 
-      <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+      <div className="h-3 overflow-hidden rounded-full bg-[#1c1c1c]">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{
             width: `${score}%`,
-            background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
+            background: "#00c805",
           }}
         />
       </div>
 
       {!compact ? (
-        <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.14em] text-slate-500">
+        <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.14em] text-[#666]">
           <span>Good</span>
           <span>Strong</span>
           <span>Top tier</span>
@@ -1841,8 +1819,8 @@ function MiniMetric({
   value: string
 }) {
   return (
-    <div className="flex min-h-[88px] w-full flex-col items-center justify-center rounded-[1.15rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[94px] sm:px-4">
-      <p className="mb-2 break-words text-[10px] uppercase tracking-[0.22em] text-slate-400 sm:text-[11px]">
+    <div className="flex min-h-[88px] w-full flex-col items-center justify-center rounded-[1.15rem] border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-3 text-center sm:min-h-[94px] sm:px-4">
+      <p className="mb-2 break-words text-[10px] uppercase tracking-[0.22em] text-[#8a8a8a] sm:text-[11px]">
         {label}
       </p>
       <p className="break-words text-lg font-semibold tracking-tight text-white sm:text-xl">
@@ -1854,7 +1832,7 @@ function MiniMetric({
 
 function CardRankBadge({ rank }: { rank: number }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-cyan-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200">
+    <span className="inline-flex items-center rounded-full bg-[rgba(0,200,5,0.10)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#00c805]">
       #{rank}
     </span>
   )
@@ -1868,35 +1846,24 @@ function ScoreBadge({
   large?: boolean
 }) {
   const score = row.display_score
-  const palette = getScorePalette(score)
-  const tier = getScoreTierLabel(score)
-
-  const glowAnimation =
-    score >= 90
-      ? "scoreGlow 3.2s ease-in-out infinite"
-      : score >= 80
-        ? "scoreGlowCyan 3.6s ease-in-out infinite"
-        : undefined
 
   return (
     <div
       className={[
-        "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
+        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-bold",
         large ? "px-3.5 py-1.5 text-sm sm:px-4 sm:py-2" : "px-3 py-1 text-sm",
       ].join(" ")}
       style={{
-        background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
-        color: palette.text,
-        ...(glowAnimation ? { animation: glowAnimation } : {}),
+        background: "#1c1c1c",
+        color: "#ffffff",
       }}
     >
       <span>{score}</span>
       {row.ticker_score_change_7d !== null && row.ticker_score_change_7d !== undefined && (
-        <span className="text-xs opacity-80">
+        <span className="text-xs text-[#8a8a8a]">
           {row.ticker_score_change_7d >= 3 ? "↑" : row.ticker_score_change_7d <= -3 ? "↓" : ""}
         </span>
       )}
-      <span className="opacity-90">• {tier}</span>
     </div>
   )
 }
@@ -1906,7 +1873,7 @@ function FreshnessBadge({ row }: { row: UnifiedRow }) {
   if (!label) return null
 
   return (
-    <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
+    <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-2.5 py-1 text-[11px] font-semibold text-[#8a8a8a]">
       {label}
     </span>
   )
@@ -1925,9 +1892,9 @@ function PaginationControls({
 
   return (
     <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
-      <div className="text-sm text-slate-400">
-        Page <span className="font-semibold text-slate-200">{currentPage}</span> of{" "}
-        <span className="font-semibold text-slate-200">{totalPages}</span>
+      <div className="text-sm text-[#8a8a8a]">
+        Page <span className="font-semibold text-white">{currentPage}</span> of{" "}
+        <span className="font-semibold text-white">{totalPages}</span>
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2">
@@ -1935,7 +1902,7 @@ function PaginationControls({
           type="button"
           onClick={() => onPageChange(1)}
           disabled={currentPage === 1}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           First
         </button>
@@ -1944,14 +1911,14 @@ function PaginationControls({
           type="button"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           Prev
         </button>
 
         {pages.map((page, index) =>
           page === "ellipsis" ? (
-            <span key={`ellipsis-${index}`} className="px-2 text-slate-500">
+            <span key={`ellipsis-${index}`} className="px-2 text-[#666]">
               …
             </span>
           ) : (
@@ -1962,8 +1929,8 @@ function PaginationControls({
               className={[
                 "min-w-[42px] rounded-xl border px-3 py-2 text-sm font-semibold transition",
                 page === currentPage
-                  ? "border-cyan-400/30 bg-cyan-400/15 text-white"
-                  : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white",
+                  ? "border-[rgba(0,200,5,0.30)] bg-[rgba(0,200,5,0.12)] text-white"
+                  : "border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] text-[#8a8a8a] hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white",
               ].join(" ")}
             >
               {page}
@@ -1975,7 +1942,7 @@ function PaginationControls({
           type="button"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           Next
         </button>
@@ -1984,7 +1951,7 @@ function PaginationControls({
           type="button"
           onClick={() => onPageChange(totalPages)}
           disabled={currentPage === totalPages}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           Last
         </button>
@@ -2093,19 +2060,19 @@ function SignalDetailsModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/90" onClick={onClose}>
       <div
         className="fixed inset-0 flex items-stretch justify-center p-0 sm:items-center sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex h-screen min-h-screen w-screen max-w-none flex-col overflow-hidden rounded-none border-0 bg-[linear-gradient(to_bottom,_#020617,_#081122_40%,_#020617)] shadow-2xl sm:h-[92vh] sm:min-h-0 sm:w-full sm:max-w-6xl sm:rounded-[2rem] sm:border sm:border-white/10">
-          <div className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur">
+        <div className="flex h-screen min-h-screen w-screen max-w-none flex-col overflow-hidden rounded-none border-0 bg-black shadow-2xl sm:h-[92vh] sm:min-h-0 sm:w-full sm:max-w-6xl sm:rounded-[2rem] sm:border sm:border-[rgba(255,255,255,0.07)]">
+          <div className="sticky top-0 z-20 border-b border-[rgba(255,255,255,0.06)] bg-[#0a0a0a]">
             <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="inline-flex shrink-0 items-center rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+                  className="inline-flex shrink-0 items-center rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-white transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a]"
                 >
                   ← Back
                 </button>
@@ -2114,7 +2081,7 @@ function SignalDetailsModal({
                   <button
                     type="button"
                     onClick={onPrev}
-                    className="hidden shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white sm:inline-flex"
+                    className="hidden shrink-0 rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white sm:inline-flex"
                   >
                     Prev
                   </button>
@@ -2124,7 +2091,7 @@ function SignalDetailsModal({
                   <button
                     type="button"
                     onClick={onNext}
-                    className="hidden shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white sm:inline-flex"
+                    className="hidden shrink-0 rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white sm:inline-flex"
                   >
                     Next
                   </button>
@@ -2133,15 +2100,15 @@ function SignalDetailsModal({
 
               <div className="min-w-0 text-right">
                 {positionLabel ? (
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                     {positionLabel}
                   </p>
                 ) : null}
-                <p className="text-sm font-semibold text-slate-200">Guided details</p>
+                <p className="text-sm font-semibold text-white">Guided details</p>
               </div>
             </div>
 
-            <div className="border-t border-white/10 px-4 py-4 sm:px-6">
+            <div className="border-t border-[rgba(255,255,255,0.06)] px-4 py-4 sm:px-6">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-2xl font-bold sm:text-3xl">{row.ticker}</h2>
                 <ScoreBadge row={row} large />
@@ -2149,11 +2116,11 @@ function SignalDetailsModal({
               </div>
 
               {row.company_name ? (
-                <p className="mt-2 truncate text-sm text-slate-400">{row.company_name}</p>
+                <p className="mt-2 truncate text-sm text-[#8a8a8a]">{row.company_name}</p>
               ) : null}
             </div>
 
-            <div className="border-t border-white/10 px-4 py-3 lg:hidden">
+            <div className="border-t border-[rgba(255,255,255,0.06)] px-4 py-3 lg:hidden">
               <div className="mb-3 flex items-center justify-center gap-2">
                 {DETAIL_TABS.map((slide, index) => (
                   <button
@@ -2163,8 +2130,8 @@ function SignalDetailsModal({
                     className={[
                       "rounded-full px-3 py-1.5 text-xs font-semibold transition",
                       index === activeSlide
-                        ? "bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-400/30"
-                        : "bg-white/5 text-slate-400 ring-1 ring-white/10",
+                        ? "bg-[rgba(0,200,5,0.12)] text-[#00c805]"
+                        : "bg-[#1c1c1c] text-[#8a8a8a]",
                     ].join(" ")}
                   >
                     {slide}
@@ -2172,7 +2139,7 @@ function SignalDetailsModal({
                 ))}
               </div>
 
-              <p className="text-center text-xs text-slate-500">
+              <p className="text-center text-xs text-[#666]">
                 Tap a tab or swipe left and right
               </p>
             </div>
@@ -2182,17 +2149,17 @@ function SignalDetailsModal({
             <div className="hidden h-full overflow-y-auto lg:block">
               <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
                 <div>
-                  <div className="mb-5 rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                  <div className="mb-5 rounded-[1.75rem] border border-[rgba(0,200,5,0.15)] bg-[rgba(0,200,5,0.06)] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                       The simple version
                     </p>
                     <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">
                       {thesis}
                     </p>
-                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-300 sm:text-base">
+                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-[#b0b0b0] sm:text-base">
                       {confidenceBullets.map((item, i) => (
                         <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-[#00c805]" />
                           <span>{item}</span>
                         </li>
                       ))}
@@ -2200,7 +2167,7 @@ function SignalDetailsModal({
                   </div>
 
                   {row.business_description ? (
-                    <p className="mb-5 break-words text-sm leading-7 text-slate-300 sm:text-base">
+                    <p className="mb-5 break-words text-sm leading-7 text-[#b0b0b0] sm:text-base">
                       {row.business_description}
                     </p>
                   ) : null}
@@ -2210,7 +2177,7 @@ function SignalDetailsModal({
                   </div>
 
                   <div className="mb-5">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                       Quality fundamentals
                     </p>
                     {(() => {
@@ -2226,7 +2193,7 @@ function SignalDetailsModal({
                           ].map(({ emoji, label, score: s, how }) => {
                             const { label: verdict, color, barColor } = getPillarVerdict(s)
                             return (
-                              <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                              <div key={label} className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
                                 <div className="mb-2 flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <span className="text-base">{emoji}</span>
@@ -2234,10 +2201,10 @@ function SignalDetailsModal({
                                   </div>
                                   <span className={`text-sm font-bold ${color}`}>{verdict}</span>
                                 </div>
-                                <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                                <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-[#1c1c1c]">
                                   <div className="h-full rounded-full" style={{ width: `${s ?? 0}%`, backgroundColor: barColor }} />
                                 </div>
-                                <p className="text-xs text-slate-400">{how}</p>
+                                <p className="text-xs text-[#8a8a8a]">{how}</p>
                               </div>
                             )
                           })}
@@ -2246,14 +2213,14 @@ function SignalDetailsModal({
                     })()}
                   </div>
 
-                  <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                  <div className="mb-5 rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#00c805]">
                       What stands out
                     </p>
-                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-200 sm:text-base">
+                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-white sm:text-base">
                       {setupBullets.map((item, i) => (
                         <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-[#00c805]" />
                           <span>{item}</span>
                         </li>
                       ))}
@@ -2261,8 +2228,8 @@ function SignalDetailsModal({
                   </div>
                 </div>
 
-                <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                <div className="rounded-3xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4 sm:p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                     Quick snapshot
                   </p>
 
@@ -2324,8 +2291,8 @@ function SignalDetailsModal({
                     />
                   </div>
 
-                  <div className="mt-6 border-t border-white/10 pt-6">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  <div className="mt-6 border-t border-[rgba(255,255,255,0.06)] pt-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                       Price and momentum
                     </p>
 
@@ -2346,8 +2313,8 @@ function SignalDetailsModal({
                     </div>
                   </div>
 
-                  <div className="mt-6 border-t border-white/10 pt-6">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  <div className="mt-6 border-t border-[rgba(255,255,255,0.06)] pt-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                       Signals and filings
                     </p>
 
@@ -2377,8 +2344,8 @@ function SignalDetailsModal({
                     </div>
                   </div>
 
-                  <div className="mt-6 border-t border-white/10 pt-6">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  <div className="mt-6 border-t border-[rgba(255,255,255,0.06)] pt-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                       Company basics
                     </p>
 
@@ -2405,17 +2372,17 @@ function SignalDetailsModal({
               <div className="p-4 pb-28">
                 {activeSlide === 0 ? (
                   <div className="space-y-5">
-                    <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                    <div className="rounded-[1.75rem] border border-[rgba(0,200,5,0.15)] bg-[rgba(0,200,5,0.06)] p-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                         The simple version
                       </p>
                       <p className="mt-2 break-words text-xl font-semibold text-white">
                         {thesis}
                       </p>
-                      <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-300">
+                      <ul className="mt-3 space-y-2 text-sm leading-7 text-[#b0b0b0]">
                         {confidenceBullets.map((item, i) => (
                           <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-[#00c805]" />
                             <span>{item}</span>
                           </li>
                         ))}
@@ -2425,24 +2392,24 @@ function SignalDetailsModal({
                     <ScoreBar row={row} />
 
                     {row.business_description ? (
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                           Company
                         </p>
-                        <p className="break-words text-sm leading-7 text-slate-300">
+                        <p className="break-words text-sm leading-7 text-[#b0b0b0]">
                           {row.business_description}
                         </p>
                       </div>
                     ) : null}
 
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#00c805]">
                         What stands out
                       </p>
-                      <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-200">
+                      <ul className="mt-3 space-y-2 text-sm leading-7 text-white">
                         {setupBullets.map((item, i) => (
                           <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-[#00c805]" />
                             <span>{item}</span>
                           </li>
                         ))}
@@ -2461,11 +2428,11 @@ function SignalDetailsModal({
 
                 {activeSlide === 1 ? (
                   <div className="space-y-4">
-                    <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(2,6,23,0.95)_55%)] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                    <div className="rounded-[1.75rem] border border-[rgba(0,200,5,0.12)] bg-[rgba(0,200,5,0.04)] p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                         What we look for
                       </p>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                      <p className="mt-2 text-sm leading-6 text-[#b0b0b0]">
                         Every stock on this board passes a quality screen built for long-term investors. We look for companies with durable competitive advantages, healthy finances, and reasonable valuations — not short-term momentum.
                       </p>
                     </div>
@@ -2511,7 +2478,7 @@ function SignalDetailsModal({
                       ].map(({ emoji, label, score: s, what, how }) => {
                         const { label: verdict, color, barColor } = getPillarVerdict(s)
                         return (
-                          <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div key={label} className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
                             <div className="mb-2 flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <span className="text-lg">{emoji}</span>
@@ -2519,14 +2486,14 @@ function SignalDetailsModal({
                               </div>
                               <span className={`text-sm font-bold ${color}`}>{verdict}</span>
                             </div>
-                            <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
+                            <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-[#1c1c1c]">
                               <div
                                 className="h-full rounded-full transition-all duration-500"
                                 style={{ width: `${s ?? 0}%`, backgroundColor: barColor }}
                               />
                             </div>
-                            <p className="mb-1 text-xs font-semibold text-slate-300">{what}</p>
-                            <p className="text-xs leading-5 text-slate-400">{how}</p>
+                            <p className="mb-1 text-xs font-semibold text-[#b0b0b0]">{what}</p>
+                            <p className="text-xs leading-5 text-[#8a8a8a]">{how}</p>
                           </div>
                         )
                       })
@@ -2536,8 +2503,8 @@ function SignalDetailsModal({
 
                 {activeSlide === 2 ? (
                   <div className="space-y-5">
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
                         Quick snapshot
                       </p>
 
@@ -2626,13 +2593,13 @@ function SignalDetailsModal({
             </div>
           </div>
 
-          <div className="border-t border-white/10 bg-slate-950/95 p-3 backdrop-blur sm:hidden">
+          <div className="border-t border-[rgba(255,255,255,0.06)] bg-black p-3 sm:hidden">
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={onPrev}
                 disabled={!onPrev}
-                className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:opacity-40"
+                className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-3 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white disabled:opacity-40"
               >
                 ← Prev
               </button>
@@ -2640,7 +2607,7 @@ function SignalDetailsModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-3 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/30 hover:bg-cyan-400/15"
+                className="rounded-2xl border border-[rgba(0,200,5,0.25)] bg-[rgba(0,200,5,0.12)] px-3 py-3 text-sm font-semibold text-[#00c805] transition hover:border-[rgba(0,200,5,0.35)] hover:bg-[rgba(0,200,5,0.18)]"
               >
                 Back to board
               </button>
@@ -2649,7 +2616,7 @@ function SignalDetailsModal({
                 type="button"
                 onClick={onNext}
                 disabled={!onNext}
-                className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:opacity-40"
+                className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-3 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white disabled:opacity-40"
               >
                 Next →
               </button>
@@ -2673,8 +2640,8 @@ function MetricRow({
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3 text-sm">
-      <span className="min-w-0 break-words text-slate-400">{label}</span>
+    <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#141414] px-4 py-3 text-sm">
+      <span className="min-w-0 break-words text-[#8a8a8a]">{label}</span>
       <span className="max-w-[58%] truncate text-right font-semibold text-white">
         {value}
       </span>
@@ -2690,8 +2657,8 @@ function ConfirmationRow({
   value: string
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-      <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
+    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] px-4 py-3">
+      <p className="text-xs uppercase tracking-[0.16em] text-[#8a8a8a]">{label}</p>
       <p className="mt-2 break-words text-sm font-semibold text-white">{value}</p>
     </div>
   )
@@ -2700,21 +2667,21 @@ function ConfirmationRow({
 function ReasonCard({ reason }: { reason: ReasonLine }) {
   const classes =
     reason.tone === "good"
-      ? "border-emerald-400/20 bg-emerald-500/10"
+      ? "border-[rgba(0,200,5,0.15)] bg-[rgba(0,200,5,0.06)]"
       : reason.tone === "bad"
-        ? "border-rose-400/20 bg-rose-500/10"
-        : "border-white/10 bg-white/5"
+        ? "border-[rgba(255,80,0,0.15)] bg-[rgba(255,80,0,0.06)]"
+        : "border-[rgba(255,255,255,0.07)] bg-[#141414]"
 
   const textClasses =
     reason.tone === "good"
-      ? "text-emerald-300"
+      ? "text-[#00c805]"
       : reason.tone === "bad"
-        ? "text-rose-300"
-        : "text-slate-300"
+        ? "text-[#ff5000]"
+        : "text-[#b0b0b0]"
 
   return (
     <div className={`rounded-2xl border p-4 ${classes}`}>
-      <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{reason.label}</p>
+      <p className="text-xs uppercase tracking-[0.16em] text-[#8a8a8a]">{reason.label}</p>
       <p className={`mt-2 break-words text-sm font-semibold ${textClasses}`}>
         {reason.value}
       </p>
@@ -2733,9 +2700,9 @@ function MovementCard({
 
   if (formatted === "—") {
     return (
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
-        <p className="mt-2 text-sm font-semibold text-slate-300">No history yet</p>
+      <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
+        <p className="text-xs uppercase tracking-[0.16em] text-[#8a8a8a]">{label}</p>
+        <p className="mt-2 text-sm font-semibold text-[#b0b0b0]">No history yet</p>
       </div>
     )
   }
@@ -2748,17 +2715,17 @@ function MovementCard({
       className={[
         "rounded-2xl border p-4",
         isUp
-          ? "border-emerald-400/20 bg-emerald-500/10"
+          ? "border-[rgba(0,200,5,0.15)] bg-[rgba(0,200,5,0.06)]"
           : isDown
-            ? "border-rose-400/20 bg-rose-500/10"
-            : "border-white/10 bg-white/5",
+            ? "border-[rgba(255,80,0,0.15)] bg-[rgba(255,80,0,0.06)]"
+            : "border-[rgba(255,255,255,0.07)] bg-[#141414]",
       ].join(" ")}
     >
-      <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      <p className="text-xs uppercase tracking-[0.16em] text-[#8a8a8a]">{label}</p>
       <p
         className={[
           "mt-2 break-words text-sm font-semibold",
-          isUp ? "text-emerald-300" : isDown ? "text-rose-300" : "text-slate-300",
+          isUp ? "text-[#00c805]" : isDown ? "text-[#ff5000]" : "text-[#b0b0b0]",
         ].join(" ")}
       >
         {formatted}
@@ -2771,7 +2738,7 @@ function TagPill({ tag }: { tag: string }) {
   const pretty = prettifyTag(tag)
 
   return (
-    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+    <span className="rounded-full border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-1 text-xs text-[#8a8a8a]">
       {pretty}
     </span>
   )
@@ -2865,10 +2832,10 @@ function parseScreenReasonScores(reason: string | null | undefined) {
 }
 
 function getPillarVerdict(score: number | null) {
-  if (score === null) return { label: "No data", color: "text-slate-500", barColor: "#475569" }
-  if (score >= 75) return { label: "Strong", color: "text-emerald-300", barColor: "#34d399" }
+  if (score === null) return { label: "No data", color: "text-[#666]", barColor: "#444" }
+  if (score >= 75) return { label: "Strong", color: "text-[#00c805]", barColor: "#00c805" }
   if (score >= 50) return { label: "Fair", color: "text-yellow-300", barColor: "#facc15" }
-  return { label: "Weak", color: "text-rose-400", barColor: "#f87171" }
+  return { label: "Weak", color: "text-[#ff5000]", barColor: "#ff5000" }
 }
 
 function getPremiumSummaryBullets(row: UnifiedRow) {
@@ -3244,18 +3211,18 @@ function getScorePalette(score: number) {
   const s = Math.max(0, Math.min(100, score))
 
   if (s <= 69) {
-    return { start: "#facc15", end: "#eab308", text: "#1f2937" }
+    return { start: "#8a8a8a", end: "#666", text: "#fff" }
   }
 
   if (s <= 79) {
-    return { start: "#a3e635", end: "#84cc16", text: "#15210b" }
+    return { start: "#00c805", end: "#00a804", text: "#000" }
   }
 
   if (s <= 89) {
-    return { start: "#22d3ee", end: "#06b6d4", text: "#06222a" }
+    return { start: "#00c805", end: "#00e606", text: "#000" }
   }
 
-  return { start: "#22c55e", end: "#16a34a", text: "#08110a" }
+  return { start: "#00e606", end: "#00ff07", text: "#000" }
 }
 
 function getScoreTierLabel(score: number) {
