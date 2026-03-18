@@ -1246,116 +1246,172 @@ function SwipeStockCard({
 
         {/* Two-column info grid */}
         <div className="grid grid-cols-2 gap-2">
-          {/* Box 1: Insider Trades (Form 4) */}
-          <div className="rounded-xl border border-orange-400/20 bg-orange-400/[0.05] p-3">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-orange-400/80">
-              👤 Form 4 Insider
-            </p>
+          {/* Box 1: Insiders are Buying */}
+          <div className="rounded-xl border border-orange-500/25 p-3" style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.12) 0%, rgba(249,115,22,0.03) 100%)" }}>
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <span className="text-sm">👤</span>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-orange-400">
+                Insiders are Buying
+              </p>
+            </div>
             {row.has_insider_trades ? (
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-orange-200">Active</p>
+              <div className="space-y-1.5">
                 {(row.insider_buy_value ?? 0) > 0 ? (
-                  <p className="text-xs text-orange-300/70">
-                    {formatMoney(row.insider_buy_value!)} bought
+                  <p className="text-xl font-black text-orange-200">
+                    {formatMoney(row.insider_buy_value!)}
                   </p>
                 ) : (row.insider_shares ?? 0) > 0 ? (
-                  <p className="text-xs text-orange-300/70">
-                    {formatWholeNumber(row.insider_shares!)} shares
+                  <p className="text-xl font-black text-orange-200">
+                    {formatWholeNumber(row.insider_shares!)} <span className="text-sm font-bold">shares</span>
                   </p>
                 ) : (
-                  <p className="text-xs text-orange-300/60">Filing on record</p>
+                  <p className="text-lg font-black text-orange-200">Yes</p>
                 )}
-                {(row.cluster_buyers ?? 0) >= 2 && (
-                  <p className="text-xs font-semibold text-orange-200">
-                    👥 {row.cluster_buyers} insiders (cluster)
+                {(row.cluster_buyers ?? 0) >= 2 ? (
+                  <p className="text-[11px] text-orange-300/70">
+                    👥 {row.cluster_buyers} insiders buying together
                   </p>
+                ) : (
+                  <p className="text-[11px] text-orange-300/60">SEC Form 4 filed</p>
                 )}
               </div>
             ) : (
-              <p className="text-xs text-white/25">No filings</p>
+              <div>
+                <p className="text-lg font-black text-white/20">None</p>
+                <p className="text-[11px] text-white/20">No recent filings</p>
+              </div>
             )}
           </div>
 
-          {/* Box 2: Congressional Trades (PTR) */}
-          <div className="rounded-xl border border-purple-400/20 bg-purple-400/[0.05] p-3">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-purple-400/80">
-              🏛️ Congress (PTR)
-            </p>
+          {/* Box 2: Congress is Buying */}
+          <div className="rounded-xl border border-purple-500/25 p-3" style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.12) 0%, rgba(168,85,247,0.03) 100%)" }}>
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <span className="text-sm">🏛️</span>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-purple-400">
+                Congress is Buying
+              </p>
+            </div>
             {row.has_ptr_forms || row.ptr_amount ? (
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-purple-200">Active</p>
+              <div className="space-y-1.5">
                 {row.ptr_amount ? (
-                  <p className="text-xs text-purple-300/70">{row.ptr_amount} bought</p>
+                  <p className="text-xl font-black text-purple-200">{row.ptr_amount}</p>
                 ) : (
-                  <p className="text-xs text-purple-300/60">Trade disclosed</p>
+                  <p className="text-lg font-black text-purple-200">Yes</p>
                 )}
+                <p className="text-[11px] text-purple-300/60">PTR disclosure filed</p>
               </div>
             ) : (
-              <p className="text-xs text-white/25">No PTR filings</p>
+              <div>
+                <p className="text-lg font-black text-white/20">None</p>
+                <p className="text-[11px] text-white/20">No PTR trades</p>
+              </div>
             )}
           </div>
 
-          {/* Box 3: Signals */}
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">
-              ⚡ Signals
-            </p>
-            <div className="flex flex-wrap gap-1">
-              {tech.map((pill, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-0.5 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold text-white/70"
-                >
-                  {pill.emoji} {pill.text}
-                </span>
-              ))}
-              {checks.map((c, i) => (
-                <span
-                  key={`c-${i}`}
-                  className="inline-flex items-center gap-0.5 rounded-md bg-cyan-400/[0.08] px-1.5 py-0.5 text-[10px] font-medium text-cyan-300/70"
-                >
-                  &#10003; {c}
-                </span>
-              ))}
+          {/* Box 3: Relative Strength */}
+          <div className="rounded-xl border border-cyan-500/20 p-3" style={{ background: "linear-gradient(135deg, rgba(6,182,212,0.10) 0%, rgba(6,182,212,0.02) 100%)" }}>
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <span className="text-sm">💪</span>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-400">
+                Vs. Market
+              </p>
             </div>
+            {row.relative_strength_20d != null ? (() => {
+              const rs = Number(row.relative_strength_20d)
+              const label = rs >= 15 ? "Dominating" : rs >= 8 ? "Outperforming" : rs >= 3 ? "Beating" : rs >= 0 ? "In line" : "Lagging"
+              const color = rs >= 8 ? "#22d3ee" : rs >= 3 ? "#67e8f9" : rs >= 0 ? "#94a3b8" : "#f87171"
+              return (
+                <div className="space-y-1.5">
+                  <p className="text-xl font-black" style={{ color }}>
+                    +{rs.toFixed(1)}%
+                  </p>
+                  <p className="text-[11px] text-cyan-300/60">
+                    {label} the market over 20 days
+                  </p>
+                </div>
+              )
+            })() : (
+              <div>
+                <p className="text-lg font-black text-white/20">--</p>
+                <p className="text-[11px] text-white/20">No data yet</p>
+              </div>
+            )}
           </div>
 
-          {/* Box 4: Key Stats */}
-          <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-white/40">
-              📊 Stats
-            </p>
-            <div className="space-y-1">
-              {row.volume_ratio != null && row.volume_ratio > 0 && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-white/40">Volume</span>
-                  <span className="font-bold" style={{ color: row.volume_ratio >= 1.5 ? "#fbbf24" : "#e2e8f0" }}>
-                    {row.volume_ratio.toFixed(1)}x
-                  </span>
-                </div>
-              )}
-              {row.relative_strength_20d != null && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-white/40">Rel Str</span>
-                  <span className="font-bold" style={{ color: Number(row.relative_strength_20d) >= 5 ? "#22d3ee" : "#e2e8f0" }}>
-                    {Number(row.relative_strength_20d).toFixed(1)}
-                  </span>
-                </div>
-              )}
-              {row.pe_ratio != null && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-white/40">P/E</span>
-                  <span className="font-bold text-white/80">{row.pe_ratio.toFixed(1)}</span>
-                </div>
-              )}
-              {row.market_cap != null && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-white/40">Mkt Cap</span>
-                  <span className="font-bold text-white/80">{formatMarketCap(row.market_cap)}</span>
-                </div>
-              )}
+          {/* Box 4: Overbought / Oversold gauge */}
+          <div className="rounded-xl border border-white/[0.08] p-3" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)" }}>
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <span className="text-sm">📈</span>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/50">
+                Extension
+              </p>
             </div>
+            {row.extension_from_sma20_pct != null ? (() => {
+              const ext = row.extension_from_sma20_pct
+              const absExt = Math.abs(ext)
+              // Gauge: -20% to +20% range, clamped
+              const pct = Math.min(Math.max((ext + 20) / 40, 0), 1) * 100
+              const isOverBought = ext >= 12
+              const isExtended = ext >= 6
+              const isOversold = ext <= -5
+              const label = isOverBought ? "Overbought" : isExtended ? "Extended" : isOversold ? "Oversold" : "Healthy"
+              const color = isOverBought ? "#f87171" : isExtended ? "#fbbf24" : isOversold ? "#4ade80" : "#22d3ee"
+              return (
+                <div className="space-y-2">
+                  <p className="text-sm font-black" style={{ color }}>
+                    {ext >= 0 ? "+" : ""}{ext.toFixed(1)}% <span className="text-[11px] font-bold text-white/40">from avg</span>
+                  </p>
+                  {/* Gauge bar */}
+                  <div className="relative h-2 rounded-full bg-white/[0.06]">
+                    {/* Center line */}
+                    <div className="absolute top-0 left-1/2 h-full w-px bg-white/20" />
+                    {/* Marker */}
+                    <div
+                      className="absolute top-[-1px] h-[10px] w-[10px] rounded-full border-2"
+                      style={{
+                        left: `calc(${pct}% - 5px)`,
+                        backgroundColor: color,
+                        borderColor: `${color}80`,
+                        transition: "left 600ms ease-out",
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-between text-[9px] text-white/25">
+                    <span>Oversold</span>
+                    <span>Overbought</span>
+                  </div>
+                  <p className="text-[11px] font-semibold" style={{ color }}>{label}</p>
+                </div>
+              )
+            })() : (
+              <div>
+                <p className="text-lg font-black text-white/20">--</p>
+                <p className="text-[11px] text-white/20">No data yet</p>
+              </div>
+            )}
           </div>
+
+          {/* Box 5: Volume (full width) */}
+          {row.volume_ratio != null && row.volume_ratio > 0 && (
+            <div className="col-span-2 rounded-xl border border-white/[0.08] p-3" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)" }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">Volume vs Avg</p>
+                    <p className="text-lg font-black" style={{ color: row.volume_ratio >= 2 ? "#fbbf24" : row.volume_ratio >= 1.5 ? "#fcd34d" : "#e2e8f0" }}>
+                      {row.volume_ratio.toFixed(1)}x
+                    </p>
+                  </div>
+                </div>
+                {row.pe_ratio != null && (
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">P/E Ratio</p>
+                    <p className="text-lg font-black text-white/80">{row.pe_ratio.toFixed(1)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
