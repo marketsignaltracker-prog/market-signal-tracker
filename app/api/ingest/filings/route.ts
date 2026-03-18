@@ -271,8 +271,9 @@ function buildRecentRowsFromSubmission(params: {
   submission: SecSubmissionJson
   sourceRow: SourceRow
   fetchedAt: string
+  lookbackDays: number
 }) {
-  const { submission, sourceRow, fetchedAt } = params
+  const { submission, sourceRow, fetchedAt, lookbackDays } = params
   const recent = submission.filings?.recent
 
   if (!recent) {
@@ -300,7 +301,7 @@ function buildRecentRowsFromSubmission(params: {
   let olderThanCutoffSkipped = 0
 
   const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - RETENTION_DAYS)
+  cutoff.setDate(cutoff.getDate() - lookbackDays)
 
   for (let i = 0; i < maxLen; i += 1) {
     const accessionNo = String(accessionNumbers[i] || "").trim()
@@ -583,6 +584,10 @@ export async function GET(request: Request) {
       (searchParams.get("includeCounts") || "false").toLowerCase() === "true"
     const runRetention =
       (searchParams.get("runRetention") || "false").toLowerCase() === "true"
+    const lookbackDays = Math.min(
+      Math.max(1, parseInteger(searchParams.get("lookbackDays"), RETENTION_DAYS)),
+      90
+    )
 
     if (!["all", "eligible", "screened"].includes(scopeParam)) {
       return Response.json(
@@ -654,6 +659,7 @@ export async function GET(request: Request) {
           submission,
           sourceRow,
           fetchedAt,
+          lookbackDays,
         })
 
         diagnostics.unsupportedFormsSkipped += built.unsupportedFormsSkipped
