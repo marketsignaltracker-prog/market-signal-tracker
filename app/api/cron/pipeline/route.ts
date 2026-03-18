@@ -503,7 +503,7 @@ export async function GET(request: NextRequest) {
           screenResult,
           `Screening step failed at start=${screeningStart}: ${String(
             (screenResult.data as any)?.error || screenResult.status
-          )}`
+          )} | samples: ${JSON.stringify((screenResult.data as any)?.debug?.sampleErrors ?? [])}`
         )
       }
 

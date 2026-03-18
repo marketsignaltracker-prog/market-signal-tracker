@@ -1889,6 +1889,10 @@ export async function GET(request: Request) {
       transientErrorRate > MAX_TRANSIENT_ERROR_RATE
 
     if (severeYahooFailure) {
+      const sampleErrors = preparation
+        .filter((item): item is Extract<typeof item, { kind: "error" }> => item.kind === "error" && item.errorKind === "transient_yahoo_error")
+        .slice(0, 5)
+        .map((item) => ({ ticker: item.ticker, error: item.error }))
       return Response.json(
         {
           ok: false,
@@ -1899,6 +1903,7 @@ export async function GET(request: Request) {
             transientErrorRate,
             batchStart: safeStart,
             batchSize: safeBatch,
+            sampleErrors,
           },
         },
         { status: 503 }
