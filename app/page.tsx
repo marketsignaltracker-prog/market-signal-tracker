@@ -936,7 +936,7 @@ export default function Home() {
 
       {/* Disclaimer */}
       {!loading && !error && (
-        <div className="shrink-0 px-4 py-2 text-center text-[10px] leading-5 text-[#7a8ba0]">
+        <div className="shrink-0 px-4 pb-4 pt-1 text-center text-[10px] leading-4 text-[#7a8ba0]">
           Not financial advice. Always do your own research before acting on any idea shown here.
         </div>
       )}
@@ -1368,7 +1368,7 @@ function SwipeStockCard({
       </div>
 
       {/* ── CTA ── */}
-      <div className="shrink-0 px-4 pt-4 pb-3">
+      <div className="shrink-0 px-4 pt-6 pb-2">
         <button
           type="button"
           onClick={onOpen}
