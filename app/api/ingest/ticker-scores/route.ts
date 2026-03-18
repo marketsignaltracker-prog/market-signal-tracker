@@ -786,6 +786,17 @@ function buildTickerScoresCurrentRows(
       finalScore = Math.min(finalScore, 84)
     }
 
+    // Platinum conviction: 3+ cluster buyers + PTR activity + solid primary signal
+    // This combination is the highest-confidence setup — override all caps with score 100
+    if (
+      (primary.cluster_buyers ?? 0) >= 3 &&
+      (ptr?.buyTradeCount ?? 0) > 0 &&
+      primaryScore >= 60
+    ) {
+      finalScore = 100
+      scoreCapsApplied.add("platinum-conviction")
+    }
+
     if (finalScore < MIN_TICKER_APP_SCORE) continue
 
     const sourceList = Array.from(signalSources)
