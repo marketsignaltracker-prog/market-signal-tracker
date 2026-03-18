@@ -717,7 +717,7 @@ export default function Home() {
     setSectorFilter("all")
     setSourceFilter("all")
     setSelectedTicker(null)
-    setCurrentPage(1)
+    setCardIndex(0)
     setFiltersOpen(false)
   }
 
