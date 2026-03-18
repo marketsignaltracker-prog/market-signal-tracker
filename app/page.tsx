@@ -1254,43 +1254,33 @@ function SwipeStockCard({
                 Insiders Buying
               </p>
             </div>
-            {row.has_insider_trades ? (() => {
-              const hasDollar = (row.insider_buy_value ?? 0) > 0
-              const hasShares = (row.insider_shares ?? 0) > 0
+            {(() => {
               const hasCluster = (row.cluster_buyers ?? 0) >= 2
-              const reason = row.screen_reason ?? ""
+              if (hasCluster) {
+                return (
+                  <div className="space-y-1.5">
+                    <p className="text-xl font-black text-orange-200">Cluster</p>
+                    <p className="text-[11px] text-orange-300/60">
+                      👥 {row.cluster_buyers} insiders buying together
+                    </p>
+                  </div>
+                )
+              }
+              if (row.has_insider_trades) {
+                return (
+                  <div className="space-y-1.5">
+                    <p className="text-xl font-black text-orange-200">Yes</p>
+                    <p className="text-[11px] text-orange-300/60">SEC Form 4 filed</p>
+                  </div>
+                )
+              }
               return (
                 <div className="space-y-1.5">
-                  {hasDollar ? (
-                    <p className="text-xl font-black text-orange-200">
-                      {formatMoney(row.insider_buy_value!)}
-                    </p>
-                  ) : hasShares ? (
-                    <p className="text-xl font-black text-orange-200">
-                      {formatWholeNumber(row.insider_shares!)} <span className="text-sm font-bold">shares</span>
-                    </p>
-                  ) : hasCluster ? (
-                    <p className="text-xl font-black text-orange-200">
-                      {row.cluster_buyers} <span className="text-sm font-bold">buyers</span>
-                    </p>
-                  ) : (
-                    <p className="text-xl font-black text-orange-200">Active</p>
-                  )}
-                  <p className="text-[11px] text-orange-300/60">
-                    {hasCluster
-                      ? `👥 ${row.cluster_buyers} insiders buying together`
-                      : reason.includes("insider filing support")
-                        ? "Recent insider filing activity"
-                        : "SEC Form 4 on record"}
-                  </p>
+                  <p className="text-xl font-black text-white/20">No</p>
+                  <p className="text-[11px] text-white/20">No recent filings</p>
                 </div>
               )
-            })() : (
-              <div>
-                <p className="text-lg font-black text-white/20">None</p>
-                <p className="text-[11px] text-white/20">No recent filings</p>
-              </div>
-            )}
+            })()}
           </div>
 
           {/* Box 2: Congress is Buying */}
@@ -1306,13 +1296,13 @@ function SwipeStockCard({
                 {row.ptr_amount ? (
                   <p className="text-xl font-black text-purple-200">{row.ptr_amount}</p>
                 ) : (
-                  <p className="text-lg font-black text-purple-200">Yes</p>
+                  <p className="text-xl font-black text-purple-200">Yes</p>
                 )}
                 <p className="text-[11px] text-purple-300/60">PTR disclosure filed</p>
               </div>
             ) : (
-              <div>
-                <p className="text-lg font-black text-white/20">None</p>
+              <div className="space-y-1.5">
+                <p className="text-xl font-black text-white/20">No</p>
                 <p className="text-[11px] text-white/20">No PTR trades</p>
               </div>
             )}
@@ -1401,27 +1391,60 @@ function SwipeStockCard({
             )}
           </div>
 
-          {/* Box 5: Volume (full width) */}
-          {row.volume_ratio != null && row.volume_ratio > 0 && (
-            <div className="col-span-2 rounded-xl border border-white/[0.08] p-3" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)" }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">Volume vs Avg</p>
-                    <p className="text-lg font-black" style={{ color: row.volume_ratio >= 2 ? "#fbbf24" : row.volume_ratio >= 1.5 ? "#fcd34d" : "#e2e8f0" }}>
-                      {row.volume_ratio.toFixed(1)}x
+          {/* Box 5: P/E Ratio (full width) */}
+          {row.pe_ratio != null && (() => {
+            const pe = row.pe_ratio
+            const fwd = row.pe_forward
+            // Gauge from 0-60 P/E range
+            const pct = Math.min(Math.max(pe / 60, 0), 1) * 100
+            const isExpensive = pe >= 40
+            const isFair = pe >= 15 && pe < 40
+            const isCheap = pe < 15
+            const label = isExpensive ? "Expensive" : isFair ? "Fair Value" : "Cheap"
+            const color = isExpensive ? "#f87171" : isFair ? "#fbbf24" : "#4ade80"
+            return (
+              <div className="col-span-2 rounded-xl border border-white/[0.08] p-3" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)" }}>
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm">💲</span>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/50">
+                      Valuation (P/E)
                     </p>
                   </div>
-                </div>
-                {row.pe_ratio != null && (
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/40">P/E Ratio</p>
-                    <p className="text-lg font-black text-white/80">{row.pe_ratio.toFixed(1)}</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-lg font-black" style={{ color }}>{pe.toFixed(1)}</span>
+                    {fwd != null && (
+                      <span className="text-xs text-white/40">Fwd {fwd.toFixed(1)}</span>
+                    )}
                   </div>
-                )}
+                </div>
+                {/* P/E gauge bar */}
+                <div className="relative mb-1.5 h-2.5 rounded-full" style={{ background: "linear-gradient(90deg, #4ade8030, #fbbf2430, #f8717130)" }}>
+                  <div
+                    className="absolute top-[-1px] h-3 w-3 rounded-full border-2"
+                    style={{
+                      left: `calc(${pct}% - 6px)`,
+                      backgroundColor: color,
+                      borderColor: `${color}80`,
+                      transition: "left 600ms ease-out",
+                    }}
+                  />
+                </div>
+                <div className="mb-1.5 flex justify-between text-[9px] text-white/25">
+                  <span>Cheap</span>
+                  <span>Fair</span>
+                  <span>Expensive</span>
+                </div>
+                <p className="text-[11px] text-white/40">
+                  {isExpensive
+                    ? "Trading at a premium — market expects high growth"
+                    : isCheap
+                      ? "Trading below average — potential value or concern"
+                      : "Reasonable valuation relative to earnings"}
+                </p>
               </div>
-            </div>
-          )}
+            )
+          })()}
         </div>
       </div>
 
