@@ -381,9 +381,9 @@ function makeUnifiedRow(
     has_signal_data: Boolean(signal),
     data_source_label:
       candidate && signal
-        ? "Price Strength + Signals"
+        ? "Quality Score + Signals"
         : candidate
-          ? "Price Strength Only"
+          ? "Quality Score Only"
           : "Signals Only",
   }
 }
@@ -400,7 +400,7 @@ export default function Home() {
   const [priceFilter, setPriceFilter] = useState<PriceFilterType>("all")
   const [peFilter, setPeFilter] = useState<PeFilterType>("all")
   const [freshnessFilter, setFreshnessFilter] = useState<FreshnessFilterType>("all")
-  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("70")
+  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("all")
   const [sectorFilter, setSectorFilter] = useState<SectorFilterType>("all")
   const [sourceFilter, setSourceFilter] = useState<SourceFilterType>("all")
 
@@ -451,7 +451,7 @@ export default function Home() {
               last_screened_at,
               updated_at
             `)
-            .gte("candidate_score", 70)
+            .gte("candidate_score", 50)
             .order("candidate_score", { ascending: false })
             .limit(1000),
 
@@ -593,8 +593,8 @@ export default function Home() {
           if (!unified) continue
 
           const include =
-            (unified.candidate_score ?? -1) >= 70 ||
-            (unified.signal_score ?? -1) >= 70
+            (unified.candidate_score ?? -1) >= 50 ||
+            (unified.signal_score ?? -1) >= 50
 
           if (include) merged.push(unified)
         }
@@ -679,7 +679,7 @@ export default function Home() {
     if (priceFilter !== "all") count += 1
     if (peFilter !== "all") count += 1
     if (freshnessFilter !== "all") count += 1
-    if (scoreFilter !== "70") count += 1
+    if (scoreFilter !== "all") count += 1
     if (sectorFilter !== "all") count += 1
     if (sourceFilter !== "all") count += 1
     return count
@@ -713,7 +713,7 @@ export default function Home() {
     setPriceFilter("all")
     setPeFilter("all")
     setFreshnessFilter("all")
-    setScoreFilter("70")
+    setScoreFilter("all")
     setSectorFilter("all")
     setSourceFilter("all")
     setSelectedTicker(null)
@@ -2899,38 +2899,36 @@ function getFeaturedThesis(row: UnifiedRow) {
 function getSimpleCardBullets(row: UnifiedRow) {
   const points: string[] = []
 
-  if (row.primary_signal_source === "breakout" || row.breakout_20d || row.breakout_52w) {
-    points.push("The stock is pushing above recent price levels.")
-  }
+  // Parse LTCS sub-scores from screen_reason: "LTCS 72/100: moat: 75/100, financial health: 100/100..."
+  const reason = row.screen_reason ?? ""
+  const moatMatch = reason.match(/moat:\s*(\d+)\/100/)
+  const financialMatch = reason.match(/financial health:\s*(\d+)\/100/)
+  const profitabilityMatch = reason.match(/profitability:\s*(\d+)\/100/)
+  const stabilityMatch = reason.match(/stability:\s*(\d+)\/100/)
+  const valuationMatch = reason.match(/valuation:\s*(\d+)\/100/)
 
-  if ((row.volume_ratio ?? 0) >= 1.5) {
-    points.push("Trading activity is stronger than usual.")
-  }
+  const moat = moatMatch ? Number(moatMatch[1]) : null
+  const financial = financialMatch ? Number(financialMatch[1]) : null
+  const profitability = profitabilityMatch ? Number(profitabilityMatch[1]) : null
+  const stability = stabilityMatch ? Number(stabilityMatch[1]) : null
+  const valuation = valuationMatch ? Number(valuationMatch[1]) : null
 
-  if ((row.relative_strength_20d ?? 0) >= 5) {
-    points.push("It has been outperforming the market recently.")
-  }
+  if (moat !== null && moat >= 75) points.push("Strong business moat — high margins and solid revenue growth.")
+  if (financial !== null && financial >= 80) points.push("Healthy balance sheet with manageable debt.")
+  if (profitability !== null && profitability >= 75) points.push("Consistently profitable with strong free cash flow.")
+  if (stability !== null && stability >= 60) points.push("Lower volatility, suitable for long-term holding.")
+  if (valuation !== null && valuation >= 65) points.push("Trading at a reasonable valuation relative to growth.")
 
   if ((row.cluster_buyers ?? 0) >= 2) {
-    points.push("Multiple positive signals are showing up together.")
+    points.push("Multiple insiders are buying at current prices.")
   }
 
   if ((row.earnings_surprise_pct ?? 0) >= 10) {
     points.push("Recent earnings came in stronger than expected.")
   }
 
-  if ((row.revenue_growth_pct ?? 0) >= 15) {
-    points.push("The business is still growing at a healthy pace.")
-  }
-
-  if (row.guidance_flag === true) {
-    points.push("Management outlook appears supportive.")
-  }
-
   if (points.length === 0) {
-    points.push(
-      "Enough good things are happening right now to keep this stock on today’s board."
-    )
+    points.push("Passes the quality screen for long-term hold candidates.")
   }
 
   return points.slice(0, 3)
