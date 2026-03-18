@@ -16,10 +16,11 @@ type StepResult = {
 type PipelineStage =
   | "idle"
   | "companies"
-  | "screening"
-  | "eligible_universe"
   | "filings"
   | "ptrs"
+  | "seed_eligible"
+  | "screening"
+  | "eligible_universe"
   | "signals"
   | "ticker_scores"
   | "finalize_candidates"
@@ -55,8 +56,10 @@ const PIPELINE_JOB_NAME = "market_signal_pipeline"
 const DEFAULT_SCREEN_BATCH = 50
 const MAX_SCREEN_BATCH = 100
 
-const DEFAULT_FILINGS_BATCH = 15
+const DEFAULT_FILINGS_BATCH = 50
+const DEFAULT_FILINGS_LOOKBACK_DAYS = 60
 const DEFAULT_PTRS_BATCH = 100
+const DEFAULT_PTRS_LOOKBACK_DAYS = 60
 const DEFAULT_ELIGIBLE_UNIVERSE_LOOKBACK_DAYS = 30
 
 const DEFAULT_SIGNALS_LIMIT = 300
@@ -74,6 +77,7 @@ const DEFAULT_FINAL_CANDIDATES_TARGET_MIN = 12
 const DEFAULT_STEP_TIMEOUT_MS = 50_000
 const FILINGS_STEP_TIMEOUT_MS = 55_000
 const PTRS_STEP_TIMEOUT_MS = 45_000
+const SEED_ELIGIBLE_STEP_TIMEOUT_MS = 35_000
 const SCREENING_STEP_TIMEOUT_MS = 55_000
 const RUN_LOCK_WINDOW_MS = 2 * 60 * 1000
 const COMPANIES_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000
@@ -412,7 +416,7 @@ export async function GET(request: NextRequest) {
 
       if (companiesRecentlyRun) {
         state = await patchPipelineState(supabase, {
-          stage: "screening",
+          stage: "filings",
           status: "idle",
           screen_start: 0,
           screen_next_start: 0,
@@ -427,7 +431,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
           ok: true,
-          message: "Skipped companies step (ran recently). Moving to screening.",
+          message: "Skipped companies step (ran recently). Moving to filings.",
           nextStage: state.stage,
           results,
         })
@@ -452,7 +456,7 @@ export async function GET(request: NextRequest) {
       }
 
       state = await patchPipelineState(supabase, {
-        stage: "screening",
+        stage: "filings",
         status: "idle",
         screen_start: 0,
         screen_next_start: 0,
@@ -474,6 +478,44 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    if (state.stage === "seed_eligible") {
+      const seedResult = await runStep(
+        baseUrl,
+        "/api/screen/seed-from-filings",
+        SEED_ELIGIBLE_STEP_TIMEOUT_MS
+      )
+
+      results.push(seedResult)
+
+      if (!seedResult.ok) {
+        return await failPipelineForStep(
+          supabase,
+          results,
+          seedResult,
+          `Seed eligible universe step failed: ${String(
+            (seedResult.data as any)?.error || seedResult.status
+          )}`
+        )
+      }
+
+      state = await patchPipelineState(supabase, {
+        stage: "screening",
+        status: "idle",
+        screen_start: 0,
+        screen_next_start: 0,
+        screen_total: null,
+        last_run_finished_at: nowIso(),
+      })
+
+      return NextResponse.json({
+        ok: true,
+        message: `Seeded candidate universe. Advancing to screening.`,
+        nextStage: state.stage,
+        seeded: (seedResult.data as any)?.seeded ?? null,
+        results,
+      })
+    }
+
     if (state.stage === "screening") {
       const screeningStart = getStageCursor(state)
       const batchSize = clampScreenBatch(
@@ -483,7 +525,7 @@ export async function GET(request: NextRequest) {
       const screenResult = await runStep(
         baseUrl,
         withSearchParams("/api/screen/candidates", {
-          universe: "all",
+          universe: "eligible",
           start: screeningStart,
           batch: batchSize,
           onlyActive: true,
@@ -572,7 +614,7 @@ export async function GET(request: NextRequest) {
       }
 
       state = await patchPipelineState(supabase, {
-        stage: "filings",
+        stage: "signals",
         status: "idle",
         screen_start: 0,
         screen_next_start: 0,
@@ -591,49 +633,62 @@ export async function GET(request: NextRequest) {
           results,
         })
       }
-      // else: fall through to filings stage below
+      // else: fall through to signals stage below
     }
 
     if (state.stage === "filings") {
-      const filingsStart = getStageCursor(state)
+      let filingsStart = getStageCursor(state)
+      let filingsComplete = false
 
-      const filingsResult = await runStep(
-        baseUrl,
-        withSearchParams("/api/ingest/filings", {
-          scope: "eligible",
-          start: filingsStart,
-          batch: DEFAULT_FILINGS_BATCH,
-          runRetention: true,
-        }),
-        FILINGS_STEP_TIMEOUT_MS
-      )
-
-      results.push(filingsResult)
-
-      if (!filingsResult.ok) {
-        return await failPipelineForStep(
-          supabase,
-          results,
-          filingsResult,
-          `Filings step failed: ${String(
-            (filingsResult.data as any)?.error || filingsResult.status
-          )}`
+      // Chain multiple filings batches per cron tick (SEC EDGAR is free/unlimited)
+      while (Date.now() - runStartMs < CHAIN_BUDGET_MS) {
+        const filingsResult = await runStep(
+          baseUrl,
+          withSearchParams("/api/ingest/filings", {
+            scope: "all",
+            start: filingsStart,
+            batch: DEFAULT_FILINGS_BATCH,
+            lookbackDays: DEFAULT_FILINGS_LOOKBACK_DAYS,
+            runRetention: true,
+          }),
+          FILINGS_STEP_TIMEOUT_MS
         )
+
+        results.push(filingsResult)
+
+        if (!filingsResult.ok) {
+          await patchPipelineState(supabase, {
+            screen_start: filingsStart,
+            screen_next_start: filingsStart,
+            last_run_finished_at: nowIso(),
+          })
+          return await failPipelineForStep(
+            supabase,
+            results,
+            filingsResult,
+            `Filings step failed at start=${filingsStart}: ${String(
+              (filingsResult.data as any)?.error || filingsResult.status
+            )}`
+          )
+        }
+
+        const filingsData = filingsResult.data as any
+        const nextFilingsStart =
+          typeof filingsData?.nextStart === "number"
+            ? Number(filingsData.nextStart)
+            : null
+
+        filingsComplete = nextFilingsStart === null
+
+        if (filingsComplete) break
+        filingsStart = nextFilingsStart!
       }
-
-      const filingsData = filingsResult.data as any
-      const nextFilingsStart =
-        typeof filingsData?.nextStart === "number"
-          ? Number(filingsData.nextStart)
-          : null
-
-      const filingsComplete = nextFilingsStart === null
 
       state = await patchPipelineState(supabase, {
         stage: filingsComplete ? "ptrs" : "filings",
         status: "idle",
-        screen_start: filingsComplete ? 0 : nextFilingsStart,
-        screen_next_start: filingsComplete ? 0 : nextFilingsStart,
+        screen_start: filingsComplete ? 0 : filingsStart,
+        screen_next_start: filingsComplete ? 0 : filingsStart,
         filings_completed_at: filingsComplete ? nowIso() : null,
         last_run_finished_at: nowIso(),
       })
@@ -641,17 +696,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         message: filingsComplete
-          ? "Completed filings step."
-          : "Completed one filings batch.",
+          ? "Completed all filings batches."
+          : `Completed filings batches up to start=${filingsStart}.`,
         nextStage: state.stage,
-        nextFilingsStart,
+        batchesRun: results.filter((r) => r.path.includes("/api/ingest/filings")).length,
         state: {
           stage: state.stage,
           status: state.status,
           screenStart: state.screen_start,
           screenNextStart: state.screen_next_start,
-          screenBatch: state.screen_batch,
-          screenTotal: state.screen_total,
         },
         results,
       })
@@ -663,9 +716,10 @@ export async function GET(request: NextRequest) {
       const ptrsResult = await runStep(
         baseUrl,
         withSearchParams("/api/ingest/ptrs", {
-          scope: "eligible",
+          scope: "all",
           start: ptrsStart,
           batch: DEFAULT_PTRS_BATCH,
+          lookbackDays: DEFAULT_PTRS_LOOKBACK_DAYS,
           onlyActive: true,
           includeCounts: false,
           runRetention: true,
@@ -695,7 +749,7 @@ export async function GET(request: NextRequest) {
       const ptrsComplete = nextPtrsStart === null
 
       state = await patchPipelineState(supabase, {
-        stage: ptrsComplete ? "signals" : "ptrs",
+        stage: ptrsComplete ? "seed_eligible" : "ptrs",
         status: "idle",
         screen_start: ptrsComplete ? 0 : nextPtrsStart,
         screen_next_start: ptrsComplete ? 0 : nextPtrsStart,
