@@ -2283,218 +2283,116 @@ function SignalDetailsModal({
           </div>
 
           <div className="flex-1 overflow-hidden">
+            {/* Desktop: same content as mobile tabs but in two-column layout */}
             <div className="hidden h-full overflow-y-auto lg:block">
-              <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-                <div>
-                  <div className="mb-5 rounded-[1.75rem] border border-[rgba(240,165,0,0.15)] p-5" style={{ background: "linear-gradient(to bottom, rgba(240,165,0,0.10), #080d18)" }}>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f0a500]">
-                      The simple version
-                    </p>
-                    <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">
-                      {thesis}
-                    </p>
-                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-[#b0bec8] sm:text-base">
+              <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                {/* Left column: pitch + smart money + fundamentals */}
+                <div className="space-y-5">
+                  {/* Hero pitch */}
+                  <div className="rounded-2xl border border-[rgba(240,165,0,0.20)] p-5" style={{ background: "linear-gradient(160deg, rgba(240,165,0,0.14) 0%, #080d18 60%)" }}>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">Why this stock?</p>
+                    <p className="mt-2 text-2xl font-bold leading-snug text-white">{thesis}</p>
+                  </div>
+
+                  {/* Smart Money */}
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-5">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">Smart Money is Moving</p>
+                    <p className="mb-3 text-sm leading-6 text-[#7a8ba0]">When insiders or Congress buy, they may know something. Here’s what we found:</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl p-3" style={{
+                        background: row.has_insider_trades ? "linear-gradient(135deg, rgba(249,115,22,0.14) 0%, rgba(249,115,22,0.03) 100%)" : "#0d1117",
+                        border: row.has_insider_trades ? "1px solid rgba(249,115,22,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                      }}>
+                        <p className="text-xs font-bold" style={{ color: row.has_insider_trades ? "#fb923c" : "#374151" }}>Insider Trades</p>
+                        <p className="mt-1 text-lg font-black" style={{ color: row.has_insider_trades ? "#fed7aa" : "#1f2937" }}>
+                          {(row.cluster_buyers ?? 0) >= 2 ? "Cluster" : row.has_insider_trades ? "Yes" : "No"}
+                        </p>
+                        <p className="mt-1 text-[11px]" style={{ color: row.has_insider_trades ? "rgba(253,186,116,0.6)" : "#1f2937" }}>
+                          {(row.cluster_buyers ?? 0) >= 2 ? `${row.cluster_buyers} insiders buying together` : row.has_insider_trades ? "SEC Form 4 filed" : "None detected"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl p-3" style={{
+                        background: (row.has_ptr_forms || row.ptr_amount) ? "linear-gradient(135deg, rgba(168,85,247,0.14) 0%, rgba(168,85,247,0.03) 100%)" : "#0d1117",
+                        border: (row.has_ptr_forms || row.ptr_amount) ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                      }}>
+                        <p className="text-xs font-bold" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#c084fc" : "#374151" }}>Congress Trades</p>
+                        <p className="mt-1 text-lg font-black" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#e9d5ff" : "#1f2937" }}>
+                          {(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"}
+                        </p>
+                        <p className="mt-1 text-[11px]" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "rgba(196,181,253,0.6)" : "#1f2937" }}>
+                          {row.ptr_amount ? `${row.ptr_amount} disclosed` : (row.has_ptr_forms) ? "PTR filed" : "None detected"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bull Case */}
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-5">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">The Bull Case</p>
+                    <ul className="space-y-3">
                       {confidenceBullets.map((item, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-[#f0a500]" />
+                        <li key={i} className="flex items-start gap-3 text-sm leading-6 text-white/80">
+                          <span className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f0a500]/15 text-[10px] font-bold text-[#f0a500]">{i + 1}</span>
                           <span>{item}</span>
                         </li>
                       ))}
                     </ul>
                   </div>
+
+                  <ScoreBar row={row} />
 
                   {row.business_description ? (
-                    <p className="mb-5 break-words text-sm leading-7 text-[#b0b0b0] sm:text-base">
-                      {row.business_description}
-                    </p>
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-5">
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">What does this company do?</p>
+                      <p className="text-sm leading-6 text-[#b0bec8]">{row.business_description}</p>
+                    </div>
                   ) : null}
-
-                  <div className="mb-5">
-                    <ScoreBar row={row} />
-                  </div>
-
-                  <div className="mb-5">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8ba0]">
-                      Quality fundamentals
-                    </p>
-                    {(() => {
-                      const ltcs = parseScreenReasonScores(row.screen_reason)
-                      return (
-                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                          {[
-                            { emoji: "🏔", label: "Economic Moat", score: ltcs.moat, how: "Margins, revenue growth, and scale." },
-                            { emoji: "💪", label: "Balance Sheet", score: ltcs.financial, how: "Debt-to-equity, current ratio, and profitability." },
-                            { emoji: "💰", label: "Profitability & FCF", score: ltcs.profitability, how: "ROE, free cash flow, earnings growth." },
-                            { emoji: "🛡", label: "Stability", score: ltcs.stability, how: "Beta and sector risk profile." },
-                            { emoji: "📊", label: "Valuation", score: ltcs.valuation, how: "PEG ratio, forward P/E, and 200-day MA." },
-                          ].map(({ emoji, label, score: s, how }) => {
-                            const { label: verdict, color, barColor } = getPillarVerdict(s)
-                            return (
-                              <div key={label} className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4">
-                                <div className="mb-2 flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-base">{emoji}</span>
-                                    <span className="text-sm font-bold text-white">{label}</span>
-                                  </div>
-                                  <span className={`text-sm font-bold ${color}`}>{verdict}</span>
-                                </div>
-                                <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-[#1e2d45]">
-                                  <div className="h-full rounded-full" style={{ width: `${s ?? 0}%`, backgroundColor: barColor }} />
-                                </div>
-                                <p className="text-xs text-[#7a8ba0]">{how}</p>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )
-                    })()}
-                  </div>
-
-                  <div className="mb-5 rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f0a500]">
-                      What stands out
-                    </p>
-                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-white sm:text-base">
-                      {setupBullets.map((item, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-[#f0a500]" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
                 </div>
 
-                <div className="rounded-3xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8ba0]">
-                    Quick snapshot
-                  </p>
-
-                  <div className="mt-4 space-y-3">
-                    <MetricRow label="Overall score" value={`${row.display_score}`} />
-                    <MetricRow
-                      label="Price strength score"
-                      value={formatSimpleNumber(row.candidate_score)}
-                    />
-                    <MetricRow
-                      label="Signals score"
-                      value={formatSimpleNumber(row.signal_score)}
-                    />
-                    <MetricRow label="Why it’s here" value={row.data_source_label} />
-                    <MetricRow
-                      label="Confidence tier"
-                      value={getConfidenceTierLabel(row.display_score)}
-                    />
-                    <MetricRow label="Price" value={formatMoney(row.price)} />
-                    <MetricRow
-                      label="Main reason"
-                      value={row.primary_title || "Price strength"}
-                    />
-                    <MetricRow
-                      label="Signal source"
-                      value={formatSource(row.primary_signal_source)}
-                    />
-                    <MetricRow
-                      label="Signal category"
-                      value={getSignalCategory(row)}
-                    />
-                    <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
-                    <MetricRow
-                      label="Filed at"
-                      value={row.filed_at ? formatDateLong(row.filed_at) : null}
-                    />
-                    {row.ptr_amount ? (
-                      <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-200/70">
-                        Note: Politicians have up to 45 days to report trades. The actual trade may have occurred before the date shown.
-                      </div>
-                    ) : null}
-                    <MetricRow
-                      label="Last screened"
-                      value={
-                        row.last_screened_at ? formatDateLong(row.last_screened_at) : null
-                      }
-                    />
-                    <MetricRow
-                      label="Signals stacked"
-                      value={formatWholeNumber(row.stacked_signal_count)}
-                    />
-                    <MetricRow
-                      label="1D score change"
-                      value={formatScoreChange(row.ticker_score_change_1d)}
-                    />
-                    <MetricRow
-                      label="7D score change"
-                      value={formatScoreChange(row.ticker_score_change_7d)}
-                    />
-                  </div>
-
-                  <div className="mt-6 border-t border-[rgba(255,255,255,0.07)] pt-6">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8ba0]">
-                      Price and momentum
-                    </p>
-
-                    <div className="mt-4 space-y-3">
-                      <MetricRow label="1D move" value={formatPercent(row.one_day_return)} />
-                      <MetricRow label="5D move" value={formatPercent(row.price_return_5d)} />
-                      <MetricRow label="10D move" value={formatPercent(row.return_10d)} />
-                      <MetricRow label="20D move" value={formatPercent(row.price_return_20d)} />
-                      <MetricRow label="Volume ratio" value={formatRatio(row.volume_ratio)} />
-                      <MetricRow label="Vs market 20D" value={formatPercent(row.relative_strength_20d)} />
-                      <MetricRow label="Breakout clearance" value={formatPercent(row.breakout_clearance_pct)} />
-                      <MetricRow label="From 20D average" value={formatPercent(row.extension_from_sma20_pct)} />
-                      <MetricRow label="Close in range" value={formatSimpleNumber(row.close_in_day_range)} />
-                      <MetricRow label="Above 50DMA" value={formatBooleanLabel(row.above_50dma)} />
-                      <MetricRow label="Above 20D avg" value={formatBooleanLabel(row.above_sma_20)} />
-                      <MetricRow label="Trend aligned" value={formatBooleanLabel(row.trend_aligned)} />
-                      <MetricRow label="Price confirmed" value={formatBooleanLabel(row.price_confirmed)} />
+                {/* Right column: numbers */}
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">Price & Performance</p>
+                    <div className="space-y-2">
+                      <MetricRow label="Current price" value={formatMoney(row.price)} />
+                      <MetricRow label="Today’s move" value={formatPercent(row.one_day_return)} />
+                      <MetricRow label="Last 5 days" value={formatPercent(row.price_return_5d)} />
+                      <MetricRow label="Last 10 days" value={formatPercent(row.return_10d)} />
+                      <MetricRow label="Last 20 days" value={formatPercent(row.price_return_20d)} />
+                      <MetricRow label="Trading volume" value={row.volume_ratio != null ? `${row.volume_ratio.toFixed(1)}x average` : null} />
+                      <MetricRow label="Vs. the market" value={row.relative_strength_20d != null ? `${Number(row.relative_strength_20d) >= 0 ? "+" : ""}${Number(row.relative_strength_20d).toFixed(1)}% over 20d` : null} />
                     </div>
                   </div>
 
-                  <div className="mt-6 border-t border-[rgba(255,255,255,0.07)] pt-6">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8ba0]">
-                      Signals and filings
-                    </p>
-
-                    <div className="mt-4 space-y-3">
-                      <MetricRow
-                        label="Source forms"
-                        value={row.source_forms.length ? row.source_forms.join(", ") : null}
-                      />
-                      <MetricRow
-                        label="Accession nos"
-                        value={
-                          row.accession_nos.length
-                            ? row.accession_nos.slice(0, 3).join(", ")
-                            : null
-                        }
-                      />
-                      <MetricRow label="Insider action" value={row.insider_action || null} />
-                      <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
-                      <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
-                      <MetricRow label="Insider value" value={formatInsiderValue(row)} />
-                      <MetricRow label="PTR amount" value={row.ptr_amount} />
-                      <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
-                      <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
-                      <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
-                      <MetricRow label="Revenue growth" value={formatPercent(row.revenue_growth_pct)} />
-                      <MetricRow label="Guidance support" value={formatBooleanLabel(row.guidance_flag)} />
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-400">Insider & Congress</p>
+                    <div className="space-y-2">
+                      <MetricRow label="Insider buying?" value={row.has_insider_trades ? "Yes" : "No"} />
+                      <MetricRow label="What they did" value={row.insider_action || null} />
+                      <MetricRow label="Total invested" value={formatInsiderValue(row)} />
+                      <MetricRow label="Cluster buy?" value={(row.cluster_buyers ?? 0) >= 2 ? `Yes — ${row.cluster_buyers} insiders` : "No"} />
+                      <MetricRow label="Congress buying?" value={(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"} />
+                      <MetricRow label="Congress amount" value={row.ptr_amount} />
                     </div>
                   </div>
 
-                  <div className="mt-6 border-t border-[rgba(255,255,255,0.07)] pt-6">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8ba0]">
-                      Company basics
-                    </p>
-
-                    <div className="mt-4 space-y-3">
-                      <MetricRow
-                        label="Valuation"
-                        value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)}
-                      />
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">Valuation</p>
+                    <div className="space-y-2">
+                      <MetricRow label="P/E ratio" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
                       <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
                       <MetricRow label="Sector" value={row.sector || null} />
                       <MetricRow label="Industry" value={row.industry || null} />
-                      <MetricRow label="Catalyst count" value={formatWholeNumber(row.catalyst_count)} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">Score Breakdown</p>
+                    <div className="space-y-2">
+                      <MetricRow label="Overall score" value={`${row.display_score}/100`} />
+                      <MetricRow label="Quality score" value={formatSimpleNumber(row.candidate_score)} />
+                      <MetricRow label="Signal score" value={formatSimpleNumber(row.signal_score)} />
+                      <MetricRow label="Data freshness" value={getFreshnessLabel(row)} />
                     </div>
                   </div>
                 </div>
@@ -2507,19 +2405,98 @@ function SignalDetailsModal({
               onTouchEnd={handleTouchEnd}
             >
               <div className="p-4 pb-28">
+                {/* ═══ TAB 0: OVERVIEW ═══ */}
                 {activeSlide === 0 ? (
-                  <div className="space-y-5">
-                    <div className="rounded-[1.75rem] border border-[rgba(240,165,0,0.15)] p-5" style={{ background: "linear-gradient(to bottom, rgba(240,165,0,0.10), #080d18)" }}>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f0a500]">
-                        The simple version
+                  <div className="space-y-4">
+                    {/* Hero pitch */}
+                    <div className="rounded-2xl border border-[rgba(240,165,0,0.20)] p-5" style={{ background: "linear-gradient(160deg, rgba(240,165,0,0.14) 0%, #080d18 60%)" }}>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
+                        Why this stock?
                       </p>
-                      <p className="mt-2 break-words text-xl font-semibold text-white">
+                      <p className="mt-2 text-xl font-bold leading-snug text-white">
                         {thesis}
                       </p>
-                      <ul className="mt-3 space-y-2 text-sm leading-7 text-[#b0bec8]">
+                    </div>
+
+                    {/* Smart Money section */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
+                        Smart Money is Moving
+                      </p>
+                      <p className="mb-3 text-xs leading-5 text-[#7a8ba0]">
+                        When company insiders or members of Congress buy a stock, they may know something the public doesn’t. Here’s what we found:
+                      </p>
+                      <div className="space-y-2">
+                        {/* Insider Trades */}
+                        <div className="rounded-xl p-3" style={{
+                          background: row.has_insider_trades ? "linear-gradient(135deg, rgba(249,115,22,0.14) 0%, rgba(249,115,22,0.03) 100%)" : "#0d1117",
+                          border: row.has_insider_trades ? "1px solid rgba(249,115,22,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                        }}>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-bold" style={{ color: row.has_insider_trades ? "#fb923c" : "#374151" }}>
+                              Insider Trades (Form 4)
+                            </p>
+                            <span className="text-sm font-black" style={{ color: row.has_insider_trades ? "#fed7aa" : "#1f2937" }}>
+                              {(row.cluster_buyers ?? 0) >= 2 ? "Cluster" : row.has_insider_trades ? "Yes" : "No"}
+                            </span>
+                          </div>
+                          {row.has_insider_trades ? (
+                            <p className="mt-1 text-[11px] text-orange-300/60">
+                              {(row.cluster_buyers ?? 0) >= 2
+                                ? `${row.cluster_buyers} insiders bought around the same time — that’s unusual and often a bullish sign.`
+                                : "A company insider recently filed a purchase with the SEC — they’re putting their own money in."}
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-[11px] text-[#374151]">No recent insider purchases detected.</p>
+                          )}
+                          {(row.insider_buy_value ?? 0) > 0 && (
+                            <p className="mt-1 text-xs font-bold text-orange-200">Value: {formatMoney(row.insider_buy_value!)}</p>
+                          )}
+                          {(row.insider_shares ?? 0) > 0 && (
+                            <p className="mt-1 text-xs font-bold text-orange-200">Shares: {formatWholeNumber(row.insider_shares!)}</p>
+                          )}
+                        </div>
+
+                        {/* Congressional Trades */}
+                        <div className="rounded-xl p-3" style={{
+                          background: (row.has_ptr_forms || row.ptr_amount) ? "linear-gradient(135deg, rgba(168,85,247,0.14) 0%, rgba(168,85,247,0.03) 100%)" : "#0d1117",
+                          border: (row.has_ptr_forms || row.ptr_amount) ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                        }}>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-bold" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#c084fc" : "#374151" }}>
+                              Congress Trades (PTR)
+                            </p>
+                            <span className="text-sm font-black" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#e9d5ff" : "#1f2937" }}>
+                              {(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"}
+                            </span>
+                          </div>
+                          {(row.has_ptr_forms || row.ptr_amount) ? (
+                            <>
+                              <p className="mt-1 text-[11px] text-purple-300/60">
+                                A member of Congress disclosed a purchase. They must report within 45 days, so the actual buy may have been earlier.
+                              </p>
+                              {row.ptr_amount && (
+                                <p className="mt-1 text-xs font-bold text-purple-200">Amount: {row.ptr_amount}</p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="mt-1 text-[11px] text-[#374151]">No congressional trades found for this stock.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Why you should care bullets */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
+                        The Bull Case
+                      </p>
+                      <ul className="space-y-3">
                         {confidenceBullets.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-[#f0a500]" />
+                          <li key={i} className="flex items-start gap-3 text-sm leading-6 text-white/80">
+                            <span className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f0a500]/15 text-[10px] font-bold text-[#f0a500]">
+                              {i + 1}
+                            </span>
                             <span>{item}</span>
                           </li>
                         ))}
@@ -2529,108 +2506,103 @@ function SignalDetailsModal({
                     <ScoreBar row={row} />
 
                     {row.business_description ? (
-                      <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8ba0]">
-                          Company
+                      <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">
+                          What does this company do?
                         </p>
-                        <p className="break-words text-sm leading-7 text-[#b0bec8]">
+                        <p className="text-sm leading-6 text-[#b0bec8]">
                           {row.business_description}
                         </p>
                       </div>
                     ) : null}
-
-                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f0a500]">
-                        What stands out
-                      </p>
-                      <ul className="mt-3 space-y-2 text-sm leading-7 text-white">
-                        {setupBullets.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-[#f0a500]" />
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-
-                      {!!tags.length && (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {tags.slice(0, 10).map((tag) => (
-                            <TagPill key={tag} tag={tag} />
-                          ))}
-                        </div>
-                      )}
-                    </div>
                   </div>
                 ) : null}
 
+                {/* ═══ TAB 1: FUNDAMENTALS ═══ */}
                 {activeSlide === 1 ? (
-                  <div className="space-y-4">
-                    <div className="rounded-[1.75rem] border border-[rgba(240,165,0,0.15)] p-4" style={{ background: "linear-gradient(to bottom, rgba(240,165,0,0.08), #080d18)" }}>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f0a500]">
-                        What we look for
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-[rgba(240,165,0,0.15)] p-4" style={{ background: "linear-gradient(160deg, rgba(240,165,0,0.08) 0%, #080d18 60%)" }}>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
+                        Quality Report Card
                       </p>
                       <p className="mt-2 text-sm leading-6 text-[#b0bec8]">
-                        Every stock on this board passes a quality screen built for long-term investors. We look for companies with durable competitive advantages, healthy finances, and reasonable valuations — not short-term momentum.
+                        Think of these like grades for a stock. We check six things that separate great long-term investments from risky bets.
                       </p>
                     </div>
 
                     {(() => {
                       const ltcs = parseScreenReasonScores(row.screen_reason)
-                      return [
+                      const rs = row.relative_strength_20d != null ? Number(row.relative_strength_20d) : null
+
+                      const tiles = [
                         {
-                          emoji: "🏔",
-                          label: "Economic Moat",
-                          score: ltcs.moat,
-                          what: "Does the company have a lasting competitive edge?",
-                          how: "Checks gross margin >40%, operating margin >12%, revenue growth >5%, and market cap >$10B. A wide moat means rivals can't easily steal customers.",
+                          label: "Profit Growth", score: ltcs.profitability, color: "#22d3ee", borderColor: "rgba(34,211,238,0.20)",
+                          icon: "M2 9L4.5 4L7 6.5L10 2M10 2H7.5M10 2V4.5",
+                          verdict: ltcs.profitability == null ? "No data" : ltcs.profitability >= 75 ? "Strong" : ltcs.profitability >= 40 ? "Growing" : "Weak",
+                          explain: "Is the company making more money each year? We look for earnings growth of at least 25% and return on equity above 15%. Think of it like a business getting a bigger raise every quarter.",
                         },
                         {
-                          emoji: "💪",
-                          label: "Balance Sheet Health",
-                          score: ltcs.financial,
-                          what: "Is the company's debt manageable?",
-                          how: "Looks at debt-to-equity ratio ≤2×, current ratio, and profit margin. Low debt gives flexibility in downturns and avoids interest-rate risk.",
+                          label: "Money In", score: ltcs.profitability, color: "#34d399", borderColor: "rgba(52,211,153,0.20)",
+                          icon: "M6 1V11M3 3.5H7.5C8.88 3.5 10 4.34 10 5.25S8.88 7 7.5 7H3M3 7H8C9.38 7 10.5 7.84 10.5 8.75S9.38 10.5 8 10.5H3",
+                          verdict: ltcs.profitability == null ? "No data" : ltcs.profitability >= 65 ? "Positive" : ltcs.profitability >= 35 ? "Mixed" : "Negative",
+                          explain: "Does the company generate real cash — not just profit on paper? Free cash flow means money left over after paying all the bills. Companies with strong cash flow can grow, pay dividends, or buy back shares without borrowing.",
                         },
                         {
-                          emoji: "💰",
-                          label: "Profitability & FCF",
-                          score: ltcs.profitability,
-                          what: "Is the business generating real cash?",
-                          how: "Measures ROE >15%, positive free cash flow, and earnings growth >5%. Strong FCF means the company can fund growth, dividends, or buybacks without borrowing.",
+                          label: "Financial Health", score: ltcs.financial, color: "#a78bfa", borderColor: "rgba(167,139,250,0.20)",
+                          icon: "M1.5 10V4L6 1.5L10.5 4V10M4 10V7H8V10",
+                          verdict: ltcs.financial == null ? "No data" : ltcs.financial >= 70 ? "Low Debt" : ltcs.financial >= 40 ? "Moderate" : "High Debt",
+                          explain: "Can this company pay its bills without borrowing more? We check how much debt they have compared to what they own. Low debt means they can survive tough times and won’t get crushed by rising interest rates.",
                         },
                         {
-                          emoji: "🛡",
-                          label: "Stability",
-                          score: ltcs.stability,
-                          what: "How volatile is this stock?",
-                          how: "Uses beta — a measure of price swings vs. the market. Beta below 1.0 means the stock moves less than the index, which is better for long-term holders.",
+                          label: "Edge", score: ltcs.moat, color: "#f59e0b", borderColor: "rgba(245,158,11,0.20)",
+                          icon: "M1 8L3 6L5 8L7 4L9 7L11 5M1 10H11",
+                          verdict: ltcs.moat == null ? "No data" : ltcs.moat >= 75 ? "Wide" : ltcs.moat >= 50 ? "Narrow" : "None",
+                          explain: "How hard is it for competitors to steal this company’s customers? A ‘wide moat’ means strong brand, patents, or network effects that protect profits. Think Apple, Google, or Costco — they’re very hard to beat.",
                         },
                         {
-                          emoji: "📊",
-                          label: "Valuation",
-                          score: ltcs.valuation,
-                          what: "Is the price reasonable?",
-                          how: "Checks PEG ratio <2 (growth-adjusted P/E), forward P/E <30, and whether price sits below the 200-day moving average. Great companies at fair prices outperform over time.",
+                          label: "Fair Price", score: ltcs.valuation, color: "#fb923c", borderColor: "rgba(251,146,60,0.20)",
+                          icon: "M2 2V10H10M4 8V6M6.5 8V4M9 8V5",
+                          verdict: ltcs.valuation == null ? "No data" : ltcs.valuation >= 70 ? "Attractive" : ltcs.valuation >= 35 ? "Fair" : "Expensive",
+                          explain: "Is the stock priced right for how fast the company is growing? We use the PEG ratio — ideally under 1.5. Even the best company is a bad investment if you overpay. We want quality at a reasonable price.",
                         },
-                      ].map(({ emoji, label, score: s, what, how }) => {
-                        const { label: verdict, color, barColor } = getPillarVerdict(s)
+                        {
+                          label: "Momentum", score: rs != null ? Math.min(Math.round(rs * 4), 100) : null, color: "#ec4899", borderColor: "rgba(236,72,153,0.20)",
+                          icon: "M6 1L8.5 4H7V7.5H5V4H3.5L6 1M2 9.5H10",
+                          verdict: rs == null ? "No data" : rs >= 15 ? "Near Highs" : rs >= 8 ? "Strong" : rs >= 0 ? "Neutral" : "Weak",
+                          explain: rs != null
+                            ? `This stock is ${rs >= 0 ? "+" : ""}${rs.toFixed(1)}% ahead of the market over the last 20 days. Stocks near their 12-month highs tend to keep going — winners keep winning.`
+                            : "We check if the stock is outperforming most others. Stocks near their highs tend to have positive momentum — winners keep winning.",
+                        },
+                      ]
+
+                      return tiles.map(({ label, score: s, color, borderColor, icon, verdict, explain }) => {
+                        const active = s != null && s > 0
+                        const pct = s != null ? Math.min(s, 100) : 0
                         return (
-                          <div key={label} className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4">
+                          <div key={label} className="rounded-2xl p-4" style={{
+                            background: active ? `linear-gradient(160deg, ${color}14 0%, #111827 50%)` : "#111827",
+                            border: `1px solid ${active ? borderColor : "rgba(255,255,255,0.05)"}`,
+                          }}>
                             <div className="mb-2 flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="text-lg">{emoji}</span>
-                                <span className="text-sm font-bold text-white">{label}</span>
+                                <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
+                                  <path d={icon} stroke={active ? color : "#374151"} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                <span className="text-sm font-bold" style={{ color: active ? "#f0f0f0" : "#374151" }}>{label}</span>
                               </div>
-                              <span className={`text-sm font-bold ${color}`}>{verdict}</span>
+                              <div className="flex items-center gap-2">
+                                {s != null && <span className="text-xs font-black" style={{ color }}>{s}/100</span>}
+                                <span className="text-xs font-bold" style={{ color: active ? color : "#374151" }}>{verdict}</span>
+                              </div>
                             </div>
-                            <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-[#1e2d45]">
-                              <div
-                                className="h-full rounded-full transition-all duration-500"
-                                style={{ width: `${s ?? 0}%`, backgroundColor: barColor }}
-                              />
+                            <div className="mb-3 h-[5px] overflow-hidden rounded-full bg-[#1a2540]">
+                              <div className="h-full rounded-full transition-all duration-700" style={{
+                                width: `${pct}%`,
+                                background: `linear-gradient(90deg, ${color}90, ${color})`,
+                                boxShadow: `0 0 8px ${color}40`,
+                              }} />
                             </div>
-                            <p className="mb-1 text-xs font-semibold text-[#b0bec8]">{what}</p>
-                            <p className="text-xs leading-5 text-[#7a8ba0]">{how}</p>
+                            <p className="text-xs leading-5 text-[#8a99ab]">{explain}</p>
                           </div>
                         )
                       })
@@ -2638,90 +2610,74 @@ function SignalDetailsModal({
                   </div>
                 ) : null}
 
+                {/* ═══ TAB 2: NUMBERS ═══ */}
                 {activeSlide === 2 ? (
-                  <div className="space-y-5">
-                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8ba0]">
-                        Quick snapshot
+                  <div className="space-y-4">
+                    {/* Price & Returns */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
+                        Price & Performance
                       </p>
+                      <div className="space-y-2">
+                        <MetricRow label="Current price" value={formatMoney(row.price)} />
+                        <MetricRow label="Today’s move" value={formatPercent(row.one_day_return)} />
+                        <MetricRow label="Last 5 days" value={formatPercent(row.price_return_5d)} />
+                        <MetricRow label="Last 10 days" value={formatPercent(row.return_10d)} />
+                        <MetricRow label="Last 20 days" value={formatPercent(row.price_return_20d)} />
+                        <MetricRow label="Trading volume" value={row.volume_ratio != null ? `${row.volume_ratio.toFixed(1)}x average` : null} />
+                        <MetricRow label="Vs. the market" value={row.relative_strength_20d != null ? `${Number(row.relative_strength_20d) >= 0 ? "+" : ""}${Number(row.relative_strength_20d).toFixed(1)}% over 20 days` : null} />
+                      </div>
+                    </div>
 
-                      <div className="mt-4 space-y-3">
-                        <MetricRow label="Overall score" value={`${row.display_score}`} />
-                        <MetricRow
-                          label="Quality score"
-                          value={formatSimpleNumber(row.candidate_score)}
-                        />
-                        <MetricRow
-                          label="Signals score"
-                          value={formatSimpleNumber(row.signal_score)}
-                        />
-                        <MetricRow label="Why it’s here" value={row.data_source_label} />
-                        <MetricRow
-                          label="Confidence tier"
-                          value={getConfidenceTierLabel(row.display_score)}
-                        />
-                        <MetricRow label="Price" value={formatMoney(row.price)} />
-                        <MetricRow
-                          label="Main reason"
-                          value={row.primary_title || "Quality screen"}
-                        />
-                        <MetricRow
-                          label="Signal source"
-                          value={formatSource(row.primary_signal_source)}
-                        />
-                        <MetricRow
-                          label="Signal category"
-                          value={getSignalCategory(row)}
-                        />
-                        <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
-                        <MetricRow
-                          label="Filed at"
-                          value={row.filed_at ? formatDateLong(row.filed_at) : null}
-                        />
+                    {/* Insider & Congress */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-400">
+                        Insider & Congress Trades
+                      </p>
+                      <div className="space-y-2">
+                        <MetricRow label="Insider buying?" value={row.has_insider_trades ? "Yes" : "No"} />
+                        <MetricRow label="What they did" value={row.insider_action || null} />
+                        <MetricRow label="Shares bought" value={formatShares(row.insider_shares)} />
+                        <MetricRow label="Price they paid" value={formatMoney(row.insider_avg_price)} />
+                        <MetricRow label="Total invested" value={formatInsiderValue(row)} />
+                        <MetricRow label="Cluster buy?" value={(row.cluster_buyers ?? 0) >= 2 ? `Yes — ${row.cluster_buyers} insiders` : "No"} />
+                        <MetricRow label="Congress buying?" value={(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"} />
+                        <MetricRow label="Congress amount" value={row.ptr_amount} />
                         {row.ptr_amount ? (
-                          <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-200/70">
-                            Note: Politicians have up to 45 days to report trades. The actual trade may have occurred before the date shown.
+                          <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-[11px] leading-5 text-amber-200/60">
+                            Congress members have up to 45 days to report. The trade may have happened earlier.
                           </div>
                         ) : null}
-                        <MetricRow
-                          label="Last screened"
-                          value={
-                            row.last_screened_at ? formatDateLong(row.last_screened_at) : null
-                          }
-                        />
-                        <MetricRow
-                          label="Signals stacked"
-                          value={formatWholeNumber(row.stacked_signal_count)}
-                        />
-                        <MetricRow
-                          label="1D score change"
-                          value={formatScoreChange(row.ticker_score_change_1d)}
-                        />
-                        <MetricRow
-                          label="7D score change"
-                          value={formatScoreChange(row.ticker_score_change_7d)}
-                        />
-                        <MetricRow label="1D move" value={formatPercent(row.one_day_return)} />
-                        <MetricRow label="5D move" value={formatPercent(row.price_return_5d)} />
-                        <MetricRow label="10D move" value={formatPercent(row.return_10d)} />
-                        <MetricRow label="20D move" value={formatPercent(row.price_return_20d)} />
-                        <MetricRow label="Volume ratio" value={formatRatio(row.volume_ratio)} />
-                        <MetricRow label="Vs market 20D" value={formatPercent(row.relative_strength_20d)} />
-                        <MetricRow label="Valuation" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
+                      </div>
+                    </div>
+
+                    {/* Valuation */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">
+                        Valuation & Fundamentals
+                      </p>
+                      <div className="space-y-2">
+                        <MetricRow label="P/E ratio" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
                         <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
                         <MetricRow label="Sector" value={row.sector || null} />
                         <MetricRow label="Industry" value={row.industry || null} />
-                        <MetricRow label="Source forms" value={row.source_forms.length ? row.source_forms.join(", ") : null} />
-                        <MetricRow label="Insider action" value={row.insider_action || null} />
-                        <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
-                        <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
-                        <MetricRow label="Insider value" value={formatInsiderValue(row)} />
-                        <MetricRow label="PTR amount" value={row.ptr_amount} />
-                        <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
-                        <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
                         <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
                         <MetricRow label="Revenue growth" value={formatPercent(row.revenue_growth_pct)} />
-                        <MetricRow label="Guidance support" value={formatBooleanLabel(row.guidance_flag)} />
+                      </div>
+                    </div>
+
+                    {/* Scores & Meta */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">
+                        Score Breakdown
+                      </p>
+                      <div className="space-y-2">
+                        <MetricRow label="Overall score" value={`${row.display_score}/100`} />
+                        <MetricRow label="Quality score" value={formatSimpleNumber(row.candidate_score)} />
+                        <MetricRow label="Signal score" value={formatSimpleNumber(row.signal_score)} />
+                        <MetricRow label="How it qualified" value={row.data_source_label} />
+                        <MetricRow label="Data freshness" value={getFreshnessLabel(row)} />
+                        <MetricRow label="Last updated" value={row.last_screened_at ? formatDateLong(row.last_screened_at) : null} />
                       </div>
                     </div>
                   </div>
