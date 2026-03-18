@@ -1293,12 +1293,10 @@ function SwipeStockCard({
             </div>
             {row.has_ptr_forms || row.ptr_amount ? (
               <div className="space-y-1.5">
-                {row.ptr_amount ? (
-                  <p className="text-xl font-black text-purple-200">{row.ptr_amount}</p>
-                ) : (
-                  <p className="text-xl font-black text-purple-200">Yes</p>
-                )}
-                <p className="text-[11px] text-purple-300/60">PTR disclosure filed</p>
+                <p className="text-xl font-black text-purple-200">Yes</p>
+                <p className="text-[11px] text-purple-300/60">
+                  {row.ptr_amount ? `${row.ptr_amount} disclosed` : "PTR disclosure filed"}
+                </p>
               </div>
             ) : (
               <div className="space-y-1.5">
