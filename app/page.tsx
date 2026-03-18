@@ -34,6 +34,14 @@ type CandidateUniverseRow = {
   screen_reason?: string | null
   last_screened_at?: string | null
   updated_at?: string | null
+  pe_ratio?: number | null
+  pe_forward?: number | null
+  sector?: string | null
+  industry?: string | null
+  has_insider_trades?: boolean | null
+  has_ptr_forms?: boolean | null
+  has_clusters?: boolean | null
+  eligibility_reason?: string | null
 }
 
 type TickerScoreRow = {
@@ -182,6 +190,10 @@ type UnifiedRow = {
 
   has_candidate_data: boolean
   has_signal_data: boolean
+  has_insider_trades: boolean
+  has_ptr_forms: boolean
+  has_clusters: boolean
+  eligibility_reason: string | null
   data_source_label:
     | "Price Strength + Signals"
     | "Price Strength Only"
@@ -296,10 +308,10 @@ function makeUnifiedRow(
     last_screened_at: candidate?.last_screened_at ?? null,
 
     market_cap: firstNumberOrNull(signal?.market_cap, candidate?.market_cap, null),
-    sector: signal?.sector ?? null,
-    industry: signal?.industry ?? null,
-    pe_ratio: signal?.pe_ratio ?? null,
-    pe_forward: signal?.pe_forward ?? null,
+    sector: signal?.sector ?? candidate?.sector ?? null,
+    industry: signal?.industry ?? candidate?.industry ?? null,
+    pe_ratio: signal?.pe_ratio ?? candidate?.pe_ratio ?? null,
+    pe_forward: signal?.pe_forward ?? candidate?.pe_forward ?? null,
     pe_type: signal?.pe_type ?? null,
 
     one_day_return: candidate?.one_day_return ?? null,
@@ -379,6 +391,10 @@ function makeUnifiedRow(
 
     has_candidate_data: Boolean(candidate),
     has_signal_data: Boolean(signal),
+    has_insider_trades: candidate?.has_insider_trades === true,
+    has_ptr_forms: candidate?.has_ptr_forms === true,
+    has_clusters: candidate?.has_clusters === true,
+    eligibility_reason: candidate?.eligibility_reason ?? null,
     data_source_label:
       candidate && signal
         ? "Price Strength + Signals"
@@ -449,7 +465,15 @@ export default function Home() {
               included,
               screen_reason,
               last_screened_at,
-              updated_at
+              updated_at,
+              pe_ratio,
+              pe_forward,
+              sector,
+              industry,
+              has_insider_trades,
+              has_ptr_forms,
+              has_clusters,
+              eligibility_reason
             `)
             .gte("candidate_score", 70)
             .order("candidate_score", { ascending: false })
@@ -1065,23 +1089,40 @@ function SwipeDeck({
   )
 }
 
-function CardMetric({
-  label,
-  value,
-  color,
-}: {
-  label: string
-  value: string
-  color?: string
-}) {
+function ScoreRing({ score, size = 56 }: { score: number; size?: number }) {
+  const palette = getScorePalette(score)
+  const r = (size - 6) / 2
+  const circ = 2 * Math.PI * r
+  const offset = circ - (score / 100) * circ
   return (
-    <div className="flex items-center justify-between py-[3px]">
-      <span className="text-[11px] text-slate-500">{label}</span>
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth={5}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={palette.end}
+          strokeWidth={5}
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={offset}
+          style={{ transition: "stroke-dashoffset 800ms ease-out" }}
+        />
+      </svg>
       <span
-        className="text-xs font-bold"
-        style={{ color: color || "#e2e8f0" }}
+        className="absolute inset-0 flex items-center justify-center text-lg font-black"
+        style={{ color: palette.end }}
       >
-        {value}
+        {score}
       </span>
     </div>
   )
@@ -1105,240 +1146,210 @@ function SwipeStockCard({
   const score = row.display_score
   const palette = getScorePalette(score)
   const { insider, tech } = getCardSignals(row)
-
-  const clusterBuyers = row.cluster_buyers ?? 0
-  const hasCluster = clusterBuyers >= 2
-  const hasPtr = Boolean(row.ptr_amount)
-  const hasPlatinum = clusterBuyers >= 3 && hasPtr
   const hasAnyInsider = insider.length > 0
 
-  const glowColor = hasPlatinum
-    ? "rgba(251,191,36,0.5)"
-    : hasCluster
-      ? "rgba(52,211,153,0.5)"
-      : `${palette.end}80`
+  // Returns grid
+  const returns: Array<{ label: string; value: number }> = []
+  if (row.one_day_return != null) returns.push({ label: "1D", value: row.one_day_return })
+  if (row.price_return_5d != null) returns.push({ label: "5D", value: row.price_return_5d })
+  if (row.return_10d != null) returns.push({ label: "10D", value: row.return_10d })
+  if (row.price_return_20d != null) returns.push({ label: "20D", value: row.price_return_20d })
 
-  // Build key metrics
-  const metrics: Array<{ label: string; value: string; color?: string }> = []
+  // Stat pills
+  const stats: Array<{ label: string; value: string; accent?: boolean }> = []
+  if (row.volume_ratio != null && row.volume_ratio > 0)
+    stats.push({ label: "Vol", value: `${row.volume_ratio.toFixed(1)}x`, accent: row.volume_ratio >= 1.5 })
+  if (row.relative_strength_20d != null)
+    stats.push({ label: "RS", value: Number(row.relative_strength_20d).toFixed(1), accent: Number(row.relative_strength_20d) >= 5 })
+  if (row.pe_ratio != null)
+    stats.push({ label: "P/E", value: row.pe_ratio.toFixed(1) })
+  if (row.market_cap != null)
+    stats.push({ label: "Cap", value: formatMarketCap(row.market_cap) })
 
-  if (row.one_day_return != null) {
-    const v = row.one_day_return
-    metrics.push({
-      label: "Today",
-      value: `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`,
-      color: v >= 0 ? "#4ade80" : "#f87171",
-    })
-  }
-  if (row.price_return_5d != null) {
-    const v = row.price_return_5d
-    metrics.push({
-      label: "5-day",
-      value: `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`,
-      color: v >= 0 ? "#4ade80" : "#f87171",
-    })
-  }
-  if (row.price_return_20d != null) {
-    const v = row.price_return_20d
-    metrics.push({
-      label: "20-day",
-      value: `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`,
-      color: v >= 0 ? "#4ade80" : "#f87171",
-    })
-  }
-  if (row.volume_ratio != null && row.volume_ratio > 0) {
-    metrics.push({
-      label: "Volume",
-      value: `${row.volume_ratio.toFixed(1)}x avg`,
-      color: row.volume_ratio >= 1.5 ? "#fbbf24" : "#e2e8f0",
-    })
-  }
-  if (row.relative_strength_20d != null) {
-    metrics.push({
-      label: "Rel Strength",
-      value: `${Number(row.relative_strength_20d).toFixed(1)}`,
-      color: Number(row.relative_strength_20d) >= 5 ? "#22d3ee" : "#e2e8f0",
-    })
-  }
-  if (row.pe_ratio != null) {
-    metrics.push({ label: "P/E", value: row.pe_ratio.toFixed(1) })
-  }
-  if (row.market_cap != null) {
-    metrics.push({ label: "Mkt Cap", value: formatMarketCap(row.market_cap) })
-  }
-
-  // Status flags
-  const flags: Array<{ label: string; on: boolean }> = [
-    { label: "Breakout", on: Boolean(row.breakout_20d || row.breakout_10d) },
-    { label: "Above 20d MA", on: Boolean(row.above_sma_20) },
-    { label: "Trend Aligned", on: Boolean(row.trend_aligned) },
-    { label: "Price Confirmed", on: Boolean(row.price_confirmed) },
-    { label: "Above 50d MA", on: Boolean(row.above_50dma) },
-  ]
-  const activeFlags = flags.filter((f) => f.on)
+  // Status checks
+  const checks: string[] = []
+  if (row.breakout_20d || row.breakout_10d) checks.push("Breakout")
+  if (row.above_sma_20) checks.push("Above 20 MA")
+  if (row.above_50dma) checks.push("Above 50 MA")
+  if (row.trend_aligned) checks.push("Trend Aligned")
+  if (row.price_confirmed) checks.push("Confirmed")
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl"
+      className="flex h-full flex-col overflow-hidden rounded-[1.5rem] border shadow-2xl"
       style={{
-        borderColor: hasPlatinum
-          ? "rgba(251,191,36,0.4)"
-          : hasCluster
-            ? "rgba(52,211,153,0.4)"
-            : `${palette.end}50`,
-        background: hasPlatinum
-          ? "linear-gradient(170deg, rgba(251,191,36,0.18) 0%, rgba(251,191,36,0.06) 20%, rgba(10,18,38,0.98) 50%, rgba(2,6,23,1) 100%)"
-          : hasCluster
-            ? "linear-gradient(170deg, rgba(52,211,153,0.15) 0%, rgba(52,211,153,0.05) 20%, rgba(10,18,38,0.98) 50%, rgba(2,6,23,1) 100%)"
-            : `linear-gradient(170deg, ${palette.start}22 0%, ${palette.start}08 20%, rgba(10,18,38,0.98) 50%, rgba(2,6,23,1) 100%)`,
-        boxShadow: `0 0 60px -10px ${glowColor}, 0 25px 50px -12px rgba(0,0,0,0.5)`,
+        borderColor: "rgba(255,255,255,0.08)",
+        background: "linear-gradient(180deg, #1a1018 0%, #0d0b10 40%, #080810 100%)",
+        boxShadow: `0 0 80px -20px ${palette.end}40, 0 25px 50px -12px rgba(0,0,0,0.6)`,
       }}
     >
-      {/* Header: ticker + score + price */}
-      <div className="shrink-0 px-4 pt-4 pb-1">
-        <div className="flex items-start justify-between gap-2">
+      {/* Header */}
+      <div className="shrink-0 px-4 pt-4 pb-2">
+        <div className="flex items-center gap-3">
+          <ScoreRing score={score} />
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
-              <h2 className="text-4xl font-black tracking-tight text-white">{row.ticker}</h2>
+              <h2 className="text-3xl font-black tracking-tight text-white">{row.ticker}</h2>
               {row.price ? (
-                <span className="text-lg font-bold text-slate-300">
+                <span className="text-base font-bold text-white/70">
                   {formatMoney(row.price)}
                 </span>
               ) : null}
             </div>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              {row.company_name ? (
-                <span className="truncate text-xs text-slate-400">
-                  {truncateText(row.company_name, 28)}
-                </span>
-              ) : null}
-              {row.sector ? (
-                <>
-                  <span className="text-slate-600">·</span>
-                  <span className="text-[11px] text-slate-500">{row.sector}</span>
-                </>
-              ) : null}
-            </div>
+            <p className="truncate text-xs text-white/40">
+              {[row.company_name, row.sector].filter(Boolean).join(" · ")}
+            </p>
           </div>
-          <div
-            className="flex shrink-0 items-baseline gap-0.5 rounded-xl px-2.5 py-1"
-            style={{
-              background: `linear-gradient(135deg, ${palette.start}30, ${palette.end}20)`,
-              border: `1px solid ${palette.end}40`,
-            }}
+          <a
+            href={`https://robinhood.com/stocks/${row.ticker}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex h-9 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500/25 active:scale-95"
           >
-            <span className="text-2xl font-black" style={{ color: palette.end }}>
-              {score}
-            </span>
-            <span className="text-[10px] font-semibold text-slate-400">/100</span>
-          </div>
+            Buy ↗
+          </a>
         </div>
       </div>
 
-      {/* Scrollable content area */}
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pt-2 pb-1">
-        {/* Insider Activity section — front and center */}
+      {/* Scrollable body */}
+      <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-4 pt-1 pb-2">
+
+        {/* Returns bar */}
+        {returns.length > 0 && (
+          <div className="flex gap-1.5">
+            {returns.map((r, i) => {
+              const pos = r.value >= 0
+              return (
+                <div
+                  key={i}
+                  className="flex flex-1 flex-col items-center rounded-lg py-2"
+                  style={{
+                    background: pos
+                      ? "rgba(34,197,94,0.08)"
+                      : "rgba(248,113,113,0.08)",
+                    border: `1px solid ${pos ? "rgba(34,197,94,0.20)" : "rgba(248,113,113,0.20)"}`,
+                  }}
+                >
+                  <span className="text-[10px] font-medium text-white/40">{r.label}</span>
+                  <span
+                    className="text-sm font-black"
+                    style={{ color: pos ? "#4ade80" : "#f87171" }}
+                  >
+                    {pos ? "+" : ""}{r.value.toFixed(1)}%
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Insider Activity */}
         {hasAnyInsider && (
-          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2">
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400/80">
+          <div
+            className="rounded-xl px-3 py-2.5"
+            style={{
+              background: "linear-gradient(135deg, rgba(251,146,60,0.10) 0%, rgba(251,146,60,0.03) 100%)",
+              border: "1px solid rgba(251,146,60,0.25)",
+            }}
+          >
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-400/90">
               Insider Activity
             </p>
             <div className="flex flex-wrap gap-1.5">
               {insider.map((pill, i) => (
                 <span
                   key={i}
-                  className="inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200"
+                  className="inline-flex items-center gap-1 rounded-full border border-orange-400/30 bg-orange-400/10 px-2.5 py-1 text-[11px] font-semibold text-orange-200"
                 >
-                  <span>{pill.emoji}</span>
-                  <span>{pill.text}</span>
+                  {pill.emoji} {pill.text}
                 </span>
               ))}
             </div>
           </div>
         )}
 
-        {/* Technical signals */}
+        {/* Tech signals + status checks */}
         <div>
-          <p className="mb-1.5 px-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/30">
             Signals
           </p>
           <div className="flex flex-wrap gap-1.5">
             {tech.map((pill, i) => (
               <span
                 key={i}
-                className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-slate-300"
+                className="inline-flex items-center gap-1 rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-white/70"
               >
-                <span>{pill.emoji}</span>
-                <span>{pill.text}</span>
+                {pill.emoji} {pill.text}
               </span>
             ))}
-            {activeFlags.map((flag, i) => (
+            {checks.map((c, i) => (
               <span
-                key={`f-${i}`}
-                className="inline-flex items-center gap-1 rounded-full border border-cyan-400/15 bg-cyan-400/[0.06] px-2.5 py-1 text-[11px] font-medium text-cyan-300/80"
+                key={`c-${i}`}
+                className="inline-flex items-center gap-1 rounded-full border border-cyan-400/15 bg-cyan-400/[0.05] px-2.5 py-1 text-[11px] font-medium text-cyan-300/70"
               >
-                <span className="text-[9px]">&#10003;</span>
-                <span>{flag.label}</span>
+                &#10003; {c}
               </span>
             ))}
           </div>
         </div>
 
-        {/* Key metrics grid */}
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-3 py-2">
-          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-            Key Numbers
-          </p>
-          {metrics.map((m, i) => (
-            <CardMetric key={i} label={m.label} value={m.value} color={m.color} />
-          ))}
-        </div>
+        {/* Stats grid */}
+        {stats.length > 0 && (
+          <div className="grid grid-cols-4 gap-1.5">
+            {stats.map((s, i) => (
+              <div
+                key={i}
+                className="flex flex-col items-center rounded-lg border border-white/[0.06] bg-white/[0.02] py-2"
+              >
+                <span className="text-[10px] text-white/30">{s.label}</span>
+                <span
+                  className="text-xs font-bold"
+                  style={{ color: s.accent ? "#fbbf24" : "#e2e8f0" }}
+                >
+                  {s.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Action bar */}
-      <div className="shrink-0 px-4 pt-2 pb-4">
+      <div className="shrink-0 border-t border-white/[0.06] px-4 py-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onPrev}
             disabled={!hasPrev}
             className={[
-              "flex h-10 w-10 items-center justify-center rounded-full border text-base transition active:scale-90",
+              "flex h-10 w-10 items-center justify-center rounded-full text-base transition active:scale-90",
               hasPrev
-                ? "border-white/15 bg-white/5 text-slate-400 hover:bg-white/10"
-                : "cursor-default border-transparent text-transparent",
+                ? "bg-white/5 text-white/50 hover:bg-white/10"
+                : "text-transparent",
             ].join(" ")}
-            aria-label="Previous stock"
+            aria-label="Previous"
           >
             ←
           </button>
           <button
             type="button"
             onClick={onOpen}
-            className="flex flex-1 items-center justify-center rounded-full border border-white/15 bg-white/[0.07] py-2.5 text-sm font-bold text-white transition hover:border-cyan-400/50 hover:bg-cyan-400/10 active:scale-[0.97]"
+            className="flex flex-1 items-center justify-center rounded-xl bg-white/[0.08] py-2.5 text-sm font-bold text-white transition hover:bg-white/[0.14] active:scale-[0.97]"
           >
             Full Details
           </button>
-          <a
-            href={`https://robinhood.com/stocks/${row.ticker}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-400/15 text-sm font-bold text-emerald-300 transition hover:bg-emerald-400/25 active:scale-90"
-            aria-label={`Buy ${row.ticker}`}
-          >
-            $
-          </a>
           <button
             type="button"
             onClick={onNext}
             disabled={!hasNext}
             className={[
-              "flex h-10 w-10 items-center justify-center rounded-full border text-base transition active:scale-90",
+              "flex h-10 w-10 items-center justify-center rounded-full text-base transition active:scale-90",
               hasNext
-                ? "border-white/15 bg-white/5 text-slate-400 hover:bg-white/10"
-                : "cursor-default border-transparent text-transparent",
+                ? "bg-white/5 text-white/50 hover:bg-white/10"
+                : "text-transparent",
             ].join(" ")}
-            aria-label="Next stock"
+            aria-label="Next"
           >
             →
           </button>
@@ -2937,7 +2948,7 @@ function getCardSignals(row: UnifiedRow): {
     })
   }
 
-  // Cluster buy
+  // Cluster buy (from signal data)
   if (clusterBuyers >= 2) {
     insider.push({
       emoji: "👥",
@@ -2947,16 +2958,32 @@ function getCardSignals(row: UnifiedRow): {
     })
   }
 
-  // Congressional buy
+  // Congressional buy (from signal data or candidate flag)
   if (hasPtr) {
     insider.push({
       emoji: "🏛️",
       text: `Congress bought ${row.ptr_amount || ""}`.trim(),
       priority: 85,
     })
+  } else if (row.has_ptr_forms) {
+    insider.push({
+      emoji: "🏛️",
+      text: "Congressional trade filed",
+      priority: 84,
+    })
   }
 
-  // Single insider buy (not cluster)
+  // Cluster from candidate flag
+  if (row.has_clusters && clusterBuyers < 2) {
+    insider.push({
+      emoji: "👥",
+      text: "Cluster buy detected",
+      highlight: true,
+      priority: 88,
+    })
+  }
+
+  // Insider buy (from signal data or candidate flag)
   if (hasInsiderBuy && clusterBuyers < 2) {
     insider.push({
       emoji: "👤",
@@ -2964,6 +2991,12 @@ function getCardSignals(row: UnifiedRow): {
         ? `Insider bought ${insiderValue}`
         : "Insider purchase filed",
       priority: 45,
+    })
+  } else if (row.has_insider_trades && !hasInsiderBuy && clusterBuyers < 2 && insider.length === 0) {
+    insider.push({
+      emoji: "👤",
+      text: "Insider trade on file",
+      priority: 40,
     })
   }
 
