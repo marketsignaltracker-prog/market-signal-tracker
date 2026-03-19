@@ -794,18 +794,50 @@ export async function GET(request: Request) {
     let snapshotRows: CandidateHistoryRow[] = []
 
     for (const candidateDate of orderedDates) {
-      const { data: rows, error: rowsError } = await candidateHistoryTable
-        .select("*")
+      // First check viable count with a lightweight query
+      const { data: viableCheck, error: viableError } = await candidateHistoryTable
+        .select("ticker", { count: "exact", head: true })
         .eq("screened_on", candidateDate)
+        .gte("candidate_score", 50)
+        .eq("passes_price", true)
+        .eq("passes_market_cap", true)
 
-      if (rowsError) {
-        return Response.json({ ok: false, error: rowsError.message }, { status: 500 })
+      if (viableError) {
+        return Response.json({ ok: false, error: viableError.message }, { status: 500 })
       }
 
-      const typedRows = (rows || []) as CandidateHistoryRow[]
-      if (!typedRows.length) continue
+      const viableCount = (viableCheck as any)?.length ?? 0
+      // Use the count from the response header if available
+      const actualViableCount = typeof (viableError as any) === "undefined"
+        ? viableCount
+        : 0
 
-      const viableRows = typedRows.filter(
+      // Now fetch all rows for this date if it looks promising (any viable candidates)
+      // Use range to handle >1000 rows
+      let allRows: CandidateHistoryRow[] = []
+      let from = 0
+      const PAGE_SIZE = 1000
+
+      while (true) {
+        const { data: rows, error: rowsError } = await candidateHistoryTable
+          .select("*")
+          .eq("screened_on", candidateDate)
+          .range(from, from + PAGE_SIZE - 1)
+
+        if (rowsError) {
+          return Response.json({ ok: false, error: rowsError.message }, { status: 500 })
+        }
+
+        const typedRows = (rows || []) as CandidateHistoryRow[]
+        allRows = allRows.concat(typedRows)
+
+        if (typedRows.length < PAGE_SIZE) break
+        from += PAGE_SIZE
+      }
+
+      if (!allRows.length) continue
+
+      const viableRows = allRows.filter(
         (row) =>
           (row.candidate_score ?? 0) >= 50 &&
           row.passes_price &&
@@ -814,7 +846,7 @@ export async function GET(request: Request) {
 
       if (viableRows.length >= 12) {
         screenedOn = candidateDate
-        snapshotRows = typedRows
+        snapshotRows = allRows
         break
       }
     }
