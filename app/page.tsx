@@ -893,11 +893,17 @@ export default function Home() {
         style={{ background: "#080d18" }}
       >
         <div className="mx-auto max-w-lg px-4 pb-5 pt-4 lg:max-w-7xl">
+          {!user && (
+            <p className="mb-3 text-center text-xs text-slate-400">
+              <button onClick={() => router.push("/login")} className="text-cyan-400 hover:text-cyan-300 transition">Sign in</button> to unlock filters
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <FilterSelect
               label="Min score"
               value={scoreFilter}
               onChange={(v) => setScoreFilter(v as ScoreFilterType)}
+              disabled={!user}
               options={[
                 { value: "all", label: "Any score" },
                 { value: "70", label: "70+" },
@@ -911,6 +917,7 @@ export default function Home() {
               label="Price"
               value={priceFilter}
               onChange={(v) => setPriceFilter(v as PriceFilterType)}
+              disabled={!user}
               options={[
                 { value: "all", label: "All prices" },
                 { value: "under10", label: "Under $10" },
@@ -923,6 +930,7 @@ export default function Home() {
               label="How recent"
               value={freshnessFilter}
               onChange={(v) => setFreshnessFilter(v as FreshnessFilterType)}
+              disabled={!user}
               options={[
                 { value: "all", label: "Any time" },
                 { value: "today", label: "Today" },
@@ -935,6 +943,7 @@ export default function Home() {
               label="Business area"
               value={sectorFilter}
               onChange={(v) => setSectorFilter(v)}
+              disabled={!user}
               options={sectorOptions.map((s) => ({
                 value: s,
                 label: s === "all" ? "All sectors" : s,
@@ -944,6 +953,7 @@ export default function Home() {
               label="Valuation"
               value={peFilter}
               onChange={(v) => setPeFilter(v as PeFilterType)}
+              disabled={!user}
               options={[
                 { value: "all", label: "Any P/E" },
                 { value: "20", label: "P/E ≤ 20" },
@@ -955,6 +965,7 @@ export default function Home() {
               label="Insider buys"
               value={insiderFilter}
               onChange={(v) => setInsiderFilter(v as InsiderFilterType)}
+              disabled={!user}
               options={[
                 { value: "all", label: "All" },
                 { value: "yes", label: "Insiders buying" },
@@ -965,6 +976,7 @@ export default function Home() {
               label="Congress buys"
               value={congressFilter}
               onChange={(v) => setCongressFilter(v as CongressFilterType)}
+              disabled={!user}
               options={[
                 { value: "all", label: "All" },
                 { value: "yes", label: "Congress buying" },
@@ -1015,6 +1027,7 @@ export default function Home() {
       {!loading && !error && (
         <div className="shrink-0 px-2.5 pb-1.5 pt-0.5 text-center text-[9px] leading-3 text-[#7a8ba0]">
           Not financial advice. Always do your own research before acting on any idea shown here.
+          <span className="block mt-0.5 text-[8px] text-[#5a6a7a]">by <a href="https://zorvalabs.com" target="_blank" rel="noopener noreferrer" className="hover:text-[#7a8ba0] transition">Zorva Labs</a></span>
         </div>
       )}
 
@@ -1799,21 +1812,24 @@ function FilterSelect({
   value,
   onChange,
   options,
+  disabled,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   options: Array<{ value: string; label: string }>
+  disabled?: boolean
 }) {
   return (
-    <div>
+    <div className={disabled ? "opacity-50" : ""}>
       <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#7a8ba0]">
         {label}
       </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#0f1729] px-4 py-3.5 text-white outline-none transition focus:border-[rgba(240,165,0,0.40)] sm:py-4"
+        disabled={disabled}
+        className="w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#0f1729] px-4 py-3.5 text-white outline-none transition focus:border-[rgba(240,165,0,0.40)] sm:py-4 disabled:cursor-not-allowed"
       >
         {options.map((option) => (
           <option
