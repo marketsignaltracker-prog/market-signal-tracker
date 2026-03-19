@@ -1232,7 +1232,7 @@ function SwipeStockCard({
 
       {/* ── Fundamentals Scanner ── */}
       <div className="min-h-0 flex-1 overflow-hidden px-4 pt-2 pb-1">
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid h-full grid-cols-2 grid-rows-3 gap-1.5">
           {(() => {
             const ltcs = parseScreenReasonScores(row.screen_reason)
 
