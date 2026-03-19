@@ -292,61 +292,85 @@ export async function GET(request: NextRequest) {
 
     const updatedAt = new Date().toISOString()
 
-    const latestSnapshotQuery = await (supabase.from("candidate_screen_history") as any)
+    const lookbackDays = parseInteger(
+      request.nextUrl.searchParams.get("lookbackDays"),
+      7
+    )
+    const lookbackCutoff = new Date()
+    lookbackCutoff.setDate(lookbackCutoff.getDate() - lookbackDays)
+    const lookbackCutoffStr = lookbackCutoff.toISOString().slice(0, 10)
+
+    // Get all distinct screened dates within lookback window
+    const datesQuery = await (supabase.from("candidate_screen_history") as any)
       .select("screened_on")
+      .gte("screened_on", lookbackCutoffStr)
       .order("screened_on", { ascending: false })
-      .limit(1)
-      .maybeSingle()
 
-    if (latestSnapshotQuery.error) {
+    if (datesQuery.error) {
       return NextResponse.json(
         {
           ok: false,
-          error: `Failed to load latest screening snapshot: ${latestSnapshotQuery.error.message}`,
+          error: `Failed to load screening dates: ${datesQuery.error.message}`,
         },
         { status: 500 }
       )
     }
 
-    const latestScreenedOn = latestSnapshotQuery.data?.screened_on ?? null
+    const screenedDates = uniqueStrings(
+      ((datesQuery.data || []) as any[]).map((r: any) => String(r.screened_on || ""))
+    )
 
-    if (!latestScreenedOn) {
+    if (!screenedDates.length) {
       return NextResponse.json(
         {
           ok: false,
-          error: "No candidate_screen_history snapshot found",
+          error: "No candidate_screen_history snapshots found in lookback window",
         },
         { status: 500 }
       )
     }
 
-    let historyQuery = (supabase.from("candidate_screen_history") as any)
-      .select("*")
-      .eq("screened_on", latestScreenedOn)
+    // Fetch rows from ALL dates in the lookback window, paginating to handle >1000 rows
+    let allHistoryRows: CandidateHistoryRow[] = []
 
-    if (onlyActive) {
-      historyQuery = historyQuery.eq("is_active", true)
+    for (const screenDate of screenedDates) {
+      let from = 0
+      const PAGE_SIZE = 1000
+
+      while (true) {
+        let historyQuery = (supabase.from("candidate_screen_history") as any)
+          .select("*")
+          .eq("screened_on", screenDate)
+          .range(from, from + PAGE_SIZE - 1)
+
+        if (onlyActive) {
+          historyQuery = historyQuery.eq("is_active", true)
+        }
+
+        const { data: rows, error: historyError } = await historyQuery
+
+        if (historyError) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `Failed to load candidate_screen_history rows: ${historyError.message}`,
+              debug: { screenedOn: screenDate },
+            },
+            { status: 500 }
+          )
+        }
+
+        const typedRows = (rows || []) as CandidateHistoryRow[]
+        allHistoryRows = allHistoryRows.concat(typedRows)
+
+        if (typedRows.length < PAGE_SIZE) break
+        from += PAGE_SIZE
+      }
     }
 
-    const { data: historyRows, error: historyError } = await historyQuery
-
-    if (historyError) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Failed to load candidate_screen_history rows: ${historyError.message}`,
-          debug: {
-            screenedOn: latestScreenedOn,
-          },
-        },
-        { status: 500 }
-      )
-    }
-
-    const typedHistoryRows = (historyRows || []) as CandidateHistoryRow[]
-
+    // Deduplicate by ticker, keeping highest score across all dates
     const deduped = new Map<string, CandidateHistoryRow>()
-    for (const row of typedHistoryRows) {
+    for (const row of allHistoryRows) {
       const ticker = normalizeTicker(row.ticker)
       if (!ticker) continue
 
@@ -376,12 +400,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      screenedOn: latestScreenedOn,
+      screenedDatesUsed: screenedDates,
+      lookbackDays,
       minCandidateScore,
       eligibleCount: universeRows.length,
       counts: includeCounts
         ? {
-            snapshotRows: typedHistoryRows.length,
+            totalHistoryRows: allHistoryRows.length,
             distinctTickersInSnapshot: latestRows.length,
             selectedRows: selectedRows.length,
             eligibleRows: universeRows.length,
@@ -393,7 +418,7 @@ export async function GET(request: NextRequest) {
           }
         : undefined,
       message:
-        "Eligible universe rebuilt from the latest candidate screening snapshot.",
+        "Eligible universe rebuilt from candidate screening snapshots within lookback window.",
     })
   } catch (error) {
     return NextResponse.json(
