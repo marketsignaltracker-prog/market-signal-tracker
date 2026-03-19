@@ -1027,7 +1027,7 @@ export default function Home() {
       {!loading && !error && (
         <div className="shrink-0 px-2.5 pb-1.5 pt-0.5 text-center text-[9px] leading-3 text-[#7a8ba0]">
           Not financial advice. Always do your own research before acting on any idea shown here.
-          <span className="block mt-0.5 text-[8px] text-[#5a6a7a]">by <a href="https://zorvalabs.com" target="_blank" rel="noopener noreferrer" className="hover:text-[#7a8ba0] transition">Zorva Labs</a></span>
+          <span className="block mt-0.5 text-[8px] text-[#5a6a7a]">by <a href="https://zorvalabs.com" target="_blank" rel="noopener noreferrer" className="text-[#30d158] hover:text-[#28b84a] transition">Zorva Labs</a></span>
         </div>
       )}
 
