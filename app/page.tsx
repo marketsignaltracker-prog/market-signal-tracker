@@ -435,7 +435,7 @@ export default function Home() {
   const { user, isPro, loading: authLoading, signOut } = useAuth()
   const router = useRouter()
 
-  const FREE_CARD_LIMIT = 5
+  const FREE_CARD_LIMIT = 3
 
   useEffect(() => {
     let isMounted = true
