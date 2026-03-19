@@ -826,7 +826,7 @@ export default function Home() {
               user ? (
                 <>
                   {isPro && (
-                    <span className="rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                    <span className="rounded-full bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[10px] font-bold text-cyan-400">
                       PRO
                     </span>
                   )}
@@ -1055,18 +1055,18 @@ export default function Home() {
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4" onClick={() => setShowUpgradeModal(false)}>
           <div className="w-full max-w-sm bg-[#0d1526] border border-white/10 rounded-2xl p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="text-center mb-6">
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 px-3 py-1 text-xs font-bold text-amber-400 mb-3">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 px-3 py-1 text-xs font-bold text-cyan-400 mb-3">
                 PRO
               </div>
-              <h2 className="text-xl font-bold text-white">Unlock All Signals</h2>
-              <p className="text-sm text-slate-400 mt-1">Get the full picture on every stock</p>
+              <h2 className="text-xl font-bold text-white">Unlock All Buy Cards</h2>
+              <p className="text-sm text-slate-400 mt-1">Get the full picture on every screened stock</p>
             </div>
 
             <ul className="space-y-2.5 mb-6">
               {[
-                "Unlimited stock cards",
-                "Insider buying signals",
-                "Congress trade alerts",
+                "Unlimited buy cards",
+                "Insider buying data",
+                "Congress trade data",
                 "Full analysis & thesis",
                 "All filters unlocked",
               ].map((f) => (
@@ -1130,7 +1130,7 @@ export default function Home() {
                 }
               }}
               disabled={checkoutLoading}
-              className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-bold py-3 rounded-xl transition text-sm disabled:opacity-50"
+              className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-bold py-3 rounded-xl transition text-sm disabled:opacity-50"
             >
               {checkoutLoading ? "Loading..." : user ? "Subscribe Now" : "Sign In to Subscribe"}
             </button>
@@ -1379,7 +1379,7 @@ function SwipeDeck({
                 <svg className="w-8 h-8 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
                 </svg>
-                <p className="text-sm font-semibold text-white">Sign up to unlock all stocks</p>
+                <p className="text-sm font-semibold text-white">Sign up to unlock all buy cards</p>
                 <p className="text-xs text-slate-400 text-center">Free cards: {freeLimit} · You&apos;re viewing #{cardIndex + 1}</p>
                 <button className="mt-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 px-6 py-2 text-sm font-bold text-black transition">
                   Sign Up Free
