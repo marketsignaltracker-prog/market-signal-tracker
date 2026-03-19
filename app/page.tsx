@@ -1158,11 +1158,11 @@ function SwipeStockCard({
 
   return (
     <div
-      className="flex h-full flex-col overflow-y-auto rounded-[1.75rem] border shadow-2xl"
+      className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl [@media(orientation:landscape)]:overflow-y-auto"
       style={{ borderColor: "rgba(255,255,255,0.08)", background: "#0f1729" }}
     >
       {/* ── Header ── */}
-      <div className="px-4 pt-4 pb-2">
+      <div className="shrink-0 px-4 pt-4 pb-2">
         <div className="flex items-center gap-3">
           <ScoreRing score={score} palette={palette} />
           <div className="min-w-0 flex-1">
@@ -1231,8 +1231,8 @@ function SwipeStockCard({
       </div>
 
       {/* ── Fundamentals Scanner ── */}
-      <div className="px-4 pt-2 pb-1">
-        <div className="grid grid-cols-2 gap-1.5">
+      <div className="min-h-0 flex-1 overflow-hidden px-4 pt-2 pb-1">
+        <div className="grid h-full grid-cols-2 grid-rows-3 gap-1.5">
           {(() => {
             const ltcs = parseScreenReasonScores(row.screen_reason)
 
