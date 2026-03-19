@@ -780,7 +780,7 @@ export default function Home() {
       `}</style>
 
       {/* Header */}
-      <header className="shrink-0 border-b border-[rgba(255,255,255,0.07)] px-3 py-2 lg:px-4 lg:py-3" style={{ background: "#080d18" }}>
+      <header className="shrink-0 border-b border-[rgba(255,255,255,0.07)] px-3 pb-2 pt-[env(safe-area-inset-top,8px)] lg:px-4 lg:py-3" style={{ background: "#080d18" }}>
         <div className="mx-auto flex max-w-lg items-center justify-between lg:max-w-7xl">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-[#f0a500]">
