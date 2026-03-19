@@ -158,6 +158,11 @@ export default function LoginPage() {
             ← Back to app
           </a>
         </p>
+
+        {/* Support */}
+        <p className="text-center mt-6 text-[10px] text-slate-600">
+          Need help? <a href="mailto:support@zorvalabs.com" className="text-slate-500 hover:text-slate-400 transition">support@zorvalabs.com</a>
+        </p>
       </div>
     </div>
   );
