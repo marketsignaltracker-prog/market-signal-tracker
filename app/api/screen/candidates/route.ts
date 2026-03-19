@@ -480,18 +480,20 @@ async function getTickerData(ticker: string) {
       ratios = r.status === "fulfilled" ? r.value : null
       metrics = m.status === "fulfilled" ? m.value : null
     } catch (fmpErr: any) {
-      // If profile itself fails, fall through to Yahoo
-      if (!profile) {
-        return await withYahooRetry(async () => {
-          const [quote, summary] = await Promise.all([
-            yahooFinance.quote(ticker),
-            yahooFinance.quoteSummary(ticker, {
-              modules: ["summaryDetail", "defaultKeyStatistics", "financialData", "assetProfile", "price"],
-            }),
-          ])
-          return { quote, snapshot: buildTickerSnapshot(summary, quote) }
-        })
-      }
+      // Profile failed — fall through to Yahoo below
+    }
+
+    // If FMP didn't return enough data (no ratios = no margins/P/E), fall back to Yahoo
+    if (!profile || !ratios) {
+      return await withYahooRetry(async () => {
+        const [quote, summary] = await Promise.all([
+          yahooFinance.quote(ticker),
+          yahooFinance.quoteSummary(ticker, {
+            modules: ["summaryDetail", "defaultKeyStatistics", "financialData", "assetProfile", "price"],
+          }),
+        ])
+        return { quote, snapshot: buildTickerSnapshot(summary, quote) }
+      })
     }
 
     const price = safeNumber(profile.price)
