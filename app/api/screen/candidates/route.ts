@@ -463,15 +463,36 @@ async function fmpFetch(endpoint: string, ticker: string): Promise<any> {
 }
 
 async function getTickerData(ticker: string) {
-  // Try FMP first, fall back to Yahoo if FMP key missing
+  // Try FMP first, fall back to Yahoo if FMP key missing or FMP errors
   if (FMP_API_KEY) {
-    const [profile, ratios, metrics] = await Promise.all([
-      fmpFetch("profile", ticker),
-      fmpFetch("ratios-ttm", ticker),
-      fmpFetch("key-metrics-ttm", ticker),
-    ])
+    let profile: any = null
+    let ratios: any = null
+    let metrics: any = null
 
-    if (!profile) throw new Error(`FMP: no profile data for ${ticker}`)
+    try {
+      profile = await fmpFetch("profile", ticker)
+      if (!profile) throw new Error(`FMP: no profile data for ${ticker}`)
+      // Fetch ratios and metrics in parallel, but don't fail if they 402
+      const [r, m] = await Promise.allSettled([
+        fmpFetch("ratios-ttm", ticker),
+        fmpFetch("key-metrics-ttm", ticker),
+      ])
+      ratios = r.status === "fulfilled" ? r.value : null
+      metrics = m.status === "fulfilled" ? m.value : null
+    } catch (fmpErr: any) {
+      // If profile itself fails, fall through to Yahoo
+      if (!profile) {
+        return await withYahooRetry(async () => {
+          const [quote, summary] = await Promise.all([
+            yahooFinance.quote(ticker),
+            yahooFinance.quoteSummary(ticker, {
+              modules: ["summaryDetail", "defaultKeyStatistics", "financialData", "assetProfile", "price"],
+            }),
+          ])
+          return { quote, snapshot: buildTickerSnapshot(summary, quote) }
+        })
+      }
+    }
 
     const price = safeNumber(profile.price)
     const marketCap = safeNumber(profile.marketCap)
