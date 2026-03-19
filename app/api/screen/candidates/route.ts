@@ -445,111 +445,107 @@ function buildTickerSnapshot(summary: any, quote: any): TickerSnapshot {
   }
 }
 
-const FMP_API_KEY = process.env.FMP_API_KEY || ""
-const FMP_BASE_URL = "https://financialmodelingprep.com/stable"
+const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || ""
+const FINNHUB_BASE = "https://finnhub.io/api/v1"
 
-async function fmpFetch(endpoint: string, ticker: string): Promise<any> {
-  const url = `${FMP_BASE_URL}/${endpoint}?symbol=${encodeURIComponent(ticker)}&apikey=${FMP_API_KEY}`
+async function finnhubFetch(path: string): Promise<any> {
+  const url = `${FINNHUB_BASE}${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_API_KEY}`
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 12_000)
   try {
     const res = await fetch(url, { cache: "no-store", signal: controller.signal })
-    if (!res.ok) throw new Error(`FMP ${endpoint} ${res.status}`)
-    const data = await res.json()
-    return Array.isArray(data) ? data[0] ?? null : data
+    if (!res.ok) throw new Error(`Finnhub ${path.split("?")[0]} ${res.status}`)
+    return await res.json()
   } finally {
     clearTimeout(timeout)
   }
 }
 
 async function getTickerData(ticker: string) {
-  // Try FMP first, fall back to Yahoo if FMP key missing or FMP errors
-  if (FMP_API_KEY) {
-    let profile: any = null
-    let ratios: any = null
-    let metrics: any = null
-
+  // Try Finnhub first (60 calls/min, no daily limit), fall back to Yahoo
+  if (FINNHUB_API_KEY) {
     try {
-      profile = await fmpFetch("profile", ticker)
-      if (!profile) throw new Error(`FMP: no profile data for ${ticker}`)
-      // Fetch ratios and metrics in parallel, but don't fail if they 402
-      const [r, m] = await Promise.allSettled([
-        fmpFetch("ratios-ttm", ticker),
-        fmpFetch("key-metrics-ttm", ticker),
+      const [metricData, profileData] = await Promise.all([
+        finnhubFetch(`/stock/metric?symbol=${encodeURIComponent(ticker)}&metric=all`),
+        finnhubFetch(`/stock/profile2?symbol=${encodeURIComponent(ticker)}`),
       ])
-      ratios = r.status === "fulfilled" ? r.value : null
-      metrics = m.status === "fulfilled" ? m.value : null
-    } catch (fmpErr: any) {
-      // Profile failed — fall through to Yahoo below
-    }
 
-    // If FMP didn't return enough data (no ratios = no margins/P/E), fall back to Yahoo
-    if (!profile || !ratios) {
-      return await withYahooRetry(async () => {
-        const [quote, summary] = await Promise.all([
-          yahooFinance.quote(ticker),
-          yahooFinance.quoteSummary(ticker, {
-            modules: ["summaryDetail", "defaultKeyStatistics", "financialData", "assetProfile", "price"],
-          }),
-        ])
-        return { quote, snapshot: buildTickerSnapshot(summary, quote) }
-      })
-    }
+      const m = metricData?.metric || {}
+      const profile = profileData || {}
 
-    const price = safeNumber(profile.price)
-    const marketCap = safeNumber(profile.marketCap)
-    const beta = safeNumber(profile.beta)
+      if (!profile.ticker && !m.beta) {
+        throw new Error(`Finnhub: no data for ${ticker}`)
+      }
 
-    const peRatio = safeNumber(ratios?.priceToEarningsRatioTTM)
-    const forwardPeRaw = safeNumber(ratios?.forwardPriceToEarningsGrowthRatioTTM)
-    const pegRatio = safeNumber(ratios?.priceToEarningsGrowthRatioTTM)
-    const forwardPeg = safeNumber(ratios?.forwardPriceToEarningsGrowthRatioTTM)
+      const price = safeNumber(profile.marketCapitalization)
+        ? safeNumber(m["52WeekHigh"]) // approximate — profile doesn't have current price
+        : null
+      const marketCap = safeNumber(profile.marketCapitalization)
+        ? profile.marketCapitalization * 1_000_000 // Finnhub returns in millions
+        : null
 
-    // FMP returns margins as decimals (0.50 = 50%)
-    const grossMargin = safeNumber(ratios?.grossProfitMarginTTM)
-    const operatingMargin = safeNumber(ratios?.operatingProfitMarginTTM)
-    const profitMargin = safeNumber(ratios?.netProfitMarginTTM)
+      // Finnhub returns margins as percentages (50.29 = 50.29%), LTCS expects decimals
+      const grossMargin = safeNumber(m.grossMarginTTM) != null ? m.grossMarginTTM / 100 : null
+      const operatingMargin = safeNumber(m.operatingMarginTTM) != null ? m.operatingMarginTTM / 100 : null
+      const profitMargin = safeNumber(m.netProfitMarginTTM) != null ? m.netProfitMarginTTM / 100 : null
+      const roe = safeNumber(m.roeTTM) != null ? m.roeTTM / 100 : null
+      const revenueGrowth = safeNumber(m.revenueGrowthTTMYoy) != null ? m.revenueGrowthTTMYoy / 100 : null
+      const earningsGrowth = safeNumber(m.epsGrowthTTMYoy) != null ? m.epsGrowthTTMYoy / 100 : null
 
-    const debtToEquity = safeNumber(ratios?.debtToEquityRatioTTM)
-    const currentRatio = safeNumber(ratios?.currentRatioTTM) ?? safeNumber(metrics?.currentRatioTTM)
+      const debtToEquity = safeNumber(m["totalDebt/totalEquityAnnual"])
+        ? m["totalDebt/totalEquityAnnual"] * 100 // Finnhub returns as ratio, LTCS expects percentage
+        : null
+      const currentRatio = safeNumber(m.currentRatioAnnual)
+      const beta = safeNumber(m.beta)
+      const peRatio = safeNumber(m.peTTM)
+      const forwardPe = safeNumber(m.forwardPE)
+      const pegRatio = safeNumber(m.pegAnnual)
 
-    const roe = safeNumber(metrics?.returnOnEquityTTM)
+      // Calculate price relative to 52-week range as proxy for MA200
+      const high52 = safeNumber(m["52WeekHigh"])
+      const low52 = safeNumber(m["52WeekLow"])
+      const ma200Proxy = high52 != null && low52 != null ? (high52 + low52) / 2 : null
 
-    // freeCashFlowToEquityTTM from key-metrics, or derive from operatingCashFlow
-    const fcf = safeNumber(metrics?.freeCashFlowToEquityTTM)
+      // Free cash flow — try multiple fields
+      const fcf = safeNumber(m.freeCashFlowTTM) ?? safeNumber(m.freeCashFlowPerShareTTM)
 
-    const snapshot: TickerSnapshot = {
-      peRatio: peRatio !== null && peRatio > 0 ? peRatio : null,
-      forwardPe: forwardPeg !== null && forwardPeg > 0 ? forwardPeg : null,
-      peType: peRatio !== null && peRatio > 0 ? "trailing" : forwardPeg !== null ? "forward" : null,
-      sector: profile.sector?.trim() ?? null,
-      industry: profile.industry?.trim() ?? null,
-      businessDescription: profile.description?.trim() ?? null,
-      companyProfile: {
-        profitMargin,
-        operatingMargin,
-        grossMargin,
-        returnOnEquity: roe,
-        debtToEquity: debtToEquity !== null ? debtToEquity * 100 : null, // FMP returns as ratio, LTCS expects percentage
-        currentRatio,
-        revenueGrowth: null, // not available in TTM ratios
-        earningsGrowth: null, // not available in TTM ratios
-        freeCashflow: fcf,
-        operatingCashflow: null,
-        recommendationKey: null,
-        pegRatio: pegRatio !== null && pegRatio > 0 ? pegRatio : forwardPeg,
-        ma200: null, // not available from FMP profile/ratios
-        beta,
-      },
-    }
+      const snapshot: TickerSnapshot = {
+        peRatio: peRatio != null && peRatio > 0 ? peRatio : null,
+        forwardPe: forwardPe != null && forwardPe > 0 ? forwardPe : null,
+        peType: peRatio != null && peRatio > 0 ? "trailing" : forwardPe != null ? "forward" : null,
+        sector: profile.finnhubIndustry?.trim() ?? null,
+        industry: profile.finnhubIndustry?.trim() ?? null,
+        businessDescription: null, // Finnhub profile2 doesn't include description
+        companyProfile: {
+          profitMargin,
+          operatingMargin,
+          grossMargin,
+          returnOnEquity: roe,
+          debtToEquity,
+          currentRatio,
+          revenueGrowth,
+          earningsGrowth,
+          freeCashflow: fcf,
+          operatingCashflow: null,
+          recommendationKey: null,
+          pegRatio,
+          ma200: ma200Proxy,
+          beta,
+        },
+      }
 
-    return {
-      quote: {
-        regularMarketPrice: price,
-        marketCap,
-        averageDailyVolume3Month: safeNumber(profile.averageVolume),
-      },
-      snapshot,
+      return {
+        quote: {
+          regularMarketPrice: price,
+          marketCap,
+          averageDailyVolume3Month: safeNumber(m["10DayAverageTradingVolume"])
+            ? m["10DayAverageTradingVolume"] * 1_000_000 // Finnhub returns in millions
+            : null,
+        },
+        snapshot,
+      }
+    } catch (finnhubErr: any) {
+      // Fall through to Yahoo
     }
   }
 
@@ -836,10 +832,11 @@ async function prepareTickerForScoring(
     quote = tickerData.quote
     snapshot = tickerData.snapshot
   } catch (err: any) {
-    // FMP errors should be permanent (no rate limit), not transient
-    const isFmpError = String(err?.message || "").startsWith("FMP")
-    const disposition = isFmpError
-      ? { kind: "permanent" as const, reason: String(err?.message || "FMP error") }
+    // Finnhub/FMP errors should be permanent (no rate limit), not transient
+    const msg = String(err?.message || "")
+    const isApiError = msg.startsWith("Finnhub") || msg.startsWith("FMP")
+    const disposition = isApiError
+      ? { kind: "permanent" as const, reason: msg || "API error" }
       : classifyYahooError(err)
 
     const historyRow = makeExcludedRow({
