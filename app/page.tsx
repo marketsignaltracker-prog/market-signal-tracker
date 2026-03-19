@@ -798,19 +798,19 @@ export default function Home() {
             <p className="text-sm font-bold uppercase tracking-[0.26em] text-[#f0a500]">
               Market Signal Tracker
             </p>
-            <p className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-white">
+            <p className="mt-0.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white">
               {loading ? (
-                <span className="text-[#7a8ba0]">Loading…</span>
+                <span className="text-[#7a8ba0] normal-case tracking-normal">Loading…</span>
               ) : (
                 <>
-                  <span>{filteredRows.length} buys</span>
+                  <span>{filteredRows.length} Buys</span>
                   {eliteCount > 0 && (
                     <span className="text-[#30d158]">
-                      {eliteCount} top tier
+                      {eliteCount} Top Tier
                     </span>
                   )}
                   {lastUpdated && (
-                    <span className="hidden sm:inline text-[11px] font-normal text-[#7a8ba0]">
+                    <span className="hidden sm:inline text-[11px] font-normal normal-case tracking-normal text-[#7a8ba0]">
                       {lastUpdated}
                     </span>
                   )}
