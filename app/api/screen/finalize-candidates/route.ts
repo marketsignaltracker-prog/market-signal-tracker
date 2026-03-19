@@ -733,7 +733,12 @@ function toUniverseRow(
     passes_market_cap: row.passes_market_cap,
     candidate_score: row.candidate_score,
     included: true,
-    screen_reason: `Finalized ${selectedSource} ${bucket} candidate (candidate ${row.candidate_score}, selection ${selectionScore}, adjusted ${adjustedSelectionScore}, families ${signalFamilyCount}): ${reasons.join(", ")}${ptrReason}`,
+    screen_reason: (() => {
+      const finalizeSummary = `Finalized ${selectedSource} ${bucket} candidate (candidate ${row.candidate_score}, selection ${selectionScore}, adjusted ${adjustedSelectionScore}, families ${signalFamilyCount}): ${reasons.join(", ")}${ptrReason}`
+      // Preserve LTCS pillar scores from original screen_reason if present
+      const ltcsMatch = (row.screen_reason || "").match(/(moat: \d+\/100.*valuation: \d+\/100)/)
+      return ltcsMatch ? `${finalizeSummary} | ${ltcsMatch[1]}` : finalizeSummary
+    })(),
     last_screened_at: row.last_screened_at,
     updated_at: new Date().toISOString(),
   }
