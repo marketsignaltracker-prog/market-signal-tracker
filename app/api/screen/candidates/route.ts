@@ -813,7 +813,11 @@ async function prepareTickerForScoring(
     quote = tickerData.quote
     snapshot = tickerData.snapshot
   } catch (err: any) {
-    const disposition = classifyYahooError(err)
+    // FMP errors should be permanent (no rate limit), not transient
+    const isFmpError = String(err?.message || "").startsWith("FMP")
+    const disposition = isFmpError
+      ? { kind: "permanent" as const, reason: String(err?.message || "FMP error") }
+      : classifyYahooError(err)
 
     const historyRow = makeExcludedRow({
       companyId: company.id,
