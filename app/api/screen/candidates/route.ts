@@ -616,23 +616,41 @@ function calculateLTCS(input: LTCSScoreInput): LTCSScoreOutput {
   if ((input.freeCashflow ?? -1) > 0) profitability += 35
   if ((input.earningsGrowth ?? 0) > 0.05) profitability += 25
 
-  // Stability: beta and defensive sector (max 100)
+  // Stability: beta (max 100) — graduated scale, most stocks should score something
   let stability = 0
   const beta = input.beta ?? 999
-  if (beta < 1.5) stability += 40
-  if (beta < 1.0) stability += 20
+  if (beta < 2.0) stability += 25    // not wildly volatile
+  if (beta < 1.5) stability += 25    // moderate volatility
+  if (beta < 1.2) stability += 25    // fairly stable
+  if (beta < 1.0) stability += 25    // less volatile than market
+  // Defensive sector bonus (additive, cap at 100)
   const sectorStr = input.sector ?? ""
-  if (DEFENSIVE_SECTORS.some((s) => sectorStr.toLowerCase().includes(s.toLowerCase()))) stability += 40
+  if (DEFENSIVE_SECTORS.some((s) => sectorStr.toLowerCase().includes(s.toLowerCase()))) stability = Math.min(stability + 25, 100)
 
   // Valuation: PEG, forward PE, price vs 200-day MA (max 100)
+  // Graduated thresholds — don't require bargain-basement pricing
   let valuation = 0
   const peg = input.pegRatio
   const fpe = input.forwardPE
   const price = input.currentPrice
   const ma200 = input.ma200
-  if (peg !== null && peg > 0 && peg < 2) valuation += 35
-  if (fpe !== null && fpe > 0 && fpe < 30) valuation += 35
-  if (price !== null && ma200 !== null && ma200 > 0 && price < ma200) valuation += 30
+  // PEG: < 1 is great (35), < 1.5 is good (25), < 2.5 is OK (15)
+  if (peg !== null && peg > 0) {
+    if (peg < 1) valuation += 35
+    else if (peg < 1.5) valuation += 25
+    else if (peg < 2.5) valuation += 15
+  }
+  // Forward PE: < 20 is great (35), < 30 is good (25), < 40 is OK (15)
+  if (fpe !== null && fpe > 0) {
+    if (fpe < 20) valuation += 35
+    else if (fpe < 30) valuation += 25
+    else if (fpe < 40) valuation += 15
+  }
+  // Price vs 200-day MA: below is great, within 10% above is still OK
+  if (price !== null && ma200 !== null && ma200 > 0) {
+    if (price < ma200) valuation += 30
+    else if (price < ma200 * 1.10) valuation += 15
+  }
 
   const ltcsScore = Math.round(
     moat * 0.25 +
