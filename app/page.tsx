@@ -2346,7 +2346,7 @@ function SignalDetailsModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex h-screen min-h-screen w-screen max-w-none flex-col overflow-hidden rounded-none border-0 shadow-2xl sm:h-[92vh] sm:min-h-0 sm:w-full sm:max-w-6xl sm:rounded-[2rem] sm:border sm:border-[rgba(255,255,255,0.07)]" style={{ background: "#080d18" }}>
-          <div className="sticky top-0 z-20 border-b border-[rgba(255,255,255,0.07)]" style={{ background: "#080d18" }}>
+          <div className="sticky top-0 z-20 border-b border-[rgba(255,255,255,0.07)]" style={{ background: "#080d18", paddingTop: "env(safe-area-inset-top)" }}>
             <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-2">
                 <button
@@ -3007,37 +3007,37 @@ function getFeaturedThesis(row: UnifiedRow) {
   const ltcs = parseScreenReasonScores(row.screen_reason)
 
   if ((row.cluster_buyers ?? 0) >= 3 && row.ptr_amount) {
-    return "Multiple insiders and Congress are buying — a rare alignment of conviction"
+    return "People who work at this company AND members of Congress are all buying shares right now — that almost never happens at the same time"
   }
 
   if ((row.cluster_buyers ?? 0) >= 2) {
-    return "Multiple insiders are buying at current prices — a strong vote of confidence"
+    return "Several people who work at this company are spending their own money to buy shares — they think the stock is going up"
   }
 
   if (row.ptr_amount) {
-    return "A Congressional trade is supporting this thesis"
+    return "A member of Congress recently bought shares in this company, which could mean they know something the rest of us don't"
   }
 
   if (
     ltcs.moat !== null && ltcs.moat >= 75 &&
     ltcs.profitability !== null && ltcs.profitability >= 75
   ) {
-    return "A high-moat, cash-generative compounder at a quality price"
+    return "This company is hard for competitors to beat, makes a lot of money, and the stock price looks reasonable right now"
   }
 
   if (ltcs.financial !== null && ltcs.financial >= 100 && ltcs.profitability !== null && ltcs.profitability >= 75) {
-    return "Rock-solid balance sheet with consistently strong earnings"
+    return "This company has almost no debt, makes strong profits every quarter, and is in great financial shape"
   }
 
   if (ltcs.valuation !== null && ltcs.valuation >= 65 && row.display_score >= 70) {
-    return "A quality business available at an attractive valuation"
+    return "This is a well-run company and the stock looks like a good deal compared to how much money they make"
   }
 
   if (row.display_score >= 80) {
-    return "Multiple quality factors are scoring well for this company"
+    return "This company checks a lot of boxes — it's profitable, financially healthy, and our system rates it highly"
   }
 
-  return "Passes the long-term quality screen with several positive signals"
+  return "Our screening system flagged this stock because it scores well on several measures of quality and value"
 }
 
 function getSimpleCardBullets(row: UnifiedRow) {
