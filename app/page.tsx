@@ -803,9 +803,9 @@ export default function Home() {
                 <span className="text-[#7a8ba0]">Loading…</span>
               ) : (
                 <>
-                  <span>{filteredRows.length} ideas</span>
+                  <span>{filteredRows.length} buys</span>
                   {eliteCount > 0 && (
-                    <span className="rounded-full bg-[rgba(240,165,0,0.12)] px-2 py-0.5 text-[10px] font-bold text-[#f0a500]">
+                    <span className="text-[#30d158]">
                       {eliteCount} top tier
                     </span>
                   )}
