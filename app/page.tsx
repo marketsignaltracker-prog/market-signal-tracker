@@ -2852,35 +2852,6 @@ function SignalDetailsModal({
             </div>
           </div>
 
-          <div className="shrink-0 border-t border-[rgba(255,255,255,0.07)] p-3 pb-[calc(env(safe-area-inset-bottom,16px)+12px)] sm:hidden" style={{ background: "#080d18" }}>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={onPrev}
-                disabled={!onPrev}
-                className="rounded-2xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] px-3 py-3 text-sm font-semibold text-white transition hover:bg-[#162038] disabled:opacity-40"
-              >
-                ← Prev
-              </button>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-2xl border border-[rgba(240,165,0,0.25)] bg-[rgba(240,165,0,0.12)] px-3 py-3 text-sm font-semibold text-[#f0a500] transition hover:border-[rgba(240,165,0,0.35)] hover:bg-[rgba(240,165,0,0.18)]"
-              >
-                Back to board
-              </button>
-
-              <button
-                type="button"
-                onClick={onNext}
-                disabled={!onNext}
-                className="rounded-2xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] px-3 py-3 text-sm font-semibold text-white transition hover:bg-[#162038] disabled:opacity-40"
-              >
-                Next →
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
