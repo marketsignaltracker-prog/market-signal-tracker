@@ -2852,7 +2852,7 @@ function SignalDetailsModal({
             </div>
           </div>
 
-          <div className="border-t border-[rgba(255,255,255,0.07)] p-3 sm:hidden" style={{ background: "#080d18" }}>
+          <div className="shrink-0 border-t border-[rgba(255,255,255,0.07)] p-3 sm:hidden" style={{ background: "#080d18", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
