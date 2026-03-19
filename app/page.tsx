@@ -2345,7 +2345,7 @@ function SignalDetailsModal({
         className="fixed inset-0 flex items-stretch justify-center p-0 sm:items-center sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex h-screen min-h-screen w-screen max-w-none flex-col overflow-hidden rounded-none border-0 shadow-2xl sm:h-[92vh] sm:min-h-0 sm:w-full sm:max-w-6xl sm:rounded-[2rem] sm:border sm:border-[rgba(255,255,255,0.07)]" style={{ background: "#080d18" }}>
+        <div className="flex h-screen w-screen max-w-none flex-col overflow-hidden rounded-none border-0 shadow-2xl sm:h-[92vh] sm:w-full sm:max-w-6xl sm:rounded-[2rem] sm:border sm:border-[rgba(255,255,255,0.07)]" style={{ background: "#080d18", height: "100dvh" }}>
           <div className="sticky top-0 z-20 border-b border-[rgba(255,255,255,0.07)] pt-[env(safe-area-inset-top,8px)]" style={{ background: "#080d18" }}>
             <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-2">
@@ -2852,7 +2852,7 @@ function SignalDetailsModal({
             </div>
           </div>
 
-          <div className="shrink-0 border-t border-[rgba(255,255,255,0.07)] p-3 sm:hidden" style={{ background: "#080d18", paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)" }}>
+          <div className="shrink-0 border-t border-[rgba(255,255,255,0.07)] p-3 pb-[calc(env(safe-area-inset-bottom,16px)+12px)] sm:hidden" style={{ background: "#080d18" }}>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
