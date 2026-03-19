@@ -1317,10 +1317,10 @@ export async function GET(request: Request) {
       historyCount = historyCountError ? null : historyCountValue
     }
 
+    // If we got a full batch, assume more companies to screen.
+    // Only stop when we get fewer results than requested.
     const nextStart =
-      totalCompanies !== null &&
-      totalCompanies !== undefined &&
-      to + 1 < totalCompanies
+      companyList.length >= safeBatch
         ? to + 1
         : null
 
