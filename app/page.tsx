@@ -2058,6 +2058,7 @@ function ScoreBar({
   compact?: boolean
 }) {
   const score = row.display_score
+  const palette = getScorePalette(score)
 
   return (
     <div className="w-full rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4">
@@ -2073,7 +2074,7 @@ function ScoreBar({
           className="h-full rounded-full transition-all duration-500"
           style={{
             width: `${score}%`,
-            background: "#f0a500",
+            background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
           }}
         />
       </div>
@@ -2124,21 +2125,22 @@ function ScoreBadge({
   large?: boolean
 }) {
   const score = row.display_score
+  const palette = getScorePalette(score)
 
   return (
     <div
       className={[
-        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-bold",
+        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-black",
         large ? "px-3.5 py-1.5 text-sm sm:px-4 sm:py-2" : "px-3 py-1 text-sm",
       ].join(" ")}
       style={{
-        background: "#162038",
-        color: "#ffffff",
+        background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
+        color: palette.text,
       }}
     >
       <span>{score}</span>
       {row.ticker_score_change_7d !== null && row.ticker_score_change_7d !== undefined && (
-        <span className="text-xs text-[#7a8ba0]">
+        <span className="text-xs" style={{ color: palette.text, opacity: 0.7 }}>
           {row.ticker_score_change_7d >= 3 ? "↑" : row.ticker_score_change_7d <= -3 ? "↓" : ""}
         </span>
       )}
@@ -2387,15 +2389,34 @@ function SignalDetailsModal({
             </div>
 
             <div className="border-t border-[rgba(255,255,255,0.07)] px-4 py-4 sm:px-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-2xl font-bold sm:text-3xl">{row.ticker}</h2>
-                <ScoreBadge row={row} large />
-                <FreshnessBadge row={row} />
+              <div className="flex items-center gap-3">
+                <ScoreRing score={row.display_score} palette={getScorePalette(row.display_score)} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="text-3xl font-black tracking-tight text-white">{row.ticker}</h2>
+                    <span className="text-base font-bold text-white/70">
+                      {row.price ? formatMoney(row.price) : ""}
+                    </span>
+                  </div>
+                  <p className="truncate text-xs text-white/40">
+                    {[row.company_name, row.sector].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <FreshnessBadge row={row} />
+                  <a
+                    href={`https://robinhood.com/stocks/${row.ticker}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3.5 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500/25 active:scale-95"
+                  >
+                    Buy
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="inline-block">
+                      <path d="M3 9L9 3M9 3H4M9 3V8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </a>
+                </div>
               </div>
-
-              {row.company_name ? (
-                <p className="mt-2 truncate text-sm text-[#7a8ba0]">{row.company_name}</p>
-              ) : null}
             </div>
 
             <div className="border-t border-[rgba(255,255,255,0.07)] px-4 py-3 lg:hidden">
