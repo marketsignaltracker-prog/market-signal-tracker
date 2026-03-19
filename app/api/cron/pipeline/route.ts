@@ -52,8 +52,8 @@ type PipelineStateRow = {
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
-const DEFAULT_SCREEN_BATCH = 50
-const MAX_SCREEN_BATCH = 100
+const DEFAULT_SCREEN_BATCH = 200
+const MAX_SCREEN_BATCH = 500
 
 const DEFAULT_FILINGS_BATCH = 50
 const DEFAULT_FILINGS_LOOKBACK_DAYS = 60
@@ -486,7 +486,7 @@ export async function GET(request: NextRequest) {
       const screenResult = await runStep(
         baseUrl,
         withSearchParams("/api/screen/candidates", {
-          universe: "eligible",
+          universe: "all",
           start: screeningStart,
           batch: batchSize,
           onlyActive: true,
