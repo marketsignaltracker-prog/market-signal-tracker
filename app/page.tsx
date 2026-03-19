@@ -431,6 +431,7 @@ export default function Home() {
   const [detailInitialTab, setDetailInitialTab] = useState(0)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly">("yearly")
 
   const { user, isPro, loading: authLoading, signOut } = useAuth()
   const router = useRouter()
@@ -1078,9 +1079,35 @@ export default function Home() {
               ))}
             </ul>
 
+            {/* Billing toggle */}
+            <div className="flex items-center justify-center gap-1 mb-4 rounded-xl bg-white/5 p-1">
+              <button
+                onClick={() => setBillingInterval("monthly")}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${billingInterval === "monthly" ? "bg-white/10 text-white" : "text-slate-500"}`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setBillingInterval("yearly")}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${billingInterval === "yearly" ? "bg-white/10 text-white" : "text-slate-500"}`}
+              >
+                Yearly
+              </button>
+            </div>
+
             <div className="text-center mb-4">
-              <span className="text-3xl font-bold text-white">$9.99</span>
-              <span className="text-sm text-slate-400">/month</span>
+              {billingInterval === "monthly" ? (
+                <>
+                  <span className="text-3xl font-bold text-white">$9.99</span>
+                  <span className="text-sm text-slate-400">/month</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-3xl font-bold text-white">$99.99</span>
+                  <span className="text-sm text-slate-400">/year</span>
+                  <p className="mt-1 text-xs text-emerald-400 font-medium">Save $19.89 vs monthly</p>
+                </>
+              )}
             </div>
 
             <button
@@ -1091,7 +1118,11 @@ export default function Home() {
                 }
                 setCheckoutLoading(true)
                 try {
-                  const res = await fetch("/api/stripe/checkout", { method: "POST" })
+                  const res = await fetch("/api/stripe/checkout", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ plan: billingInterval === "yearly" ? "yearly" : "monthly" }),
+                  })
                   const { url } = await res.json()
                   if (url) window.location.href = url
                 } catch {
