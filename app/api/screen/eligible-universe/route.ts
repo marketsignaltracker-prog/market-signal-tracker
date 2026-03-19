@@ -341,6 +341,7 @@ export async function GET(request: NextRequest) {
         let historyQuery = (supabase.from("candidate_screen_history") as any)
           .select("*")
           .eq("screened_on", screenDate)
+          .gte("candidate_score", minCandidateScore)
           .range(from, from + PAGE_SIZE - 1)
 
         if (onlyActive) {
