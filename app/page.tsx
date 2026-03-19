@@ -2504,7 +2504,9 @@ function SignalDetailsModal({
                       <MetricRow label="Insider buying?" value={row.has_insider_trades ? "Yes" : "No"} />
                       <MetricRow label="What they did" value={row.insider_action || null} />
                       <MetricRow label="Total invested" value={formatInsiderValue(row)} />
+                      <MetricRow label="Buy value" value={row.insider_buy_value != null && row.insider_buy_value > 0 ? formatMoney(row.insider_buy_value) : null} />
                       <MetricRow label="Cluster buy?" value={(row.cluster_buyers ?? 0) >= 2 ? `Yes — ${row.cluster_buyers} insiders` : "No"} />
+                      <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
                       <MetricRow label="Congress buying?" value={(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"} />
                       <MetricRow label="Congress amount" value={row.ptr_amount} />
                     </div>
@@ -2774,7 +2776,9 @@ function SignalDetailsModal({
                         <MetricRow label="Shares bought" value={formatShares(row.insider_shares)} />
                         <MetricRow label="Price they paid" value={formatMoney(row.insider_avg_price)} />
                         <MetricRow label="Total invested" value={formatInsiderValue(row)} />
+                        <MetricRow label="Buy value" value={row.insider_buy_value != null && row.insider_buy_value > 0 ? formatMoney(row.insider_buy_value) : null} />
                         <MetricRow label="Cluster buy?" value={(row.cluster_buyers ?? 0) >= 2 ? `Yes — ${row.cluster_buyers} insiders` : "No"} />
+                        <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
                         <MetricRow label="Congress buying?" value={(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"} />
                         <MetricRow label="Congress amount" value={row.ptr_amount} />
                         {row.ptr_amount ? (
