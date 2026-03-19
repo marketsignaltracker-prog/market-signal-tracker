@@ -1051,7 +1051,7 @@ export async function GET(request: Request) {
         as_of_date: screenedOn,
         screen_reason: passed
           ? `LTCS ${score}/100: ${reasons.join(", ")}`
-          : exclusionReason,
+          : `${exclusionReason} | ${reasons.join(", ")}`,
         last_screened_at: nowIso,
         updated_at: nowIso,
       }
