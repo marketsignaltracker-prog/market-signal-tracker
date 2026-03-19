@@ -2453,7 +2453,7 @@ function SignalDetailsModal({
                   {/* Hero pitch */}
                   <div className="rounded-2xl border border-[rgba(240,165,0,0.20)] p-5" style={{ background: "linear-gradient(160deg, rgba(240,165,0,0.14) 0%, #080d18 60%)" }}>
                     <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">Why this stock?</p>
-                    <p className="mt-2 text-2xl font-bold leading-snug text-white">{thesis}</p>
+                    <p className="mt-2 text-sm font-semibold leading-6 text-white">{thesis}</p>
                   </div>
 
                   {/* Smart Money */}
@@ -2577,7 +2577,7 @@ function SignalDetailsModal({
                       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
                         Why this stock?
                       </p>
-                      <p className="mt-2 text-xl font-bold leading-snug text-white">
+                      <p className="mt-2 text-sm font-semibold leading-6 text-white">
                         {thesis}
                       </p>
                     </div>
@@ -3007,37 +3007,37 @@ function getFeaturedThesis(row: UnifiedRow) {
   const ltcs = parseScreenReasonScores(row.screen_reason)
 
   if ((row.cluster_buyers ?? 0) >= 3 && row.ptr_amount) {
-    return "People who work at this company AND members of Congress are all buying shares right now — that almost never happens at the same time"
+    return "Company insiders and members of Congress are both buying this stock right now — that's a rare signal worth paying attention to."
   }
 
   if ((row.cluster_buyers ?? 0) >= 2) {
-    return "Several people who work at this company are spending their own money to buy shares — they think the stock is going up"
+    return "Multiple people who work at this company just bought shares with their own money — they clearly believe in what's ahead."
   }
 
   if (row.ptr_amount) {
-    return "A member of Congress recently bought shares in this company, which could mean they know something the rest of us don't"
+    return "A member of Congress recently bought shares in this company — they may have insight the public doesn't."
   }
 
   if (
     ltcs.moat !== null && ltcs.moat >= 75 &&
     ltcs.profitability !== null && ltcs.profitability >= 75
   ) {
-    return "This company is hard for competitors to beat, makes a lot of money, and the stock price looks reasonable right now"
+    return "This company looks very promising — it has great cash flow, strong profits, and the price is reasonable right now."
   }
 
   if (ltcs.financial !== null && ltcs.financial >= 100 && ltcs.profitability !== null && ltcs.profitability >= 75) {
-    return "This company has almost no debt, makes strong profits every quarter, and is in great financial shape"
+    return "This company is in great financial shape — very little debt, strong profits, and the business keeps growing."
   }
 
   if (ltcs.valuation !== null && ltcs.valuation >= 65 && row.display_score >= 70) {
-    return "This is a well-run company and the stock looks like a good deal compared to how much money they make"
+    return "This looks like a solid company that's priced well right now — you're getting good value for what the business earns."
   }
 
   if (row.display_score >= 80) {
-    return "This company checks a lot of boxes — it's profitable, financially healthy, and our system rates it highly"
+    return "This company scores well across the board — it's profitable, financially healthy, and looks like a quality pick."
   }
 
-  return "Our screening system flagged this stock because it scores well on several measures of quality and value"
+  return "Our system flagged this stock because it checks several boxes for quality and value — worth a closer look."
 }
 
 function getSimpleCardBullets(row: UnifiedRow) {
