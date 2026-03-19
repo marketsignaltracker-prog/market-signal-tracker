@@ -114,6 +114,12 @@ type CandidateMetricRow = {
   passesDollarVolume: boolean
   passesMarketCap: boolean
   snapshot: TickerSnapshot
+  oneDayReturn: number | null
+  return5d: number | null
+  return10d: number | null
+  return20d: number | null
+  relativeStrength20d: number | null
+  volumeRatio: number | null
 }
 
 type LTCSScoreInput = {
@@ -465,21 +471,21 @@ async function getTickerData(ticker: string) {
   // Try Finnhub first (60 calls/min, no daily limit), fall back to Yahoo
   if (FINNHUB_API_KEY) {
     try {
-      const [metricData, profileData] = await Promise.all([
+      const [metricData, profileData, quoteData] = await Promise.all([
         finnhubFetch(`/stock/metric?symbol=${encodeURIComponent(ticker)}&metric=all`),
         finnhubFetch(`/stock/profile2?symbol=${encodeURIComponent(ticker)}`),
+        finnhubFetch(`/quote?symbol=${encodeURIComponent(ticker)}`),
       ])
 
       const m = metricData?.metric || {}
       const profile = profileData || {}
+      const quote = quoteData || {}
 
       if (!profile.ticker && !m.beta) {
         throw new Error(`Finnhub: no data for ${ticker}`)
       }
 
-      const price = safeNumber(profile.marketCapitalization)
-        ? safeNumber(m["52WeekHigh"]) // approximate — profile doesn't have current price
-        : null
+      const price = safeNumber(quote.c) ?? safeNumber(m["52WeekHigh"])
       const marketCap = safeNumber(profile.marketCapitalization)
         ? profile.marketCapitalization * 1_000_000 // Finnhub returns in millions
         : null
@@ -541,6 +547,13 @@ async function getTickerData(ticker: string) {
           averageDailyVolume3Month: safeNumber(m["10DayAverageTradingVolume"])
             ? m["10DayAverageTradingVolume"] * 1_000_000 // Finnhub returns in millions
             : null,
+          // Finnhub price returns
+          oneDayChangePct: safeNumber(quote.dp),
+          return5d: safeNumber(m["5DayPriceReturnDaily"]),
+          return13w: safeNumber(m["13WeekPriceReturnDaily"]),
+          return26w: safeNumber(m["26WeekPriceReturnDaily"]),
+          return52w: safeNumber(m["52WeekPriceReturnDaily"]),
+          monthToDate: safeNumber(m["monthToDatePriceReturnDaily"]),
         },
         snapshot,
       }
@@ -890,6 +903,16 @@ async function prepareTickerForScoring(
   const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
   const passesMarketCap = marketCap >= MIN_MARKET_CAP
 
+  // Extract Finnhub price returns from quote object
+  const oneDayReturn = safeNumber((quote as any)?.oneDayChangePct)
+  const return5d = safeNumber((quote as any)?.return5d)
+  const return13w = safeNumber((quote as any)?.return13w)
+  // Approximate 10D as midpoint of 5D and 13W, 20D as ~1/3 of 13W period
+  const return10d = return5d != null && return13w != null ? round2((return5d + return13w) / 2) : return5d
+  const return20d = return13w != null ? round2(return13w / 3) : null
+  // Relative strength: use month-to-date or 5D as proxy
+  const relativeStrength20d = safeNumber((quote as any)?.monthToDate) ?? return5d
+
   return {
     kind: "metric",
     metric: {
@@ -904,6 +927,12 @@ async function prepareTickerForScoring(
       passesDollarVolume,
       passesMarketCap,
       snapshot,
+      oneDayReturn,
+      return5d,
+      return10d,
+      return20d,
+      relativeStrength20d,
+      volumeRatio: null,
     },
   }
 }
@@ -1137,12 +1166,12 @@ export async function GET(request: Request) {
         business_description: metric.snapshot.businessDescription,
         avg_volume_20d: round2(metric.avgVolume20d),
         avg_dollar_volume_20d: round2(metric.avgDollarVolume20d),
-        one_day_return: null,
-        return_5d: null,
-        return_10d: null,
-        return_20d: null,
-        relative_strength_20d: null,
-        volume_ratio: null,
+        one_day_return: metric.oneDayReturn,
+        return_5d: metric.return5d,
+        return_10d: metric.return10d,
+        return_20d: metric.return20d,
+        relative_strength_20d: metric.relativeStrength20d,
+        volume_ratio: metric.volumeRatio,
         breakout_20d: false,
         breakout_10d: false,
         above_sma_20: false,
