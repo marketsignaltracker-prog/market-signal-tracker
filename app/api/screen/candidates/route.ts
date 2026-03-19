@@ -949,7 +949,7 @@ export async function GET(request: Request) {
             .select(
               "company_id, ticker, cik, name, is_active, is_eligible, has_insider_trades, has_ptr_forms, has_clusters, eligibility_reason"
             )
-            .eq("is_eligible", true)
+            .or("is_eligible.eq.true,included.eq.true")
             .not("cik", "is", null)
             .order("ticker", { ascending: true })
             .range(from, to)
@@ -963,7 +963,7 @@ export async function GET(request: Request) {
       universe === "eligible"
         ? sourceTable
             .select("*", { count: "exact", head: true })
-            .eq("is_eligible", true)
+            .or("is_eligible.eq.true,included.eq.true")
             .not("cik", "is", null)
         : sourceTable
             .select("*", { count: "exact", head: true })
