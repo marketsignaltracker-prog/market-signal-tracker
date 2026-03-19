@@ -1455,8 +1455,9 @@ function SwipeStockCard({
               : row.price_return_20d != null ? Number(row.price_return_20d)
               : row.one_day_return != null ? Number(row.one_day_return)
               : null
-            const rsScore = rs != null ? Math.min(Math.max(Math.round(rs * 4), 0), 100) : null
-            const rsLabel = rs == null ? "—" : rs >= 15 ? "Near Highs" : rs >= 8 ? "Strong" : rs >= 0 ? "Neutral" : "Weak"
+            // Score: map rs to 0-100 where 50 = neutral, >50 = positive momentum, <50 = negative
+            const rsScore = rs != null ? Math.min(Math.max(Math.round(50 + rs * 2), 5), 100) : null
+            const rsLabel = rs == null ? "—" : rs >= 15 ? "Near Highs" : rs >= 8 ? "Strong" : rs >= 0 ? "Neutral" : rs >= -5 ? "Cooling" : "Weak"
 
             return (
               <>
@@ -1487,7 +1488,7 @@ function SwipeStockCard({
                 />
                 <Tile
                   iconPath={iconPaths.rs} label="Momentum" value={rsLabel}
-                  sub={rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}% ahead of the market recently` : "Is the stock outperforming most others?"}
+                  sub={rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}% vs market over 20 days` : "Is the stock outperforming most others?"}
                   score={rsScore} maxScore={100} color="#ec4899" borderColor="rgba(236,72,153,0.25)"
                 />
               </>
@@ -2708,7 +2709,7 @@ function SignalDetailsModal({
                           explain: "Is the stock priced right for how fast the company is growing? We use the PEG ratio — ideally under 1.5. Even the best company is a bad investment if you overpay. We want quality at a reasonable price.",
                         },
                         {
-                          label: "Momentum", score: rs != null ? Math.min(Math.round(rs * 4), 100) : null, color: "#ec4899", borderColor: "rgba(236,72,153,0.20)",
+                          label: "Momentum", score: rs != null ? Math.min(Math.max(Math.round(50 + rs * 2), 5), 100) : null, color: "#ec4899", borderColor: "rgba(236,72,153,0.20)",
                           icon: "M6 1L8.5 4H7V7.5H5V4H3.5L6 1M2 9.5H10",
                           verdict: rs == null ? "No data" : rs >= 15 ? "Near Highs" : rs >= 8 ? "Strong" : rs >= 0 ? "Neutral" : "Weak",
                           explain: rs != null
