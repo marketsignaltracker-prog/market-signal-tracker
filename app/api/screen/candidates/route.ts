@@ -445,7 +445,92 @@ function buildTickerSnapshot(summary: any, quote: any): TickerSnapshot {
   }
 }
 
+const FMP_API_KEY = process.env.FMP_API_KEY || ""
+const FMP_BASE_URL = "https://financialmodelingprep.com/stable"
+
+async function fmpFetch(endpoint: string, ticker: string): Promise<any> {
+  const url = `${FMP_BASE_URL}/${endpoint}?symbol=${encodeURIComponent(ticker)}&apikey=${FMP_API_KEY}`
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 12_000)
+  try {
+    const res = await fetch(url, { cache: "no-store", signal: controller.signal })
+    if (!res.ok) throw new Error(`FMP ${endpoint} ${res.status}`)
+    const data = await res.json()
+    return Array.isArray(data) ? data[0] ?? null : data
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function getTickerData(ticker: string) {
+  // Try FMP first, fall back to Yahoo if FMP key missing
+  if (FMP_API_KEY) {
+    const [profile, ratios, metrics] = await Promise.all([
+      fmpFetch("profile", ticker),
+      fmpFetch("ratios-ttm", ticker),
+      fmpFetch("key-metrics-ttm", ticker),
+    ])
+
+    if (!profile) throw new Error(`FMP: no profile data for ${ticker}`)
+
+    const price = safeNumber(profile.price)
+    const marketCap = safeNumber(profile.marketCap)
+    const beta = safeNumber(profile.beta)
+
+    const peRatio = safeNumber(ratios?.priceToEarningsRatioTTM)
+    const forwardPeRaw = safeNumber(ratios?.forwardPriceToEarningsGrowthRatioTTM)
+    const pegRatio = safeNumber(ratios?.priceToEarningsGrowthRatioTTM)
+    const forwardPeg = safeNumber(ratios?.forwardPriceToEarningsGrowthRatioTTM)
+
+    // FMP returns margins as decimals (0.50 = 50%)
+    const grossMargin = safeNumber(ratios?.grossProfitMarginTTM)
+    const operatingMargin = safeNumber(ratios?.operatingProfitMarginTTM)
+    const profitMargin = safeNumber(ratios?.netProfitMarginTTM)
+
+    const debtToEquity = safeNumber(ratios?.debtToEquityRatioTTM)
+    const currentRatio = safeNumber(ratios?.currentRatioTTM) ?? safeNumber(metrics?.currentRatioTTM)
+
+    const roe = safeNumber(metrics?.returnOnEquityTTM)
+
+    // freeCashFlowToEquityTTM from key-metrics, or derive from operatingCashFlow
+    const fcf = safeNumber(metrics?.freeCashFlowToEquityTTM)
+
+    const snapshot: TickerSnapshot = {
+      peRatio: peRatio !== null && peRatio > 0 ? peRatio : null,
+      forwardPe: forwardPeg !== null && forwardPeg > 0 ? forwardPeg : null,
+      peType: peRatio !== null && peRatio > 0 ? "trailing" : forwardPeg !== null ? "forward" : null,
+      sector: profile.sector?.trim() ?? null,
+      industry: profile.industry?.trim() ?? null,
+      businessDescription: profile.description?.trim() ?? null,
+      companyProfile: {
+        profitMargin,
+        operatingMargin,
+        grossMargin,
+        returnOnEquity: roe,
+        debtToEquity: debtToEquity !== null ? debtToEquity * 100 : null, // FMP returns as ratio, LTCS expects percentage
+        currentRatio,
+        revenueGrowth: null, // not available in TTM ratios
+        earningsGrowth: null, // not available in TTM ratios
+        freeCashflow: fcf,
+        operatingCashflow: null,
+        recommendationKey: null,
+        pegRatio: pegRatio !== null && pegRatio > 0 ? pegRatio : forwardPeg,
+        ma200: null, // not available from FMP profile/ratios
+        beta,
+      },
+    }
+
+    return {
+      quote: {
+        regularMarketPrice: price,
+        marketCap,
+        averageDailyVolume3Month: safeNumber(profile.averageVolume),
+      },
+      snapshot,
+    }
+  }
+
+  // Fallback to Yahoo Finance
   return await withYahooRetry(async () => {
     const [quote, summary] = await Promise.all([
       yahooFinance.quote(ticker),
