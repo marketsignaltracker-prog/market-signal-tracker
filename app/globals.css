@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #020617;
+  --background: #080d18;
   --foreground: #ededed;
 }
 
@@ -16,7 +16,7 @@ html,
 body {
   height: 100%;
   min-height: 100%;
-  background: #020617;
+  background: #080d18;
 }
 
 body {
@@ -27,7 +27,7 @@ body {
   background:
     radial-gradient(circle at top, rgba(34, 211, 238, 0.10), transparent 20%),
     radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.08), transparent 24%),
-    linear-gradient(to bottom, #020617, #081122 45%, #020617);
+    linear-gradient(to bottom, #080d18, #081122 45%, #080d18);
 
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
