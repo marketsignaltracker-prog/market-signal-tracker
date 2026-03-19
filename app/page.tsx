@@ -212,7 +212,6 @@ type SectorFilterType = "all" | string
 type SourceFilterType = "all" | "technical_only" | "filing_only" | "both"
 type InsiderFilterType = "all" | "yes" | "cluster"
 type CongressFilterType = "all" | "yes"
-type ClusterFilterType = "all" | "yes"
 
 type MiniMetricItem = {
   label: string
@@ -424,7 +423,6 @@ export default function Home() {
   const [sourceFilter, setSourceFilter] = useState<SourceFilterType>("all")
   const [insiderFilter, setInsiderFilter] = useState<InsiderFilterType>("all")
   const [congressFilter, setCongressFilter] = useState<CongressFilterType>("all")
-  const [clusterFilter, setClusterFilter] = useState<ClusterFilterType>("all")
 
   const [beginnerMode, setBeginnerMode] = useState(true)
 
@@ -685,9 +683,8 @@ export default function Home() {
       .filter((row) => matchesSourceFilter(row, sourceFilter))
       .filter((row) => matchesInsiderFilter(row, insiderFilter))
       .filter((row) => matchesCongressFilter(row, congressFilter))
-      .filter((row) => matchesClusterFilter(row, clusterFilter))
       .sort(compareRows)
-  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter, clusterFilter])
+  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter])
 
   const safeCardIndex =
     filteredRows.length === 0 ? 0 : Math.min(cardIndex, filteredRows.length - 1)
@@ -716,9 +713,8 @@ export default function Home() {
     if (sourceFilter !== "all") count += 1
     if (insiderFilter !== "all") count += 1
     if (congressFilter !== "all") count += 1
-    if (clusterFilter !== "all") count += 1
     return count
-  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter, clusterFilter])
+  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter])
 
   function openDetails(ticker: string, initialTab = 0) {
     setDetailInitialTab(initialTab)
@@ -753,7 +749,6 @@ export default function Home() {
     setSourceFilter("all")
     setInsiderFilter("all")
     setCongressFilter("all")
-    setClusterFilter("all")
     setSelectedTicker(null)
     setCardIndex(0)
     setFiltersOpen(false)
@@ -788,7 +783,7 @@ export default function Home() {
       `}</style>
 
       {/* Header */}
-      <header className="shrink-0 border-b border-white/[0.07] bg-black/30 px-4 py-3 backdrop-blur-sm">
+      <header className="shrink-0 border-b border-[rgba(255,255,255,0.07)] px-3 pb-2 pt-[env(safe-area-inset-top,8px)] lg:px-4 lg:py-3" style={{ background: "#080d18" }}>
         <div className="mx-auto flex max-w-lg items-center justify-between lg:max-w-7xl">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-[#f0a500]">
@@ -919,8 +914,8 @@ export default function Home() {
               onChange={(v) => setInsiderFilter(v as InsiderFilterType)}
               options={[
                 { value: "all", label: "All" },
-                { value: "yes", label: "Yes" },
-                { value: "cluster", label: "Cluster only" },
+                { value: "yes", label: "Insiders buying" },
+                { value: "cluster", label: "Clusters only" },
               ]}
             />
             <FilterSelect
@@ -929,16 +924,7 @@ export default function Home() {
               onChange={(v) => setCongressFilter(v as CongressFilterType)}
               options={[
                 { value: "all", label: "All" },
-                { value: "yes", label: "Yes" },
-              ]}
-            />
-            <FilterSelect
-              label="Clusters"
-              value={clusterFilter}
-              onChange={(v) => setClusterFilter(v as ClusterFilterType)}
-              options={[
-                { value: "all", label: "All" },
-                { value: "yes", label: "Yes" },
+                { value: "yes", label: "Congress buying" },
               ]}
             />
             {activeFilterCount > 0 && (
@@ -1033,13 +1019,6 @@ function SwipeDeck({
   const [swipeDir, setSwipeDir] = useState<"left" | "right">("right")
   const [animKey, setAnimKey] = useState(0)
 
-  // Desktop: page through 3 cards at a time
-  const DESKTOP_CARDS = 3
-  const desktopPage = Math.floor(cardIndex / DESKTOP_CARDS)
-  const totalDesktopPages = Math.ceil(rows.length / DESKTOP_CARDS)
-  const desktopStart = desktopPage * DESKTOP_CARDS
-  const desktopSlice = rows.slice(desktopStart, desktopStart + DESKTOP_CARDS)
-
   function goNext() {
     if (cardIndex >= rows.length - 1) return
     setSwipeDir("left")
@@ -1051,20 +1030,6 @@ function SwipeDeck({
     if (cardIndex <= 0) return
     setSwipeDir("right")
     onIndexChange(cardIndex - 1)
-    setAnimKey((k) => k + 1)
-  }
-
-  function goDesktopNext() {
-    const nextStart = desktopStart + DESKTOP_CARDS
-    if (nextStart >= rows.length) return
-    onIndexChange(nextStart)
-    setAnimKey((k) => k + 1)
-  }
-
-  function goDesktopPrev() {
-    const prevStart = desktopStart - DESKTOP_CARDS
-    if (prevStart < 0) return
-    onIndexChange(prevStart)
     setAnimKey((k) => k + 1)
   }
 
@@ -1089,7 +1054,6 @@ function SwipeDeck({
   const hasPrev = cardIndex > 0
   const hasNext = cardIndex < rows.length - 1
   const dots = getDotRange(cardIndex, rows.length)
-  const desktopDots = getDotRange(desktopPage, totalDesktopPages)
 
   const DESKTOP_PAGE_SIZE = 3
   const desktopPage = Math.floor(cardIndex / DESKTOP_PAGE_SIZE)
@@ -1114,10 +1078,41 @@ function SwipeDeck({
   }
 
   return (
-    <>
-      {/* Mobile: single card swipe */}
-      <div className="flex h-full flex-col items-center px-3 pb-2 pt-3 lg:hidden">
-        <div className="mb-2 flex shrink-0 items-center gap-1.5">
+    <div className="flex h-full flex-col items-center px-2.5 pb-0 pt-1.5 lg:px-3 lg:pt-3">
+      {/* Nav row — mobile: single card dots, desktop: page dots */}
+      <div className="mb-1.5 flex w-full max-w-md shrink-0 items-center justify-between lg:mb-2.5 lg:max-w-7xl">
+        {/* Prev button — mobile: single, desktop: page */}
+        <button
+          type="button"
+          onClick={goPrev}
+          disabled={!hasPrev}
+          aria-label="Previous idea"
+          className={[
+            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition lg:hidden",
+            hasPrev
+              ? "border-[rgba(255,255,255,0.10)] bg-[#0f1729] text-white hover:bg-[#162038] active:scale-95"
+              : "cursor-default border-transparent text-transparent",
+          ].join(" ")}
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          onClick={goPrevPage}
+          disabled={desktopPage <= 0}
+          aria-label="Previous page"
+          className={[
+            "hidden h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition lg:flex",
+            desktopPage > 0
+              ? "border-[rgba(255,255,255,0.10)] bg-[#0f1729] text-white hover:bg-[#162038] active:scale-95"
+              : "cursor-default border-transparent text-transparent",
+          ].join(" ")}
+        >
+          ‹
+        </button>
+
+        {/* Dots — mobile: card dots, desktop: page dots */}
+        <div className="flex items-center gap-1.5 lg:hidden">
           {dots.map((i) => (
             <button
               key={i}
@@ -1127,106 +1122,141 @@ function SwipeDeck({
                 onIndexChange(i)
                 setAnimKey((k) => k + 1)
               }}
-              aria-label={`Go to stock ${i + 1}`}
+              aria-label={`Go to idea ${i + 1}`}
               className={[
                 "rounded-full transition-all duration-200",
                 i === cardIndex
-                  ? "h-2 w-5 bg-cyan-400"
-                  : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
+                  ? "h-2 w-5 bg-[#f0a500]"
+                  : "h-1.5 w-1.5 bg-[#1e2d45] hover:bg-[#2a3d55]",
               ].join(" ")}
             />
           ))}
-          <span className="ml-1.5 text-[11px] text-slate-500">
+          <span className="ml-1.5 text-[11px] text-[#7a8ba0]">
             {cardIndex + 1}/{rows.length}
           </span>
         </div>
-
-        <div
-          className="min-h-0 w-full max-w-md flex-1 overflow-hidden"
-          style={{ touchAction: "pan-y" }}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-        >
-          <div
-            key={`${row.ticker}-${animKey}`}
-            className="h-full"
-            style={{
-              animation: `${swipeDir === "left" ? "slideFromRight" : "slideFromLeft"} 260ms ease-out both`,
-            }}
-          >
-            <SwipeStockCard
-              row={row}
-              onOpen={() => onOpenDetails(row.ticker)}
-              onNext={goNext}
-              onPrev={goPrev}
-              hasNext={hasNext}
-              hasPrev={hasPrev}
+        <div className="hidden items-center gap-1.5 lg:flex">
+          {getDotRange(desktopPage, desktopTotalPages, 9).map((i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                setSwipeDir(i > desktopPage ? "left" : "right")
+                onIndexChange(i * DESKTOP_PAGE_SIZE)
+                setAnimKey((k) => k + 1)
+              }}
+              aria-label={`Page ${i + 1}`}
+              className={[
+                "rounded-full transition-all duration-200",
+                i === desktopPage
+                  ? "h-2 w-5 bg-[#f0a500]"
+                  : "h-1.5 w-1.5 bg-[#1e2d45] hover:bg-[#2a3d55]",
+              ].join(" ")}
             />
-          </div>
+          ))}
+          <span className="ml-1.5 text-[11px] text-[#7a8ba0]">
+            Page {desktopPage + 1}/{desktopTotalPages}
+          </span>
+        </div>
+
+        {/* Next button */}
+        <button
+          type="button"
+          onClick={goNext}
+          disabled={!hasNext}
+          aria-label="Next idea"
+          className={[
+            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition lg:hidden",
+            hasNext
+              ? "border-[rgba(255,255,255,0.10)] bg-[#0f1729] text-white hover:bg-[#162038] active:scale-95"
+              : "cursor-default border-transparent text-transparent",
+          ].join(" ")}
+        >
+          ›
+        </button>
+        <button
+          type="button"
+          onClick={goNextPage}
+          disabled={desktopPage >= desktopTotalPages - 1}
+          aria-label="Next page"
+          className={[
+            "hidden h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition lg:flex",
+            desktopPage < desktopTotalPages - 1
+              ? "border-[rgba(255,255,255,0.10)] bg-[#0f1729] text-white hover:bg-[#162038] active:scale-95"
+              : "cursor-default border-transparent text-transparent",
+          ].join(" ")}
+        >
+          ›
+        </button>
+      </div>
+
+      {/* Mobile: single swipeable card */}
+      <div
+        className="min-h-0 w-full max-w-md flex-1 overflow-hidden lg:hidden"
+        style={{ touchAction: "pan-y" }}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div
+          key={`${row.ticker}-${animKey}`}
+          className="h-full"
+          style={{
+            animation: `${swipeDir === "left" ? "slideFromRight" : "slideFromLeft"} 260ms ease-out both`,
+          }}
+        >
+          <SwipeStockCard
+            row={row}
+            rank={cardIndex + 1}
+            onOpen={() => onOpenDetails(row.ticker)}
+          />
         </div>
       </div>
 
       {/* Desktop: 3-card grid */}
-      <div className="hidden h-full flex-col items-center px-6 pb-4 pt-4 lg:flex">
-        <div className="mb-3 flex shrink-0 items-center gap-3">
-          <button
-            type="button"
-            onClick={goDesktopPrev}
-            disabled={desktopPage <= 0}
-            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200 disabled:opacity-30"
-          >
-            ← Prev
-          </button>
-          <div className="flex items-center gap-1.5">
-            {desktopDots.map((i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => onIndexChange(i * DESKTOP_CARDS)}
-                aria-label={`Go to page ${i + 1}`}
-                className={[
-                  "rounded-full transition-all duration-200",
-                  i === desktopPage
-                    ? "h-2 w-5 bg-cyan-400"
-                    : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
-                ].join(" ")}
-              />
-            ))}
-            <span className="ml-1.5 text-[11px] text-slate-500">
-              Page {desktopPage + 1}/{totalDesktopPages}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={goDesktopNext}
-            disabled={desktopStart + DESKTOP_CARDS >= rows.length}
-            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200 disabled:opacity-30"
-          >
-            Next →
-          </button>
-        </div>
-
-        <div className="min-h-0 w-full max-w-7xl flex-1">
-          <div
-            key={`desktop-${desktopPage}-${animKey}`}
-            className="grid h-full grid-cols-3 gap-4"
-            style={{ animation: "cardFadeUp 260ms ease-out both" }}
-          >
-            {desktopSlice.map((r) => (
-              <SwipeStockCard
-                key={r.ticker}
-                row={r}
-                onOpen={() => onOpenDetails(r.ticker)}
-                onNext={goDesktopNext}
-                onPrev={goDesktopPrev}
-                hasNext={desktopStart + DESKTOP_CARDS < rows.length}
-                hasPrev={desktopPage > 0}
-              />
-            ))}
-          </div>
-        </div>
+      <div
+        key={`desktop-page-${desktopPage}-${animKey}`}
+        className="hidden min-h-0 w-full max-w-7xl flex-1 gap-4 overflow-hidden lg:grid lg:grid-cols-3"
+        style={{
+          animation: `${swipeDir === "left" ? "slideFromRight" : "slideFromLeft"} 260ms ease-out both`,
+        }}
+      >
+        {desktopCards.map((cardRow, i) => (
+          <SwipeStockCard
+            key={cardRow.ticker}
+            row={cardRow}
+            rank={desktopStart + i + 1}
+            onOpen={() => onOpenDetails(cardRow.ticker)}
+          />
+        ))}
       </div>
-    </>
+    </div>
+  )
+}
+
+function ScoreRing({ score, palette }: { score: number; palette: ReturnType<typeof getScorePalette> }) {
+  const radius = 26
+  const strokeWidth = 5
+  const circumference = 2 * Math.PI * radius
+  const dashOffset = circumference - (score / 100) * circumference
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: 68, height: 68 }}>
+      <svg width="68" height="68" viewBox="0 0 68 68" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="34" cy="34" r={radius} fill="none" stroke="#1e2d45" strokeWidth={strokeWidth} />
+        <circle
+          cx="34" cy="34" r={radius} fill="none"
+          stroke={palette.start}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          style={{ transition: "stroke-dashoffset 600ms ease-out" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-lg font-black leading-none text-white">{score}</span>
+        <span className="text-[9px] leading-none text-[#7a8ba0] mt-0.5">/100</span>
+      </div>
+    </div>
   )
 }
 
@@ -1262,131 +1292,16 @@ function SwipeStockCard({
         <div className="flex items-center gap-3">
           <ScoreRing score={score} palette={palette} />
           <div className="min-w-0 flex-1">
-            <h2 className="text-[2.8rem] font-black tracking-tight text-white sm:text-5xl">{row.ticker}</h2>
-            <div className="mt-1 flex items-center gap-2">
-              {row.company_name ? (
-                <span className="truncate text-sm text-slate-400">
-                  {truncateText(row.company_name, 30)}
-                </span>
-              ) : null}
-              {row.company_name && row.sector ? (
-                <span className="text-slate-600">·</span>
-              ) : null}
-              {row.sector ? (
-                <span className="text-xs text-slate-500">{row.sector}</span>
-              ) : null}
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-3xl font-black tracking-tight text-white">{row.ticker}</h2>
+              <span className="text-base font-bold text-white/70">
+                {row.price ? formatMoney(row.price) : ""}
+              </span>
             </div>
             <p className="truncate text-xs text-white/40">
               {[row.company_name, row.sector].filter(Boolean).join(" · ")}
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1">
-            <div
-              className="flex items-baseline gap-1 rounded-2xl px-3 py-1.5"
-              style={{
-                background: `linear-gradient(135deg, ${palette.start}30, ${palette.end}20)`,
-                border: `1px solid ${palette.end}40`,
-              }}
-            >
-              <span
-                className="text-3xl font-black"
-                style={{ color: palette.end }}
-              >
-                {score}
-              </span>
-              <span className="text-xs font-semibold text-slate-400">/100</span>
-            </div>
-            {row.price ? (
-              <span className="text-sm font-semibold text-slate-300">
-                {formatMoney(row.price)}
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      {/* Hero headline — the "profile photo" equivalent */}
-      <div className="flex flex-1 items-center px-6 py-4">
-        <p
-          className="text-2xl leading-snug font-bold"
-          style={{
-            color: hasPlatinum ? "#fbbf24" : hasCluster ? "#6ee7b7" : palette.end,
-          }}
-        >
-          &ldquo;{thesis}&rdquo;
-        </p>
-      </div>
-
-      {/* Reasons to swipe right — Hinge-style prompts */}
-      <div className="shrink-0 px-4 pb-2">
-        <p className="mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
-          Why you might swipe right
-        </p>
-        <div className="space-y-2">
-          {reasons.map((reason, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-3 rounded-2xl border px-4 py-3"
-              style={{
-                borderColor: reason.highlight
-                  ? hasPlatinum
-                    ? "rgba(251,191,36,0.3)"
-                    : "rgba(52,211,153,0.3)"
-                  : "rgba(255,255,255,0.08)",
-                background: reason.highlight
-                  ? hasPlatinum
-                    ? "rgba(251,191,36,0.08)"
-                    : "rgba(52,211,153,0.08)"
-                  : "rgba(255,255,255,0.03)",
-              }}
-            >
-              <span className="text-lg">{reason.emoji}</span>
-              <span
-                className="text-sm font-semibold"
-                style={{
-                  color: reason.highlight
-                    ? hasPlatinum
-                      ? "#fde68a"
-                      : "#a7f3d0"
-                    : "#e2e8f0",
-                }}
-              >
-                {reason.text}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Action bar — dating app style */}
-      <div className="mt-auto shrink-0 px-5 pt-3 pb-5">
-        <div className="flex items-center justify-between gap-3">
-          {/* Skip / Pass */}
-          <button
-            type="button"
-            onClick={onPrev}
-            disabled={!hasPrev}
-            className={[
-              "flex h-12 w-12 items-center justify-center rounded-full border text-lg transition active:scale-90",
-              hasPrev
-                ? "border-white/15 bg-white/5 text-slate-400 hover:border-rose-400/40 hover:bg-rose-400/10 hover:text-rose-300"
-                : "cursor-default border-transparent text-transparent",
-            ].join(" ")}
-            aria-label="Previous stock"
-          >
-            ←
-          </button>
-
-          {/* Details — center CTA */}
-          <button
-            type="button"
-            onClick={onOpen}
-            className="flex flex-1 items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-6 py-3 text-sm font-bold text-white transition hover:border-cyan-400/50 hover:bg-cyan-400/10 active:scale-[0.97]"
-          >
-            See Profile
-          </button>
-
-          {/* Buy — "super like" */}
           <a
             href={`https://robinhood.com/stocks/${row.ticker}`}
             target="_blank"
@@ -1875,23 +1790,13 @@ function matchesSourceFilter(row: UnifiedRow, sourceFilter: SourceFilterType) {
 
 function matchesInsiderFilter(row: UnifiedRow, filter: InsiderFilterType) {
   if (filter === "all") return true
-  const hasInsider =
-    Boolean(row.insider_action) ||
-    (row.insider_shares ?? 0) > 0 ||
-    (row.insider_buy_value ?? 0) > 0
-  if (filter === "yes") return hasInsider
   if (filter === "cluster") return (row.cluster_buyers ?? 0) >= 2
-  return true
+  return row.has_insider_trades === true
 }
 
 function matchesCongressFilter(row: UnifiedRow, filter: CongressFilterType) {
   if (filter === "all") return true
-  return Boolean(row.ptr_amount)
-}
-
-function matchesClusterFilter(row: UnifiedRow, filter: ClusterFilterType) {
-  if (filter === "all") return true
-  return (row.cluster_buyers ?? 0) >= 2
+  return row.has_ptr_forms === true || !!row.ptr_amount
 }
 
 function getLastUpdated(rows: UnifiedRow[]) {
@@ -2153,6 +2058,7 @@ function ScoreBar({
   compact?: boolean
 }) {
   const score = row.display_score
+  const palette = getScorePalette(score)
 
   return (
     <div className="w-full rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4">
@@ -2168,7 +2074,7 @@ function ScoreBar({
           className="h-full rounded-full transition-all duration-500"
           style={{
             width: `${score}%`,
-            background: "#f0a500",
+            background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
           }}
         />
       </div>
@@ -2192,11 +2098,11 @@ function MiniMetric({
   value: string
 }) {
   return (
-    <div className="flex min-h-[88px] w-full flex-col items-center justify-center rounded-[1.15rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[94px] sm:px-4">
-      <p className="mb-2 break-words text-[11px] uppercase tracking-[0.22em] text-slate-400 sm:text-[11px]">
+    <div className="flex min-h-[88px] w-full flex-col items-center justify-center rounded-[1.15rem] border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-3 text-center sm:min-h-[94px] sm:px-4">
+      <p className="mb-2 break-words text-[10px] uppercase tracking-[0.22em] text-[#8a8a8a] sm:text-[11px]">
         {label}
       </p>
-      <p className="break-words text-xl font-semibold tracking-tight text-white sm:text-xl">
+      <p className="break-words text-lg font-semibold tracking-tight text-white sm:text-xl">
         {value}
       </p>
     </div>
@@ -2219,21 +2125,22 @@ function ScoreBadge({
   large?: boolean
 }) {
   const score = row.display_score
+  const palette = getScorePalette(score)
 
   return (
     <div
       className={[
-        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-bold",
+        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-black",
         large ? "px-3.5 py-1.5 text-sm sm:px-4 sm:py-2" : "px-3 py-1 text-sm",
       ].join(" ")}
       style={{
-        background: "#162038",
-        color: "#ffffff",
+        background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
+        color: palette.text,
       }}
     >
       <span>{score}</span>
       {row.ticker_score_change_7d !== null && row.ticker_score_change_7d !== undefined && (
-        <span className="text-xs text-[#7a8ba0]">
+        <span className="text-xs" style={{ color: palette.text, opacity: 0.7 }}>
           {row.ticker_score_change_7d >= 3 ? "↑" : row.ticker_score_change_7d <= -3 ? "↓" : ""}
         </span>
       )}
@@ -2380,14 +2287,6 @@ function SignalDetailsModal({
   const thesis = getFeaturedThesis(row)
   const confidenceBullets = getConfidenceBullets(row)
   const setupBullets = getSimpleSetupBullets(row)
-  const scoreExplanation = getDetailedScoreExplanation(row)
-
-  const hasSmartMoney =
-    Boolean(row.insider_action) ||
-    (row.insider_shares ?? 0) > 0 ||
-    (row.insider_buy_value ?? 0) > 0 ||
-    Boolean(row.ptr_amount) ||
-    (row.cluster_buyers ?? 0) > 0
 
   const [activeSlide, setActiveSlide] = useState(initialTab)
   const touchStartX = useRef<number | null>(null)
@@ -2446,8 +2345,8 @@ function SignalDetailsModal({
         className="fixed inset-0 flex items-stretch justify-center p-0 sm:items-center sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex h-screen min-h-screen w-screen max-w-none flex-col overflow-hidden rounded-none border-0 bg-[linear-gradient(to_bottom,_#020617,_#081122_40%,_#020617)] shadow-2xl sm:h-[92vh] sm:min-h-0 sm:w-full sm:max-w-6xl sm:rounded-[2rem] sm:border sm:border-white/10">
-          <div className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+        <div className="flex h-screen min-h-screen w-screen max-w-none flex-col overflow-hidden rounded-none border-0 shadow-2xl sm:h-[92vh] sm:min-h-0 sm:w-full sm:max-w-6xl sm:rounded-[2rem] sm:border sm:border-[rgba(255,255,255,0.07)]" style={{ background: "#080d18" }}>
+          <div className="sticky top-0 z-20 border-b border-[rgba(255,255,255,0.07)]" style={{ background: "#080d18" }}>
             <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-2">
                 <button
@@ -2490,15 +2389,34 @@ function SignalDetailsModal({
             </div>
 
             <div className="border-t border-[rgba(255,255,255,0.07)] px-4 py-4 sm:px-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-2xl font-bold sm:text-3xl">{row.ticker}</h2>
-                <ScoreBadge row={row} large />
-                <FreshnessBadge row={row} />
+              <div className="flex items-center gap-3">
+                <ScoreRing score={row.display_score} palette={getScorePalette(row.display_score)} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="text-3xl font-black tracking-tight text-white">{row.ticker}</h2>
+                    <span className="text-base font-bold text-white/70">
+                      {row.price ? formatMoney(row.price) : ""}
+                    </span>
+                  </div>
+                  <p className="truncate text-xs text-white/40">
+                    {[row.company_name, row.sector].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <FreshnessBadge row={row} />
+                  <a
+                    href={`https://robinhood.com/stocks/${row.ticker}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3.5 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500/25 active:scale-95"
+                  >
+                    Buy
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="inline-block">
+                      <path d="M3 9L9 3M9 3H4M9 3V8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </a>
+                </div>
               </div>
-
-              {row.company_name ? (
-                <p className="mt-2 truncate text-sm text-[#7a8ba0]">{row.company_name}</p>
-              ) : null}
             </div>
 
             <div className="border-t border-[rgba(255,255,255,0.07)] px-4 py-3 lg:hidden">
@@ -2527,77 +2445,53 @@ function SignalDetailsModal({
           </div>
 
           <div className="flex-1 overflow-hidden">
-            {/* ======= DESKTOP: two-column layout ======= */}
+            {/* Desktop: same content as mobile tabs but in two-column layout */}
             <div className="hidden h-full overflow-y-auto lg:block">
-              <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-                {/* LEFT COLUMN — Overview: company + performance in plain English */}
-                <div>
-                  {row.business_description ? (
-                    <div className="mb-5 rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                        About the company
-                      </p>
-                      <p className="mt-3 break-words text-sm leading-7 text-slate-300 sm:text-base">
-                        {row.business_description}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Company snapshot
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <ConfirmationRow label="Sector" value={row.sector || "Not available"} />
-                      <ConfirmationRow label="Industry" value={row.industry || "Not available"} />
-                      <ConfirmationRow label="Market cap" value={formatMarketCap(row.market_cap) || "—"} />
-                      <ConfirmationRow label="Valuation (P/E)" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
-                      <ConfirmationRow label="Price" value={formatMoney(row.price) || "—"} />
-                      <ConfirmationRow label="Freshness" value={getFreshnessLabel(row) || "—"} />
-                    </div>
-                  </div>
-
-                  <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Recent performance in plain english
-                    </p>
-                    <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
-                      {getPerformanceSummary(row).map((item, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {(row.earnings_surprise_pct !== null || row.revenue_growth_pct !== null || row.guidance_flag !== null) && (
-                    <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Business fundamentals
-                      </p>
-                      <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
-                        {getFundamentalsSummary(row).map((item, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                {/* RIGHT COLUMN — Why it’s here: scoring + signals + Numbers */}
+              <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+                {/* Left column: pitch + smart money + fundamentals */}
                 <div className="space-y-5">
-                  <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                      Why it made the board
-                    </p>
-                    <p className="mt-2 break-words text-xl font-semibold text-white">
-                      {thesis}
-                    </p>
-                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-300">
+                  {/* Hero pitch */}
+                  <div className="rounded-2xl border border-[rgba(240,165,0,0.20)] p-5" style={{ background: "linear-gradient(160deg, rgba(240,165,0,0.14) 0%, #080d18 60%)" }}>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">Why this stock?</p>
+                    <p className="mt-2 text-2xl font-bold leading-snug text-white">{thesis}</p>
+                  </div>
+
+                  {/* Smart Money */}
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-5">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">Smart Money is Moving</p>
+                    <p className="mb-3 text-sm leading-6 text-[#7a8ba0]">When insiders or Congress buy, they may know something. Here’s what we found:</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl p-3" style={{
+                        background: row.has_insider_trades ? "linear-gradient(135deg, rgba(249,115,22,0.14) 0%, rgba(249,115,22,0.03) 100%)" : "#0d1117",
+                        border: row.has_insider_trades ? "1px solid rgba(249,115,22,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                      }}>
+                        <p className="text-xs font-bold" style={{ color: row.has_insider_trades ? "#fb923c" : "#374151" }}>Insider Trades</p>
+                        <p className="mt-1 text-lg font-black" style={{ color: row.has_insider_trades ? "#fed7aa" : "#1f2937" }}>
+                          {(row.cluster_buyers ?? 0) >= 2 ? "Cluster" : row.has_insider_trades ? "Yes" : "No"}
+                        </p>
+                        <p className="mt-1 text-[11px]" style={{ color: row.has_insider_trades ? "rgba(253,186,116,0.6)" : "#1f2937" }}>
+                          {(row.cluster_buyers ?? 0) >= 2 ? `${row.cluster_buyers} insiders buying together` : row.has_insider_trades ? "SEC Form 4 filed" : "None detected"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl p-3" style={{
+                        background: (row.has_ptr_forms || row.ptr_amount) ? "linear-gradient(135deg, rgba(168,85,247,0.14) 0%, rgba(168,85,247,0.03) 100%)" : "#0d1117",
+                        border: (row.has_ptr_forms || row.ptr_amount) ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                      }}>
+                        <p className="text-xs font-bold" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#c084fc" : "#374151" }}>Congress Trades</p>
+                        <p className="mt-1 text-lg font-black" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#e9d5ff" : "#1f2937" }}>
+                          {(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"}
+                        </p>
+                        <p className="mt-1 text-[11px]" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "rgba(196,181,253,0.6)" : "#1f2937" }}>
+                          {row.ptr_amount ? `${row.ptr_amount} disclosed` : (row.has_ptr_forms) ? "PTR filed" : "None detected"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bull Case */}
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-5">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">The Bull Case</p>
+                    <ul className="space-y-3">
                       {confidenceBullets.map((item, i) => (
                         <li key={i} className="flex items-start gap-3 text-sm leading-6 text-white/80">
                           <span className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f0a500]/15 text-[10px] font-bold text-[#f0a500]">{i + 1}</span>
@@ -2609,66 +2503,60 @@ function SignalDetailsModal({
 
                   <ScoreBar row={row} />
 
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-amber-300/80">
-                      How it got its score
-                    </p>
-                    <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
-                      {scoreExplanation.map((item, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  {row.business_description ? (
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-5">
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">What does this company do?</p>
+                      <p className="text-sm leading-6 text-[#b0bec8]">{row.business_description}</p>
+                    </div>
+                  ) : null}
+                </div>
 
-                  <div>
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Biggest score drivers
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {reasons.map((reason) => (
-                        <ReasonCard
-                          key={`${reason.label}-${reason.value}`}
-                          reason={reason}
-                        />
-                      ))}
+                {/* Right column: numbers */}
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">Price & Performance</p>
+                    <div className="space-y-2">
+                      <MetricRow label="Current price" value={formatMoney(row.price)} />
+                      <MetricRow label="Today’s move" value={formatPercent(row.one_day_return)} />
+                      <MetricRow label="Last 5 days" value={formatPercent(row.price_return_5d)} />
+                      <MetricRow label="Last 10 days" value={formatPercent(row.return_10d)} />
+                      <MetricRow label="Last 20 days" value={formatPercent(row.price_return_20d)} />
+                      <MetricRow label="Trading volume" value={row.volume_ratio != null ? `${row.volume_ratio.toFixed(1)}x average` : null} />
+                      <MetricRow label="Vs. the market" value={row.relative_strength_20d != null ? `${Number(row.relative_strength_20d) >= 0 ? "+" : ""}${Number(row.relative_strength_20d).toFixed(1)}% over 20d` : null} />
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                      What stands out
-                    </p>
-                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-200">
-                      {setupBullets.map((item, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    {!!tags.length && (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {tags.slice(0, 12).map((tag) => (
-                          <TagPill key={tag} tag={tag} />
-                        ))}
-                      </div>
-                    )}
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-400">Insider & Congress</p>
+                    <div className="space-y-2">
+                      <MetricRow label="Insider buying?" value={row.has_insider_trades ? "Yes" : "No"} />
+                      <MetricRow label="What they did" value={row.insider_action || null} />
+                      <MetricRow label="Total invested" value={formatInsiderValue(row)} />
+                      <MetricRow label="Buy value" value={row.insider_buy_value != null && row.insider_buy_value > 0 ? formatMoney(row.insider_buy_value) : null} />
+                      <MetricRow label="Cluster buy?" value={(row.cluster_buyers ?? 0) >= 2 ? `Yes — ${row.cluster_buyers} insiders` : "No"} />
+                      <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
+                      <MetricRow label="Congress buying?" value={(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"} />
+                      <MetricRow label="Congress amount" value={row.ptr_amount} />
+                    </div>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      What confirms the setup
-                    </p>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <ConfirmationRow label="Price confirmation" value={formatPriceConfirmation(row)} />
-                      <ConfirmationRow label="Breakout" value={row.breakout_52w ? "52-week breakout" : row.breakout_20d ? "20-day breakout" : "No breakout flag"} />
-                      <ConfirmationRow label="Trend" value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"} />
-                      <ConfirmationRow label="Vs market" value={formatRelativeStrengthForDisplay(row)} />
-                      <ConfirmationRow label="Volume" value={formatRatio(row.volume_ratio)} />
-                      <ConfirmationRow label="Signals stacked" value={formatSignalStack(row.stacked_signal_count, row)} />
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">Valuation</p>
+                    <div className="space-y-2">
+                      <MetricRow label="P/E ratio" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
+                      <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
+                      <MetricRow label="Sector" value={row.sector || null} />
+                      <MetricRow label="Industry" value={row.industry || null} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">Score Breakdown</p>
+                    <div className="space-y-2">
+                      <MetricRow label="Overall score" value={`${row.display_score}/100`} />
+                      <MetricRow label="Quality score" value={formatSimpleNumber(row.candidate_score)} />
+                      <MetricRow label="Signal score" value={formatSimpleNumber(row.signal_score)} />
+                      <MetricRow label="Data freshness" value={getFreshnessLabel(row)} />
                     </div>
                   </div>
                 </div>
@@ -2681,70 +2569,13 @@ function SignalDetailsModal({
               onTouchEnd={handleTouchEnd}
             >
               <div className="p-4 pb-28">
-                {/* ===== Tab 0: Overview — Company + past performance ===== */}
+                {/* ═══ TAB 0: OVERVIEW ═══ */}
                 {activeSlide === 0 ? (
-                  <div className="space-y-5">
-                    {row.business_description ? (
-                      <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                          About the company
-                        </p>
-                        <p className="mt-3 break-words text-sm leading-7 text-slate-300">
-                          {row.business_description}
-                        </p>
-                      </div>
-                    ) : null}
-
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Company snapshot
-                      </p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <ConfirmationRow label="Sector" value={row.sector || "Not available"} />
-                        <ConfirmationRow label="Market cap" value={formatMarketCap(row.market_cap) || "—"} />
-                        <ConfirmationRow label="P/E ratio" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
-                        <ConfirmationRow label="Price" value={formatMoney(row.price) || "—"} />
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Recent performance
-                      </p>
-                      <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
-                        {getPerformanceSummary(row).map((item, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {(row.earnings_surprise_pct !== null || row.revenue_growth_pct !== null || row.guidance_flag !== null) && (
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                          Business fundamentals
-                        </p>
-                        <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
-                          {getFundamentalsSummary(row).map((item, i) => (
-                            <li key={i} className="flex items-start gap-2">
-                              <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
-                              <span>{item}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-
-                {/* ===== Tab 1: Why it’s here — scoring, signals, explanations ===== */}
-                {activeSlide === 1 ? (
-                  <div className="space-y-5">
-                    <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                        Why it made the board
+                  <div className="space-y-4">
+                    {/* Hero pitch */}
+                    <div className="rounded-2xl border border-[rgba(240,165,0,0.20)] p-5" style={{ background: "linear-gradient(160deg, rgba(240,165,0,0.14) 0%, #080d18 60%)" }}>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
+                        Why this stock?
                       </p>
                       <p className="mt-2 text-xl font-bold leading-snug text-white">
                         {thesis}
@@ -2838,147 +2669,181 @@ function SignalDetailsModal({
 
                     <ScoreBar row={row} />
 
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-amber-300/80">
-                        How it got its score
-                      </p>
-                      <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
-                        {scoreExplanation.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div>
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Biggest score drivers
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                        What stands out
-                      </p>
-                      <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-200">
-                        {setupBullets.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                            <span>{item}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      {!!tags.length && (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {tags.slice(0, 10).map((tag) => (
-                            <TagPill key={tag} tag={tag} />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        What confirms the setup
-                      </p>
-                      <div className="mt-4 grid gap-3">
-                        <ConfirmationRow label="Price confirmation" value={formatPriceConfirmation(row)} />
-                        <ConfirmationRow label="Breakout" value={row.breakout_52w ? "52-week breakout" : row.breakout_20d ? "20-day breakout" : "No breakout flag"} />
-                        <ConfirmationRow label="Trend" value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"} />
-                        <ConfirmationRow label="Vs market" value={formatRelativeStrengthForDisplay(row)} />
-                        <ConfirmationRow label="Volume" value={formatRatio(row.volume_ratio)} />
-                        <ConfirmationRow label="Signals stacked" value={formatSignalStack(row.stacked_signal_count, row)} />
+                    {row.business_description ? (
+                      <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">
+                          What does this company do?
+                        </p>
+                        <p className="text-sm leading-6 text-[#b0bec8]">
+                          {row.business_description}
+                        </p>
                       </div>
-                    </div>
+                    ) : null}
                   </div>
                 ) : null}
 
-                {/* ===== Tab 2: Numbers — all raw data ===== */}
-                {activeSlide === 2 ? (
-                  <div className="space-y-5">
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                        Price and performance
+                {/* ═══ TAB 1: FUNDAMENTALS ═══ */}
+                {activeSlide === 1 ? (
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-[rgba(240,165,0,0.15)] p-4" style={{ background: "linear-gradient(160deg, rgba(240,165,0,0.08) 0%, #080d18 60%)" }}>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
+                        Quality Report Card
                       </p>
-                      <div className="mt-4 space-y-3">
-                        <MetricRow label="Price" value={formatMoney(row.price)} />
-                        <MetricRow label="1D move" value={formatPercent(row.one_day_return)} />
-                        <MetricRow label="5D move" value={formatPercent(row.price_return_5d)} />
-                        <MetricRow label="10D move" value={formatPercent(row.return_10d)} />
-                        <MetricRow label="20D move" value={formatPercent(row.price_return_20d)} />
-                        <MetricRow label="Volume ratio" value={formatRatio(row.volume_ratio)} />
-                        <MetricRow label="Vs market 20D" value={formatPercent(row.relative_strength_20d)} />
-                        <MetricRow label="Breakout clearance" value={formatPercent(row.breakout_clearance_pct)} />
-                        <MetricRow label="From 20D average" value={formatPercent(row.extension_from_sma20_pct)} />
-                        <MetricRow label="Close in range" value={formatSimpleNumber(row.close_in_day_range)} />
-                        <MetricRow label="Above 50DMA" value={formatBooleanLabel(row.above_50dma)} />
-                        <MetricRow label="Above 20D avg" value={formatBooleanLabel(row.above_sma_20)} />
-                        <MetricRow label="Trend aligned" value={formatBooleanLabel(row.trend_aligned)} />
-                        <MetricRow label="Price confirmed" value={formatBooleanLabel(row.price_confirmed)} />
+                      <p className="mt-2 text-sm leading-6 text-[#b0bec8]">
+                        Think of these like grades for a stock. We check six things that separate great long-term investments from risky bets.
+                      </p>
+                    </div>
+
+                    {(() => {
+                      const ltcs = parseScreenReasonScores(row.screen_reason)
+                      const rs = row.relative_strength_20d != null ? Number(row.relative_strength_20d) : null
+
+                      const tiles = [
+                        {
+                          label: "Profit Growth", score: ltcs.profitability, color: "#22d3ee", borderColor: "rgba(34,211,238,0.20)",
+                          icon: "M2 9L4.5 4L7 6.5L10 2M10 2H7.5M10 2V4.5",
+                          verdict: ltcs.profitability == null ? "No data" : ltcs.profitability >= 75 ? "Strong" : ltcs.profitability >= 40 ? "Growing" : "Weak",
+                          explain: "Is the company making more money each year? We look for earnings growth of at least 25% and return on equity above 15%. Think of it like a business getting a bigger raise every quarter.",
+                        },
+                        {
+                          label: "Money In", score: ltcs.profitability, color: "#34d399", borderColor: "rgba(52,211,153,0.20)",
+                          icon: "M6 1V11M3 3.5H7.5C8.88 3.5 10 4.34 10 5.25S8.88 7 7.5 7H3M3 7H8C9.38 7 10.5 7.84 10.5 8.75S9.38 10.5 8 10.5H3",
+                          verdict: ltcs.profitability == null ? "No data" : ltcs.profitability >= 65 ? "Positive" : ltcs.profitability >= 35 ? "Mixed" : "Negative",
+                          explain: "Does the company generate real cash — not just profit on paper? Free cash flow means money left over after paying all the bills. Companies with strong cash flow can grow, pay dividends, or buy back shares without borrowing.",
+                        },
+                        {
+                          label: "Financial Health", score: ltcs.financial, color: "#a78bfa", borderColor: "rgba(167,139,250,0.20)",
+                          icon: "M1.5 10V4L6 1.5L10.5 4V10M4 10V7H8V10",
+                          verdict: ltcs.financial == null ? "No data" : ltcs.financial >= 70 ? "Low Debt" : ltcs.financial >= 40 ? "Moderate" : "High Debt",
+                          explain: "Can this company pay its bills without borrowing more? We check how much debt they have compared to what they own. Low debt means they can survive tough times and won’t get crushed by rising interest rates.",
+                        },
+                        {
+                          label: "Edge", score: ltcs.moat, color: "#f59e0b", borderColor: "rgba(245,158,11,0.20)",
+                          icon: "M1 8L3 6L5 8L7 4L9 7L11 5M1 10H11",
+                          verdict: ltcs.moat == null ? "No data" : ltcs.moat >= 75 ? "Wide" : ltcs.moat >= 50 ? "Narrow" : "None",
+                          explain: "How hard is it for competitors to steal this company’s customers? A ‘wide moat’ means strong brand, patents, or network effects that protect profits. Think Apple, Google, or Costco — they’re very hard to beat.",
+                        },
+                        {
+                          label: "Fair Price", score: ltcs.valuation, color: "#fb923c", borderColor: "rgba(251,146,60,0.20)",
+                          icon: "M2 2V10H10M4 8V6M6.5 8V4M9 8V5",
+                          verdict: ltcs.valuation == null ? "No data" : ltcs.valuation >= 70 ? "Attractive" : ltcs.valuation >= 35 ? "Fair" : "Expensive",
+                          explain: "Is the stock priced right for how fast the company is growing? We use the PEG ratio — ideally under 1.5. Even the best company is a bad investment if you overpay. We want quality at a reasonable price.",
+                        },
+                        {
+                          label: "Momentum", score: rs != null ? Math.min(Math.max(Math.round(50 + rs * 2), 5), 100) : null, color: "#ec4899", borderColor: "rgba(236,72,153,0.20)",
+                          icon: "M6 1L8.5 4H7V7.5H5V4H3.5L6 1M2 9.5H10",
+                          verdict: rs == null ? "No data" : rs >= 15 ? "Near Highs" : rs >= 8 ? "Strong" : rs >= 0 ? "Neutral" : "Weak",
+                          explain: rs != null
+                            ? `This stock is ${rs >= 0 ? "+" : ""}${rs.toFixed(1)}% ahead of the market over the last 20 days. Stocks near their 12-month highs tend to keep going — winners keep winning.`
+                            : "We check if the stock is outperforming most others. Stocks near their highs tend to have positive momentum — winners keep winning.",
+                        },
+                      ]
+
+                      return tiles.map(({ label, score: s, color, borderColor, icon, verdict, explain }) => {
+                        const active = s != null && s > 0
+                        const pct = s != null ? Math.min(s, 100) : 0
+                        return (
+                          <div key={label} className="rounded-2xl p-4" style={{
+                            background: active ? `linear-gradient(160deg, ${color}14 0%, #111827 50%)` : "#111827",
+                            border: `1px solid ${active ? borderColor : "rgba(255,255,255,0.05)"}`,
+                          }}>
+                            <div className="mb-2 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
+                                  <path d={icon} stroke={active ? color : "#374151"} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                <span className="text-sm font-bold" style={{ color: active ? "#f0f0f0" : "#374151" }}>{label}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {s != null && <span className="text-xs font-black" style={{ color }}>{s}/100</span>}
+                                <span className="text-xs font-bold" style={{ color: active ? color : "#374151" }}>{verdict}</span>
+                              </div>
+                            </div>
+                            <div className="mb-3 h-[5px] overflow-hidden rounded-full bg-[#1a2540]">
+                              <div className="h-full rounded-full transition-all duration-700" style={{
+                                width: `${pct}%`,
+                                background: `linear-gradient(90deg, ${color}90, ${color})`,
+                                boxShadow: `0 0 8px ${color}40`,
+                              }} />
+                            </div>
+                            <p className="text-xs leading-5 text-[#8a99ab]">{explain}</p>
+                          </div>
+                        )
+                      })
+                    })()}
+                  </div>
+                ) : null}
+
+                {/* ═══ TAB 2: NUMBERS ═══ */}
+                {activeSlide === 2 ? (
+                  <div className="space-y-4">
+                    {/* Price & Returns */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
+                        Price & Performance
+                      </p>
+                      <div className="space-y-2">
+                        <MetricRow label="Current price" value={formatMoney(row.price)} />
+                        <MetricRow label="Today’s move" value={formatPercent(row.one_day_return)} />
+                        <MetricRow label="Last 5 days" value={formatPercent(row.price_return_5d)} />
+                        <MetricRow label="Last 10 days" value={formatPercent(row.return_10d)} />
+                        <MetricRow label="Last 20 days" value={formatPercent(row.price_return_20d)} />
+                        <MetricRow label="Trading volume" value={row.volume_ratio != null ? `${row.volume_ratio.toFixed(1)}x average` : null} />
+                        <MetricRow label="Vs. the market" value={row.relative_strength_20d != null ? `${Number(row.relative_strength_20d) >= 0 ? "+" : ""}${Number(row.relative_strength_20d).toFixed(1)}% over 20 days` : null} />
                       </div>
                     </div>
 
-                    {hasSmartMoney && (
-                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-300/80">
-                          Insider and congress trades
-                        </p>
-                        <div className="mt-4 space-y-3">
-                          <MetricRow label="Insider action" value={row.insider_action || null} />
-                          <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
-                          <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
-                          <MetricRow label="Insider value" value={formatInsiderValue(row)} />
-                          <MetricRow label="PTR amount" value={row.ptr_amount} />
-                          <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
-                          <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
-                          {row.ptr_amount ? (
-                            <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-200/70">
-                              Note: Politicians have up to 45 days to report trades. The actual trade may have occurred before the date shown.
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Valuation and fundamentals
+                    {/* Insider & Congress */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-400">
+                        Insider & Congress Trades
                       </p>
-                      <div className="mt-4 space-y-3">
-                        <MetricRow label="Valuation" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
+                      <div className="space-y-2">
+                        <MetricRow label="Insider buying?" value={row.has_insider_trades ? "Yes" : "No"} />
+                        <MetricRow label="What they did" value={row.insider_action || null} />
+                        <MetricRow label="Shares bought" value={formatShares(row.insider_shares)} />
+                        <MetricRow label="Price they paid" value={formatMoney(row.insider_avg_price)} />
+                        <MetricRow label="Total invested" value={formatInsiderValue(row)} />
+                        <MetricRow label="Buy value" value={row.insider_buy_value != null && row.insider_buy_value > 0 ? formatMoney(row.insider_buy_value) : null} />
+                        <MetricRow label="Cluster buy?" value={(row.cluster_buyers ?? 0) >= 2 ? `Yes — ${row.cluster_buyers} insiders` : "No"} />
+                        <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
+                        <MetricRow label="Congress buying?" value={(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"} />
+                        <MetricRow label="Congress amount" value={row.ptr_amount} />
+                        {row.ptr_amount ? (
+                          <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-[11px] leading-5 text-amber-200/60">
+                            Congress members have up to 45 days to report. The trade may have happened earlier.
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* Valuation */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">
+                        Valuation & Fundamentals
+                      </p>
+                      <div className="space-y-2">
+                        <MetricRow label="P/E ratio" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
                         <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
                         <MetricRow label="Sector" value={row.sector || null} />
                         <MetricRow label="Industry" value={row.industry || null} />
-                        <MetricRow label="Source forms" value={row.source_forms.length ? row.source_forms.join(", ") : null} />
                         <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
                         <MetricRow label="Revenue growth" value={formatPercent(row.revenue_growth_pct)} />
-                        <MetricRow label="Guidance support" value={formatBooleanLabel(row.guidance_flag)} />
-                        <MetricRow label="Catalyst count" value={formatWholeNumber(row.catalyst_count)} />
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Score breakdown
+                    {/* Scores & Meta */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#7a8ba0]">
+                        Score Breakdown
                       </p>
-                      <div className="mt-4 space-y-3">
-                        <MetricRow label="Overall score" value={`${row.display_score}`} />
-                        <MetricRow label="Price strength score" value={formatSimpleNumber(row.candidate_score)} />
-                        <MetricRow label="Signals score" value={formatSimpleNumber(row.signal_score)} />
-                        <MetricRow label="Why it’s here" value={row.data_source_label} />
-                        <MetricRow label="Confidence tier" value={getConfidenceTierLabel(row.display_score)} />
-                        <MetricRow label="Main reason" value={row.primary_title || "Price strength"} />
-                        <MetricRow label="Signal source" value={formatSource(row.primary_signal_source)} />
-                        <MetricRow label="Signal category" value={getSignalCategory(row)} />
-                        <MetricRow label="Freshness" value={getFreshnessLabel(row) || "—"} />
-                        <MetricRow label="Filed at" value={row.filed_at ? formatDateLong(row.filed_at) : null} />
-                        <MetricRow label="Last screened" value={row.last_screened_at ? formatDateLong(row.last_screened_at) : null} />
-                        <MetricRow label="Signals stacked" value={formatWholeNumber(row.stacked_signal_count)} />
-                        <MetricRow label="1D score change" value={formatScoreChange(row.ticker_score_change_1d)} />
-                        <MetricRow label="7D score change" value={formatScoreChange(row.ticker_score_change_7d)} />
-                        <MetricRow label="Screen reason" value={row.screen_reason ? truncateText(row.screen_reason, 120) : null} />
+                      <div className="space-y-2">
+                        <MetricRow label="Overall score" value={`${row.display_score}/100`} />
+                        <MetricRow label="Quality score" value={formatSimpleNumber(row.candidate_score)} />
+                        <MetricRow label="Signal score" value={formatSimpleNumber(row.signal_score)} />
+                        <MetricRow label="How it qualified" value={row.data_source_label} />
+                        <MetricRow label="Data freshness" value={getFreshnessLabel(row)} />
+                        <MetricRow label="Last updated" value={row.last_screened_at ? formatDateLong(row.last_screened_at) : null} />
                       </div>
                     </div>
                   </div>
@@ -3384,216 +3249,6 @@ function getConfidenceBullets(row: UnifiedRow) {
   }
 
   return bullets.slice(0, 4)
-}
-
-function getPerformanceSummary(row: UnifiedRow): string[] {
-  const bullets: string[] = []
-
-  const oneDay = row.one_day_return
-  if (oneDay !== null) {
-    if (oneDay > 2) bullets.push(`The stock is up ${formatPercent(oneDay)} today — a strong move in a single day.`)
-    else if (oneDay > 0) bullets.push(`The stock is up a modest ${formatPercent(oneDay)} today.`)
-    else if (oneDay < -2) bullets.push(`The stock is down ${formatPercent(oneDay)} today — a noticeable pullback.`)
-    else if (oneDay < 0) bullets.push(`The stock is down slightly at ${formatPercent(oneDay)} today.`)
-    else bullets.push("The stock is flat today.")
-  }
-
-  const twentyDay = row.price_return_20d
-  if (twentyDay !== null) {
-    if (twentyDay > 10) bullets.push(`Over the last 20 trading days, it's gained ${formatPercent(twentyDay)} — a strong upward trend.`)
-    else if (twentyDay > 0) bullets.push(`Over the last 20 days, it has gained ${formatPercent(twentyDay)}.`)
-    else if (twentyDay < -10) bullets.push(`Over the last 20 days, the stock has fallen ${formatPercent(twentyDay)} — it's been under pressure.`)
-    else if (twentyDay < 0) bullets.push(`Over the last 20 days, it has pulled back ${formatPercent(twentyDay)}.`)
-  }
-
-  const rs = row.relative_strength_20d
-  if (rs !== null) {
-    if (rs > 5) bullets.push(`It's outperforming the broader market by ${formatPercent(rs)} over 20 days — that means it's doing better than most stocks right now.`)
-    else if (rs > 0) bullets.push(`It's slightly outperforming the broader market over the last 20 days.`)
-    else if (rs < -5) bullets.push(`It's underperforming the market by ${formatPercent(rs)} over 20 days.`)
-  }
-
-  const vol = row.volume_ratio
-  if (vol !== null) {
-    if (vol >= 2) bullets.push(`Trading volume is ${vol.toFixed(1)}x the 20-day average — that's a lot more activity than normal, which usually means something is happening.`)
-    else if (vol >= 1.3) bullets.push(`Volume is running above average at ${vol.toFixed(1)}x normal, suggesting increased interest.`)
-    else if (vol < 0.7) bullets.push("Trading volume is below average — fewer people are buying and selling than usual.")
-  }
-
-  if (row.breakout_52w) {
-    bullets.push("The stock just hit a new 52-week high — it's trading at its highest price in the last year.")
-  } else if (row.breakout_20d) {
-    bullets.push("The stock broke above its 20-day trading range — a sign that buyers are stepping in at higher prices.")
-  }
-
-  if (row.trend_aligned === true) {
-    bullets.push("The stock's short-term and medium-term trends are both pointing up — the overall direction looks positive.")
-  } else if (row.above_sma_20 === true) {
-    bullets.push("The stock is trading above its 20-day moving average, which is generally a constructive sign.")
-  }
-
-  if (!bullets.length) {
-    bullets.push("Not enough recent performance data to summarize yet. Check the Numbers tab for any available data points.")
-  }
-
-  return bullets
-}
-
-function getFundamentalsSummary(row: UnifiedRow): string[] {
-  const bullets: string[] = []
-
-  const eps = row.earnings_surprise_pct
-  if (eps !== null) {
-    if (eps >= 10) bullets.push(`Earnings came in ${formatPercent(eps)} above what analysts expected — that's a big beat. It means the company is making significantly more money than Wall Street predicted.`)
-    else if (eps > 0) bullets.push(`Earnings beat analyst expectations by ${formatPercent(eps)} — the company is earning more than predicted.`)
-    else if (eps < -5) bullets.push(`Earnings missed expectations by ${formatPercent(eps)} — the company made less than analysts predicted.`)
-    else if (eps < 0) bullets.push(`Earnings were slightly below expectations at ${formatPercent(eps)}.`)
-  }
-
-  const rev = row.revenue_growth_pct
-  if (rev !== null) {
-    if (rev >= 20) bullets.push(`Revenue is growing at ${formatPercent(rev)} — that's very fast growth, meaning the business is expanding rapidly.`)
-    else if (rev >= 10) bullets.push(`Revenue is growing at a healthy ${formatPercent(rev)} — the business is expanding at a solid pace.`)
-    else if (rev > 0) bullets.push(`Revenue growth is modest at ${formatPercent(rev)}.`)
-    else if (rev < 0) bullets.push(`Revenue is declining at ${formatPercent(rev)} — the business is shrinking.`)
-  }
-
-  if (row.guidance_flag === true) {
-    bullets.push("Management's guidance (their outlook for the future) is positive — they seem confident about what's ahead.")
-  }
-
-  const pe = row.pe_ratio ?? row.pe_forward
-  if (pe !== null) {
-    if (pe < 15) bullets.push(`At a P/E of ${pe.toFixed(1)}, the stock is priced cheaply relative to its earnings. That can mean it's undervalued or that growth expectations are low.`)
-    else if (pe < 25) bullets.push(`The P/E ratio of ${pe.toFixed(1)} is in a reasonable range — not expensive, not cheap.`)
-    else if (pe < 40) bullets.push(`A P/E of ${pe.toFixed(1)} means investors are paying a premium. They expect the company to keep growing.`)
-    else bullets.push(`The P/E ratio of ${pe.toFixed(1)} is high — investors have very high growth expectations baked in.`)
-  }
-
-  if (!bullets.length) {
-    bullets.push("No earnings or revenue data is available yet for this stock.")
-  }
-
-  return bullets
-}
-
-function getDetailedScoreExplanation(row: UnifiedRow): string[] {
-  const bullets: string[] = []
-  const score = row.display_score
-
-  // How it got on the board
-  if (row.has_candidate_data && row.has_signal_data) {
-    bullets.push(
-      `${row.ticker} scored ${score}/100 because it passed both our price-strength screening AND had additional signal support from filings or insider activity.`
-    )
-  } else if (row.has_candidate_data) {
-    bullets.push(
-      `${row.ticker} scored ${score}/100 purely based on price-strength screening — it showed strong enough technicals (momentum, volume, trend) to make the board on its own.`
-    )
-  } else {
-    bullets.push(
-      `${row.ticker} scored ${score}/100 primarily because of signal data (insider filings, congressional trades, or earnings catalysts).`
-    )
-  }
-
-  // Candidate score detail
-  if (row.candidate_score !== null && row.candidate_score > 0) {
-    bullets.push(
-      `Price strength score: ${Math.round(row.candidate_score)}/100. This measures momentum, volume patterns, trend alignment, and breakout activity over the last 20 days.`
-    )
-  }
-
-  // Signal score detail
-  if (row.signal_score !== null && row.signal_score > 0) {
-    bullets.push(
-      `Signal score: ${Math.round(row.signal_score)}/100. This combines insider buying patterns, filing activity, earnings surprises, and other catalysts.`
-    )
-  }
-
-  // Screen reason (plain English from the screening pipeline)
-  if (row.screen_reason) {
-    const reason = row.screen_reason
-    const colonIndex = reason.indexOf(":")
-    if (colonIndex > 0) {
-      const factors = reason.slice(colonIndex + 1).trim()
-      if (factors.length > 5) {
-        bullets.push(`Key factors the screener found: ${factors}.`)
-      }
-    }
-  }
-
-  // Insider/congress specifics
-  const clusterBuyers = row.cluster_buyers ?? 0
-  if (clusterBuyers >= 2) {
-    bullets.push(
-      `${clusterBuyers} company insiders recently bought shares — when multiple insiders buy around the same time, it's called a "cluster buy" and historically that's a strong bullish signal.`
-    )
-  } else if (
-    Boolean(row.insider_action) ||
-    (row.insider_shares ?? 0) > 0
-  ) {
-    bullets.push(
-      "At least one company insider recently bought shares. Insiders know their business best, so their buying can be meaningful."
-    )
-  }
-
-  if (row.ptr_amount) {
-    bullets.push(
-      `A member of Congress disclosed buying this stock (amount: ${row.ptr_amount}). Politicians sometimes have access to non-public policy insights, so their trades get extra attention.`
-    )
-  }
-
-  // Momentum / technicals
-  if (row.breakout_52w) {
-    bullets.push(
-      "The stock just broke to new 52-week highs — this means it's trading at its highest price in a year, which often attracts momentum buyers."
-    )
-  } else if (row.breakout_20d) {
-    bullets.push(
-      "The stock broke above its 20-day price range, signaling fresh buying interest."
-    )
-  }
-
-  if ((row.relative_strength_20d ?? 0) > 5) {
-    bullets.push(
-      `Over the last 20 days, this stock outperformed the broader market by ${formatPercent(row.relative_strength_20d)} — it's showing relative strength.`
-    )
-  }
-
-  if ((row.volume_ratio ?? 0) >= 1.5) {
-    bullets.push(
-      `Trading volume is ${(row.volume_ratio ?? 0).toFixed(1)}x the 20-day average, meaning significantly more buyers and sellers are active than usual.`
-    )
-  }
-
-  if ((row.earnings_surprise_pct ?? 0) >= 5) {
-    bullets.push(
-      `Recent earnings beat expectations by ${formatPercent(row.earnings_surprise_pct)} — the company is making more money than analysts predicted.`
-    )
-  }
-
-  if ((row.revenue_growth_pct ?? 0) >= 10) {
-    bullets.push(
-      `Revenue is growing at ${formatPercent(row.revenue_growth_pct)} — the business is expanding, which supports long-term stock price appreciation.`
-    )
-  }
-
-  // Score tier explanation
-  if (score >= 90) {
-    bullets.push(
-      "A 90+ score puts this in the top tier — multiple strong signals are converging, making this one of the highest-conviction ideas on today's board."
-    )
-  } else if (score >= 80) {
-    bullets.push(
-      "An 80+ score means high confidence — the combination of price action and fundamentals is strong, though not every signal is firing."
-    )
-  } else if (score >= 70) {
-    bullets.push(
-      "A 70+ score indicates a solid setup — enough positive factors are present to warrant attention, but it may still be developing."
-    )
-  }
-
-  return bullets
 }
 
 function getSimpleSetupBullets(row: UnifiedRow) {
