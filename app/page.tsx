@@ -3379,20 +3379,20 @@ function formatBooleanLabel(value: boolean | null | undefined) {
 }
 
 function formatInsiderValue(row: UnifiedRow) {
-  if (row.insider_buy_value !== null && row.insider_buy_value !== undefined) {
+  if (row.insider_buy_value != null && row.insider_buy_value > 0) {
     return formatMoney(row.insider_buy_value)
   }
 
   if (
-    row.insider_shares !== null &&
-    row.insider_shares !== undefined &&
-    row.insider_avg_price !== null &&
-    row.insider_avg_price !== undefined
+    row.insider_shares != null &&
+    row.insider_shares > 0 &&
+    row.insider_avg_price != null &&
+    row.insider_avg_price > 0
   ) {
     return formatMoney(row.insider_shares * row.insider_avg_price)
   }
 
-  return "—"
+  return null
 }
 
 function formatPe(
