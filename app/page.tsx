@@ -795,7 +795,7 @@ export default function Home() {
       <header className="shrink-0 border-b border-[rgba(255,255,255,0.07)] px-3 pb-2 pt-[env(safe-area-inset-top,8px)] lg:px-4 lg:py-3" style={{ background: "#080d18" }}>
         <div className="mx-auto flex max-w-lg items-center justify-between lg:max-w-7xl">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-[#f0a500]">
+            <p className="text-sm font-bold uppercase tracking-[0.26em] text-[#f0a500]">
               Market Signal Tracker
             </p>
             <p className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-white">
