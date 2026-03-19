@@ -148,9 +148,7 @@ const MAX_TARGET_MIN = 24
 const MAX_FINAL_CANDIDATES = 30
 const DB_CHUNK_SIZE = 250
 
-const STRICT_MIN_SCORE = 64
-const BALANCED_MIN_SCORE = 58
-const FALLBACK_MIN_SCORE = 52
+const LTCS_INCLUDED_THRESHOLD = 50
 
 const PTR_LOOKBACK_DAYS = 30
 const PTR_RECENT_DAYS = 14
@@ -304,55 +302,11 @@ function getDynamicIndustryCap(row: CandidateHistoryRow, breadthStats: BreadthSt
   return BASE_MAX_PER_INDUSTRY
 }
 
-function isStrictEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
-  const { ptrBonus, buyTradeCount, recentBuyCount } = getPtrMetrics(ptr)
-
-  return (
+function isLTCSEligible(row: any): boolean {
+  return Boolean(
     row.passes_price &&
-    row.passes_volume &&
-    row.passes_dollar_volume &&
     row.passes_market_cap &&
-    row.above_sma_20 &&
-    ((row.candidate_score ?? 0) >= STRICT_MIN_SCORE || ptrBonus >= 4) &&
-    ((row.return_20d ?? -999) >= 1 || buyTradeCount > 0) &&
-    ((row.relative_strength_20d ?? -999) >= 0.5 || buyTradeCount > 0) &&
-    ((row.volume_ratio ?? 0) >= 0.75 || recentBuyCount > 0) &&
-    (row.extension_from_sma20_pct ?? 999) <= 16 &&
-    (row.close_in_day_range ?? 0) >= 0.35
-  )
-}
-
-function isBalancedEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
-  const { ptrBonus, buyTradeCount, recentBuyCount } = getPtrMetrics(ptr)
-
-  return (
-    row.passes_price &&
-    row.passes_volume &&
-    row.passes_dollar_volume &&
-    row.passes_market_cap &&
-    row.above_sma_20 &&
-    ((row.candidate_score ?? 0) >= BALANCED_MIN_SCORE || ptrBonus >= 3) &&
-    ((row.return_20d ?? -999) >= -1 || buyTradeCount > 0) &&
-    ((row.relative_strength_20d ?? -999) >= -0.5 || buyTradeCount > 0) &&
-    ((row.volume_ratio ?? 0) >= 0.65 || recentBuyCount > 0) &&
-    (row.extension_from_sma20_pct ?? 999) <= 19
-  )
-}
-
-function isFallbackEligible(row: CandidateHistoryRow, ptr: PtrSignalSummary | null) {
-  const { ptrBonus, buyTradeCount, recentBuyCount } = getPtrMetrics(ptr)
-
-  return (
-    row.passes_price &&
-    row.passes_volume &&
-    row.passes_dollar_volume &&
-    row.passes_market_cap &&
-    row.above_sma_20 &&
-    ((row.candidate_score ?? 0) >= FALLBACK_MIN_SCORE || ptrBonus >= 2) &&
-    ((row.return_20d ?? -999) >= -3 || buyTradeCount > 0) &&
-    ((row.relative_strength_20d ?? -999) >= -2 || buyTradeCount > 0) &&
-    ((row.volume_ratio ?? 0) >= 0.55 || recentBuyCount > 0) &&
-    (row.extension_from_sma20_pct ?? 999) <= 23
+    (row.candidate_score ?? 0) >= LTCS_INCLUDED_THRESHOLD
   )
 }
 
@@ -477,87 +431,6 @@ function getSelectionScore(
     reasons.push("single-signal setup")
   }
 
-  if (row.above_sma_20) {
-    score += 2
-    reasons.push("above 20dma")
-  }
-
-  if ((row.return_10d ?? 0) >= 1) {
-    score += 1.5
-    reasons.push("10d momentum")
-  }
-
-  if ((row.return_20d ?? 0) >= 3 && (row.return_20d ?? 0) <= 14) {
-    score += 3
-    reasons.push("constructive 20d momentum")
-  } else if ((row.return_20d ?? 0) >= 0 && (row.return_20d ?? 0) < 3) {
-    score += 1.25
-    reasons.push("positive 20d momentum")
-  } else if ((row.return_20d ?? 0) > 18 && !(ptr?.buyTradeCount ?? 0)) {
-    score -= 4
-    reasons.push("too extended on 20d move")
-  }
-
-  if ((row.return_5d ?? 0) >= 10 && !(ptr?.recentBuyCount ?? 0)) {
-    score -= 3
-    reasons.push("sharp 5d move without fresh PTR support")
-  }
-
-  if ((row.relative_strength_20d ?? 0) >= 4) {
-    score += 3
-    reasons.push("strong relative strength")
-  } else if ((row.relative_strength_20d ?? 0) >= 2) {
-    score += 2
-  } else if ((row.relative_strength_20d ?? 0) >= 0) {
-    score += 1
-  }
-
-  if ((row.volume_ratio ?? 0) >= 1.4 && (row.volume_ratio ?? 0) <= 2.5) {
-    score += 2
-    reasons.push("healthy volume expansion")
-  } else if ((row.volume_ratio ?? 0) >= 1.0) {
-    score += 1
-  } else if ((row.volume_ratio ?? 0) >= 3 && !(ptr?.recentBuyCount ?? 0)) {
-    score -= 1.5
-    reasons.push("possible event-driven volume spike")
-  }
-
-  if (row.breakout_20d) {
-    score += 2
-    reasons.push("20d breakout")
-  } else if (row.breakout_10d) {
-    score += 1.25
-    reasons.push("10d breakout")
-  } else if ((row.breakout_clearance_pct ?? -999) >= -0.6) {
-    score += 0.5
-    reasons.push("near breakout")
-  }
-
-  if ((row.close_in_day_range ?? 0) >= 0.65) {
-    score += 1.5
-    reasons.push("strong close")
-  } else if ((row.close_in_day_range ?? 0) >= 0.5) {
-    score += 0.5
-  }
-
-  if ((row.extension_from_sma20_pct ?? 999) <= 12) {
-    score += 1.5
-    reasons.push("not too extended")
-  } else if ((row.extension_from_sma20_pct ?? 999) > 16) {
-    score -= 2
-    reasons.push("extended from trend")
-  } else if ((row.extension_from_sma20_pct ?? 999) > 20) {
-    score -= 3.5
-    reasons.push("too extended")
-  }
-
-  if ((row.avg_dollar_volume_20d ?? 0) >= 50_000_000) {
-    score += 1.5
-    reasons.push("strong liquidity")
-  } else if ((row.avg_dollar_volume_20d ?? 0) >= 30_000_000) {
-    score += 0.75
-  }
-
   if (sectorCrowdingShare >= 0.22) {
     score -= 5
     reasons.push(`crowded sector (${normalizeLabel(row.sector)})`)
@@ -589,20 +462,14 @@ function buildRankedRows(
   breadthStats: BreadthStats
 ): RankedRow[] {
   return rows
-    .map((row) => {
+    .map((row): RankedRow | null => {
       const ptrSummary = ptrMap.get(normalizeTicker(row.ticker)) ?? null
       const scoreResult = getSelectionScore(row, ptrSummary, breadthStats)
 
-      let bucket: "strict" | "balanced" | "fallback" = "fallback"
-      if (isStrictEligible(row, ptrSummary)) bucket = "strict"
-      else if (isBalancedEligible(row, ptrSummary)) bucket = "balanced"
-      else if (isFallbackEligible(row, ptrSummary)) bucket = "fallback"
-      else return null
+      let bucket: "strict" | "balanced" | "fallback" = "strict"
+      if (!isLTCSEligible(row)) return null
 
-      let adjustedSelectionScore = scoreResult.selectionScore
-
-      if (bucket === "strict") adjustedSelectionScore += 2
-      else if (bucket === "balanced") adjustedSelectionScore += 1
+      let adjustedSelectionScore = scoreResult.selectionScore + 2
 
       return {
         row,
@@ -866,7 +733,12 @@ function toUniverseRow(
     passes_market_cap: row.passes_market_cap,
     candidate_score: row.candidate_score,
     included: true,
-    screen_reason: `Finalized ${selectedSource} ${bucket} candidate (candidate ${row.candidate_score}, selection ${selectionScore}, adjusted ${adjustedSelectionScore}, families ${signalFamilyCount}): ${reasons.join(", ")}${ptrReason}`,
+    screen_reason: (() => {
+      const finalizeSummary = `Finalized ${selectedSource} ${bucket} candidate (candidate ${row.candidate_score}, selection ${selectionScore}, adjusted ${adjustedSelectionScore}, families ${signalFamilyCount}): ${reasons.join(", ")}${ptrReason}`
+      // Preserve LTCS pillar scores from original screen_reason if present
+      const ltcsMatch = (row.screen_reason || "").match(/(moat: \d+\/100.*valuation: \d+\/100)/)
+      return ltcsMatch ? `${finalizeSummary} | ${ltcsMatch[1]}` : finalizeSummary
+    })(),
     last_screened_at: row.last_screened_at,
     updated_at: new Date().toISOString(),
   }
@@ -927,34 +799,59 @@ export async function GET(request: Request) {
     let snapshotRows: CandidateHistoryRow[] = []
 
     for (const candidateDate of orderedDates) {
-      const { data: rows, error: rowsError } = await candidateHistoryTable
-        .select("*")
+      // First check viable count with a lightweight query
+      const { data: viableCheck, error: viableError } = await candidateHistoryTable
+        .select("ticker", { count: "exact", head: true })
         .eq("screened_on", candidateDate)
+        .gte("candidate_score", 50)
+        .eq("passes_price", true)
+        .eq("passes_market_cap", true)
 
-      if (rowsError) {
-        return Response.json({ ok: false, error: rowsError.message }, { status: 500 })
+      if (viableError) {
+        return Response.json({ ok: false, error: viableError.message }, { status: 500 })
       }
 
-      const typedRows = (rows || []) as CandidateHistoryRow[]
-      if (!typedRows.length) continue
+      const viableCount = (viableCheck as any)?.length ?? 0
+      // Use the count from the response header if available
+      const actualViableCount = typeof (viableError as any) === "undefined"
+        ? viableCount
+        : 0
 
-      const viableRows = typedRows.filter(
+      // Now fetch all rows for this date if it looks promising (any viable candidates)
+      // Use range to handle >1000 rows
+      let allRows: CandidateHistoryRow[] = []
+      let from = 0
+      const PAGE_SIZE = 1000
+
+      while (true) {
+        const { data: rows, error: rowsError } = await candidateHistoryTable
+          .select("*")
+          .eq("screened_on", candidateDate)
+          .range(from, from + PAGE_SIZE - 1)
+
+        if (rowsError) {
+          return Response.json({ ok: false, error: rowsError.message }, { status: 500 })
+        }
+
+        const typedRows = (rows || []) as CandidateHistoryRow[]
+        allRows = allRows.concat(typedRows)
+
+        if (typedRows.length < PAGE_SIZE) break
+        from += PAGE_SIZE
+      }
+
+      if (!allRows.length) continue
+
+      const viableRows = allRows.filter(
         (row) =>
-          (row.candidate_score ?? 0) > 0 &&
-          (
-            row.passes_price ||
-            row.passes_volume ||
-            row.passes_dollar_volume ||
-            row.passes_market_cap ||
-            row.above_sma_20 ||
-            row.return_20d !== null ||
-            row.relative_strength_20d !== null
-          )
+          (row.candidate_score ?? 0) >= 50 &&
+          row.passes_price &&
+          row.passes_market_cap
       )
 
       if (viableRows.length >= 12) {
         screenedOn = candidateDate
-        snapshotRows = typedRows
+        snapshotRows = allRows
         break
       }
     }

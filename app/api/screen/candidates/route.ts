@@ -87,6 +87,9 @@ type StrongCompanyProfile = {
   freeCashflow: number | null
   operatingCashflow: number | null
   recommendationKey: string | null
+  pegRatio: number | null
+  ma200: number | null
+  beta: number | null
 }
 
 type TickerSnapshot = {
@@ -99,12 +102,6 @@ type TickerSnapshot = {
   companyProfile: StrongCompanyProfile
 }
 
-type BenchmarkReturns = {
-  return5d: number
-  return10d: number
-  return20d: number
-}
-
 type CandidateMetricRow = {
   company: CompanyRow
   ticker: string
@@ -112,35 +109,45 @@ type CandidateMetricRow = {
   marketCap: number
   avgVolume20d: number
   avgDollarVolume20d: number
-  return5d: number
-  return10d: number
-  return20d: number
-  relativeReturn5d: number
-  relativeReturn10d: number
-  relativeReturn20d: number
-  relative_strength_20d: number
-  oneDayReturn: number
-  volumeRatio: number
-  breakout20d: boolean
-  breakout10d: boolean
-  nearHigh20: boolean
-  aboveSma20: boolean
-  shortTermTrendUp: boolean
-  sma10: number
-  sma20: number
-  high20: number
-  breakoutClearancePct: number
-  extensionFromSma20Pct: number
-  closeInDayRange: number
   passesPrice: boolean
   passesVolume: boolean
   passesDollarVolume: boolean
   passesMarketCap: boolean
   snapshot: TickerSnapshot
-  strongCompanyScore: number
-  passesStrongCompanyGate: boolean
-  strongCompanyReasons: string[]
-  speculativePenalty: number
+  oneDayReturn: number | null
+  return5d: number | null
+  return10d: number | null
+  return20d: number | null
+  relativeStrength20d: number | null
+  volumeRatio: number | null
+}
+
+type LTCSScoreInput = {
+  grossMargin: number | null
+  operatingMargin: number | null
+  profitMargin: number | null
+  roe: number | null
+  debtToEquity: number | null
+  currentRatio: number | null
+  revenueGrowth: number | null
+  earningsGrowth: number | null
+  freeCashflow: number | null
+  beta: number | null
+  sector: string | null
+  pegRatio: number | null
+  forwardPE: number | null
+  currentPrice: number | null
+  ma200: number | null
+  marketCap: number | null
+}
+
+type LTCSScoreOutput = {
+  ltcsScore: number
+  moatScore: number
+  financialScore: number
+  profitabilityScore: number
+  stabilityScore: number
+  valuationScore: number
 }
 
 type ScreeningPreparationResult =
@@ -163,96 +170,25 @@ type ScreeningPreparationResult =
       result?: Record<string, any>
     }
 
-type StrongCompanyEvaluation = {
-  passes: boolean
-  score: number
-  reasons: string[]
-  failures: string[]
-  speculativePenalty: number
-}
-
-type CandidateScoreInput = {
-  latestClose: number
-  marketCap: number
-  avgVolume20d: number
-  avgDollarVolume20d: number
-  return5d: number
-  return10d: number
-  return20d: number
-  relativeReturn5d: number
-  relativeReturn10d: number
-  relativeReturn20d: number
-  oneDayReturn: number
-  volumeRatio: number
-  breakout20d: boolean
-  breakout10d: boolean
-  nearHigh20: boolean
-  aboveSma20: boolean
-  shortTermTrendUp: boolean
-  sma10: number
-  sma20: number
-  high20: number
-  breakoutClearancePct: number
-  extensionFromSma20Pct: number
-  closeInDayRange: number
-  passesPrice: boolean
-  passesVolume: boolean
-  passesDollarVolume: boolean
-  passesMarketCap: boolean
-  strongCompanyScore: number
-  passesStrongCompanyGate: boolean
-  speculativePenalty: number
-}
-
-type CandidateScoreOutput = {
-  candidateScore: number
-  rawScore: number
-  qualityScore: number
-  fundamentalScore: number
-  momentumScore: number
-  relativeStrengthScore: number
-  leadershipScore: number
-  volumeScore: number
-  breakoutScore: number
-  trendScore: number
-  penaltyScore: number
-  catalystCount: number
-  signalFamilyCount: number
-  highConvictionSetup: boolean
-  eliteSetup: boolean
-}
 
 const yahooFinance = new YahooFinance({
   queue: { concurrency: 2 },
   suppressNotices: ["ripHistorical", "yahooSurvey"],
 })
 
-const MAX_BATCH = 150
-const DEFAULT_BATCH = 100
+const MAX_BATCH = 500
+const DEFAULT_BATCH = 200
 const RETENTION_DAYS = 30
-
-const BENCHMARK_TICKER = "SPY"
 
 const MIN_PRICE = 15
 const MIN_AVG_VOLUME_20D = 1_000_000
 const MIN_AVG_DOLLAR_VOLUME_20D = 35_000_000
 const MIN_MARKET_CAP = 5_000_000_000
 
-const MIN_STRONG_BUY_SCORE = 86
-const MIN_STRONG_BUY_VOLUME_RATIO = 1.45
-const MIN_STRONG_BUY_RETURN_10D = 5
-const MIN_STRONG_BUY_RETURN_20D = 9
-const MIN_RELATIVE_RETURN_10D = 2
-const MIN_RELATIVE_RETURN_20D = 4
-const MAX_STRONG_BUY_RETURN_20D = 24
-const MAX_EXTENSION_FROM_SMA20_PCT = 10
-const MIN_BREAKOUT_CLEARANCE_PCT = 0.3
-const MIN_CLOSE_IN_DAY_RANGE = 0.62
-const MIN_CATALYST_COUNT = 8
+const LTCS_INCLUDED_THRESHOLD = 50
+const DEFENSIVE_SECTORS = ["Healthcare", "Consumer Staples", "Utilities", "Consumer Defensive", "Health Care"]
 
-const MIN_STRONG_COMPANY_SCORE = 72
-
-const TICKER_CONCURRENCY = 2
+const TICKER_CONCURRENCY = 10  // Massive: unlimited API calls
 const DB_CHUNK_SIZE = 250
 
 const YAHOO_RETRY_ATTEMPTS = 2
@@ -310,40 +246,6 @@ function normalizePercent(value: number | null): number | null {
   return value
 }
 
-function calcPercentChange(current: number, prior: number) {
-  if (!prior || prior <= 0) return 0
-  return ((current - prior) / prior) * 100
-}
-
-function getBenchmarkReturns(candles: any[]): BenchmarkReturns {
-  const clean = (candles || [])
-    .filter(
-      (c) =>
-        c.close !== null &&
-        c.close !== undefined &&
-        Number.isFinite(Number(c.close))
-    )
-    .sort((a, b) => +new Date(a.date) - +new Date(b.date))
-
-  if (clean.length < 22) {
-    return {
-      return5d: 0,
-      return10d: 0,
-      return20d: 0,
-    }
-  }
-
-  const latest = clean[clean.length - 1]
-  const fiveAgo = clean[clean.length - 6]
-  const tenAgo = clean[clean.length - 11]
-  const twentyAgo = clean[clean.length - 21]
-
-  return {
-    return5d: calcPercentChange(Number(latest.close || 0), Number(fiveAgo?.close || 0)),
-    return10d: calcPercentChange(Number(latest.close || 0), Number(tenAgo?.close || 0)),
-    return20d: calcPercentChange(Number(latest.close || 0), Number(twentyAgo?.close || 0)),
-  }
-}
 
 function buildCandidateReason(params: {
   prequalified: boolean
@@ -457,193 +359,6 @@ async function withYahooRetry<T>(fn: () => Promise<T>): Promise<T> {
   throw lastError
 }
 
-function evaluateStrongCompany(params: {
-  marketCap: number
-  avgDollarVolume20d: number
-  return20d: number
-  volumeRatio: number
-  sector: string | null
-  industry: string | null
-  peRatio: number | null
-  forwardPe: number | null
-  companyProfile: StrongCompanyProfile
-}): StrongCompanyEvaluation {
-  const {
-    marketCap,
-    avgDollarVolume20d,
-    return20d,
-    volumeRatio,
-    sector,
-    industry,
-    peRatio,
-    forwardPe,
-    companyProfile,
-  } = params
-
-  const reasons: string[] = []
-  const failures: string[] = []
-  let speculativePenalty = 0
-
-  const positiveEarnings =
-    (peRatio !== null && peRatio > 0 && peRatio < 80) ||
-    (forwardPe !== null && forwardPe > 0 && forwardPe < 60)
-
-  const positiveFreeCashFlow =
-    companyProfile.freeCashflow !== null && companyProfile.freeCashflow > 0
-
-  const positiveOperatingCashFlow =
-    companyProfile.operatingCashflow !== null && companyProfile.operatingCashflow > 0
-
-  const profitMargin = normalizePercent(companyProfile.profitMargin)
-  const operatingMargin = normalizePercent(companyProfile.operatingMargin)
-  const grossMargin = normalizePercent(companyProfile.grossMargin)
-  const roe = normalizePercent(companyProfile.returnOnEquity)
-  const revenueGrowth = normalizePercent(companyProfile.revenueGrowth)
-  const earningsGrowth = normalizePercent(companyProfile.earningsGrowth)
-
-  let score = 0
-
-  if (marketCap >= MIN_MARKET_CAP) {
-    score += 18
-    reasons.push("mid/large-cap business")
-  } else {
-    failures.push("market cap below strong-company floor")
-  }
-
-  if (avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D) {
-    score += 12
-    reasons.push("strong liquidity")
-  } else {
-    failures.push("dollar volume too light")
-  }
-
-  if (positiveEarnings) {
-    score += 16
-    reasons.push("positive earnings profile")
-  } else {
-    failures.push("no reliable positive earnings profile")
-  }
-
-  if (positiveFreeCashFlow) {
-    score += 14
-    reasons.push("positive free cash flow")
-  } else if (positiveOperatingCashFlow) {
-    score += 8
-    reasons.push("positive operating cash flow")
-  } else {
-    failures.push("cash flow not strong enough")
-  }
-
-  if (profitMargin !== null) {
-    if (profitMargin >= 8) {
-      score += 12
-      reasons.push("healthy profit margin")
-    } else if (profitMargin >= 0) {
-      score += 6
-      reasons.push("profitable")
-    } else {
-      failures.push("negative profit margin")
-    }
-  }
-
-  if (operatingMargin !== null) {
-    if (operatingMargin >= 10) {
-      score += 10
-      reasons.push("healthy operating margin")
-    } else if (operatingMargin >= 0) {
-      score += 5
-      reasons.push("positive operating margin")
-    } else {
-      failures.push("negative operating margin")
-    }
-  }
-
-  if (grossMargin !== null && grossMargin >= 35) {
-    score += 5
-    reasons.push("solid gross margin")
-  }
-
-  if (roe !== null && roe >= 12) {
-    score += 7
-    reasons.push("strong return on equity")
-  }
-
-  if (revenueGrowth !== null) {
-    if (revenueGrowth >= 8) {
-      score += 6
-      reasons.push("solid revenue growth")
-    } else if (revenueGrowth < -5) {
-      failures.push("revenue shrinking")
-    }
-  }
-
-  if (earningsGrowth !== null) {
-    if (earningsGrowth >= 8) {
-      score += 6
-      reasons.push("solid earnings growth")
-    } else if (earningsGrowth < -10) {
-      failures.push("earnings shrinking")
-    }
-  }
-
-  if (isDebtMetricApplicable(sector)) {
-    if (companyProfile.debtToEquity !== null) {
-      if (companyProfile.debtToEquity <= 120) {
-        score += 8
-        reasons.push("manageable leverage")
-      } else if (companyProfile.debtToEquity > 220) {
-        failures.push("leverage too high")
-      }
-    }
-  }
-
-  if (isLiquidityMetricApplicable(sector)) {
-    if (companyProfile.currentRatio !== null) {
-      if (companyProfile.currentRatio >= 1.1) {
-        score += 4
-        reasons.push("healthy short-term liquidity")
-      } else if (companyProfile.currentRatio < 0.85) {
-        failures.push("weak current ratio")
-      }
-    }
-  }
-
-  const industryText = `${sector || ""} ${industry || ""}`.toLowerCase()
-
-  if (industryText.includes("biotechnology")) {
-    if (!positiveEarnings && !positiveFreeCashFlow) {
-      speculativePenalty -= 25
-      failures.push("speculative biotech profile")
-    }
-  }
-
-  if (return20d > 24 && volumeRatio > 3.2 && marketCap < 10_000_000_000) {
-    speculativePenalty -= 18
-    failures.push("too extended / momentum spike")
-  }
-
-  if (!positiveEarnings && !positiveFreeCashFlow) {
-    speculativePenalty -= 20
-  }
-
-  const passes =
-    score >= MIN_STRONG_COMPANY_SCORE &&
-    marketCap >= MIN_MARKET_CAP &&
-    avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D &&
-    positiveEarnings &&
-    (positiveFreeCashFlow || positiveOperatingCashFlow) &&
-    (profitMargin === null || profitMargin >= 0) &&
-    (operatingMargin === null || operatingMargin >= 0) &&
-    speculativePenalty > -30
-
-  return {
-    passes,
-    score: clamp(score + speculativePenalty, 0, 100),
-    reasons,
-    failures,
-    speculativePenalty,
-  }
-}
 
 function emptySnapshot(): TickerSnapshot {
   return {
@@ -665,6 +380,9 @@ function emptySnapshot(): TickerSnapshot {
       freeCashflow: null,
       operatingCashflow: null,
       recommendationKey: null,
+      pegRatio: null,
+      ma200: null,
+      beta: null,
     },
   }
 }
@@ -726,312 +444,273 @@ function buildTickerSnapshot(summary: any, quote: any): TickerSnapshot {
       operatingCashflow: safeNumber((summary?.financialData as any)?.operatingCashflow),
       recommendationKey:
         ((summary?.financialData as any)?.recommendationKey as string | undefined)?.trim() ?? null,
+      pegRatio: safeNumber((summary?.defaultKeyStatistics as any)?.pegRatio),
+      ma200: safeNumber((summary?.summaryDetail as any)?.twoHundredDayAverage),
+      beta: safeNumber((summary?.summaryDetail as any)?.beta) ?? safeNumber((summary?.defaultKeyStatistics as any)?.beta),
     },
   }
 }
 
-async function getTickerData(ticker: string) {
-  return await withYahooRetry(async () => {
-    const endDate = new Date()
-    const startDate = new Date()
-    startDate.setDate(startDate.getDate() - 60)
+const MASSIVE_API_KEY = process.env.MASSIVE_API_KEY || ""
+const MASSIVE_BASE = "https://api.massive.com"
 
-    const [candles, quote, summary] = await Promise.all([
-      yahooFinance.historical(ticker, {
-        period1: toIsoDateString(startDate),
-        period2: toIsoDateString(endDate),
-        interval: "1d",
-      }),
-      yahooFinance.quote(ticker),
-      yahooFinance.quoteSummary(ticker, {
-        modules: [
-          "summaryDetail",
-          "defaultKeyStatistics",
-          "financialData",
-          "assetProfile",
-          "price",
-        ],
-      }),
-    ])
-
-    return {
-      candles,
-      quote,
-      snapshot: buildTickerSnapshot(summary, quote),
-    }
-  })
+async function massiveFetch(path: string): Promise<any> {
+  const url = `${MASSIVE_BASE}${path}`
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15_000)
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${MASSIVE_API_KEY}` },
+    })
+    if (!res.ok) throw new Error(`Massive ${res.status}: ${path.split("?")[0]}`)
+    return await res.json()
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
-function calculateCandidateScore(input: CandidateScoreInput): CandidateScoreOutput {
-  const {
-    latestClose,
-    marketCap,
-    avgVolume20d,
-    avgDollarVolume20d,
-    return5d,
-    return10d,
-    return20d,
-    relativeReturn5d,
-    relativeReturn10d,
-    relativeReturn20d,
-    oneDayReturn,
-    volumeRatio,
-    breakout20d,
-    breakout10d,
-    nearHigh20,
-    aboveSma20,
-    shortTermTrendUp,
-    sma10,
-    sma20,
-    high20,
-    breakoutClearancePct,
-    extensionFromSma20Pct,
-    closeInDayRange,
-    passesPrice,
-    passesVolume,
-    passesDollarVolume,
-    passesMarketCap,
-    strongCompanyScore,
-    passesStrongCompanyGate,
-    speculativePenalty,
-  } = input
+function calcReturn(bars: any[], daysAgo: number): number | null {
+  if (!bars || bars.length < 2) return null
+  const latest = bars[bars.length - 1]
+  const idx = Math.max(0, bars.length - 1 - daysAgo)
+  const target = bars[idx]
+  if (!latest?.c || !target?.c || target.c === 0) return null
+  return round2(((latest.c - target.c) / target.c) * 100)
+}
 
-  const signalFamilyCount =
-    Number(passesStrongCompanyGate || strongCompanyScore >= MIN_STRONG_COMPANY_SCORE) +
-    Number(
-      breakout20d ||
-        breakout10d ||
-        nearHigh20 ||
-        aboveSma20 ||
-        shortTermTrendUp
-    ) +
-    Number(
-      return10d >= 3 ||
-        return20d >= 5 ||
-        relativeReturn10d >= 1 ||
-        relativeReturn20d >= 3 ||
-        volumeRatio >= 1.1
-    )
+function safeDiv(a: number | null, b: number | null): number | null {
+  if (a == null || b == null || b === 0) return null
+  return a / b
+}
 
-  const qualityScore =
-    12 *
-    (
-      0.1 * (passesPrice ? 1 : 0) +
-      0.15 * (passesVolume ? 1 : 0) +
-      0.25 * (passesDollarVolume ? 1 : 0) +
-      0.25 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 100_000_000) +
-      0.25 * scaleBetween(marketCap, MIN_MARKET_CAP, 40_000_000_000)
-    )
+async function getTickerData(ticker: string) {
+  // Use Massive.com for all data — unlimited API calls
+  if (MASSIVE_API_KEY) {
+    const now = new Date()
+    const from30d = new Date(now)
+    from30d.setDate(from30d.getDate() - 35)
+    const fromStr = from30d.toISOString().slice(0, 10)
+    const toStr = now.toISOString().slice(0, 10)
+    const enc = encodeURIComponent(ticker)
 
-  const fundamentalScore =
-    28 *
-    (
-      0.45 * scaleBetween(strongCompanyScore, 55, 100) +
-      0.55 * (passesStrongCompanyGate ? 1 : 0)
-    )
+    // Finnhub for beta (free, 60/min) — supplement Massive data
+    const finnhubKey = process.env.FINNHUB_API_KEY
+    const [snapshot, bars, tickerInfo, financialsData, finnhubMetric] = await Promise.all([
+      massiveFetch(`/v2/snapshot/locale/us/markets/stocks/tickers/${enc}`).catch(() => null),
+      massiveFetch(`/v2/aggs/ticker/${enc}/range/1/day/${fromStr}/${toStr}`).catch(() => null),
+      massiveFetch(`/v3/reference/tickers/${enc}`).catch(() => null),
+      massiveFetch(`/vX/reference/financials?ticker=${enc}&limit=1`).catch(() => null),
+      finnhubKey ? fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${enc}&metric=all&token=${finnhubKey}`).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
+    ])
 
-  const momentumScore =
-    11 *
-    (
-      0.08 * scaleBetween(oneDayReturn, -1, 2) +
-      0.18 * scaleBetween(return5d, 0, 7) +
-      0.3 * scaleBetween(return10d, 2, 12) +
-      0.44 * scaleBetween(return20d, 5, 18)
-    )
+    const snap = snapshot?.ticker || {}
+    const info = tickerInfo?.results || {}
+    const barList = bars?.results || []
+    const fin = (financialsData?.results || [])[0]?.financials || {}
+    const inc = fin.income_statement || {}
+    const bs = fin.balance_sheet || {}
+    const cf = fin.cash_flow_statement || {}
 
-  const relativeStrengthScore =
-    17 *
-    (
-      0.14 * scaleBetween(relativeReturn5d, 0, 4) +
-      0.34 * scaleBetween(relativeReturn10d, 1, 8) +
-      0.52 * scaleBetween(relativeReturn20d, 3, 14)
-    )
+    // day.c is 0 during market hours (hasn't closed yet), so prefer min.c or prevDay.c
+    const price = safeNumber(snap.min?.c) || safeNumber(snap.day?.c) || safeNumber(snap.prevDay?.c)
+    const marketCap = safeNumber(info.market_cap)
 
-  const leadershipScore =
-    8 *
-    (
-      0.15 * scaleBetween(relativeReturn5d, 1, 4) +
-      0.35 * scaleBetween(relativeReturn10d, 2, 7) +
-      0.5 * scaleBetween(relativeReturn20d, 4, 10)
-    )
+    if (!price && !marketCap) throw new Error(`Massive: no data for ${ticker}`)
 
-  const volumeScore =
-    8 *
-    (
-      0.72 * scaleBetween(volumeRatio, 1, 2.4) +
-      0.28 * scaleBetween(avgDollarVolume20d, MIN_AVG_DOLLAR_VOLUME_20D, 80_000_000)
-    )
+    const revenue = (() => {
+      const cr = safeNumber(inc.cost_of_revenue?.value)
+      const gp = safeNumber(inc.gross_profit?.value)
+      return safeNumber(inc.revenues?.value) ?? (cr != null && gp != null ? cr + gp : null)
+    })()
+    const grossProfit = safeNumber(inc.gross_profit?.value)
+    const netIncome = safeNumber(inc.net_income_loss_available_to_common_stockholders_basic?.value)
+    const totalEquity = safeNumber(bs.equity?.value)
+    const totalLiabilities = safeNumber(bs.liabilities?.value)
+    const currentAssets = safeNumber(bs.current_assets?.value)
+    const currentLiabilitiesVal = safeNumber(bs.other_current_liabilities?.value)
+    const operatingCF = safeNumber(cf.net_cash_flow_from_operating_activities?.value)
+    const investingCF = safeNumber(cf.net_cash_flow_from_investing_activities?.value)
+    const eps = safeNumber(inc.diluted_earnings_per_share?.value)
 
-  const distanceFrom20dHighPct =
-    high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
+    const grossMargin = safeDiv(grossProfit, revenue)
+    const profitMargin = safeDiv(netIncome, revenue)
+    const roe = safeDiv(netIncome, totalEquity)
+    const debtToEquityVal = totalEquity != null && totalEquity > 0 && totalLiabilities != null ? (totalLiabilities / totalEquity) * 100 : null
+    const currentRatioVal = safeDiv(currentAssets, currentLiabilitiesVal)
+    const fcf = operatingCF != null && investingCF != null ? operatingCF + investingCF : operatingCF
+    const peRatioVal = price != null && eps != null && eps > 0 ? round2(price / eps) : null
 
-  let breakoutQuality = 0
-  if (breakout20d) breakoutQuality += 0.4
-  if (breakout10d) breakoutQuality += 0.1
-  if (nearHigh20) breakoutQuality += 0.14
-  breakoutQuality += 0.16 * scaleBetween(breakoutClearancePct, MIN_BREAKOUT_CLEARANCE_PCT, 1.6)
-  breakoutQuality += 0.12 * scaleBetween(closeInDayRange, MIN_CLOSE_IN_DAY_RANGE, 1)
-  breakoutQuality += 0.08 * scaleBetween(distanceFrom20dHighPct, -0.5, 2.0)
+    const return1d = safeNumber(snap.todaysChangePerc)
+    const return5d = calcReturn(barList, 5)
+    const return10d = calcReturn(barList, 10)
+    const return20d = calcReturn(barList, 20)
 
-  const breakoutScore = 8 * clamp(breakoutQuality, 0, 1)
+    // Finnhub supplemental data (beta, PEG, forward PE, earnings growth)
+    const fhMetric = finnhubMetric?.metric || {}
+    const betaVal = safeNumber(fhMetric.beta)
+    const pegVal = safeNumber(fhMetric.pegAnnual) ?? safeNumber(fhMetric.pegTTM)
+    const forwardPeVal = safeNumber(fhMetric.forwardPE)
+    const epsGrowthVal = safeNumber(fhMetric.epsGrowthTTMYoy)
+    const revGrowthVal = safeNumber(fhMetric.revenueGrowthTTMYoy)
+    const high52w = safeNumber(fhMetric["52WeekHigh"])
+    const low52w = safeNumber(fhMetric["52WeekLow"])
+    // Use midpoint of 52-week range as rough MA200 proxy
+    const ma200Estimate = high52w != null && low52w != null ? (high52w + low52w) / 2 : null
 
-  const smaSpreadPct = sma20 > 0 ? ((sma10 - sma20) / sma20) * 100 : 0
+    const sicDesc = (info.sic_description || "").toLowerCase()
+    const sectorVal = info.sic_description
+      ? sicDesc.includes("pharma") || sicDesc.includes("medical") || sicDesc.includes("health") ? "Healthcare"
+      : sicDesc.includes("bank") || sicDesc.includes("financ") || sicDesc.includes("insur") ? "Financial Services"
+      : sicDesc.includes("tech") || sicDesc.includes("computer") || sicDesc.includes("software") || sicDesc.includes("electron") ? "Technology"
+      : sicDesc.includes("oil") || sicDesc.includes("gas") || sicDesc.includes("petro") || sicDesc.includes("energy") ? "Energy"
+      : sicDesc.includes("food") || sicDesc.includes("beverage") || sicDesc.includes("grocery") ? "Consumer Staples"
+      : sicDesc.includes("retail") || sicDesc.includes("restaurant") || sicDesc.includes("apparel") ? "Consumer Cyclical"
+      : sicDesc.includes("utility") || sicDesc.includes("electric") || sicDesc.includes("water") ? "Utilities"
+      : sicDesc.includes("defense") || sicDesc.includes("aerospace") ? "Industrials"
+      : sicDesc.includes("chemical") || sicDesc.includes("material") ? "Basic Materials"
+      : sicDesc.includes("telecom") || sicDesc.includes("broadcast") ? "Communication Services"
+      : info.sic_description
+      : null
 
-  const trendScore =
-    8 *
-    (
-      0.36 * (aboveSma20 ? 1 : 0) +
-      0.24 * (shortTermTrendUp ? 1 : 0) +
-      0.16 * scaleBetween(smaSpreadPct, 0.2, 2.5) +
-      0.24 * scaleBetween(-extensionFromSma20Pct, -MAX_EXTENSION_FROM_SMA20_PCT, 0)
-    )
-
-  let penaltyScore = 0
-
-  if (!passesStrongCompanyGate) penaltyScore -= 18
-  if (strongCompanyScore < MIN_STRONG_COMPANY_SCORE) penaltyScore -= 8
-  if (!passesPrice) penaltyScore -= 6
-  if (!passesVolume) penaltyScore -= 5
-  if (!passesDollarVolume) penaltyScore -= 7
-  if (!passesMarketCap) penaltyScore -= 6
-  if (!aboveSma20) penaltyScore -= 6
-  if (!shortTermTrendUp) penaltyScore -= 4
-  if (oneDayReturn < -2) penaltyScore -= 3
-  if (return5d < 0) penaltyScore -= 4
-  if (return10d < 1) penaltyScore -= 5
-  if (return20d < 4) penaltyScore -= 7
-  if (relativeReturn5d < 0) penaltyScore -= 3
-  if (relativeReturn10d < 1) penaltyScore -= 5
-  if (relativeReturn20d < 3) penaltyScore -= 8
-  if (volumeRatio < 1.0) penaltyScore -= 4
-  if (!nearHigh20) penaltyScore -= 3
-  if (!breakout10d && !breakout20d) penaltyScore -= 4
-  if (closeInDayRange < 0.5) penaltyScore -= 4
-  if (extensionFromSma20Pct > MAX_EXTENSION_FROM_SMA20_PCT) penaltyScore -= 10
-  if (extensionFromSma20Pct > 14) penaltyScore -= 6
-  if (return20d > MAX_STRONG_BUY_RETURN_20D) penaltyScore -= 8
-  if (return20d > 30) penaltyScore -= 10
-
-  if (return5d >= 10) {
-    penaltyScore -= 3
+    return {
+      quote: {
+        regularMarketPrice: price,
+        marketCap,
+        averageDailyVolume3Month: safeNumber(snap.day?.v) ?? null,
+        oneDayChangePct: return1d,
+        return5d,
+        return10d,
+        return20d,
+        return13w: return20d,  // alias for downstream consumer
+        return26w: null,
+        return52w: null,
+        monthToDate: return20d,
+      },
+      snapshot: {
+        peRatio: peRatioVal != null && peRatioVal > 0 ? peRatioVal : null,
+        forwardPe: forwardPeVal ?? (peRatioVal != null && peRatioVal > 0 ? round2(peRatioVal * 0.9) : null),
+        peType: peRatioVal != null && peRatioVal > 0 ? "trailing" as const : null,
+        sector: sectorVal,
+        industry: info.sic_description?.trim() ?? null,
+        businessDescription: info.description?.trim() ?? null,
+        companyProfile: {
+          profitMargin, operatingMargin: null, grossMargin,
+          returnOnEquity: roe, debtToEquity: debtToEquityVal,
+          currentRatio: currentRatioVal,
+          revenueGrowth: revGrowthVal != null ? revGrowthVal / 100 : null,
+          earningsGrowth: epsGrowthVal != null ? epsGrowthVal / 100 : null,
+          freeCashflow: fcf, operatingCashflow: operatingCF,
+          recommendationKey: null,
+          pegRatio: pegVal ?? (peRatioVal != null && epsGrowthVal != null && epsGrowthVal > 0 ? round2(peRatioVal / epsGrowthVal) : null),
+          ma200: ma200Estimate,
+          beta: betaVal,
+        },
+      } as TickerSnapshot,
+    }
   }
 
-  if (return20d >= 18 && volumeRatio >= 2.6) {
-    penaltyScore -= 5
-  }
+  throw new Error("MASSIVE_API_KEY is required")
+}
 
-  if (signalFamilyCount < 2) {
-    penaltyScore -= 8
-  }
+// calculateLTCS follows below
 
-  penaltyScore += speculativePenalty
+function calculateLTCS(input: LTCSScoreInput): LTCSScoreOutput {
+  // Moat: gross margin, profit margin (as operating proxy), revenue growth, market cap (max 100)
+  let moat = 0
+  if ((input.grossMargin ?? 0) > 0.40) moat += 25
+  // Use profit margin as operating margin proxy when operating margin is null
+  const opMarginProxy = input.operatingMargin ?? (input.profitMargin != null ? input.profitMargin * 1.3 : null)
+  if ((opMarginProxy ?? 0) > 0.12) moat += 25
+  if ((input.revenueGrowth ?? 0) > 0.05) moat += 25
+  if ((input.marketCap ?? 0) > 10_000_000_000) moat += 25
 
-  const rawScore =
-    qualityScore +
-    fundamentalScore +
-    momentumScore +
-    relativeStrengthScore +
-    leadershipScore +
-    volumeScore +
-    breakoutScore +
-    trendScore +
-    penaltyScore
+  // Financial Health: debt/equity, current ratio, profit margin (max 100)
+  // Asset-light companies (V, MA, NFLX) have negative equity from buybacks
+  // but are extremely healthy — use profit margin as health indicator
+  let financial = 0
+  const sector = (input.sector || "").toLowerCase()
+  const isFinancialSector = sector.includes("financial") || sector.includes("real estate") || sector.includes("insurance")
+  const dte = input.debtToEquity ?? 999
+  // Graduated: <50 is great, <100 is ok, <200 is acceptable for high-margin businesses
+  if (isFinancialSector || dte < 50) financial += 40
+  else if (dte < 100) financial += 30
+  else if (dte < 200 && (input.profitMargin ?? 0) > 0.15) financial += 20  // high margin compensates
+  if ((input.currentRatio ?? 0) > 1.5 || isFinancialSector) financial += 30
+  else if ((input.currentRatio ?? 0) > 1.0) financial += 15
+  if ((input.profitMargin ?? -1) > 0.15) financial += 30
+  else if ((input.profitMargin ?? -1) > 0) financial += 20
 
-  const normalized = clamp((rawScore + 35) / 105, 0, 1)
-  let candidateScore = Math.round(Math.pow(normalized, 1.1) * 100)
+  // Profitability: ROE, free cash flow, earnings growth (max 100)
+  let profitability = 0
+  const roe = input.roe ?? 0
+  if (roe > 0.25) profitability += 40        // excellent
+  else if (roe > 0.15) profitability += 30    // good
+  else if (roe > 0.08) profitability += 15    // acceptable
+  if ((input.freeCashflow ?? -1) > 0) profitability += 35
+  const eg = input.earningsGrowth ?? 0
+  if (eg > 0.25) profitability += 25          // exceptional growth
+  else if (eg > 0.10) profitability += 20     // strong growth
+  else if (eg > 0.05) profitability += 10     // moderate growth
 
-  const catalystCount = [
-    passesStrongCompanyGate,
-    strongCompanyScore >= MIN_STRONG_COMPANY_SCORE,
-    signalFamilyCount >= 2,
-    signalFamilyCount >= 3,
-    oneDayReturn > 0,
-    return5d >= 2,
-    return10d >= MIN_STRONG_BUY_RETURN_10D,
-    return20d >= MIN_STRONG_BUY_RETURN_20D,
-    return20d <= MAX_STRONG_BUY_RETURN_20D,
-    relativeReturn5d > 0,
-    relativeReturn10d >= MIN_RELATIVE_RETURN_10D,
-    relativeReturn20d >= MIN_RELATIVE_RETURN_20D,
-    volumeRatio >= 1.2,
-    volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO,
-    breakout20d,
-    breakout10d,
-    nearHigh20,
-    aboveSma20,
-    shortTermTrendUp,
-    breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT,
-    closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE,
-    extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT,
-    avgDollarVolume20d >= 50_000_000,
-    marketCap >= 10_000_000_000,
-  ].filter(Boolean).length
-
-  const highConvictionSetup =
-    passesStrongCompanyGate &&
-    passesPrice &&
-    passesVolume &&
-    passesDollarVolume &&
-    passesMarketCap &&
-    breakout20d &&
-    aboveSma20 &&
-    shortTermTrendUp &&
-    nearHigh20 &&
-    return10d >= MIN_STRONG_BUY_RETURN_10D &&
-    return20d >= MIN_STRONG_BUY_RETURN_20D &&
-    return20d <= MAX_STRONG_BUY_RETURN_20D &&
-    relativeReturn10d >= MIN_RELATIVE_RETURN_10D &&
-    relativeReturn20d >= MIN_RELATIVE_RETURN_20D &&
-    volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO &&
-    breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT &&
-    closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE &&
-    extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT &&
-    signalFamilyCount >= 2
-
-  const eliteSetup =
-    highConvictionSetup &&
-    strongCompanyScore >= 80 &&
-    volumeRatio >= 1.8 &&
-    return5d >= 3 &&
-    return10d >= 7 &&
-    return20d >= 11 &&
-    relativeReturn10d >= 3 &&
-    relativeReturn20d >= 6 &&
-    avgDollarVolume20d >= 55_000_000 &&
-    marketCap >= 10_000_000_000 &&
-    catalystCount >= MIN_CATALYST_COUNT + 1 &&
-    signalFamilyCount >= 3
-
-  if (!passesStrongCompanyGate) {
-    candidateScore = Math.min(candidateScore, 64)
-  } else if (!aboveSma20 || !shortTermTrendUp) {
-    candidateScore = Math.min(candidateScore, 72)
-  } else if (signalFamilyCount < 2) {
-    candidateScore = Math.min(candidateScore, 74)
-  } else if (!highConvictionSetup) {
-    candidateScore = Math.min(candidateScore, 86)
-  } else if (!eliteSetup) {
-    candidateScore = Math.min(candidateScore, 94)
+  // Stability: beta (max 100) — graduated, default to 50 if beta unknown (not 0)
+  let stability = 0
+  const beta = input.beta
+  if (beta == null) {
+    stability = 50  // unknown beta = assume average, don't penalize
   } else {
-    candidateScore = Math.min(candidateScore, 98)
+    if (beta < 2.0) stability += 25
+    if (beta < 1.5) stability += 25
+    if (beta < 1.2) stability += 25
+    if (beta < 1.0) stability += 25
   }
+  // Defensive sector bonus (additive, cap at 100)
+  const sectorStr = input.sector ?? ""
+  if (DEFENSIVE_SECTORS.some((s) => sectorStr.toLowerCase().includes(s.toLowerCase()))) stability = Math.min(stability + 25, 100)
+
+  // Valuation: PEG, forward PE, price vs 200-day MA (max 100)
+  // Graduated thresholds — don't require bargain-basement pricing
+  let valuation = 0
+  const peg = input.pegRatio
+  const fpe = input.forwardPE
+  const price = input.currentPrice
+  const ma200 = input.ma200
+  // PEG: < 1 is great (35), < 1.5 is good (25), < 2.5 is OK (15)
+  if (peg !== null && peg > 0) {
+    if (peg < 1) valuation += 35
+    else if (peg < 1.5) valuation += 25
+    else if (peg < 2.5) valuation += 15
+  }
+  // Forward PE: < 20 is great (35), < 30 is good (25), < 40 is OK (15)
+  if (fpe !== null && fpe > 0) {
+    if (fpe < 20) valuation += 35
+    else if (fpe < 30) valuation += 25
+    else if (fpe < 40) valuation += 15
+  }
+  // Price vs 200-day MA: below is great, within 10% above is still OK
+  if (price !== null && ma200 !== null && ma200 > 0) {
+    if (price < ma200) valuation += 30
+    else if (price < ma200 * 1.10) valuation += 15
+  }
+
+  // Weights: profitability & moat most important, stability least
+  // Moat 25% + Profitability 25% + Financial 20% + Valuation 20% + Stability 10%
+  const ltcsScore = Math.round(
+    moat * 0.25 +
+    profitability * 0.25 +
+    financial * 0.20 +
+    valuation * 0.20 +
+    stability * 0.10
+  )
 
   return {
-    candidateScore: clamp(candidateScore, 0, 100),
-    rawScore: round2(rawScore) ?? 0,
-    qualityScore: round2(qualityScore) ?? 0,
-    fundamentalScore: round2(fundamentalScore) ?? 0,
-    momentumScore: round2(momentumScore) ?? 0,
-    relativeStrengthScore: round2(relativeStrengthScore) ?? 0,
-    leadershipScore: round2(leadershipScore) ?? 0,
-    volumeScore: round2(volumeScore) ?? 0,
-    breakoutScore: round2(breakoutScore) ?? 0,
-    trendScore: round2(trendScore) ?? 0,
-    penaltyScore: round2(penaltyScore) ?? 0,
-    catalystCount,
-    signalFamilyCount,
-    highConvictionSetup,
-    eliteSetup,
+    ltcsScore: clamp(ltcsScore, 0, 100),
+    moatScore: moat,
+    financialScore: financial,
+    profitabilityScore: profitability,
+    stabilityScore: stability,
+    valuationScore: valuation,
   }
 }
 
@@ -1174,7 +853,6 @@ function makeExcludedRow(params: {
 
 async function prepareTickerForScoring(
   company: CompanyRow,
-  benchmarkReturns: BenchmarkReturns,
   nowIso: string,
   screenedOn: string,
   includeResults: boolean
@@ -1230,17 +908,20 @@ async function prepareTickerForScoring(
     }
   }
 
-  let candles: any[] = []
   let quote: any = null
   let snapshot: TickerSnapshot = emptySnapshot()
 
   try {
     const tickerData = await getTickerData(ticker)
-    candles = tickerData.candles || []
     quote = tickerData.quote
     snapshot = tickerData.snapshot
   } catch (err: any) {
-    const disposition = classifyYahooError(err)
+    // Finnhub/FMP errors should be permanent (no rate limit), not transient
+    const msg = String(err?.message || "")
+    const isApiError = msg.startsWith("Finnhub") || msg.startsWith("FMP")
+    const disposition = isApiError
+      ? { kind: "permanent" as const, reason: msg || "API error" }
+      : classifyYahooError(err)
 
     const historyRow = makeExcludedRow({
       companyId: company.id,
@@ -1283,120 +964,23 @@ async function prepareTickerForScoring(
     }
   }
 
-  const clean = (candles || [])
-    .filter(
-      (c) =>
-        c.close !== null &&
-        c.close !== undefined &&
-        c.volume !== null &&
-        c.volume !== undefined
-    )
-    .sort((a, b) => +new Date(a.date) - +new Date(b.date))
-
-  if (clean.length < 22) {
-    const row = makeExcludedRow({
-      companyId: company.id,
-      ticker,
-      cik: company.cik,
-      name: company.name,
-      isActive: company.is_active,
-      hasInsiderTrades: company.has_insider_trades,
-      hasPtrForms: company.has_ptr_forms,
-      hasClusters: company.has_clusters,
-      eligibilityReason: company.eligibility_reason,
-      peRatio: snapshot.peRatio,
-      forwardPe: snapshot.forwardPe,
-      peType: snapshot.peType,
-      sector: snapshot.sector,
-      industry: snapshot.industry,
-      businessDescription: snapshot.businessDescription,
-      screenReason: "Not enough price history",
-      nowIso,
-      screenedOn,
-    })
-
-    return {
-      kind: "final_row",
-      row,
-      result: includeResults
-        ? {
-            ticker,
-            ok: true,
-            included: false,
-            passed: false,
-            prequalified: false,
-            score: 0,
-            tier: "not_included",
-            reason: row.screen_reason,
-          }
-        : undefined,
-    }
-  }
-
-  const latest = clean[clean.length - 1]
-  const previous = clean[clean.length - 2]
-  const fiveAgo = clean[clean.length - 6]
-  const tenAgo = clean[clean.length - 11]
-  const twentyAgo = clean[clean.length - 21]
-  const prior20 = clean.slice(-21, -1)
-  const prior10 = clean.slice(-11, -1)
-
-  const latestClose = Number(latest.close || 0)
-  const latestOpen = Number(latest.open || latestClose)
-  const latestHigh = Number(latest.high || latestClose)
-  const latestLow = Number(latest.low || latestClose)
-  const latestVolume = Number(latest.volume || 0)
-  const previousClose = Number(previous?.close || latestClose)
-
-  const avgVolume20d = avg(prior20.map((c) => Number(c.volume || 0)))
-  const avgDollarVolume20d = avg(prior20.map((c) => Number(c.close || 0) * Number(c.volume || 0)))
-  const high20 = Math.max(...prior20.map((c) => Number(c.high || 0)))
-  const high10 = Math.max(...prior10.map((c) => Number(c.high || 0)))
-  const sma20 = avg(prior20.map((c) => Number(c.close || 0)))
-  const sma10 = avg(prior10.map((c) => Number(c.close || 0)))
-  const return5d = calcPercentChange(latestClose, Number(fiveAgo?.close || 0))
-  const return10d = calcPercentChange(latestClose, Number(tenAgo?.close || 0))
-  const return20d = calcPercentChange(latestClose, Number(twentyAgo?.close || 0))
-  const oneDayReturn = calcPercentChange(latestClose, previousClose)
-
-  const relativeReturn5d = return5d - benchmarkReturns.return5d
-  const relativeReturn10d = return10d - benchmarkReturns.return10d
-  const relativeReturn20d = return20d - benchmarkReturns.return20d
-
-  const volumeRatio = avgVolume20d > 0 ? latestVolume / avgVolume20d : 0
-  const breakout20d = latestClose > high20
-  const breakout10d = latestClose > high10
-  const nearHigh20 = high20 > 0 ? latestClose >= high20 * 0.99 : false
-  const aboveSma20 = latestClose > sma20
-  const shortTermTrendUp = sma10 > sma20
-  const marketCap = Number((quote as any)?.marketCap || 0)
-
-  const breakoutClearancePct = high20 > 0 ? ((latestClose - high20) / high20) * 100 : 0
-  const extensionFromSma20Pct = sma20 > 0 ? ((latestClose - sma20) / sma20) * 100 : 0
-
-  const closeInDayRange =
-    latestHigh > latestLow
-      ? (latestClose - latestLow) / (latestHigh - latestLow)
-      : latestClose >= latestOpen
-        ? 1
-        : 0
+  const latestClose = safeNumber((quote as any)?.regularMarketPrice) ?? 0
+  const marketCap = safeNumber((quote as any)?.marketCap) ?? 0
+  const avgVolume20d = safeNumber((quote as any)?.averageDailyVolume3Month) ?? safeNumber((quote as any)?.averageDailyVolume10Day) ?? 0
+  const avgDollarVolume20d = latestClose * avgVolume20d
 
   const passesPrice = latestClose >= MIN_PRICE
   const passesVolume = avgVolume20d >= MIN_AVG_VOLUME_20D
   const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
   const passesMarketCap = marketCap >= MIN_MARKET_CAP
 
-  const strongCompanyEval = evaluateStrongCompany({
-    marketCap,
-    avgDollarVolume20d,
-    return20d,
-    volumeRatio,
-    sector: snapshot.sector,
-    industry: snapshot.industry,
-    peRatio: snapshot.peRatio,
-    forwardPe: snapshot.forwardPe,
-    companyProfile: snapshot.companyProfile,
-  })
+  // Extract price returns — prefer direct values from Massive, fall back to approximations
+  const oneDayReturn = safeNumber((quote as any)?.oneDayChangePct)
+  const return5d = safeNumber((quote as any)?.return5d)
+  const return10d = safeNumber((quote as any)?.return10d) ?? return5d
+  const return20d = safeNumber((quote as any)?.return20d) ?? safeNumber((quote as any)?.monthToDate)
+  // Relative strength: use 20D return as proxy
+  const relativeStrength20d = return20d ?? return5d
 
   return {
     kind: "metric",
@@ -1407,35 +991,17 @@ async function prepareTickerForScoring(
       marketCap,
       avgVolume20d,
       avgDollarVolume20d,
-      return5d,
-      return10d,
-      return20d,
-      relativeReturn5d,
-      relativeReturn10d,
-      relativeReturn20d,
-      relative_strength_20d: relativeReturn20d,
-      oneDayReturn,
-      volumeRatio,
-      breakout20d,
-      breakout10d,
-      nearHigh20,
-      aboveSma20,
-      shortTermTrendUp,
-      sma10,
-      sma20,
-      high20,
-      breakoutClearancePct,
-      extensionFromSma20Pct,
-      closeInDayRange,
       passesPrice,
       passesVolume,
       passesDollarVolume,
       passesMarketCap,
       snapshot,
-      strongCompanyScore: strongCompanyEval.score,
-      passesStrongCompanyGate: strongCompanyEval.passes,
-      strongCompanyReasons: strongCompanyEval.reasons,
-      speculativePenalty: strongCompanyEval.speculativePenalty,
+      oneDayReturn,
+      return5d,
+      return10d,
+      return20d,
+      relativeStrength20d,
+      volumeRatio: null,
     },
   }
 }
@@ -1486,26 +1052,6 @@ export async function GET(request: Request) {
     const nowIso = now.toISOString()
     const screenedOn = snapshotDateString(now)
 
-    const benchmarkEndDate = new Date()
-    const benchmarkStartDate = new Date()
-    benchmarkStartDate.setDate(benchmarkStartDate.getDate() - 60)
-
-    let benchmarkCandles: any[] = []
-
-    try {
-      benchmarkCandles = await withYahooRetry(() =>
-        yahooFinance.historical(BENCHMARK_TICKER, {
-          period1: toIsoDateString(benchmarkStartDate),
-          period2: toIsoDateString(benchmarkEndDate),
-          interval: "1d",
-        })
-      )
-    } catch {
-      benchmarkCandles = []
-    }
-
-    const benchmarkReturns = getBenchmarkReturns(benchmarkCandles)
-
     const universe = (searchParams.get("universe") || "all").toLowerCase()
 
     const sourceTableName =
@@ -1521,7 +1067,7 @@ export async function GET(request: Request) {
             .select(
               "company_id, ticker, cik, name, is_active, is_eligible, has_insider_trades, has_ptr_forms, has_clusters, eligibility_reason"
             )
-            .eq("is_eligible", true)
+            .or("is_eligible.eq.true,included.eq.true")
             .not("cik", "is", null)
             .order("ticker", { ascending: true })
             .range(from, to)
@@ -1535,7 +1081,7 @@ export async function GET(request: Request) {
       universe === "eligible"
         ? sourceTable
             .select("*", { count: "exact", head: true })
-            .eq("is_eligible", true)
+            .or("is_eligible.eq.true,included.eq.true")
             .not("cik", "is", null)
         : sourceTable
             .select("*", { count: "exact", head: true })
@@ -1588,7 +1134,7 @@ export async function GET(request: Request) {
       tickersNeedingYahoo,
       TICKER_CONCURRENCY,
       async (company) =>
-        prepareTickerForScoring(company, benchmarkReturns, nowIso, screenedOn, includeResults)
+        prepareTickerForScoring(company, nowIso, screenedOn, includeResults)
     )
 
     const results: Array<Record<string, any>> = []
@@ -1628,161 +1174,45 @@ export async function GET(request: Request) {
     }
 
     let prequalifiedInBatch = 0
-    let strongBuyNowInBatch = 0
 
     for (const metric of metricRows) {
-      const scoreDetails = calculateCandidateScore({
-        latestClose: metric.latestClose,
+      const ltcsResult = calculateLTCS({
+        grossMargin: metric.snapshot.companyProfile.grossMargin,
+        operatingMargin: metric.snapshot.companyProfile.operatingMargin,
+        profitMargin: metric.snapshot.companyProfile.profitMargin,
+        roe: metric.snapshot.companyProfile.returnOnEquity,
+        debtToEquity: metric.snapshot.companyProfile.debtToEquity,
+        currentRatio: metric.snapshot.companyProfile.currentRatio,
+        revenueGrowth: metric.snapshot.companyProfile.revenueGrowth,
+        earningsGrowth: metric.snapshot.companyProfile.earningsGrowth,
+        freeCashflow: metric.snapshot.companyProfile.freeCashflow,
+        beta: metric.snapshot.companyProfile.beta,
+        sector: metric.snapshot.sector,
+        pegRatio: metric.snapshot.companyProfile.pegRatio,
+        forwardPE: metric.snapshot.forwardPe,
+        currentPrice: metric.latestClose,
+        ma200: metric.snapshot.companyProfile.ma200,
         marketCap: metric.marketCap,
-        avgVolume20d: metric.avgVolume20d,
-        avgDollarVolume20d: metric.avgDollarVolume20d,
-        return5d: metric.return5d,
-        return10d: metric.return10d,
-        return20d: metric.return20d,
-        relativeReturn5d: metric.relativeReturn5d,
-        relativeReturn10d: metric.relativeReturn10d,
-        relativeReturn20d: metric.relativeReturn20d,
-        oneDayReturn: metric.oneDayReturn,
-        volumeRatio: metric.volumeRatio,
-        breakout20d: metric.breakout20d,
-        breakout10d: metric.breakout10d,
-        nearHigh20: metric.nearHigh20,
-        aboveSma20: metric.aboveSma20,
-        shortTermTrendUp: metric.shortTermTrendUp,
-        sma10: metric.sma10,
-        sma20: metric.sma20,
-        high20: metric.high20,
-        breakoutClearancePct: metric.breakoutClearancePct,
-        extensionFromSma20Pct: metric.extensionFromSma20Pct,
-        closeInDayRange: metric.closeInDayRange,
-        passesPrice: metric.passesPrice,
-        passesVolume: metric.passesVolume,
-        passesDollarVolume: metric.passesDollarVolume,
-        passesMarketCap: metric.passesMarketCap,
-        strongCompanyScore: metric.strongCompanyScore,
-        passesStrongCompanyGate: metric.passesStrongCompanyGate,
-        speculativePenalty: metric.speculativePenalty,
       })
 
-      let score = scoreDetails.candidateScore
+      const score = ltcsResult.ltcsScore
+      const passed = score >= LTCS_INCLUDED_THRESHOLD
 
-      if (scoreDetails.signalFamilyCount < 2) {
-        score = Math.min(score, 74)
-      }
+      const reasons: string[] = [
+        `moat: ${ltcsResult.moatScore}/100`,
+        `financial health: ${ltcsResult.financialScore}/100`,
+        `profitability: ${ltcsResult.profitabilityScore}/100`,
+        `stability: ${ltcsResult.stabilityScore}/100`,
+        `valuation: ${ltcsResult.valuationScore}/100`,
+      ]
 
-      if (metric.return20d > 20 && metric.volumeRatio > 2.5) {
-        score = Math.min(score, 76)
-      }
-
-      const catalystCount = scoreDetails.catalystCount
-
-      const strongBuyNowCandidate = Boolean(
-        metric.passesStrongCompanyGate &&
-          metric.strongCompanyScore >= 78 &&
-          metric.passesPrice &&
-          metric.passesVolume &&
-          metric.passesDollarVolume &&
-          metric.passesMarketCap &&
-          metric.breakout20d &&
-          metric.nearHigh20 &&
-          metric.aboveSma20 &&
-          metric.shortTermTrendUp &&
-          metric.oneDayReturn >= -0.25 &&
-          metric.return10d >= MIN_STRONG_BUY_RETURN_10D &&
-          metric.return20d >= MIN_STRONG_BUY_RETURN_20D &&
-          metric.return20d <= MAX_STRONG_BUY_RETURN_20D &&
-          metric.relativeReturn10d >= MIN_RELATIVE_RETURN_10D &&
-          metric.relativeReturn20d >= MIN_RELATIVE_RETURN_20D &&
-          metric.volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO &&
-          metric.breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT &&
-          metric.closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE &&
-          metric.extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT &&
-          score >= MIN_STRONG_BUY_SCORE &&
-          catalystCount >= MIN_CATALYST_COUNT &&
-          scoreDetails.signalFamilyCount >= 2
-      )
-
-      const prequalified = Boolean(
-        metric.passesStrongCompanyGate &&
-          metric.strongCompanyScore >= MIN_STRONG_COMPANY_SCORE &&
-          metric.passesPrice &&
-          metric.passesVolume &&
-          metric.passesDollarVolume &&
-          metric.passesMarketCap &&
-          metric.aboveSma20 &&
-          metric.shortTermTrendUp &&
-          metric.nearHigh20 &&
-          metric.return10d >= 3 &&
-          metric.return20d >= 5 &&
-          metric.return20d <= 18 &&
-          metric.relativeReturn10d >= 1 &&
-          metric.relativeReturn20d >= 3 &&
-          metric.volumeRatio >= 1.05 &&
-          metric.breakoutClearancePct >= 0.1 &&
-          metric.closeInDayRange >= 0.55 &&
-          metric.extensionFromSma20Pct <= 12 &&
-          score >= 72 &&
-          scoreDetails.signalFamilyCount >= 2
-      )
-
-      const passed = Boolean(prequalified || strongBuyNowCandidate)
-
-      const reasons: string[] = []
-
-      if (metric.passesStrongCompanyGate) reasons.push("strong underlying company")
-      if (metric.strongCompanyScore >= 75) reasons.push("high fundamental quality")
-      reasons.push(...metric.strongCompanyReasons)
-
-      if (scoreDetails.signalFamilyCount >= 3) reasons.push("three signal families aligned")
-      else if (scoreDetails.signalFamilyCount >= 2) reasons.push("multi-signal alignment")
-      else reasons.push("single-signal setup")
-
-      if (metric.passesPrice) reasons.push(`price >= $${MIN_PRICE}`)
-      if (metric.passesVolume) reasons.push("20d avg volume")
-      if (metric.passesDollarVolume) reasons.push("20d dollar volume")
-      if (metric.passesMarketCap) reasons.push("market cap")
-      if (metric.oneDayReturn > 0) reasons.push("positive day")
-      if (metric.return5d >= 2) reasons.push("5d momentum")
-      if (metric.return10d >= MIN_STRONG_BUY_RETURN_10D) reasons.push("10d momentum")
-      if (metric.return20d >= MIN_STRONG_BUY_RETURN_20D) reasons.push("20d momentum")
-      if (metric.relativeReturn5d > 0) reasons.push("beats SPY over 5d")
-      if (metric.relativeReturn10d >= MIN_RELATIVE_RETURN_10D) reasons.push("beats SPY over 10d")
-      if (metric.relativeReturn20d >= MIN_RELATIVE_RETURN_20D) reasons.push("beats SPY over 20d")
-      if (metric.volumeRatio >= 1.2) reasons.push("volume expansion")
-      if (metric.volumeRatio >= MIN_STRONG_BUY_VOLUME_RATIO) reasons.push("strong volume expansion")
-      if (metric.breakout10d) reasons.push("10d breakout")
-      if (metric.breakout20d) reasons.push("20d breakout")
-      if (metric.nearHigh20) reasons.push("trading near 20d high")
-      if (metric.breakoutClearancePct >= MIN_BREAKOUT_CLEARANCE_PCT) reasons.push("clean breakout clearance")
-      if (metric.aboveSma20) reasons.push("above 20d average")
-      if (metric.shortTermTrendUp) reasons.push("short-term trend acceleration")
-      if (metric.closeInDayRange >= MIN_CLOSE_IN_DAY_RANGE) reasons.push("strong close in daily range")
-      if (metric.extensionFromSma20Pct <= MAX_EXTENSION_FROM_SMA20_PCT) reasons.push("not too extended from 20d average")
-      if (scoreDetails.highConvictionSetup) reasons.push("high-conviction setup")
-      if (scoreDetails.eliteSetup) reasons.push("elite setup")
-
-      let exclusionReason = ""
-      if (!metric.passesPrice) {
-        exclusionReason = `Below $${MIN_PRICE} minimum price`
-      } else if (!metric.passesVolume) {
-        exclusionReason = "Below minimum average volume"
-      } else if (!metric.passesDollarVolume) {
-        exclusionReason = "Below minimum dollar volume"
-      } else if (!metric.passesMarketCap) {
-        exclusionReason = "Below minimum market cap"
-      } else if (!metric.aboveSma20) {
-        exclusionReason = "Below 20-day moving average"
-      } else if (metric.return20d < 0) {
-        exclusionReason = "Negative 20-day momentum"
-      } else if (metric.relativeReturn20d < 0) {
-        exclusionReason = "Underperforming SPY over 20d"
-      } else if (scoreDetails.signalFamilyCount < 2) {
-        exclusionReason = "Not enough aligned evidence"
-      } else if (score < 68) {
-        exclusionReason = "Score below screening floor"
-      } else {
-        exclusionReason = "Did not qualify"
-      }
+      const exclusionReason = !metric.passesPrice
+        ? `Below $${MIN_PRICE} minimum price`
+        : !metric.passesMarketCap
+          ? "Below minimum market cap ($5B)"
+          : score < LTCS_INCLUDED_THRESHOLD
+            ? `LTCS score ${score} below threshold ${LTCS_INCLUDED_THRESHOLD}`
+            : "Did not qualify"
 
       const row: CandidateUniverseRow = {
         company_id: metric.company.id,
@@ -1805,19 +1235,19 @@ export async function GET(request: Request) {
         business_description: metric.snapshot.businessDescription,
         avg_volume_20d: round2(metric.avgVolume20d),
         avg_dollar_volume_20d: round2(metric.avgDollarVolume20d),
-        one_day_return: round2(metric.oneDayReturn),
-        return_5d: round2(metric.return5d),
-        return_10d: round2(metric.return10d),
-        return_20d: round2(metric.return20d),
-        relative_strength_20d: round2(metric.relative_strength_20d),
-        volume_ratio: round2(metric.volumeRatio),
-        breakout_20d: metric.breakout20d,
-        breakout_10d: metric.breakout10d,
-        above_sma_20: metric.aboveSma20,
-        breakout_clearance_pct: round2(metric.breakoutClearancePct),
-        extension_from_sma20_pct: round2(metric.extensionFromSma20Pct),
-        close_in_day_range: round2(metric.closeInDayRange),
-        catalyst_count: catalystCount,
+        one_day_return: metric.oneDayReturn,
+        return_5d: metric.return5d,
+        return_10d: metric.return10d,
+        return_20d: metric.return20d,
+        relative_strength_20d: metric.relativeStrength20d,
+        volume_ratio: metric.volumeRatio,
+        breakout_20d: false,
+        breakout_10d: false,
+        above_sma_20: false,
+        breakout_clearance_pct: null,
+        extension_from_sma20_pct: null,
+        close_in_day_range: null,
+        catalyst_count: 0,
         passes_price: metric.passesPrice,
         passes_volume: metric.passesVolume,
         passes_dollar_volume: metric.passesDollarVolume,
@@ -1826,21 +1256,16 @@ export async function GET(request: Request) {
         included: passed,
         passed,
         as_of_date: screenedOn,
-        screen_reason: buildCandidateReason({
-          prequalified,
-          strongBuyNow: strongBuyNowCandidate,
-          reasons: Array.from(new Set(reasons)),
-          exclusionReason,
-          score,
-        }),
+        screen_reason: passed
+          ? `LTCS ${score}/100: ${reasons.join(", ")}`
+          : `${exclusionReason} | ${reasons.join(", ")}`,
         last_screened_at: nowIso,
         updated_at: nowIso,
       }
 
       historyRows.push(makeHistoryRow(row, screenedOn, nowIso))
 
-      if (prequalified) prequalifiedInBatch += 1
-      if (strongBuyNowCandidate) strongBuyNowInBatch += 1
+      if (passed) prequalifiedInBatch += 1
 
       if (includeResults) {
         results.push({
@@ -1848,45 +1273,17 @@ export async function GET(request: Request) {
           ok: true,
           included: passed,
           passed,
-          prequalified,
-          strongBuyNowCandidate,
           score,
-          rawScore: round2(scoreDetails.rawScore),
-          tier: strongBuyNowCandidate
-            ? "strong_buy_now"
-            : prequalified
-              ? "prequalified"
-              : "screened",
+          tier: passed ? "ltcs_qualified" : "screened",
           reason: row.screen_reason,
           price: round2(metric.latestClose),
-          oneDayReturn: round2(metric.oneDayReturn),
-          return5d: round2(metric.return5d),
-          return10d: round2(metric.return10d),
-          return20d: round2(metric.return20d),
-          relativeReturn5d: round2(metric.relativeReturn5d),
-          relativeReturn10d: round2(metric.relativeReturn10d),
-          relativeReturn20d: round2(metric.relativeReturn20d),
-          benchmarkReturn5d: round2(benchmarkReturns.return5d),
-          benchmarkReturn10d: round2(benchmarkReturns.return10d),
-          benchmarkReturn20d: round2(benchmarkReturns.return20d),
-          volumeRatio: round2(metric.volumeRatio),
-          breakoutClearancePct: round2(metric.breakoutClearancePct),
-          extensionFromSma20Pct: round2(metric.extensionFromSma20Pct),
-          closeInDayRange: round2(metric.closeInDayRange),
-          strongCompanyScore: round2(metric.strongCompanyScore),
-          passesStrongCompanyGate: metric.passesStrongCompanyGate,
-          catalystCount,
-          signalFamilyCount: scoreDetails.signalFamilyCount,
-          scoreBreakdown: {
-            quality: round2(scoreDetails.qualityScore),
-            fundamental: round2(scoreDetails.fundamentalScore),
-            momentum: round2(scoreDetails.momentumScore),
-            relativeStrength: round2(scoreDetails.relativeStrengthScore),
-            leadership: round2(scoreDetails.leadershipScore),
-            volume: round2(scoreDetails.volumeScore),
-            breakout: round2(scoreDetails.breakoutScore),
-            trend: round2(scoreDetails.trendScore),
-            penalty: round2(scoreDetails.penaltyScore),
+          marketCap: metric.marketCap,
+          ltcsBreakdown: {
+            moat: ltcsResult.moatScore,
+            financialHealth: ltcsResult.financialScore,
+            profitability: ltcsResult.profitabilityScore,
+            stability: ltcsResult.stabilityScore,
+            valuation: ltcsResult.valuationScore,
           },
         })
       }
@@ -1980,10 +1377,10 @@ export async function GET(request: Request) {
       historyCount = historyCountError ? null : historyCountValue
     }
 
+    // If we got a full batch, assume more companies to screen.
+    // Only stop when we get fewer results than requested.
     const nextStart =
-      totalCompanies !== null &&
-      totalCompanies !== undefined &&
-      to + 1 < totalCompanies
+      companyList.length >= safeBatch
         ? to + 1
         : null
 
@@ -1998,7 +1395,6 @@ export async function GET(request: Request) {
       onlyActive,
       universe,
       prequalifiedInBatch,
-      strongBuyNowInBatch,
       failedInBatch,
       transientYahooErrorsInBatch,
       transientErrorRate: round2(transientErrorRate * 100),
@@ -2008,27 +1404,11 @@ export async function GET(request: Request) {
       retainedDays: RETENTION_DAYS,
       screenedOn,
       thresholds: {
-        benchmarkTicker: BENCHMARK_TICKER,
-        minStrongCompanyScore: MIN_STRONG_COMPANY_SCORE,
+        ltcsIncludedThreshold: LTCS_INCLUDED_THRESHOLD,
         minPrice: MIN_PRICE,
         minAvgVolume20d: MIN_AVG_VOLUME_20D,
         minAvgDollarVolume20d: MIN_AVG_DOLLAR_VOLUME_20D,
         minMarketCap: MIN_MARKET_CAP,
-        minStrongBuyScore: MIN_STRONG_BUY_SCORE,
-        minStrongBuyVolumeRatio: MIN_STRONG_BUY_VOLUME_RATIO,
-        minStrongBuyReturn10d: MIN_STRONG_BUY_RETURN_10D,
-        minStrongBuyReturn20d: MIN_STRONG_BUY_RETURN_20D,
-        minRelativeReturn10d: MIN_RELATIVE_RETURN_10D,
-        minRelativeReturn20d: MIN_RELATIVE_RETURN_20D,
-        maxStrongBuyReturn20d: MAX_STRONG_BUY_RETURN_20D,
-        maxExtensionFromSma20Pct: MAX_EXTENSION_FROM_SMA20_PCT,
-        minBreakoutClearancePct: MIN_BREAKOUT_CLEARANCE_PCT,
-        minCloseInDayRange: MIN_CLOSE_IN_DAY_RANGE,
-        minCatalystCount: MIN_CATALYST_COUNT,
-        yahooRetryAttempts: YAHOO_RETRY_ATTEMPTS,
-        yahooRetryBaseDelayMs: YAHOO_RETRY_BASE_DELAY_MS,
-        maxTransientErrorRate: MAX_TRANSIENT_ERROR_RATE,
-        minTransientErrorsToAbort: MIN_TRANSIENT_ERRORS_TO_ABORT,
       },
       counts: includeCounts
         ? {

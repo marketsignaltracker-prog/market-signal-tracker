@@ -34,6 +34,13 @@ type CandidateUniverseRow = {
   screen_reason?: string | null
   last_screened_at?: string | null
   updated_at?: string | null
+  has_insider_trades?: boolean | null
+  has_ptr_forms?: boolean | null
+  has_clusters?: boolean | null
+  pe_ratio?: number | null
+  pe_forward?: number | null
+  sector?: string | null
+  industry?: string | null
 }
 
 type TickerScoreRow = {
@@ -182,9 +189,12 @@ type UnifiedRow = {
 
   has_candidate_data: boolean
   has_signal_data: boolean
+  has_insider_trades: boolean
+  has_ptr_forms: boolean
+  has_clusters: boolean
   data_source_label:
-    | "Price Strength + Signals"
-    | "Price Strength Only"
+    | "Quality Score + Signals"
+    | "Quality Score Only"
     | "Signals Only"
 }
 
@@ -217,7 +227,7 @@ type ReasonLine = {
 }
 
 const CARDS_PER_PAGE = 18
-const DETAIL_TABS = ["Overview", "Why it’s here", "Numbers"] as const
+const DETAIL_TABS = ["Overview", "Fundamentals", "Numbers"] as const
 
 function normalizeTicker(value: string | null | undefined) {
   return (value || "").trim().toUpperCase()
@@ -254,9 +264,11 @@ function firstNumber(...values: Array<number | null | undefined>) {
   return 0
 }
 
-function firstNumberOrNull(...values: Array<number | null | undefined>) {
+function firstNumberOrNull(...values: Array<number | string | null | undefined>) {
   for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) return value
+    if (value === null || value === undefined) continue
+    const n = typeof value === "number" ? value : Number(value)
+    if (Number.isFinite(n)) return n
   }
   return null
 }
@@ -299,10 +311,10 @@ function makeUnifiedRow(
     last_screened_at: candidate?.last_screened_at ?? null,
 
     market_cap: firstNumberOrNull(signal?.market_cap, candidate?.market_cap, null),
-    sector: signal?.sector ?? null,
-    industry: signal?.industry ?? null,
-    pe_ratio: signal?.pe_ratio ?? null,
-    pe_forward: signal?.pe_forward ?? null,
+    sector: signal?.sector ?? candidate?.sector ?? null,
+    industry: signal?.industry ?? candidate?.industry ?? null,
+    pe_ratio: signal?.pe_ratio ?? candidate?.pe_ratio ?? null,
+    pe_forward: signal?.pe_forward ?? candidate?.pe_forward ?? null,
     pe_type: signal?.pe_type ?? null,
 
     one_day_return: candidate?.one_day_return ?? null,
@@ -318,10 +330,11 @@ function makeUnifiedRow(
       null
     ),
     volume_ratio: firstNumberOrNull(signal?.volume_ratio, candidate?.volume_ratio, null),
-    relative_strength_20d:
-      signal?.relative_strength_20d ??
-      candidate?.relative_strength_20d ??
-      null,
+    relative_strength_20d: firstNumberOrNull(
+      signal?.relative_strength_20d,
+      candidate?.relative_strength_20d,
+      null
+    ),
 
     breakout_20d: firstBooleanOrNull(signal?.breakout_20d, candidate?.breakout_20d, null),
     breakout_10d: candidate?.breakout_10d ?? null,
@@ -382,11 +395,14 @@ function makeUnifiedRow(
 
     has_candidate_data: Boolean(candidate),
     has_signal_data: Boolean(signal),
+    has_insider_trades: candidate?.has_insider_trades === true,
+    has_ptr_forms: candidate?.has_ptr_forms === true,
+    has_clusters: candidate?.has_clusters === true,
     data_source_label:
       candidate && signal
-        ? "Price Strength + Signals"
+        ? "Quality Score + Signals"
         : candidate
-          ? "Price Strength Only"
+          ? "Quality Score Only"
           : "Signals Only",
   }
 }
@@ -403,7 +419,7 @@ export default function Home() {
   const [priceFilter, setPriceFilter] = useState<PriceFilterType>("all")
   const [peFilter, setPeFilter] = useState<PeFilterType>("all")
   const [freshnessFilter, setFreshnessFilter] = useState<FreshnessFilterType>("all")
-  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("70")
+  const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("all")
   const [sectorFilter, setSectorFilter] = useState<SectorFilterType>("all")
   const [sourceFilter, setSourceFilter] = useState<SourceFilterType>("all")
   const [insiderFilter, setInsiderFilter] = useState<InsiderFilterType>("all")
@@ -455,9 +471,16 @@ export default function Home() {
               included,
               screen_reason,
               last_screened_at,
-              updated_at
+              updated_at,
+              has_insider_trades,
+              has_ptr_forms,
+              has_clusters,
+              pe_ratio,
+              pe_forward,
+              sector,
+              industry
             `)
-            .gte("candidate_score", 70)
+            .gte("candidate_score", 50)
             .order("candidate_score", { ascending: false })
             .limit(1000),
 
@@ -599,8 +622,8 @@ export default function Home() {
           if (!unified) continue
 
           const include =
-            (unified.candidate_score ?? -1) >= 70 ||
-            (unified.signal_score ?? -1) >= 70
+            (unified.candidate_score ?? -1) >= 50 ||
+            (unified.signal_score ?? -1) >= 50
 
           if (include) merged.push(unified)
         }
@@ -642,7 +665,7 @@ export default function Home() {
 
   useEffect(() => {
     setCardIndex(0)
-  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
+  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter])
 
   const sectorOptions = useMemo(() => {
     const sectors = Array.from(
@@ -688,7 +711,7 @@ export default function Home() {
     if (priceFilter !== "all") count += 1
     if (peFilter !== "all") count += 1
     if (freshnessFilter !== "all") count += 1
-    if (scoreFilter !== "70") count += 1
+    if (scoreFilter !== "all") count += 1
     if (sectorFilter !== "all") count += 1
     if (sourceFilter !== "all") count += 1
     if (insiderFilter !== "all") count += 1
@@ -725,7 +748,7 @@ export default function Home() {
     setPriceFilter("all")
     setPeFilter("all")
     setFreshnessFilter("all")
-    setScoreFilter("70")
+    setScoreFilter("all")
     setSectorFilter("all")
     setSourceFilter("all")
     setInsiderFilter("all")
@@ -748,19 +771,11 @@ export default function Home() {
   }, [selectedTicker, filteredRows.length])
 
   return (
-    <main className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.08),_transparent_20%),radial-gradient(circle_at_bottom_left,_rgba(16,185,129,0.06),_transparent_24%),linear-gradient(to_bottom,_#020617,_#081122_50%,_#020617)] text-white">
+    <main className="flex h-[100dvh] w-full flex-col overflow-hidden text-white" style={{ background: "#080d18" }}>
       <style jsx global>{`
         @keyframes cardFadeUp {
           from { opacity: 0; transform: translateY(16px) scale(0.985); }
           to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes scoreGlow {
-          0%, 100% { box-shadow: 0 0 0 rgba(34, 197, 94, 0); }
-          50% { box-shadow: 0 0 24px rgba(34, 197, 94, 0.18); }
-        }
-        @keyframes scoreGlowCyan {
-          0%, 100% { box-shadow: 0 0 0 rgba(34, 211, 238, 0); }
-          50% { box-shadow: 0 0 24px rgba(34, 211, 238, 0.18); }
         }
         @keyframes slideFromRight {
           from { opacity: 0; transform: translateX(52px) scale(0.97); }
@@ -776,22 +791,22 @@ export default function Home() {
       <header className="shrink-0 border-b border-white/[0.07] bg-black/30 px-4 py-3 backdrop-blur-sm">
         <div className="mx-auto flex max-w-lg items-center justify-between lg:max-w-7xl">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-emerald-400/90">
+            <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-[#f0a500]">
               Market Signal Tracker
             </p>
             <p className="mt-0.5 flex items-center gap-2 text-sm font-semibold text-white">
               {loading ? (
-                <span className="text-slate-500">Loading…</span>
+                <span className="text-[#7a8ba0]">Loading…</span>
               ) : (
                 <>
                   <span>{filteredRows.length} ideas</span>
                   {eliteCount > 0 && (
-                    <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-[10px] font-bold text-emerald-300">
+                    <span className="rounded-full bg-[rgba(240,165,0,0.12)] px-2 py-0.5 text-[10px] font-bold text-[#f0a500]">
                       {eliteCount} top tier
                     </span>
                   )}
                   {lastUpdated && (
-                    <span className="text-[11px] font-normal text-slate-500">
+                    <span className="text-[11px] font-normal text-[#7a8ba0]">
                       {lastUpdated}
                     </span>
                   )}
@@ -804,7 +819,7 @@ export default function Home() {
             type="button"
             onClick={() => setFiltersOpen((prev) => !prev)}
             aria-expanded={filtersOpen}
-            className="relative inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200"
+            className="relative inline-flex items-center gap-2 rounded-2xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] px-4 py-2.5 text-sm font-semibold text-white transition hover:border-[rgba(240,165,0,0.30)] hover:bg-[rgba(240,165,0,0.10)]"
           >
             <svg
               width="13"
@@ -823,7 +838,7 @@ export default function Home() {
             </svg>
             <span>Filters</span>
             {activeFilterCount > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-400 text-[9px] font-bold text-slate-900">
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#f0a500] text-[9px] font-bold text-black">
                 {activeFilterCount}
               </span>
             )}
@@ -834,9 +849,10 @@ export default function Home() {
       {/* Collapsible filters */}
       <div
         className={[
-          "shrink-0 overflow-hidden border-b border-white/[0.07] bg-black/25 backdrop-blur-sm transition-all duration-300 ease-out",
-          filtersOpen ? "max-h-80 opacity-100" : "max-h-0 opacity-0",
+          "shrink-0 overflow-hidden border-b border-[rgba(255,255,255,0.07)] transition-all duration-300 ease-out",
+          filtersOpen ? "max-h-[28rem] opacity-100" : "max-h-0 opacity-0",
         ].join(" ")}
+        style={{ background: "#080d18" }}
       >
         <div className="mx-auto max-w-lg px-4 pb-5 pt-4 lg:max-w-7xl">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -930,7 +946,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={resetFilters}
-                  className="w-full rounded-2xl border border-white/10 bg-white/5 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-emerald-400/30 hover:bg-emerald-400/10 hover:text-emerald-200"
+                  className="w-full rounded-2xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] py-2.5 text-sm font-semibold text-white transition hover:border-[rgba(240,165,0,0.25)] hover:bg-[rgba(240,165,0,0.08)]"
                 >
                   Reset
                 </button>
@@ -966,7 +982,7 @@ export default function Home() {
 
       {/* Disclaimer */}
       {!loading && !error && (
-        <div className="shrink-0 px-4 py-2 text-center text-[10px] leading-5 text-slate-600">
+        <div className="shrink-0 px-2.5 pb-1.5 pt-0.5 text-center text-[9px] leading-3 text-[#7a8ba0]">
           Not financial advice. Always do your own research before acting on any idea shown here.
         </div>
       )}
@@ -1074,6 +1090,28 @@ function SwipeDeck({
   const hasNext = cardIndex < rows.length - 1
   const dots = getDotRange(cardIndex, rows.length)
   const desktopDots = getDotRange(desktopPage, totalDesktopPages)
+
+  const DESKTOP_PAGE_SIZE = 3
+  const desktopPage = Math.floor(cardIndex / DESKTOP_PAGE_SIZE)
+  const desktopTotalPages = Math.ceil(rows.length / DESKTOP_PAGE_SIZE)
+  const desktopStart = desktopPage * DESKTOP_PAGE_SIZE
+  const desktopCards = rows.slice(desktopStart, desktopStart + DESKTOP_PAGE_SIZE)
+
+  function goNextPage() {
+    if (desktopPage >= desktopTotalPages - 1) return
+    const nextStart = (desktopPage + 1) * DESKTOP_PAGE_SIZE
+    setSwipeDir("left")
+    onIndexChange(nextStart)
+    setAnimKey((k) => k + 1)
+  }
+
+  function goPrevPage() {
+    if (desktopPage <= 0) return
+    const prevStart = (desktopPage - 1) * DESKTOP_PAGE_SIZE
+    setSwipeDir("right")
+    onIndexChange(prevStart)
+    setAnimKey((k) => k + 1)
+  }
 
   return (
     <>
@@ -1194,55 +1232,35 @@ function SwipeDeck({
 
 function SwipeStockCard({
   row,
+  rank,
   onOpen,
-  onNext,
-  onPrev,
-  hasNext,
-  hasPrev,
 }: {
   row: UnifiedRow
+  rank: number
   onOpen: () => void
-  onNext: () => void
-  onPrev: () => void
-  hasNext: boolean
-  hasPrev: boolean
 }) {
   const score = row.display_score
   const palette = getScorePalette(score)
-  const thesis = getFeaturedThesis(row)
-  const reasons = getDateCardReasons(row)
+  const whyBullets = getSimpleCardBullets(row)
+  const ltcs = parseScreenReasonScores(row.screen_reason)
 
-  const clusterBuyers = row.cluster_buyers ?? 0
-  const hasCluster = clusterBuyers >= 2
-  const hasPtr = Boolean(row.ptr_amount)
-  const hasPlatinum = clusterBuyers >= 3 && hasPtr
-
-  const glowColor = hasPlatinum
-    ? "rgba(251,191,36,0.5)"
-    : hasCluster
-      ? "rgba(52,211,153,0.5)"
-      : `${palette.end}80`
+  const pillars = [
+    { label: "Moat", score: ltcs.moat, icon: "🏔" },
+    { label: "Balance", score: ltcs.financial, icon: "💪" },
+    { label: "Profit", score: ltcs.profitability, icon: "💰" },
+    { label: "Stability", score: ltcs.stability, icon: "🛡" },
+    { label: "Valuation", score: ltcs.valuation, icon: "📊" },
+  ]
 
   return (
     <div
-      className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl"
-      style={{
-        borderColor: hasPlatinum
-          ? "rgba(251,191,36,0.4)"
-          : hasCluster
-            ? "rgba(52,211,153,0.4)"
-            : `${palette.end}50`,
-        background: hasPlatinum
-          ? "linear-gradient(170deg, rgba(251,191,36,0.18) 0%, rgba(251,191,36,0.06) 20%, rgba(10,18,38,0.98) 50%, rgba(2,6,23,1) 100%)"
-          : hasCluster
-            ? "linear-gradient(170deg, rgba(52,211,153,0.15) 0%, rgba(52,211,153,0.05) 20%, rgba(10,18,38,0.98) 50%, rgba(2,6,23,1) 100%)"
-            : `linear-gradient(170deg, ${palette.start}22 0%, ${palette.start}08 20%, rgba(10,18,38,0.98) 50%, rgba(2,6,23,1) 100%)`,
-        boxShadow: `0 0 60px -10px ${glowColor}, 0 25px 50px -12px rgba(0,0,0,0.5)`,
-      }}
+      className="flex h-full flex-col overflow-hidden rounded-[1.75rem] border shadow-2xl [@media(orientation:landscape)]:overflow-y-auto"
+      style={{ borderColor: "rgba(255,255,255,0.08)", background: "#0f1729" }}
     >
-      {/* Name badge: ticker + price + score */}
-      <div className="shrink-0 px-5 pt-5 pb-2">
-        <div className="flex items-start justify-between gap-3">
+      {/* ── Header ── */}
+      <div className="shrink-0 px-4 pt-4 pb-2">
+        <div className="flex items-center gap-3">
+          <ScoreRing score={score} palette={palette} />
           <div className="min-w-0 flex-1">
             <h2 className="text-[2.8rem] font-black tracking-tight text-white sm:text-5xl">{row.ticker}</h2>
             <div className="mt-1 flex items-center gap-2">
@@ -1258,6 +1276,9 @@ function SwipeStockCard({
                 <span className="text-xs text-slate-500">{row.sector}</span>
               ) : null}
             </div>
+            <p className="truncate text-xs text-white/40">
+              {[row.company_name, row.sector].filter(Boolean).join(" · ")}
+            </p>
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <div
@@ -1371,28 +1392,205 @@ function SwipeStockCard({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-400/15 text-lg text-emerald-300 transition hover:bg-emerald-400/25 active:scale-90"
-            aria-label={`Buy ${row.ticker}`}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3.5 text-xs font-bold text-emerald-400 transition hover:bg-emerald-500/25 active:scale-95"
           >
-            $
+            Buy
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="inline-block">
+              <path d="M3 9L9 3M9 3H4M9 3V8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           </a>
-
-          {/* Next */}
-          <button
-            type="button"
-            onClick={onNext}
-            disabled={!hasNext}
-            className={[
-              "flex h-12 w-12 items-center justify-center rounded-full border text-lg transition active:scale-90",
-              hasNext
-                ? "border-white/15 bg-white/5 text-slate-400 hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300"
-                : "cursor-default border-transparent text-transparent",
-            ].join(" ")}
-            aria-label="Next stock"
-          >
-            →
-          </button>
         </div>
+      </div>
+
+      {/* ── Returns strip ── */}
+      <div className="shrink-0 px-4 pb-0">
+        <div className="grid grid-cols-4 gap-1.5">
+          {[
+            { label: "1D", value: row.one_day_return },
+            { label: "5D", value: row.price_return_5d },
+            { label: "10D", value: row.return_10d },
+            { label: "20D", value: row.price_return_20d },
+          ].map(({ label, value }) => {
+            const hasVal = value !== null && value !== undefined
+            const isPos = hasVal && value! >= 0
+            return (
+              <div
+                key={label}
+                className="flex flex-col items-center justify-center rounded-lg border py-2"
+                style={{
+                  borderColor: hasVal
+                    ? isPos ? "rgba(48,209,88,0.22)" : "rgba(255,69,58,0.22)"
+                    : "rgba(255,255,255,0.06)",
+                  background: hasVal
+                    ? isPos ? "rgba(48,209,88,0.07)" : "rgba(255,69,58,0.07)"
+                    : "#162038",
+                }}
+              >
+                <span className="text-[9px] font-medium text-white/40">{label}</span>
+                <span
+                  className="mt-0.5 text-sm font-black"
+                  style={{ color: hasVal ? (isPos ? "#4ade80" : "#f87171") : "#7a8ba0" }}
+                >
+                  {hasVal
+                    ? `${isPos ? "+" : ""}${round1(value!)?.toFixed(1)}%`
+                    : "—"}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── Fundamentals Scanner ── */}
+      <div className="min-h-0 flex-1 overflow-hidden px-4 pt-2 pb-1">
+        <div className="grid h-full grid-cols-2 grid-rows-3 gap-1.5">
+          {(() => {
+            const ltcs = parseScreenReasonScores(row.screen_reason)
+
+            // Mini gauge bar component
+            function Gauge({ value, max, color }: { value: number | null; max: number; color: string }) {
+              const pct = value != null ? Math.min((value / max) * 100, 100) : 0
+              return (
+                <div className="mt-2 h-[5px] overflow-hidden rounded-full bg-[#1a2540]">
+                  <div
+                    className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}90, ${color})`, boxShadow: `0 0 8px ${color}40` }}
+                  />
+                </div>
+              )
+            }
+
+            function TileIcon({ d, color }: { d: string; color: string }) {
+              return (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="inline-block shrink-0">
+                  <path d={d} stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )
+            }
+
+            // SVG path data for each tile icon
+            const iconPaths = {
+              eps: "M2 9L4.5 4L7 6.5L10 2M10 2H7.5M10 2V4.5",         // trending up arrow
+              cash: "M6 1V11M3 3.5H7.5C8.88 3.5 10 4.34 10 5.25S8.88 7 7.5 7H3M3 7H8C9.38 7 10.5 7.84 10.5 8.75S9.38 10.5 8 10.5H3", // dollar sign
+              debt: "M1.5 10V4L6 1.5L10.5 4V10M4 10V7H8V10",           // building/bank
+              moat: "M1 8L3 6L5 8L7 4L9 7L11 5M1 10H11",              // castle battlements
+              peg: "M2 2V10H10M4 8V6M6.5 8V4M9 8V5",                  // bar chart
+              rs: "M6 1L8.5 4H7V7.5H5V4H3.5L6 1M2 9.5H10",           // rocket/target up
+            }
+
+            function Tile({ label, iconPath, value, sub, score, maxScore, color, borderColor }: {
+              label: string; iconPath: string; value: string; sub: string
+              score: number | null; maxScore: number; color: string; borderColor: string
+            }) {
+              const active = score != null && score > 0
+              return (
+                <div className="relative overflow-hidden rounded-xl p-2.5" style={{
+                  background: active ? `linear-gradient(160deg, ${color}18 0%, ${color}04 100%)` : "#111827",
+                  border: `1px solid ${active ? borderColor : "rgba(255,255,255,0.05)"}`,
+                }}>
+                  {active && (
+                    <div className="absolute top-0 right-0 h-8 w-8 opacity-20" style={{
+                      background: `radial-gradient(circle at top right, ${color}, transparent 70%)`,
+                    }} />
+                  )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <TileIcon d={iconPath} color={active ? color : "#374151"} />
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? color : "#374151" }}>
+                        {label}
+                      </p>
+                    </div>
+                    {score != null && (
+                      <span className="text-[11px] font-black" style={{ color }}>{score}</span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-lg font-black leading-tight" style={{ color: active ? "#f0f0f0" : "#1f2937" }}>
+                    {value}
+                  </p>
+                  <Gauge value={score} max={maxScore} color={color} />
+                  <p className="mt-1 text-[9px] leading-tight" style={{ color: active ? `${color}99` : "#1f2937" }}>
+                    {sub}
+                  </p>
+                </div>
+              )
+            }
+
+            // Earnings / Profitability
+            const profScore = ltcs.profitability
+            const profLabel = profScore == null ? "—" : profScore >= 75 ? "Strong" : profScore >= 40 ? "Growing" : "Weak"
+
+            // Free Cash Flow (part of profitability)
+            const fcfScore = ltcs.profitability
+            const fcfLabel = fcfScore == null ? "—" : fcfScore >= 65 ? "Positive" : fcfScore >= 35 ? "Mixed" : "Negative"
+
+            // Debt / Financial Health
+            const debtScore = ltcs.financial
+            const debtLabel = debtScore == null ? "—" : debtScore >= 70 ? "Low Debt" : debtScore >= 40 ? "Moderate" : "High Debt"
+
+            // Moat / Competitive Advantage
+            const moatScore = ltcs.moat
+            const moatLabel = moatScore == null ? "—" : moatScore >= 75 ? "Wide" : moatScore >= 50 ? "Narrow" : "None"
+
+            // PEG / Valuation
+            const valScore = ltcs.valuation
+            const valLabel = valScore == null ? "—" : valScore >= 70 ? "Attractive" : valScore >= 35 ? "Fair" : "Expensive"
+
+            // Relative Strength / Near Highs — fall back to 20d return or 1d return
+            const rs = row.relative_strength_20d != null ? Number(row.relative_strength_20d)
+              : row.price_return_20d != null ? Number(row.price_return_20d)
+              : row.one_day_return != null ? Number(row.one_day_return)
+              : null
+            // Score: map rs to 0-100 where 50 = neutral, >50 = positive momentum, <50 = negative
+            const rsScore = rs != null ? Math.min(Math.max(Math.round(50 + rs * 2), 5), 100) : null
+            const rsLabel = rs == null ? "—" : rs >= 15 ? "Near Highs" : rs >= 8 ? "Strong" : rs >= 0 ? "Neutral" : rs >= -5 ? "Cooling" : "Weak"
+
+            return (
+              <>
+                <Tile
+                  iconPath={iconPaths.eps} label="Profit Growth" value={profLabel}
+                  sub="Is the company making more money each year?"
+                  score={profScore} maxScore={100} color="#22d3ee" borderColor="rgba(34,211,238,0.25)"
+                />
+                <Tile
+                  iconPath={iconPaths.cash} label="Money In" value={fcfLabel}
+                  sub="Does it generate real cash, not just paper profit?"
+                  score={fcfScore} maxScore={100} color="#34d399" borderColor="rgba(52,211,153,0.25)"
+                />
+                <Tile
+                  iconPath={iconPaths.debt} label="Financial Health" value={debtLabel}
+                  sub="Can it pay its bills without borrowing more?"
+                  score={debtScore} maxScore={100} color="#a78bfa" borderColor="rgba(167,139,250,0.25)"
+                />
+                <Tile
+                  iconPath={iconPaths.moat} label="Edge" value={moatLabel}
+                  sub="How hard is it for competitors to catch up?"
+                  score={moatScore} maxScore={100} color="#f59e0b" borderColor="rgba(245,158,11,0.25)"
+                />
+                <Tile
+                  iconPath={iconPaths.peg} label="Fair Price" value={valLabel}
+                  sub="Is the stock priced right for how fast it's growing?"
+                  score={valScore} maxScore={100} color="#fb923c" borderColor="rgba(251,146,60,0.25)"
+                />
+                <Tile
+                  iconPath={iconPaths.rs} label="Momentum" value={rsLabel}
+                  sub={rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}% vs market over 20 days` : "Is the stock outperforming most others?"}
+                  score={rsScore} maxScore={100} color="#ec4899" borderColor="rgba(236,72,153,0.25)"
+                />
+              </>
+            )
+          })()}
+        </div>
+      </div>
+
+      {/* ── CTA ── */}
+      <div className="shrink-0 px-4 pt-3 pb-3">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="w-full rounded-2xl bg-[#f0a500] px-5 py-3 text-sm font-bold text-black transition active:scale-[0.98] hover:bg-[#ffb733]"
+        >
+          View Analysis →
+        </button>
       </div>
     </div>
   )
@@ -1408,12 +1606,12 @@ function SimpleExplainerCard({
   body: string
 }) {
   return (
-    <div className="rounded-[1.25rem] border border-white/10 bg-black/20 p-4">
-      <div className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-cyan-400/25 bg-cyan-400/10 text-sm font-bold text-cyan-200">
+    <div className="rounded-[1.25rem] border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
+      <div className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[rgba(0,200,5,0.20)] bg-[rgba(0,200,5,0.10)] text-sm font-bold text-[#00c805]">
         {step}
       </div>
       <h3 className="mt-3 text-base font-semibold text-white">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-300">{body}</p>
+      <p className="mt-2 text-sm leading-6 text-[#b0b0b0]">{body}</p>
     </div>
   )
 }
@@ -1428,12 +1626,12 @@ function ConfidenceLegendCard({
   body: string
 }) {
   return (
-    <div className="rounded-[1.25rem] border border-white/10 bg-black/20 p-4">
+    <div className="rounded-[1.25rem] border border-[rgba(255,255,255,0.07)] bg-[#141414] p-4">
       <div className="flex items-center gap-3">
         <span className={`h-3 w-3 rounded-full ${color}`} />
         <span className="text-sm font-semibold text-white">{label}</span>
       </div>
-      <p className="mt-2 text-sm leading-6 text-slate-300">{body}</p>
+      <p className="mt-2 text-sm leading-6 text-[#b0b0b0]">{body}</p>
     </div>
   )
 }
@@ -1447,10 +1645,7 @@ function CompactStatCard({
   value: string
   tone: "emerald" | "cyan"
 }) {
-  const styles =
-    tone === "emerald"
-      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
-      : "border-cyan-400/20 bg-cyan-400/10 text-cyan-200"
+  const styles = "border-[rgba(0,200,5,0.20)] bg-[rgba(0,200,5,0.08)] text-[#00c805]"
 
   return (
     <div className={`rounded-[1.25rem] border px-3 py-3 sm:px-4 ${styles}`}>
@@ -1498,28 +1693,28 @@ function MobileAppNav({
 }) {
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-950/90 px-3 pt-3 backdrop-blur-md sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-[rgba(255,255,255,0.06)] bg-black px-3 pt-3 sm:hidden"
       style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" }}
     >
       <div className="mx-auto grid max-w-xl grid-cols-3 gap-2">
         <button
           type="button"
           onClick={onGoTop}
-          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
+          className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-3 text-xs font-semibold text-white"
         >
           Home
         </button>
         <button
           type="button"
           onClick={onGoBoard}
-          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
+          className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-3 text-xs font-semibold text-white"
         >
           Board
         </button>
         <button
           type="button"
           onClick={onGoFilters}
-          className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs font-semibold text-slate-200"
+          className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-3 text-xs font-semibold text-white"
         >
           Filters
         </button>
@@ -1541,19 +1736,19 @@ function FilterSelect({
 }) {
   return (
     <div>
-      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#7a8ba0]">
         {label}
       </label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3.5 text-white outline-none transition focus:border-cyan-400/40 focus:bg-slate-950 sm:py-4"
+        className="w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#0f1729] px-4 py-3.5 text-white outline-none transition focus:border-[rgba(240,165,0,0.40)] sm:py-4"
       >
         {options.map((option) => (
           <option
             key={`${label}-${option.value}`}
             value={option.value}
-            className="bg-slate-900"
+            className="bg-[#0f1729]"
           >
             {option.label}
           </option>
@@ -1565,16 +1760,16 @@ function FilterSelect({
 
 function LoadingPanel() {
   return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
+    <div className="rounded-3xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-8 shadow-2xl">
       <h2 className="text-2xl font-semibold">Loading today’s ideas…</h2>
-      <p className="mt-2 text-slate-400">Pulling the board together now.</p>
+      <p className="mt-2 text-[#7a8ba0]">Pulling the board together now.</p>
     </div>
   )
 }
 
 function ErrorPanel({ message }: { message: string }) {
   return (
-    <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
+    <div className="rounded-2xl border border-[rgba(255,69,58,0.25)] bg-[rgba(255,69,58,0.10)] p-4 text-[#ff453a]">
       {message}
     </div>
   )
@@ -1582,9 +1777,9 @@ function ErrorPanel({ message }: { message: string }) {
 
 function EmptyPanel() {
   return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 shadow-2xl">
+    <div className="rounded-3xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-8 shadow-2xl">
       <h2 className="text-2xl font-semibold">Nothing matched those filters</h2>
-      <p className="mt-2 text-slate-400">
+      <p className="mt-2 text-[#7a8ba0]">
         Try widening the score, freshness, or valuation filters.
       </p>
     </div>
@@ -1801,7 +1996,7 @@ function TopSignalCard({
 
   const metricItems: MiniMetricItem[] = [
     { label: "Price", value: formatMoney(row.price) },
-    { label: "Insider value", value: formatInsiderValue(row) },
+    { label: "Insider value", value: formatInsiderValue(row) || "—" },
     { label: "Vs market", value: formatRelativeStrengthForDisplay(row) },
     { label: "PTR amount", value: row.ptr_amount || "—" },
   ].filter((item) => hasDisplayValue(item.value))
@@ -1813,11 +2008,11 @@ function TopSignalCard({
       onClick={onClick}
       className={[
         "flex w-full self-start flex-col overflow-hidden rounded-[1.5rem] border p-4 text-left shadow-xl transition duration-300 hover:-translate-y-1 hover:scale-[1.01] sm:p-5",
-        isSelected ? "ring-2 ring-cyan-300/25" : "hover:ring-1 hover:ring-white/10",
+        isSelected ? "ring-2 ring-[rgba(0,200,5,0.25)]" : "hover:ring-1 hover:ring-[rgba(255,255,255,0.06)]",
       ].join(" ")}
       style={{
-        borderColor: isSelected ? `${palette.end}80` : `${palette.end}33`,
-        background: `linear-gradient(135deg, ${palette.start}12 0%, rgba(15,23,42,0.92) 40%, rgba(2,6,23,1) 100%)`,
+        borderColor: isSelected ? "rgba(0,200,5,0.30)" : "rgba(255,255,255,0.08)",
+        background: "#141414",
         animation: `cardFadeUp 480ms ease-out both`,
         animationDelay: `${animationIndex * 45}ms`,
       }}
@@ -1831,7 +2026,7 @@ function TopSignalCard({
           <h3 className="mt-2 truncate text-2xl font-bold sm:text-3xl">{row.ticker}</h3>
 
           {row.company_name ? (
-            <p className="mt-1 truncate text-sm text-slate-400">
+            <p className="mt-1 truncate text-sm text-[#8a8a8a]">
               {truncateText(row.company_name, 40)}
             </p>
           ) : null}
@@ -1843,7 +2038,7 @@ function TopSignalCard({
                 e.stopPropagation()
                 setShowCompanyInfo((prev) => !prev)
               }}
-              className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
+              className="inline-flex items-center rounded-full border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-1 text-[11px] font-semibold text-[#8a8a8a] transition hover:border-[rgba(0,200,5,0.25)] hover:bg-[rgba(0,200,5,0.08)] hover:text-[#00c805]"
             >
               {showCompanyInfo
                 ? "Hide details"
@@ -1867,12 +2062,12 @@ function TopSignalCard({
         ].join(" ")}
       >
         <div className="overflow-hidden">
-          <div className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300/80">
+          <div className="w-full rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-4 py-4">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8a8a8a]">
               {infoTitle}
             </p>
 
-            <p className="text-sm leading-6 text-slate-300">{infoBody}</p>
+            <p className="text-sm leading-6 text-[#b0b0b0]">{infoBody}</p>
 
             <div className="mt-4 flex justify-end">
               <button
@@ -1888,7 +2083,7 @@ function TopSignalCard({
                     })
                   }, 150)
                 }}
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-cyan-200"
+                className="rounded-full border border-[rgba(255,255,255,0.07)] bg-[#141414] px-4 py-1.5 text-xs font-semibold text-[#8a8a8a] transition hover:border-[rgba(0,200,5,0.25)] hover:bg-[rgba(0,200,5,0.08)] hover:text-[#00c805]"
               >
                 Close
               </button>
@@ -1901,15 +2096,15 @@ function TopSignalCard({
         <ScoreBar row={row} compact />
       </div>
 
-      <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+      <div className="mb-4 rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8a8a]">
           Why it made the list
         </p>
 
         <ul className="mt-3 space-y-2 text-sm leading-6 text-white">
           {whyBullets.map((item, i) => (
             <li key={i} className="flex items-start gap-2">
-              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
+              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-[#00c805]" />
               <span>{item}</span>
             </li>
           ))}
@@ -1924,25 +2119,25 @@ function TopSignalCard({
         </div>
       )}
 
-      <div className="mt-auto rounded-2xl bg-black/20 p-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+      <div className="mt-auto rounded-2xl bg-[#1c1c1c] p-4">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#00c805]">
           Plain-English takeaway
         </p>
 
-        <ul className="space-y-2 text-sm leading-6 text-slate-100">
+        <ul className="space-y-2 text-sm leading-6 text-white">
           {takeawayBullets.map((item, i) => (
             <li key={i} className="flex items-start gap-2">
-              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-[#00c805]" />
               <span>{item}</span>
             </li>
           ))}
         </ul>
       </div>
 
-      <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-        <span className="text-sm text-slate-300">Open guided details</span>
+      <div className="mt-4 flex items-center justify-between rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-4 py-3">
+        <span className="text-sm text-[#8a8a8a]">Open guided details</span>
 
-        <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white">
+        <span className="rounded-full border border-[rgba(255,255,255,0.07)] bg-[#141414] px-3 py-1 text-xs font-semibold text-white">
           Explore →
         </span>
       </div>
@@ -1958,38 +2153,28 @@ function ScoreBar({
   compact?: boolean
 }) {
   const score = row.display_score
-  const palette = getScorePalette(score)
-  const glowAnimation =
-    score >= 90
-      ? "scoreGlow 3.2s ease-in-out infinite"
-      : score >= 80
-        ? "scoreGlowCyan 3.6s ease-in-out infinite"
-        : undefined
 
   return (
-    <div
-      className="w-full rounded-2xl border border-white/10 bg-white/5 p-4"
-      style={glowAnimation ? { animation: glowAnimation } : undefined}
-    >
+    <div className="w-full rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8ba0]">
           Overall score
         </p>
         <p className="shrink-0 text-sm font-semibold text-white">{score}/100</p>
       </div>
 
-      <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+      <div className="h-3 overflow-hidden rounded-full bg-[#1e2d45]">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{
             width: `${score}%`,
-            background: `linear-gradient(90deg, ${palette.start}, ${palette.end})`,
+            background: "#f0a500",
           }}
         />
       </div>
 
       {!compact ? (
-        <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.14em] text-slate-500">
+        <div className="mt-2 flex items-center justify-between text-[11px] uppercase tracking-[0.14em] text-[#7a8ba0]">
           <span>Good</span>
           <span>Strong</span>
           <span>Top tier</span>
@@ -2020,7 +2205,7 @@ function MiniMetric({
 
 function CardRankBadge({ rank }: { rank: number }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-cyan-400/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200">
+    <span className="inline-flex items-center rounded-full bg-[rgba(240,165,0,0.12)] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
       #{rank}
     </span>
   )
@@ -2034,35 +2219,24 @@ function ScoreBadge({
   large?: boolean
 }) {
   const score = row.display_score
-  const palette = getScorePalette(score)
-  const tier = getScoreTierLabel(score)
-
-  const glowAnimation =
-    score >= 90
-      ? "scoreGlow 3.2s ease-in-out infinite"
-      : score >= 80
-        ? "scoreGlowCyan 3.6s ease-in-out infinite"
-        : undefined
 
   return (
     <div
       className={[
-        "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full font-bold shadow-lg ring-1 ring-white/10",
+        "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-bold",
         large ? "px-3.5 py-1.5 text-sm sm:px-4 sm:py-2" : "px-3 py-1 text-sm",
       ].join(" ")}
       style={{
-        background: `linear-gradient(135deg, ${palette.start}, ${palette.end})`,
-        color: palette.text,
-        ...(glowAnimation ? { animation: glowAnimation } : {}),
+        background: "#162038",
+        color: "#ffffff",
       }}
     >
       <span>{score}</span>
       {row.ticker_score_change_7d !== null && row.ticker_score_change_7d !== undefined && (
-        <span className="text-xs opacity-80">
+        <span className="text-xs text-[#7a8ba0]">
           {row.ticker_score_change_7d >= 3 ? "↑" : row.ticker_score_change_7d <= -3 ? "↓" : ""}
         </span>
       )}
-      <span className="opacity-90">• {tier}</span>
     </div>
   )
 }
@@ -2072,7 +2246,7 @@ function FreshnessBadge({ row }: { row: UnifiedRow }) {
   if (!label) return null
 
   return (
-    <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-300">
+    <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border border-[rgba(255,255,255,0.08)] bg-[#0f1729] px-2.5 py-1 text-[11px] font-semibold text-[#7a8ba0]">
       {label}
     </span>
   )
@@ -2091,9 +2265,9 @@ function PaginationControls({
 
   return (
     <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
-      <div className="text-sm text-slate-400">
-        Page <span className="font-semibold text-slate-200">{currentPage}</span> of{" "}
-        <span className="font-semibold text-slate-200">{totalPages}</span>
+      <div className="text-sm text-[#8a8a8a]">
+        Page <span className="font-semibold text-white">{currentPage}</span> of{" "}
+        <span className="font-semibold text-white">{totalPages}</span>
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2">
@@ -2101,7 +2275,7 @@ function PaginationControls({
           type="button"
           onClick={() => onPageChange(1)}
           disabled={currentPage === 1}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           First
         </button>
@@ -2110,14 +2284,14 @@ function PaginationControls({
           type="button"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           Prev
         </button>
 
         {pages.map((page, index) =>
           page === "ellipsis" ? (
-            <span key={`ellipsis-${index}`} className="px-2 text-slate-500">
+            <span key={`ellipsis-${index}`} className="px-2 text-[#666]">
               …
             </span>
           ) : (
@@ -2128,8 +2302,8 @@ function PaginationControls({
               className={[
                 "min-w-[42px] rounded-xl border px-3 py-2 text-sm font-semibold transition",
                 page === currentPage
-                  ? "border-cyan-400/30 bg-cyan-400/15 text-white"
-                  : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white",
+                  ? "border-[rgba(0,200,5,0.30)] bg-[rgba(0,200,5,0.12)] text-white"
+                  : "border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] text-[#8a8a8a] hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white",
               ].join(" ")}
             >
               {page}
@@ -2141,7 +2315,7 @@ function PaginationControls({
           type="button"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           Next
         </button>
@@ -2150,7 +2324,7 @@ function PaginationControls({
           type="button"
           onClick={() => onPageChange(totalPages)}
           disabled={currentPage === totalPages}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-xl border border-[rgba(255,255,255,0.07)] bg-[#1c1c1c] px-3 py-2 text-sm font-semibold text-[#8a8a8a] transition hover:border-[rgba(255,255,255,0.12)] hover:bg-[#2a2a2a] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           Last
         </button>
@@ -2267,7 +2441,7 @@ function SignalDetailsModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/85" onClick={onClose}>
       <div
         className="fixed inset-0 flex items-stretch justify-center p-0 sm:items-center sm:p-6"
         onClick={(e) => e.stopPropagation()}
@@ -2279,7 +2453,7 @@ function SignalDetailsModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="inline-flex shrink-0 items-center rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+                  className="inline-flex shrink-0 items-center rounded-xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] px-3 py-2 text-sm font-semibold text-white transition hover:border-[rgba(255,255,255,0.15)] hover:bg-[#162038]"
                 >
                   ← Back
                 </button>
@@ -2288,7 +2462,7 @@ function SignalDetailsModal({
                   <button
                     type="button"
                     onClick={onPrev}
-                    className="hidden shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white sm:inline-flex"
+                    className="hidden shrink-0 rounded-xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] px-3 py-2 text-sm font-semibold text-white transition hover:border-[rgba(255,255,255,0.15)] hover:bg-[#162038] sm:inline-flex"
                   >
                     Prev
                   </button>
@@ -2298,7 +2472,7 @@ function SignalDetailsModal({
                   <button
                     type="button"
                     onClick={onNext}
-                    className="hidden shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white sm:inline-flex"
+                    className="hidden shrink-0 rounded-xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] px-3 py-2 text-sm font-semibold text-white transition hover:border-[rgba(255,255,255,0.15)] hover:bg-[#162038] sm:inline-flex"
                   >
                     Next
                   </button>
@@ -2307,15 +2481,15 @@ function SignalDetailsModal({
 
               <div className="min-w-0 text-right">
                 {positionLabel ? (
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#7a8ba0]">
                     {positionLabel}
                   </p>
                 ) : null}
-                <p className="text-sm font-semibold text-slate-200">Guided details</p>
+                <p className="text-sm font-semibold text-white">Guided details</p>
               </div>
             </div>
 
-            <div className="border-t border-white/10 px-4 py-4 sm:px-6">
+            <div className="border-t border-[rgba(255,255,255,0.07)] px-4 py-4 sm:px-6">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-2xl font-bold sm:text-3xl">{row.ticker}</h2>
                 <ScoreBadge row={row} large />
@@ -2323,11 +2497,11 @@ function SignalDetailsModal({
               </div>
 
               {row.company_name ? (
-                <p className="mt-2 truncate text-sm text-slate-400">{row.company_name}</p>
+                <p className="mt-2 truncate text-sm text-[#7a8ba0]">{row.company_name}</p>
               ) : null}
             </div>
 
-            <div className="border-t border-white/10 px-4 py-3 lg:hidden">
+            <div className="border-t border-[rgba(255,255,255,0.07)] px-4 py-3 lg:hidden">
               <div className="mb-3 flex items-center justify-center gap-2">
                 {DETAIL_TABS.map((slide, index) => (
                   <button
@@ -2337,8 +2511,8 @@ function SignalDetailsModal({
                     className={[
                       "rounded-full px-3 py-1.5 text-xs font-semibold transition",
                       index === activeSlide
-                        ? "bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-400/30"
-                        : "bg-white/5 text-slate-400 ring-1 ring-white/10",
+                        ? "bg-[rgba(240,165,0,0.15)] text-[#f0a500] ring-1 ring-[rgba(240,165,0,0.30)]"
+                        : "bg-[#0f1729] text-[#7a8ba0] ring-1 ring-[rgba(255,255,255,0.08)]",
                     ].join(" ")}
                   >
                     {slide}
@@ -2346,7 +2520,7 @@ function SignalDetailsModal({
                 ))}
               </div>
 
-              <p className="text-center text-xs text-slate-500">
+              <p className="text-center text-xs text-[#7a8ba0]">
                 Tap a tab or swipe left and right
               </p>
             </div>
@@ -2425,8 +2599,8 @@ function SignalDetailsModal({
                     </p>
                     <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-300">
                       {confidenceBullets.map((item, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                        <li key={i} className="flex items-start gap-3 text-sm leading-6 text-white/80">
+                          <span className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f0a500]/15 text-[10px] font-bold text-[#f0a500]">{i + 1}</span>
                           <span>{item}</span>
                         </li>
                       ))}
@@ -2572,13 +2746,90 @@ function SignalDetailsModal({
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
                         Why it made the board
                       </p>
-                      <p className="mt-2 break-words text-xl font-semibold text-white">
+                      <p className="mt-2 text-xl font-bold leading-snug text-white">
                         {thesis}
                       </p>
-                      <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-300">
+                    </div>
+
+                    {/* Smart Money section */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
+                        Smart Money is Moving
+                      </p>
+                      <p className="mb-3 text-xs leading-5 text-[#7a8ba0]">
+                        When company insiders or members of Congress buy a stock, they may know something the public doesn’t. Here’s what we found:
+                      </p>
+                      <div className="space-y-2">
+                        {/* Insider Trades */}
+                        <div className="rounded-xl p-3" style={{
+                          background: row.has_insider_trades ? "linear-gradient(135deg, rgba(249,115,22,0.14) 0%, rgba(249,115,22,0.03) 100%)" : "#0d1117",
+                          border: row.has_insider_trades ? "1px solid rgba(249,115,22,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                        }}>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-bold" style={{ color: row.has_insider_trades ? "#fb923c" : "#374151" }}>
+                              Insider Trades (Form 4)
+                            </p>
+                            <span className="text-sm font-black" style={{ color: row.has_insider_trades ? "#fed7aa" : "#1f2937" }}>
+                              {(row.cluster_buyers ?? 0) >= 2 ? "Cluster" : row.has_insider_trades ? "Yes" : "No"}
+                            </span>
+                          </div>
+                          {row.has_insider_trades ? (
+                            <p className="mt-1 text-[11px] text-orange-300/60">
+                              {(row.cluster_buyers ?? 0) >= 2
+                                ? `${row.cluster_buyers} insiders bought around the same time — that’s unusual and often a bullish sign.`
+                                : "A company insider recently filed a purchase with the SEC — they’re putting their own money in."}
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-[11px] text-[#374151]">No recent insider purchases detected.</p>
+                          )}
+                          {(row.insider_buy_value ?? 0) > 0 && (
+                            <p className="mt-1 text-xs font-bold text-orange-200">Value: {formatMoney(row.insider_buy_value!)}</p>
+                          )}
+                          {(row.insider_shares ?? 0) > 0 && (
+                            <p className="mt-1 text-xs font-bold text-orange-200">Shares: {formatWholeNumber(row.insider_shares!)}</p>
+                          )}
+                        </div>
+
+                        {/* Congressional Trades */}
+                        <div className="rounded-xl p-3" style={{
+                          background: (row.has_ptr_forms || row.ptr_amount) ? "linear-gradient(135deg, rgba(168,85,247,0.14) 0%, rgba(168,85,247,0.03) 100%)" : "#0d1117",
+                          border: (row.has_ptr_forms || row.ptr_amount) ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                        }}>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-bold" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#c084fc" : "#374151" }}>
+                              Congress Trades (PTR)
+                            </p>
+                            <span className="text-sm font-black" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#e9d5ff" : "#1f2937" }}>
+                              {(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"}
+                            </span>
+                          </div>
+                          {(row.has_ptr_forms || row.ptr_amount) ? (
+                            <>
+                              <p className="mt-1 text-[11px] text-purple-300/60">
+                                A member of Congress disclosed a purchase. They must report within 45 days, so the actual buy may have been earlier.
+                              </p>
+                              {row.ptr_amount && (
+                                <p className="mt-1 text-xs font-bold text-purple-200">Amount: {row.ptr_amount}</p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="mt-1 text-[11px] text-[#374151]">No congressional trades found for this stock.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Why you should care bullets */}
+                    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">
+                        The Bull Case
+                      </p>
+                      <ul className="space-y-3">
                         {confidenceBullets.map((item, i) => (
-                          <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                          <li key={i} className="flex items-start gap-3 text-sm leading-6 text-white/80">
+                            <span className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f0a500]/15 text-[10px] font-bold text-[#f0a500]">
+                              {i + 1}
+                            </span>
                             <span>{item}</span>
                           </li>
                         ))}
@@ -2605,14 +2856,6 @@ function SignalDetailsModal({
                       <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                         Biggest score drivers
                       </p>
-                      <div className="grid gap-3">
-                        {reasons.map((reason) => (
-                          <ReasonCard
-                            key={`${reason.label}-${reason.value}`}
-                            reason={reason}
-                          />
-                        ))}
-                      </div>
                     </div>
 
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -2744,13 +2987,13 @@ function SignalDetailsModal({
             </div>
           </div>
 
-          <div className="border-t border-white/10 bg-slate-950/95 p-3 backdrop-blur sm:hidden">
+          <div className="border-t border-[rgba(255,255,255,0.07)] p-3 sm:hidden" style={{ background: "#080d18" }}>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={onPrev}
                 disabled={!onPrev}
-                className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:opacity-40"
+                className="rounded-2xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] px-3 py-3 text-sm font-semibold text-white transition hover:bg-[#162038] disabled:opacity-40"
               >
                 ← Prev
               </button>
@@ -2758,7 +3001,7 @@ function SignalDetailsModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-3 py-3 text-sm font-semibold text-cyan-200 transition hover:border-cyan-400/30 hover:bg-cyan-400/15"
+                className="rounded-2xl border border-[rgba(240,165,0,0.25)] bg-[rgba(240,165,0,0.12)] px-3 py-3 text-sm font-semibold text-[#f0a500] transition hover:border-[rgba(240,165,0,0.35)] hover:bg-[rgba(240,165,0,0.18)]"
               >
                 Back to board
               </button>
@@ -2767,7 +3010,7 @@ function SignalDetailsModal({
                 type="button"
                 onClick={onNext}
                 disabled={!onNext}
-                className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm font-semibold text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white disabled:opacity-40"
+                className="rounded-2xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] px-3 py-3 text-sm font-semibold text-white transition hover:bg-[#162038] disabled:opacity-40"
               >
                 Next →
               </button>
@@ -2791,8 +3034,8 @@ function MetricRow({
   }
 
   return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3 text-sm">
-      <span className="min-w-0 break-words text-slate-400">{label}</span>
+    <div className="flex items-center justify-between gap-4 rounded-2xl bg-[#0f1729] px-4 py-3 text-sm">
+      <span className="min-w-0 break-words text-[#7a8ba0]">{label}</span>
       <span className="max-w-[58%] truncate text-right font-semibold text-white">
         {value}
       </span>
@@ -2808,8 +3051,8 @@ function ConfirmationRow({
   value: string
 }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-      <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
+    <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] px-4 py-3">
+      <p className="text-xs uppercase tracking-[0.16em] text-[#7a8ba0]">{label}</p>
       <p className="mt-2 break-words text-sm font-semibold text-white">{value}</p>
     </div>
   )
@@ -2818,21 +3061,21 @@ function ConfirmationRow({
 function ReasonCard({ reason }: { reason: ReasonLine }) {
   const classes =
     reason.tone === "good"
-      ? "border-emerald-400/20 bg-emerald-500/10"
+      ? "border-[rgba(48,209,88,0.20)] bg-[rgba(48,209,88,0.06)]"
       : reason.tone === "bad"
-        ? "border-rose-400/20 bg-rose-500/10"
-        : "border-white/10 bg-white/5"
+        ? "border-[rgba(255,69,58,0.20)] bg-[rgba(255,69,58,0.06)]"
+        : "border-[rgba(255,255,255,0.07)] bg-[#0f1729]"
 
   const textClasses =
     reason.tone === "good"
-      ? "text-emerald-300"
+      ? "text-[#30d158]"
       : reason.tone === "bad"
-        ? "text-rose-300"
-        : "text-slate-300"
+        ? "text-[#ff453a]"
+        : "text-[#b0bec8]"
 
   return (
     <div className={`rounded-2xl border p-4 ${classes}`}>
-      <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{reason.label}</p>
+      <p className="text-xs uppercase tracking-[0.16em] text-[#7a8ba0]">{reason.label}</p>
       <p className={`mt-2 break-words text-sm font-semibold ${textClasses}`}>
         {reason.value}
       </p>
@@ -2851,9 +3094,9 @@ function MovementCard({
 
   if (formatted === "—") {
     return (
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
-        <p className="mt-2 text-sm font-semibold text-slate-300">No history yet</p>
+      <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#0f1729] p-4">
+        <p className="text-xs uppercase tracking-[0.16em] text-[#7a8ba0]">{label}</p>
+        <p className="mt-2 text-sm font-semibold text-[#b0bec8]">No history yet</p>
       </div>
     )
   }
@@ -2866,17 +3109,17 @@ function MovementCard({
       className={[
         "rounded-2xl border p-4",
         isUp
-          ? "border-emerald-400/20 bg-emerald-500/10"
+          ? "border-[rgba(48,209,88,0.20)] bg-[rgba(48,209,88,0.06)]"
           : isDown
-            ? "border-rose-400/20 bg-rose-500/10"
-            : "border-white/10 bg-white/5",
+            ? "border-[rgba(255,69,58,0.20)] bg-[rgba(255,69,58,0.06)]"
+            : "border-[rgba(255,255,255,0.07)] bg-[#0f1729]",
       ].join(" ")}
     >
-      <p className="text-xs uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      <p className="text-xs uppercase tracking-[0.16em] text-[#7a8ba0]">{label}</p>
       <p
         className={[
           "mt-2 break-words text-sm font-semibold",
-          isUp ? "text-emerald-300" : isDown ? "text-rose-300" : "text-slate-300",
+          isUp ? "text-[#30d158]" : isDown ? "text-[#ff453a]" : "text-[#b0bec8]",
         ].join(" ")}
       >
         {formatted}
@@ -2889,237 +3132,104 @@ function TagPill({ tag }: { tag: string }) {
   const pretty = prettifyTag(tag)
 
   return (
-    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
+    <span className="rounded-full border border-[rgba(255,255,255,0.07)] bg-[#162038] px-3 py-1 text-xs text-[#7a8ba0]">
       {pretty}
     </span>
   )
 }
 
-function getDateCardReasons(
-  row: UnifiedRow
-): Array<{ emoji: string; text: string; highlight?: boolean }> {
-  const reasons: Array<{
-    emoji: string
-    text: string
-    highlight?: boolean
-    priority: number
-  }> = []
-
-  const clusterBuyers = row.cluster_buyers ?? 0
-  const hasPtr = Boolean(row.ptr_amount)
-  const insiderValue = formatInsiderValue(row)
-  const hasInsiderBuy =
-    hasDisplayValue(insiderValue) ||
-    Boolean(row.insider_action) ||
-    (row.insider_shares ?? 0) > 0
-
-  // Platinum conviction
-  if (clusterBuyers >= 3 && hasPtr) {
-    reasons.push({
-      emoji: "⚡",
-      text: "Insiders AND Congress are buying",
-      highlight: true,
-      priority: 100,
-    })
-  }
-
-  // Cluster buy
-  if (clusterBuyers >= 2) {
-    reasons.push({
-      emoji: "👥",
-      text: `${clusterBuyers} insiders just bought shares`,
-      highlight: true,
-      priority: 90,
-    })
-  }
-
-  // Congressional buy
-  if (hasPtr) {
-    reasons.push({
-      emoji: "🏛️",
-      text: `Congress member bought ${row.ptr_amount || ""}`.trim(),
-      priority: 85,
-    })
-  }
-
-  // Breakout
-  if (row.breakout_52w) {
-    reasons.push({
-      emoji: "🚀",
-      text: "Breaking to new 52-week highs",
-      priority: 80,
-    })
-  } else if (row.breakout_20d || row.breakout_10d) {
-    reasons.push({
-      emoji: "📈",
-      text: "Breaking above key price levels",
-      priority: 75,
-    })
-  }
-
-  // Volume surge
-  if ((row.volume_ratio ?? 0) >= 2) {
-    reasons.push({
-      emoji: "🔥",
-      text: `Volume ${Math.round(row.volume_ratio!)}x above normal`,
-      priority: 70,
-    })
-  } else if ((row.volume_ratio ?? 0) >= 1.5) {
-    reasons.push({
-      emoji: "🔥",
-      text: "Unusually high trading volume",
-      priority: 60,
-    })
-  }
-
-  // Earnings beat
-  if ((row.earnings_surprise_pct ?? 0) >= 10) {
-    reasons.push({
-      emoji: "💰",
-      text: `Earnings beat estimates by ${Math.round(row.earnings_surprise_pct!)}%`,
-      priority: 65,
-    })
-  }
-
-  // Revenue growth
-  if ((row.revenue_growth_pct ?? 0) >= 15) {
-    reasons.push({
-      emoji: "📊",
-      text: `Revenue growing ${Math.round(row.revenue_growth_pct!)}%`,
-      priority: 55,
-    })
-  }
-
-  // Relative strength
-  if ((row.relative_strength_20d ?? 0) >= 8) {
-    reasons.push({
-      emoji: "💪",
-      text: "Outperforming most of the market",
-      priority: 50,
-    })
-  } else if ((row.relative_strength_20d ?? 0) >= 5) {
-    reasons.push({
-      emoji: "💪",
-      text: "Stronger than the broader market",
-      priority: 40,
-    })
-  }
-
-  // Single insider buy (not cluster)
-  if (hasInsiderBuy && clusterBuyers < 2) {
-    reasons.push({
-      emoji: "👤",
-      text: hasDisplayValue(insiderValue)
-        ? `An insider just bought ${insiderValue} worth`
-        : "An insider just bought shares",
-      priority: 45,
-    })
-  }
-
-  // Guidance
-  if (row.guidance_flag === true) {
-    reasons.push({
-      emoji: "🎯",
-      text: "Management raised their outlook",
-      priority: 35,
-    })
-  }
-
-  // Price + signal convergence
-  if (row.has_candidate_data && row.has_signal_data && reasons.length < 3) {
-    reasons.push({
-      emoji: "✅",
-      text: "Price action and signals both look strong",
-      priority: 30,
-    })
-  }
-
-  // Trend aligned
-  if (row.trend_aligned && reasons.length < 3) {
-    reasons.push({
-      emoji: "📐",
-      text: "All major trends pointing up",
-      priority: 25,
-    })
-  }
-
-  // Fallback
-  if (reasons.length === 0) {
-    reasons.push({
-      emoji: "✨",
-      text: "Multiple signals lining up right now",
-      priority: 10,
-    })
-  }
-
-  return reasons
-    .sort((a, b) => b.priority - a.priority)
-    .slice(0, 4)
-    .map(({ emoji, text, highlight }) => ({ emoji, text, highlight }))
-}
-
 function getFeaturedThesis(row: UnifiedRow) {
-  if (row.primary_signal_source === "breakout" && (row.volume_ratio ?? 0) >= 2) {
-    return "Fresh breakout with strong buying interest"
+  const ltcs = parseScreenReasonScores(row.screen_reason)
+
+  if ((row.cluster_buyers ?? 0) >= 3 && row.ptr_amount) {
+    return "Multiple insiders and Congress are buying — a rare alignment of conviction"
   }
 
   if ((row.cluster_buyers ?? 0) >= 2) {
-    return "More than one good signal is showing up at the same time"
+    return "Multiple insiders are buying at current prices — a strong vote of confidence"
   }
 
-  if ((row.earnings_surprise_pct ?? 0) >= 10 || (row.revenue_growth_pct ?? 0) >= 15) {
-    return "Business strength is helping support the move"
+  if (row.ptr_amount) {
+    return "A Congressional trade is supporting this thesis"
   }
 
-  if ((row.relative_strength_20d ?? 0) >= 8) {
-    return "This stock has been acting stronger than much of the market"
+  if (
+    ltcs.moat !== null && ltcs.moat >= 75 &&
+    ltcs.profitability !== null && ltcs.profitability >= 75
+  ) {
+    return "A high-moat, cash-generative compounder at a quality price"
   }
 
-  if ((row.candidate_score ?? 0) >= 85 && !row.has_signal_data) {
-    return "A very strong price-based setup on its own"
+  if (ltcs.financial !== null && ltcs.financial >= 100 && ltcs.profitability !== null && ltcs.profitability >= 75) {
+    return "Rock-solid balance sheet with consistently strong earnings"
   }
 
-  return "Several things are lining up well right now"
+  if (ltcs.valuation !== null && ltcs.valuation >= 65 && row.display_score >= 70) {
+    return "A quality business available at an attractive valuation"
+  }
+
+  if (row.display_score >= 80) {
+    return "Multiple quality factors are scoring well for this company"
+  }
+
+  return "Passes the long-term quality screen with several positive signals"
 }
 
 function getSimpleCardBullets(row: UnifiedRow) {
   const points: string[] = []
 
-  if (row.primary_signal_source === "breakout" || row.breakout_20d || row.breakout_52w) {
-    points.push("The stock is pushing above recent price levels.")
-  }
+  // Parse LTCS sub-scores from screen_reason: "LTCS 72/100: moat: 75/100, financial health: 100/100..."
+  const reason = row.screen_reason ?? ""
+  const moatMatch = reason.match(/moat:\s*(\d+)\/100/)
+  const financialMatch = reason.match(/financial health:\s*(\d+)\/100/)
+  const profitabilityMatch = reason.match(/profitability:\s*(\d+)\/100/)
+  const stabilityMatch = reason.match(/stability:\s*(\d+)\/100/)
+  const valuationMatch = reason.match(/valuation:\s*(\d+)\/100/)
 
-  if ((row.volume_ratio ?? 0) >= 1.5) {
-    points.push("Trading activity is stronger than usual.")
-  }
+  const moat = moatMatch ? Number(moatMatch[1]) : null
+  const financial = financialMatch ? Number(financialMatch[1]) : null
+  const profitability = profitabilityMatch ? Number(profitabilityMatch[1]) : null
+  const stability = stabilityMatch ? Number(stabilityMatch[1]) : null
+  const valuation = valuationMatch ? Number(valuationMatch[1]) : null
 
-  if ((row.relative_strength_20d ?? 0) >= 5) {
-    points.push("It has been outperforming the market recently.")
-  }
-
-  if ((row.cluster_buyers ?? 0) >= 2) {
-    points.push("Multiple positive signals are showing up together.")
-  }
+  if (moat !== null && moat >= 75) points.push("Strong business moat — high margins and solid revenue growth.")
+  if (financial !== null && financial >= 80) points.push("Healthy balance sheet with manageable debt.")
+  if (profitability !== null && profitability >= 75) points.push("Consistently profitable with strong free cash flow.")
+  if (stability !== null && stability >= 60) points.push("Lower volatility, suitable for long-term holding.")
+  if (valuation !== null && valuation >= 65) points.push("Trading at a reasonable valuation relative to growth.")
 
   if ((row.earnings_surprise_pct ?? 0) >= 10) {
     points.push("Recent earnings came in stronger than expected.")
   }
 
-  if ((row.revenue_growth_pct ?? 0) >= 15) {
-    points.push("The business is still growing at a healthy pace.")
-  }
-
-  if (row.guidance_flag === true) {
-    points.push("Management outlook appears supportive.")
-  }
-
   if (points.length === 0) {
-    points.push(
-      "Enough good things are happening right now to keep this stock on today’s board."
-    )
+    points.push("Passes the quality screen for long-term hold candidates.")
   }
 
   return points.slice(0, 3)
+}
+
+function parseScreenReasonScores(reason: string | null | undefined) {
+  const r = reason ?? ""
+  const moatMatch = r.match(/moat:\s*(\d+)\/100/)
+  const financialMatch = r.match(/financial health:\s*(\d+)\/100/)
+  const profitabilityMatch = r.match(/profitability:\s*(\d+)\/100/)
+  const stabilityMatch = r.match(/stability:\s*(\d+)\/100/)
+  const valuationMatch = r.match(/valuation:\s*(\d+)\/100/)
+  return {
+    moat: moatMatch ? Number(moatMatch[1]) : null,
+    financial: financialMatch ? Number(financialMatch[1]) : null,
+    profitability: profitabilityMatch ? Number(profitabilityMatch[1]) : null,
+    stability: stabilityMatch ? Number(stabilityMatch[1]) : null,
+    valuation: valuationMatch ? Number(valuationMatch[1]) : null,
+  }
+}
+
+function getPillarVerdict(score: number | null) {
+  if (score === null) return { label: "No data", color: "text-[#7a8ba0]", barColor: "#1e2d45" }
+  if (score >= 75) return { label: "Strong", color: "text-[#30d158]", barColor: "#30d158" }
+  if (score >= 50) return { label: "Fair", color: "text-[#f0a500]", barColor: "#f0a500" }
+  return { label: "Weak", color: "text-[#ff453a]", barColor: "#ff453a" }
 }
 
 function getPremiumSummaryBullets(row: UnifiedRow) {
@@ -3228,52 +3338,48 @@ function getTopReasonLines(row: UnifiedRow): ReasonLine[] {
 }
 
 function getConfidenceBullets(row: UnifiedRow) {
-  const score = row.display_score
-  const tags = normalizeTags(row.signal_tags)
-
+  const ltcs = parseScreenReasonScores(row.screen_reason)
   const bullets: string[] = []
 
-  if (row.has_candidate_data && !row.has_signal_data) {
+  if ((row.cluster_buyers ?? 0) >= 2) {
     bullets.push(
-      "This made the board mostly because the price-based setup was strong enough on its own."
+      `${row.cluster_buyers} company insiders recently bought shares — people with inside knowledge of the business.`
     )
   }
 
-  if ((row.cluster_buyers ?? 0) >= 2 || tags.includes("cluster-buy")) {
-    bullets.push("More than one positive signal is showing up at the same time.")
+  if (row.ptr_amount) {
+    bullets.push(
+      `A U.S. Congress member filed a trade for ${row.ptr_amount}. Politicians often trade ahead of policy moves.`
+    )
   }
 
-  if (
-    row.primary_signal_source === "breakout" ||
-    row.breakout_20d === true ||
-    row.breakout_52w === true
-  ) {
-    bullets.push("The stock is pushing above important price levels.")
+  if (ltcs.moat !== null && ltcs.moat >= 75) {
+    bullets.push(
+      "The company has strong margins and revenue growth — signs of a lasting competitive edge over rivals."
+    )
   }
 
-  if ((row.volume_ratio ?? 0) >= 1.5 || tags.includes("volume-confirmed")) {
-    bullets.push("Volume is elevated, which often means stronger buyer interest.")
+  if (ltcs.financial !== null && ltcs.financial >= 80) {
+    bullets.push(
+      "Balance sheet looks healthy: debt is manageable and the company is generating profit."
+    )
   }
 
-  if (
-    (row.earnings_surprise_pct ?? 0) >= 10 ||
-    (row.revenue_growth_pct ?? 0) >= 15 ||
-    row.guidance_flag === true
-  ) {
-    bullets.push("Recent business results are helping support the setup.")
+  if (ltcs.profitability !== null && ltcs.profitability >= 75) {
+    bullets.push(
+      "Return on equity is strong and the business generates positive free cash flow — it funds its own growth."
+    )
   }
 
-  if ((row.relative_strength_20d ?? 0) > 0) {
-    bullets.push("The stock has been outperforming the market recently.")
-  }
-
-  if (score >= 90) {
-    bullets.push("Its overall score is near the top of today’s board.")
+  if (ltcs.valuation !== null && ltcs.valuation >= 65) {
+    bullets.push(
+      "The stock looks reasonably priced relative to its growth prospects."
+    )
   }
 
   if (!bullets.length) {
     bullets.push(
-      "The original signal is still holding up well enough to keep this name on the board."
+      "This company passes the quality screen and has enough positives to deserve attention."
     )
   }
 
@@ -3491,37 +3597,48 @@ function getDetailedScoreExplanation(row: UnifiedRow): string[] {
 }
 
 function getSimpleSetupBullets(row: UnifiedRow) {
+  const ltcs = parseScreenReasonScores(row.screen_reason)
   const parts: string[] = []
 
-  if (row.breakout_20d) {
+  if (ltcs.moat !== null && ltcs.moat >= 75) {
     parts.push(
-      "The stock just moved above recent price levels, which can be a sign of fresh buying interest."
+      "Wide economic moat: high margins, strong revenue growth, and significant market scale make it hard for rivals to compete."
     )
   }
 
-  if ((row.relative_strength_20d ?? 0) > 0) {
-    parts.push("It has been outperforming the overall market recently.")
-  }
-
-  if ((row.volume_ratio ?? 0) > 1.3) {
+  if (ltcs.financial !== null && ltcs.financial >= 80) {
     parts.push(
-      "Trading volume is higher than usual, which suggests stronger participation."
+      "Healthy balance sheet with a debt-to-equity ratio under 1× — financial flexibility without the interest-rate risk."
     )
   }
 
-  if ((row.earnings_surprise_pct ?? 0) > 0) {
+  if (ltcs.profitability !== null && ltcs.profitability >= 75) {
     parts.push(
-      "Recent earnings were better than expected, which can attract new buyers."
+      "Consistently profitable with strong return on equity and positive free cash flow — the business funds its own growth."
+    )
+  }
+
+  if (ltcs.stability !== null && ltcs.stability >= 60) {
+    parts.push(
+      "Lower price volatility than the average stock — a smoother ride for long-term investors."
+    )
+  }
+
+  if (ltcs.valuation !== null && ltcs.valuation >= 65) {
+    parts.push(
+      "Valuation looks attractive: P/E or PEG ratio is reasonable relative to expected earnings growth — a fair price for quality."
     )
   }
 
   if ((row.revenue_growth_pct ?? 0) > 10) {
-    parts.push("The company is also showing solid revenue growth.")
+    parts.push(
+      "Revenue is growing meaningfully — the business is expanding, not just coasting."
+    )
   }
 
   if (parts.length === 0) {
     parts.push(
-      "This stock is showing enough strength versus the rest of the market to deserve a closer look."
+      "This company passes quality checks across moat, balance sheet, and profitability for long-term investors."
     )
   }
 
@@ -3635,20 +3752,20 @@ function formatBooleanLabel(value: boolean | null | undefined) {
 }
 
 function formatInsiderValue(row: UnifiedRow) {
-  if (row.insider_buy_value !== null && row.insider_buy_value !== undefined) {
+  if (row.insider_buy_value != null && row.insider_buy_value > 0) {
     return formatMoney(row.insider_buy_value)
   }
 
   if (
-    row.insider_shares !== null &&
-    row.insider_shares !== undefined &&
-    row.insider_avg_price !== null &&
-    row.insider_avg_price !== undefined
+    row.insider_shares != null &&
+    row.insider_shares > 0 &&
+    row.insider_avg_price != null &&
+    row.insider_avg_price > 0
   ) {
     return formatMoney(row.insider_shares * row.insider_avg_price)
   }
 
-  return "—"
+  return null
 }
 
 function formatPe(
@@ -3696,20 +3813,10 @@ function truncateText(value: string | null | undefined, maxLength: number) {
 
 function getScorePalette(score: number) {
   const s = Math.max(0, Math.min(100, score))
-
-  if (s <= 69) {
-    return { start: "#facc15", end: "#eab308", text: "#1f2937" }
-  }
-
-  if (s <= 79) {
-    return { start: "#a3e635", end: "#84cc16", text: "#15210b" }
-  }
-
-  if (s <= 89) {
-    return { start: "#22d3ee", end: "#06b6d4", text: "#06222a" }
-  }
-
-  return { start: "#22c55e", end: "#16a34a", text: "#08110a" }
+  if (s <= 69) return { start: "#7a8ba0", end: "#5a6a7a", text: "#ffffff" }
+  if (s <= 79) return { start: "#f0a500", end: "#d49200", text: "#000000" }
+  if (s <= 89) return { start: "#f0a500", end: "#ffb733", text: "#000000" }
+  return { start: "#30d158", end: "#28b84a", text: "#000000" }
 }
 
 function getScoreTierLabel(score: number) {
