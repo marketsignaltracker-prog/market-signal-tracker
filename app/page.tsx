@@ -210,6 +210,8 @@ type FreshnessFilterType = "all" | "today" | "3d" | "7d" | "14d"
 type ScoreFilterType = "all" | "70" | "75" | "80" | "85" | "90"
 type SectorFilterType = "all" | string
 type SourceFilterType = "all" | "technical_only" | "filing_only" | "both"
+type InsiderFilterType = "all" | "yes" | "cluster"
+type CongressFilterType = "all" | "yes"
 
 type MiniMetricItem = {
   label: string
@@ -416,6 +418,8 @@ export default function Home() {
   const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("all")
   const [sectorFilter, setSectorFilter] = useState<SectorFilterType>("all")
   const [sourceFilter, setSourceFilter] = useState<SourceFilterType>("all")
+  const [insiderFilter, setInsiderFilter] = useState<InsiderFilterType>("all")
+  const [congressFilter, setCongressFilter] = useState<CongressFilterType>("all")
 
   const [beginnerMode, setBeginnerMode] = useState(true)
 
@@ -656,7 +660,7 @@ export default function Home() {
 
   useEffect(() => {
     setCardIndex(0)
-  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
+  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter])
 
   const sectorOptions = useMemo(() => {
     const sectors = Array.from(
@@ -674,8 +678,10 @@ export default function Home() {
       .filter((row) => matchesScoreFilter(row, scoreFilter))
       .filter((row) => matchesSectorFilter(row, sectorFilter))
       .filter((row) => matchesSourceFilter(row, sourceFilter))
+      .filter((row) => matchesInsiderFilter(row, insiderFilter))
+      .filter((row) => matchesCongressFilter(row, congressFilter))
       .sort(compareRows)
-  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
+  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter])
 
   const safeCardIndex =
     filteredRows.length === 0 ? 0 : Math.min(cardIndex, filteredRows.length - 1)
@@ -702,8 +708,10 @@ export default function Home() {
     if (scoreFilter !== "all") count += 1
     if (sectorFilter !== "all") count += 1
     if (sourceFilter !== "all") count += 1
+    if (insiderFilter !== "all") count += 1
+    if (congressFilter !== "all") count += 1
     return count
-  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
+  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter])
 
   function openDetails(ticker: string, initialTab = 0) {
     setDetailInitialTab(initialTab)
@@ -736,6 +744,8 @@ export default function Home() {
     setScoreFilter("all")
     setSectorFilter("all")
     setSourceFilter("all")
+    setInsiderFilter("all")
+    setCongressFilter("all")
     setSelectedTicker(null)
     setCardIndex(0)
     setFiltersOpen(false)
@@ -771,7 +781,7 @@ export default function Home() {
 
       {/* Header */}
       <header className="shrink-0 border-b border-[rgba(255,255,255,0.07)] px-4 py-3" style={{ background: "#080d18" }}>
-        <div className="mx-auto flex max-w-lg items-center justify-between">
+        <div className="mx-auto flex max-w-lg items-center justify-between lg:max-w-7xl">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-[#f0a500]">
               Market Signal Tracker
@@ -832,12 +842,12 @@ export default function Home() {
       <div
         className={[
           "shrink-0 overflow-hidden border-b border-[rgba(255,255,255,0.07)] transition-all duration-300 ease-out",
-          filtersOpen ? "max-h-80 opacity-100" : "max-h-0 opacity-0",
+          filtersOpen ? "max-h-[28rem] opacity-100" : "max-h-0 opacity-0",
         ].join(" ")}
         style={{ background: "#080d18" }}
       >
-        <div className="mx-auto max-w-lg px-4 pb-5 pt-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mx-auto max-w-lg px-4 pb-5 pt-4 lg:max-w-7xl">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <FilterSelect
               label="Min score"
               value={scoreFilter}
@@ -893,6 +903,25 @@ export default function Home() {
                 { value: "20", label: "P/E ≤ 20" },
                 { value: "30", label: "P/E ≤ 30" },
                 { value: "50", label: "P/E ≤ 50" },
+              ]}
+            />
+            <FilterSelect
+              label="Insider buys"
+              value={insiderFilter}
+              onChange={(v) => setInsiderFilter(v as InsiderFilterType)}
+              options={[
+                { value: "all", label: "All" },
+                { value: "yes", label: "Insiders buying" },
+                { value: "cluster", label: "Clusters only" },
+              ]}
+            />
+            <FilterSelect
+              label="Congress buys"
+              value={congressFilter}
+              onChange={(v) => setCongressFilter(v as CongressFilterType)}
+              options={[
+                { value: "all", label: "All" },
+                { value: "yes", label: "Congress buying" },
               ]}
             />
             {activeFilterCount > 0 && (
@@ -1023,17 +1052,40 @@ function SwipeDeck({
   const hasNext = cardIndex < rows.length - 1
   const dots = getDotRange(cardIndex, rows.length)
 
+  const DESKTOP_PAGE_SIZE = 3
+  const desktopPage = Math.floor(cardIndex / DESKTOP_PAGE_SIZE)
+  const desktopTotalPages = Math.ceil(rows.length / DESKTOP_PAGE_SIZE)
+  const desktopStart = desktopPage * DESKTOP_PAGE_SIZE
+  const desktopCards = rows.slice(desktopStart, desktopStart + DESKTOP_PAGE_SIZE)
+
+  function goNextPage() {
+    if (desktopPage >= desktopTotalPages - 1) return
+    const nextStart = (desktopPage + 1) * DESKTOP_PAGE_SIZE
+    setSwipeDir("left")
+    onIndexChange(nextStart)
+    setAnimKey((k) => k + 1)
+  }
+
+  function goPrevPage() {
+    if (desktopPage <= 0) return
+    const prevStart = (desktopPage - 1) * DESKTOP_PAGE_SIZE
+    setSwipeDir("right")
+    onIndexChange(prevStart)
+    setAnimKey((k) => k + 1)
+  }
+
   return (
     <div className="flex h-full flex-col items-center px-3 pb-2 pt-3">
-      {/* Nav row */}
-      <div className="mb-2.5 flex w-full max-w-md shrink-0 items-center justify-between">
+      {/* Nav row — mobile: single card dots, desktop: page dots */}
+      <div className="mb-2.5 flex w-full max-w-md shrink-0 items-center justify-between lg:max-w-7xl">
+        {/* Prev button — mobile: single, desktop: page */}
         <button
           type="button"
           onClick={goPrev}
           disabled={!hasPrev}
           aria-label="Previous idea"
           className={[
-            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition",
+            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition lg:hidden",
             hasPrev
               ? "border-[rgba(255,255,255,0.10)] bg-[#0f1729] text-white hover:bg-[#162038] active:scale-95"
               : "cursor-default border-transparent text-transparent",
@@ -1041,8 +1093,23 @@ function SwipeDeck({
         >
           ‹
         </button>
+        <button
+          type="button"
+          onClick={goPrevPage}
+          disabled={desktopPage <= 0}
+          aria-label="Previous page"
+          className={[
+            "hidden h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition lg:flex",
+            desktopPage > 0
+              ? "border-[rgba(255,255,255,0.10)] bg-[#0f1729] text-white hover:bg-[#162038] active:scale-95"
+              : "cursor-default border-transparent text-transparent",
+          ].join(" ")}
+        >
+          ‹
+        </button>
 
-        <div className="flex items-center gap-1.5">
+        {/* Dots — mobile: card dots, desktop: page dots */}
+        <div className="flex items-center gap-1.5 lg:hidden">
           {dots.map((i) => (
             <button
               key={i}
@@ -1065,15 +1132,53 @@ function SwipeDeck({
             {cardIndex + 1}/{rows.length}
           </span>
         </div>
+        <div className="hidden items-center gap-1.5 lg:flex">
+          {Array.from({ length: desktopTotalPages }, (_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                setSwipeDir(i > desktopPage ? "left" : "right")
+                onIndexChange(i * DESKTOP_PAGE_SIZE)
+                setAnimKey((k) => k + 1)
+              }}
+              aria-label={`Page ${i + 1}`}
+              className={[
+                "rounded-full transition-all duration-200",
+                i === desktopPage
+                  ? "h-2 w-5 bg-[#f0a500]"
+                  : "h-1.5 w-1.5 bg-[#1e2d45] hover:bg-[#2a3d55]",
+              ].join(" ")}
+            />
+          ))}
+          <span className="ml-1.5 text-[11px] text-[#7a8ba0]">
+            Page {desktopPage + 1}/{desktopTotalPages}
+          </span>
+        </div>
 
+        {/* Next button */}
         <button
           type="button"
           onClick={goNext}
           disabled={!hasNext}
           aria-label="Next idea"
           className={[
-            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition",
+            "flex h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition lg:hidden",
             hasNext
+              ? "border-[rgba(255,255,255,0.10)] bg-[#0f1729] text-white hover:bg-[#162038] active:scale-95"
+              : "cursor-default border-transparent text-transparent",
+          ].join(" ")}
+        >
+          ›
+        </button>
+        <button
+          type="button"
+          onClick={goNextPage}
+          disabled={desktopPage >= desktopTotalPages - 1}
+          aria-label="Next page"
+          className={[
+            "hidden h-10 w-10 items-center justify-center rounded-full border text-xl font-light transition lg:flex",
+            desktopPage < desktopTotalPages - 1
               ? "border-[rgba(255,255,255,0.10)] bg-[#0f1729] text-white hover:bg-[#162038] active:scale-95"
               : "cursor-default border-transparent text-transparent",
           ].join(" ")}
@@ -1082,9 +1187,9 @@ function SwipeDeck({
         </button>
       </div>
 
-      {/* Swipeable card */}
+      {/* Mobile: single swipeable card */}
       <div
-        className="min-h-0 w-full max-w-md flex-1 overflow-hidden"
+        className="min-h-0 w-full max-w-md flex-1 overflow-hidden lg:hidden"
         style={{ touchAction: "pan-y" }}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
@@ -1102,6 +1207,24 @@ function SwipeDeck({
             onOpen={() => onOpenDetails(row.ticker)}
           />
         </div>
+      </div>
+
+      {/* Desktop: 3-card grid */}
+      <div
+        key={`desktop-page-${desktopPage}-${animKey}`}
+        className="hidden min-h-0 w-full max-w-7xl flex-1 gap-4 overflow-hidden lg:grid lg:grid-cols-3"
+        style={{
+          animation: `${swipeDir === "left" ? "slideFromRight" : "slideFromLeft"} 260ms ease-out both`,
+        }}
+      >
+        {desktopCards.map((cardRow, i) => (
+          <SwipeStockCard
+            key={cardRow.ticker}
+            row={cardRow}
+            rank={desktopStart + i + 1}
+            onOpen={() => onOpenDetails(cardRow.ticker)}
+          />
+        ))}
       </div>
     </div>
   )
@@ -1285,19 +1408,19 @@ function SwipeStockCard({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <TileIcon d={iconPath} color={active ? color : "#374151"} />
-                      <p className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? color : "#374151" }}>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: active ? color : "#374151" }}>
                         {label}
                       </p>
                     </div>
                     {score != null && (
-                      <span className="text-[10px] font-black" style={{ color }}>{score}</span>
+                      <span className="text-[11px] font-black" style={{ color }}>{score}</span>
                     )}
                   </div>
-                  <p className="mt-0.5 text-base font-black leading-tight" style={{ color: active ? "#f0f0f0" : "#1f2937" }}>
+                  <p className="mt-0.5 text-lg font-black leading-tight" style={{ color: active ? "#f0f0f0" : "#1f2937" }}>
                     {value}
                   </p>
                   <Gauge value={score} max={maxScore} color={color} />
-                  <p className="mt-1 text-[8px] leading-tight" style={{ color: active ? `${color}99` : "#1f2937" }}>
+                  <p className="mt-1 text-[9px] leading-tight" style={{ color: active ? `${color}99` : "#1f2937" }}>
                     {sub}
                   </p>
                 </div>
@@ -1656,6 +1779,17 @@ function matchesSourceFilter(row: UnifiedRow, sourceFilter: SourceFilterType) {
   if (sourceFilter === "filing_only")
     return !row.has_candidate_data && row.has_signal_data
   return true
+}
+
+function matchesInsiderFilter(row: UnifiedRow, filter: InsiderFilterType) {
+  if (filter === "all") return true
+  if (filter === "cluster") return (row.cluster_buyers ?? 0) >= 2
+  return row.has_insider_trades === true
+}
+
+function matchesCongressFilter(row: UnifiedRow, filter: CongressFilterType) {
+  if (filter === "all") return true
+  return row.has_ptr_forms === true || !!row.ptr_amount
 }
 
 function getLastUpdated(rows: UnifiedRow[]) {

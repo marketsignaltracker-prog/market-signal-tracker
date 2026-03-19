@@ -16,6 +16,15 @@ export const metadata: Metadata = {
   title: "Market Signal Tracker | Insider Buying & High-Signal Stocks",
   description:
     "Find high-signal stock opportunities using insider buying, SEC filings, earnings surprises, and momentum signals.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Signal Tracker",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {
