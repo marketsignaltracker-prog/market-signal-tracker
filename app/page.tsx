@@ -1447,9 +1447,12 @@ function SwipeStockCard({
             const valScore = ltcs.valuation
             const valLabel = valScore == null ? "—" : valScore >= 70 ? "Attractive" : valScore >= 35 ? "Fair" : "Expensive"
 
-            // Relative Strength / Near Highs
-            const rs = row.relative_strength_20d != null ? Number(row.relative_strength_20d) : null
-            const rsScore = rs != null ? Math.min(Math.round(rs * 4), 100) : null
+            // Relative Strength / Near Highs — fall back to 20d return or 1d return
+            const rs = row.relative_strength_20d != null ? Number(row.relative_strength_20d)
+              : row.price_return_20d != null ? Number(row.price_return_20d)
+              : row.one_day_return != null ? Number(row.one_day_return)
+              : null
+            const rsScore = rs != null ? Math.min(Math.max(Math.round(rs * 4), 0), 100) : null
             const rsLabel = rs == null ? "—" : rs >= 15 ? "Near Highs" : rs >= 8 ? "Strong" : rs >= 0 ? "Neutral" : "Weak"
 
             return (
