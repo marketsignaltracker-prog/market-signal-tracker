@@ -780,7 +780,7 @@ export default function Home() {
       `}</style>
 
       {/* Header */}
-      <header className="shrink-0 border-b border-[rgba(255,255,255,0.07)] px-4 py-3" style={{ background: "#080d18" }}>
+      <header className="shrink-0 border-b border-[rgba(255,255,255,0.07)] px-3 py-2 lg:px-4 lg:py-3" style={{ background: "#080d18" }}>
         <div className="mx-auto flex max-w-lg items-center justify-between lg:max-w-7xl">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-[#f0a500]">
@@ -965,7 +965,7 @@ export default function Home() {
 
       {/* Disclaimer */}
       {!loading && !error && (
-        <div className="shrink-0 px-4 pb-4 pt-1 text-center text-[10px] leading-4 text-[#7a8ba0]">
+        <div className="shrink-0 px-2.5 pb-1.5 pt-0.5 text-center text-[9px] leading-3 text-[#7a8ba0]">
           Not financial advice. Always do your own research before acting on any idea shown here.
         </div>
       )}
@@ -1075,9 +1075,9 @@ function SwipeDeck({
   }
 
   return (
-    <div className="flex h-full flex-col items-center px-3 pb-2 pt-3">
+    <div className="flex h-full flex-col items-center px-2.5 pb-0 pt-1.5 lg:px-3 lg:pt-3">
       {/* Nav row — mobile: single card dots, desktop: page dots */}
-      <div className="mb-2.5 flex w-full max-w-md shrink-0 items-center justify-between lg:max-w-7xl">
+      <div className="mb-1.5 flex w-full max-w-md shrink-0 items-center justify-between lg:mb-2.5 lg:max-w-7xl">
         {/* Prev button — mobile: single, desktop: page */}
         <button
           type="button"
