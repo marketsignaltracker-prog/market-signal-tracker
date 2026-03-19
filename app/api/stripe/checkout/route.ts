@@ -3,13 +3,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { stripe, PLANS } from "@/lib/stripe";
 import { NextResponse } from "next/server";
 
-export async function POST() {
+export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const body = await req.json().catch(() => ({}));
+  const plan = body.plan === "yearly" ? PLANS.proYearly : PLANS.proMonthly;
 
   // Get or create Stripe customer
   const admin = createAdminClient();
@@ -36,7 +39,7 @@ export async function POST() {
 
   const session = await stripe.checkout.sessions.create({
     customer: customerId,
-    line_items: [{ price: PLANS.pro.priceId, quantity: 1 }],
+    line_items: [{ price: plan.priceId, quantity: 1 }],
     mode: "subscription",
     success_url: `${process.env.NEXT_PUBLIC_APP_URL}/?upgraded=true`,
     cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/`,
