@@ -1894,7 +1894,7 @@ function TopSignalCard({
 
   const metricItems: MiniMetricItem[] = [
     { label: "Price", value: formatMoney(row.price) },
-    { label: "Insider value", value: formatInsiderValue(row) },
+    { label: "Insider value", value: formatInsiderValue(row) || "—" },
     { label: "Vs market", value: formatRelativeStrengthForDisplay(row) },
     { label: "PTR amount", value: row.ptr_amount || "—" },
   ].filter((item) => hasDisplayValue(item.value))
