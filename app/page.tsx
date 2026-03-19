@@ -794,7 +794,7 @@ export default function Home() {
       {/* Header */}
       <header className="shrink-0 border-b border-[rgba(255,255,255,0.07)] px-3 pb-2 pt-[env(safe-area-inset-top,8px)] lg:px-4 lg:py-3" style={{ background: "#080d18" }}>
         <div className="mx-auto flex max-w-lg items-center justify-between lg:max-w-7xl">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-[#f0a500]">
               Market Signal Tracker
             </p>
@@ -810,7 +810,7 @@ export default function Home() {
                     </span>
                   )}
                   {lastUpdated && (
-                    <span className="text-[11px] font-normal text-[#7a8ba0]">
+                    <span className="hidden sm:inline text-[11px] font-normal text-[#7a8ba0]">
                       {lastUpdated}
                     </span>
                   )}
@@ -819,19 +819,11 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Auth button */}
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Auth — compact icon on mobile */}
             {!authLoading && (
               user ? (
-                <div className="flex items-center gap-2">
-                  {!isPro && (
-                    <button
-                      onClick={() => setShowUpgradeModal(true)}
-                      className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-[11px] font-bold text-black transition hover:from-amber-400 hover:to-orange-400"
-                    >
-                      Upgrade
-                    </button>
-                  )}
+                <>
                   {isPro && (
                     <span className="rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-400">
                       PRO
@@ -839,49 +831,55 @@ export default function Home() {
                   )}
                   <button
                     onClick={signOut}
-                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-slate-400 transition hover:text-white"
+                    title="Sign Out"
+                    className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:text-white"
                   >
-                    Sign Out
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3-3h-9m9 0-3-3m3 3-3 3" />
+                    </svg>
                   </button>
-                </div>
+                </>
               ) : (
                 <button
                   onClick={() => router.push("/login")}
-                  className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-[11px] font-semibold text-cyan-400 transition hover:bg-cyan-500/20"
+                  title="Sign In"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 transition hover:bg-cyan-500/20"
                 >
-                  Sign In
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0" />
+                  </svg>
                 </button>
               )
             )}
 
-          <button
-            type="button"
-            onClick={() => setFiltersOpen((prev) => !prev)}
-            aria-expanded={filtersOpen}
-            className="relative inline-flex items-center gap-2 rounded-2xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] px-4 py-2.5 text-sm font-semibold text-white transition hover:border-[rgba(240,165,0,0.30)] hover:bg-[rgba(240,165,0,0.10)]"
-          >
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((prev) => !prev)}
+              aria-expanded={filtersOpen}
+              className="relative inline-flex items-center gap-2 rounded-2xl border border-[rgba(255,255,255,0.10)] bg-[#0f1729] px-3 py-2 text-sm font-semibold text-white transition hover:border-[rgba(240,165,0,0.30)] hover:bg-[rgba(240,165,0,0.10)] lg:px-4 lg:py-2.5"
             >
-              <line x1="4" y1="6" x2="20" y2="6" />
-              <line x1="8" y1="12" x2="16" y2="12" />
-              <line x1="11" y1="18" x2="13" y2="18" />
-            </svg>
-            <span>Filters</span>
-            {activeFilterCount > 0 && (
-              <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#f0a500] text-[9px] font-bold text-black">
-                {activeFilterCount}
-              </span>
-            )}
-          </button>
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="8" y1="12" x2="16" y2="12" />
+                <line x1="11" y1="18" x2="13" y2="18" />
+              </svg>
+              <span className="hidden sm:inline">Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#f0a500] text-[9px] font-bold text-black">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
           </div>
         </div>
       </header>
@@ -1003,25 +1001,12 @@ export default function Home() {
           </div>
         ) : (
           <SwipeDeck
-            rows={isPro ? filteredRows : filteredRows.slice(0, FREE_CARD_LIMIT)}
+            rows={filteredRows}
             cardIndex={safeCardIndex}
-            onIndexChange={(idx) => {
-              if (!isPro && idx >= FREE_CARD_LIMIT) {
-                setShowUpgradeModal(true)
-                return
-              }
-              setCardIndex(idx)
-            }}
-            onOpenDetails={(ticker) => {
-              if (!isPro) {
-                const idx = filteredRows.findIndex(r => r.ticker === ticker)
-                if (idx >= FREE_CARD_LIMIT) {
-                  setShowUpgradeModal(true)
-                  return
-                }
-              }
-              openDetails(ticker, 0)
-            }}
+            onIndexChange={setCardIndex}
+            onOpenDetails={(ticker) => openDetails(ticker, 0)}
+            freeLimit={isPro ? undefined : FREE_CARD_LIMIT}
+            onLocked={() => setShowUpgradeModal(true)}
           />
         )}
       </div>
@@ -1133,12 +1118,17 @@ function SwipeDeck({
   cardIndex,
   onIndexChange,
   onOpenDetails,
+  freeLimit,
+  onLocked,
 }: {
   rows: UnifiedRow[]
   cardIndex: number
   onIndexChange: (index: number) => void
   onOpenDetails: (ticker: string) => void
+  freeLimit?: number
+  onLocked?: () => void
 }) {
+  const isLocked = freeLimit !== undefined && cardIndex >= freeLimit
   const touchStartX = useRef<number | null>(null)
   const touchStartY = useRef<number | null>(null)
   const [swipeDir, setSwipeDir] = useState<"left" | "right">("right")
@@ -1324,16 +1314,35 @@ function SwipeDeck({
       >
         <div
           key={`${row.ticker}-${animKey}`}
-          className="h-full"
+          className="relative h-full"
           style={{
             animation: `${swipeDir === "left" ? "slideFromRight" : "slideFromLeft"} 260ms ease-out both`,
           }}
         >
-          <SwipeStockCard
-            row={row}
-            rank={cardIndex + 1}
-            onOpen={() => onOpenDetails(row.ticker)}
-          />
+          <div className={isLocked ? "pointer-events-none h-full blur-[6px] brightness-75 saturate-50" : "h-full"}>
+            <SwipeStockCard
+              row={row}
+              rank={cardIndex + 1}
+              onOpen={() => onOpenDetails(row.ticker)}
+            />
+          </div>
+          {isLocked && (
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer"
+              onClick={() => onLocked?.()}
+            >
+              <div className="flex flex-col items-center gap-3 rounded-2xl bg-[#0d1526]/90 border border-white/10 px-8 py-6 backdrop-blur-sm shadow-2xl">
+                <svg className="w-8 h-8 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                </svg>
+                <p className="text-sm font-semibold text-white">Sign up to unlock all stocks</p>
+                <p className="text-xs text-slate-400 text-center">Free cards: {freeLimit} · You&apos;re viewing #{cardIndex + 1}</p>
+                <button className="mt-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 px-6 py-2 text-sm font-bold text-black transition">
+                  Sign Up Free
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1345,14 +1354,36 @@ function SwipeDeck({
           animation: `${swipeDir === "left" ? "slideFromRight" : "slideFromLeft"} 260ms ease-out both`,
         }}
       >
-        {desktopCards.map((cardRow, i) => (
-          <SwipeStockCard
-            key={cardRow.ticker}
-            row={cardRow}
-            rank={desktopStart + i + 1}
-            onOpen={() => onOpenDetails(cardRow.ticker)}
-          />
-        ))}
+        {desktopCards.map((cardRow, i) => {
+          const cardIsLocked = freeLimit !== undefined && (desktopStart + i) >= freeLimit
+          return (
+            <div key={cardRow.ticker} className="relative h-full">
+              <div className={cardIsLocked ? "pointer-events-none h-full blur-[6px] brightness-75 saturate-50" : "h-full"}>
+                <SwipeStockCard
+                  row={cardRow}
+                  rank={desktopStart + i + 1}
+                  onOpen={() => onOpenDetails(cardRow.ticker)}
+                />
+              </div>
+              {cardIsLocked && (
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center cursor-pointer"
+                  onClick={() => onLocked?.()}
+                >
+                  <div className="flex flex-col items-center gap-2 rounded-2xl bg-[#0d1526]/90 border border-white/10 px-6 py-5 backdrop-blur-sm shadow-2xl">
+                    <svg className="w-6 h-6 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                    </svg>
+                    <p className="text-sm font-semibold text-white">Sign up to unlock</p>
+                    <button className="mt-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 px-5 py-1.5 text-xs font-bold text-black transition">
+                      Sign Up Free
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
