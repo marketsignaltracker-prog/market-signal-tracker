@@ -263,9 +263,11 @@ function firstNumber(...values: Array<number | null | undefined>) {
   return 0
 }
 
-function firstNumberOrNull(...values: Array<number | null | undefined>) {
+function firstNumberOrNull(...values: Array<number | string | null | undefined>) {
   for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value)) return value
+    if (value === null || value === undefined) continue
+    const n = typeof value === "number" ? value : Number(value)
+    if (Number.isFinite(n)) return n
   }
   return null
 }
@@ -327,10 +329,11 @@ function makeUnifiedRow(
       null
     ),
     volume_ratio: firstNumberOrNull(signal?.volume_ratio, candidate?.volume_ratio, null),
-    relative_strength_20d:
-      signal?.relative_strength_20d ??
-      candidate?.relative_strength_20d ??
-      null,
+    relative_strength_20d: firstNumberOrNull(
+      signal?.relative_strength_20d,
+      candidate?.relative_strength_20d,
+      null
+    ),
 
     breakout_20d: firstBooleanOrNull(signal?.breakout_20d, candidate?.breakout_20d, null),
     breakout_10d: candidate?.breakout_10d ?? null,
