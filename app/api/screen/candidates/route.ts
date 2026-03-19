@@ -188,7 +188,7 @@ const MIN_MARKET_CAP = 5_000_000_000
 const LTCS_INCLUDED_THRESHOLD = 50
 const DEFENSIVE_SECTORS = ["Healthcare", "Consumer Staples", "Utilities", "Consumer Defensive", "Health Care"]
 
-const TICKER_CONCURRENCY = 1  // Finnhub: 60 calls/min, 3 calls/ticker = 20 tickers/min max
+const TICKER_CONCURRENCY = 5  // Massive: unlimited API calls
 const DB_CHUNK_SIZE = 250
 
 const YAHOO_RETRY_ATTEMPTS = 2
@@ -451,142 +451,147 @@ function buildTickerSnapshot(summary: any, quote: any): TickerSnapshot {
   }
 }
 
-const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || ""
-const FINNHUB_BASE = "https://finnhub.io/api/v1"
+const MASSIVE_API_KEY = process.env.MASSIVE_API_KEY || ""
+const MASSIVE_BASE = "https://api.massive.com"
 
-async function finnhubFetch(path: string): Promise<any> {
-  const url = `${FINNHUB_BASE}${path}${path.includes("?") ? "&" : "?"}token=${FINNHUB_API_KEY}`
+async function massiveFetch(path: string): Promise<any> {
+  const url = `${MASSIVE_BASE}${path}`
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 12_000)
+  const timeout = setTimeout(() => controller.abort(), 15_000)
   try {
-    const res = await fetch(url, { cache: "no-store", signal: controller.signal })
-    if (!res.ok) throw new Error(`Finnhub ${path.split("?")[0]} ${res.status}`)
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${MASSIVE_API_KEY}` },
+    })
+    if (!res.ok) throw new Error(`Massive ${res.status}: ${path.split("?")[0]}`)
     return await res.json()
   } finally {
     clearTimeout(timeout)
   }
 }
 
+function calcReturn(bars: any[], daysAgo: number): number | null {
+  if (!bars || bars.length < 2) return null
+  const latest = bars[bars.length - 1]
+  const idx = Math.max(0, bars.length - 1 - daysAgo)
+  const target = bars[idx]
+  if (!latest?.c || !target?.c || target.c === 0) return null
+  return round2(((latest.c - target.c) / target.c) * 100)
+}
+
+function safeDiv(a: number | null, b: number | null): number | null {
+  if (a == null || b == null || b === 0) return null
+  return a / b
+}
+
 async function getTickerData(ticker: string) {
-  // Try Finnhub first (60 calls/min, no daily limit), fall back to Yahoo
-  if (FINNHUB_API_KEY) {
-    try {
-      // Finnhub rate limit: 60 calls/min. 3 calls per ticker = 20 tickers/min.
-      // Stagger calls slightly to avoid bursts.
-      const [metricData, profileData, quoteData] = await Promise.all([
-        finnhubFetch(`/stock/metric?symbol=${encodeURIComponent(ticker)}&metric=all`),
-        finnhubFetch(`/stock/profile2?symbol=${encodeURIComponent(ticker)}`),
-        finnhubFetch(`/quote?symbol=${encodeURIComponent(ticker)}`),
-      ])
-      // Wait 3.5s between tickers to stay under 60 calls/min (3 calls × ~17 tickers/min)
-      await new Promise((r) => setTimeout(r, 3500))
+  // Use Massive.com for all data — unlimited API calls
+  if (MASSIVE_API_KEY) {
+    const now = new Date()
+    const from30d = new Date(now)
+    from30d.setDate(from30d.getDate() - 35)
+    const fromStr = from30d.toISOString().slice(0, 10)
+    const toStr = now.toISOString().slice(0, 10)
+    const enc = encodeURIComponent(ticker)
 
-      const m = metricData?.metric || {}
-      const profile = profileData || {}
-      const quote = quoteData || {}
+    const [snapshot, bars, tickerInfo, financialsData] = await Promise.all([
+      massiveFetch(`/v2/snapshot/locale/us/markets/stocks/tickers/${enc}`).catch(() => null),
+      massiveFetch(`/v2/aggs/ticker/${enc}/range/1/day/${fromStr}/${toStr}`).catch(() => null),
+      massiveFetch(`/v3/reference/tickers/${enc}`).catch(() => null),
+      massiveFetch(`/vX/reference/financials?ticker=${enc}&limit=1`).catch(() => null),
+    ])
 
-      if (!profile.ticker && !m.beta) {
-        throw new Error(`Finnhub: no data for ${ticker}`)
-      }
+    const snap = snapshot?.ticker || {}
+    const info = tickerInfo?.results || {}
+    const barList = bars?.results || []
+    const fin = (financialsData?.results || [])[0]?.financials || {}
+    const inc = fin.income_statement || {}
+    const bs = fin.balance_sheet || {}
+    const cf = fin.cash_flow_statement || {}
 
-      const price = safeNumber(quote.c) ?? safeNumber(m["52WeekHigh"])
-      const marketCap = safeNumber(profile.marketCapitalization)
-        ? profile.marketCapitalization * 1_000_000 // Finnhub returns in millions
-        : null
+    const price = safeNumber(snap.day?.c) ?? safeNumber(snap.prevDay?.c)
+    const marketCap = safeNumber(info.market_cap)
 
-      // Finnhub returns margins as percentages (50.29 = 50.29%), LTCS expects decimals
-      const grossMargin = safeNumber(m.grossMarginTTM) != null ? m.grossMarginTTM / 100 : null
-      const operatingMargin = safeNumber(m.operatingMarginTTM) != null ? m.operatingMarginTTM / 100 : null
-      const profitMargin = safeNumber(m.netProfitMarginTTM) != null ? m.netProfitMarginTTM / 100 : null
-      const roe = safeNumber(m.roeTTM) != null ? m.roeTTM / 100 : null
-      const revenueGrowth = safeNumber(m.revenueGrowthTTMYoy) != null ? m.revenueGrowthTTMYoy / 100 : null
-      const earningsGrowth = safeNumber(m.epsGrowthTTMYoy) != null ? m.epsGrowthTTMYoy / 100 : null
+    if (!price && !marketCap) throw new Error(`Massive: no data for ${ticker}`)
 
-      const debtToEquity = safeNumber(m["totalDebt/totalEquityAnnual"])
-        ? m["totalDebt/totalEquityAnnual"] * 100 // Finnhub returns as ratio, LTCS expects percentage
-        : null
-      const currentRatio = safeNumber(m.currentRatioAnnual)
-      const beta = safeNumber(m.beta)
-      const peRatio = safeNumber(m.peTTM)
-      const forwardPe = safeNumber(m.forwardPE)
-      const pegRatio = safeNumber(m.pegAnnual)
+    const revenue = (() => {
+      const cr = safeNumber(inc.cost_of_revenue?.value)
+      const gp = safeNumber(inc.gross_profit?.value)
+      return safeNumber(inc.revenues?.value) ?? (cr != null && gp != null ? cr + gp : null)
+    })()
+    const grossProfit = safeNumber(inc.gross_profit?.value)
+    const netIncome = safeNumber(inc.net_income_loss_available_to_common_stockholders_basic?.value)
+    const totalEquity = safeNumber(bs.equity?.value)
+    const totalLiabilities = safeNumber(bs.liabilities?.value)
+    const currentAssets = safeNumber(bs.current_assets?.value)
+    const currentLiabilitiesVal = safeNumber(bs.other_current_liabilities?.value)
+    const operatingCF = safeNumber(cf.net_cash_flow_from_operating_activities?.value)
+    const investingCF = safeNumber(cf.net_cash_flow_from_investing_activities?.value)
+    const eps = safeNumber(inc.diluted_earnings_per_share?.value)
 
-      // Calculate price relative to 52-week range as proxy for MA200
-      const high52 = safeNumber(m["52WeekHigh"])
-      const low52 = safeNumber(m["52WeekLow"])
-      const ma200Proxy = high52 != null && low52 != null ? (high52 + low52) / 2 : null
+    const grossMargin = safeDiv(grossProfit, revenue)
+    const profitMargin = safeDiv(netIncome, revenue)
+    const roe = safeDiv(netIncome, totalEquity)
+    const debtToEquityVal = totalEquity != null && totalEquity > 0 && totalLiabilities != null ? (totalLiabilities / totalEquity) * 100 : null
+    const currentRatioVal = safeDiv(currentAssets, currentLiabilitiesVal)
+    const fcf = operatingCF != null && investingCF != null ? operatingCF + investingCF : operatingCF
+    const peRatioVal = price != null && eps != null && eps > 0 ? round2(price / eps) : null
 
-      // Free cash flow — try multiple fields
-      const fcf = safeNumber(m.freeCashFlowTTM) ?? safeNumber(m.freeCashFlowPerShareTTM)
+    const return1d = safeNumber(snap.todaysChangePerc)
+    const return5d = calcReturn(barList, 5)
+    const return10d = calcReturn(barList, 10)
+    const return20d = calcReturn(barList, 20)
 
-      const snapshot: TickerSnapshot = {
-        peRatio: peRatio != null && peRatio > 0 ? peRatio : null,
-        forwardPe: forwardPe != null && forwardPe > 0 ? forwardPe : null,
-        peType: peRatio != null && peRatio > 0 ? "trailing" : forwardPe != null ? "forward" : null,
-        sector: profile.finnhubIndustry?.trim() ?? null,
-        industry: profile.finnhubIndustry?.trim() ?? null,
-        businessDescription: null, // Finnhub profile2 doesn't include description
+    const sicDesc = (info.sic_description || "").toLowerCase()
+    const sectorVal = info.sic_description
+      ? sicDesc.includes("pharma") || sicDesc.includes("medical") || sicDesc.includes("health") ? "Healthcare"
+      : sicDesc.includes("bank") || sicDesc.includes("financ") || sicDesc.includes("insur") ? "Financial Services"
+      : sicDesc.includes("tech") || sicDesc.includes("computer") || sicDesc.includes("software") || sicDesc.includes("electron") ? "Technology"
+      : sicDesc.includes("oil") || sicDesc.includes("gas") || sicDesc.includes("petro") || sicDesc.includes("energy") ? "Energy"
+      : sicDesc.includes("food") || sicDesc.includes("beverage") || sicDesc.includes("grocery") ? "Consumer Staples"
+      : sicDesc.includes("retail") || sicDesc.includes("restaurant") || sicDesc.includes("apparel") ? "Consumer Cyclical"
+      : sicDesc.includes("utility") || sicDesc.includes("electric") || sicDesc.includes("water") ? "Utilities"
+      : sicDesc.includes("defense") || sicDesc.includes("aerospace") ? "Industrials"
+      : sicDesc.includes("chemical") || sicDesc.includes("material") ? "Basic Materials"
+      : sicDesc.includes("telecom") || sicDesc.includes("broadcast") ? "Communication Services"
+      : info.sic_description
+      : null
+
+    return {
+      quote: {
+        regularMarketPrice: price,
+        marketCap,
+        averageDailyVolume3Month: safeNumber(snap.day?.v) ?? null,
+        oneDayChangePct: return1d,
+        return5d,
+        return13w: null,
+        return26w: null,
+        return52w: null,
+        monthToDate: return20d,
+      },
+      snapshot: {
+        peRatio: peRatioVal != null && peRatioVal > 0 ? peRatioVal : null,
+        forwardPe: null,
+        peType: peRatioVal != null && peRatioVal > 0 ? "trailing" as const : null,
+        sector: sectorVal,
+        industry: info.sic_description?.trim() ?? null,
+        businessDescription: info.description?.trim() ?? null,
         companyProfile: {
-          profitMargin,
-          operatingMargin,
-          grossMargin,
-          returnOnEquity: roe,
-          debtToEquity,
-          currentRatio,
-          revenueGrowth,
-          earningsGrowth,
-          freeCashflow: fcf,
-          operatingCashflow: null,
-          recommendationKey: null,
-          pegRatio,
-          ma200: ma200Proxy,
-          beta,
+          profitMargin, operatingMargin: null, grossMargin,
+          returnOnEquity: roe, debtToEquity: debtToEquityVal,
+          currentRatio: currentRatioVal, revenueGrowth: null, earningsGrowth: null,
+          freeCashflow: fcf, operatingCashflow: operatingCF,
+          recommendationKey: null, pegRatio: null, ma200: null, beta: null,
         },
-      }
-
-      return {
-        quote: {
-          regularMarketPrice: price,
-          marketCap,
-          averageDailyVolume3Month: safeNumber(m["10DayAverageTradingVolume"])
-            ? m["10DayAverageTradingVolume"] * 1_000_000 // Finnhub returns in millions
-            : null,
-          // Finnhub price returns
-          oneDayChangePct: safeNumber(quote.dp),
-          return5d: safeNumber(m["5DayPriceReturnDaily"]),
-          return13w: safeNumber(m["13WeekPriceReturnDaily"]),
-          return26w: safeNumber(m["26WeekPriceReturnDaily"]),
-          return52w: safeNumber(m["52WeekPriceReturnDaily"]),
-          monthToDate: safeNumber(m["monthToDatePriceReturnDaily"]),
-        },
-        snapshot,
-      }
-    } catch (finnhubErr: any) {
-      // Fall through to Yahoo
+      } as TickerSnapshot,
     }
   }
 
-  // Fallback to Yahoo Finance
-  return await withYahooRetry(async () => {
-    const [quote, summary] = await Promise.all([
-      yahooFinance.quote(ticker),
-      yahooFinance.quoteSummary(ticker, {
-        modules: [
-          "summaryDetail",
-          "defaultKeyStatistics",
-          "financialData",
-          "assetProfile",
-          "price",
-        ],
-      }),
-    ])
-
-    return {
-      quote,
-      snapshot: buildTickerSnapshot(summary, quote),
-    }
-  })
+  throw new Error("MASSIVE_API_KEY is required")
 }
+
+// calculateLTCS follows below
 
 function calculateLTCS(input: LTCSScoreInput): LTCSScoreOutput {
   // Moat: gross margin, operating margin, revenue growth, market cap (max 100)
