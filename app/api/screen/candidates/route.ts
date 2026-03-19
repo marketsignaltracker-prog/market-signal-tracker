@@ -617,35 +617,54 @@ async function getTickerData(ticker: string) {
 // calculateLTCS follows below
 
 function calculateLTCS(input: LTCSScoreInput): LTCSScoreOutput {
-  // Moat: gross margin, operating margin, revenue growth, market cap (max 100)
+  // Moat: gross margin, profit margin (as operating proxy), revenue growth, market cap (max 100)
   let moat = 0
   if ((input.grossMargin ?? 0) > 0.40) moat += 25
-  if ((input.operatingMargin ?? 0) > 0.12) moat += 25
+  // Use profit margin as operating margin proxy when operating margin is null
+  const opMarginProxy = input.operatingMargin ?? (input.profitMargin != null ? input.profitMargin * 1.3 : null)
+  if ((opMarginProxy ?? 0) > 0.12) moat += 25
   if ((input.revenueGrowth ?? 0) > 0.05) moat += 25
   if ((input.marketCap ?? 0) > 10_000_000_000) moat += 25
 
   // Financial Health: debt/equity, current ratio, profit margin (max 100)
-  // Note: Yahoo Finance reports debtToEquity as percentage × 1 (e.g. 50 = 0.5×)
+  // Asset-light companies (V, MA, NFLX) have negative equity from buybacks
+  // but are extremely healthy — use profit margin as health indicator
   let financial = 0
   const sector = (input.sector || "").toLowerCase()
   const isFinancialSector = sector.includes("financial") || sector.includes("real estate") || sector.includes("insurance")
-  if (isFinancialSector || (input.debtToEquity ?? 999) < 100) financial += 40
+  const dte = input.debtToEquity ?? 999
+  // Graduated: <50 is great, <100 is ok, <200 is acceptable for high-margin businesses
+  if (isFinancialSector || dte < 50) financial += 40
+  else if (dte < 100) financial += 30
+  else if (dte < 200 && (input.profitMargin ?? 0) > 0.15) financial += 20  // high margin compensates
   if ((input.currentRatio ?? 0) > 1.5 || isFinancialSector) financial += 30
-  if ((input.profitMargin ?? -1) > 0) financial += 30
+  else if ((input.currentRatio ?? 0) > 1.0) financial += 15
+  if ((input.profitMargin ?? -1) > 0.15) financial += 30
+  else if ((input.profitMargin ?? -1) > 0) financial += 20
 
   // Profitability: ROE, free cash flow, earnings growth (max 100)
   let profitability = 0
-  if ((input.roe ?? 0) > 0.15) profitability += 40
+  const roe = input.roe ?? 0
+  if (roe > 0.25) profitability += 40        // excellent
+  else if (roe > 0.15) profitability += 30    // good
+  else if (roe > 0.08) profitability += 15    // acceptable
   if ((input.freeCashflow ?? -1) > 0) profitability += 35
-  if ((input.earningsGrowth ?? 0) > 0.05) profitability += 25
+  const eg = input.earningsGrowth ?? 0
+  if (eg > 0.25) profitability += 25          // exceptional growth
+  else if (eg > 0.10) profitability += 20     // strong growth
+  else if (eg > 0.05) profitability += 10     // moderate growth
 
-  // Stability: beta (max 100) — graduated scale, most stocks should score something
+  // Stability: beta (max 100) — graduated, default to 50 if beta unknown (not 0)
   let stability = 0
-  const beta = input.beta ?? 999
-  if (beta < 2.0) stability += 25    // not wildly volatile
-  if (beta < 1.5) stability += 25    // moderate volatility
-  if (beta < 1.2) stability += 25    // fairly stable
-  if (beta < 1.0) stability += 25    // less volatile than market
+  const beta = input.beta
+  if (beta == null) {
+    stability = 50  // unknown beta = assume average, don't penalize
+  } else {
+    if (beta < 2.0) stability += 25
+    if (beta < 1.5) stability += 25
+    if (beta < 1.2) stability += 25
+    if (beta < 1.0) stability += 25
+  }
   // Defensive sector bonus (additive, cap at 100)
   const sectorStr = input.sector ?? ""
   if (DEFENSIVE_SECTORS.some((s) => sectorStr.toLowerCase().includes(s.toLowerCase()))) stability = Math.min(stability + 25, 100)
@@ -675,12 +694,14 @@ function calculateLTCS(input: LTCSScoreInput): LTCSScoreOutput {
     else if (price < ma200 * 1.10) valuation += 15
   }
 
+  // Weights: profitability & moat most important, stability least
+  // Moat 25% + Profitability 25% + Financial 20% + Valuation 20% + Stability 10%
   const ltcsScore = Math.round(
     moat * 0.25 +
-    financial * 0.25 +
-    profitability * 0.20 +
-    stability * 0.10 +
-    valuation * 0.20
+    profitability * 0.25 +
+    financial * 0.20 +
+    valuation * 0.20 +
+    stability * 0.10
   )
 
   return {
