@@ -200,6 +200,9 @@ type FreshnessFilterType = "all" | "today" | "3d" | "7d" | "14d"
 type ScoreFilterType = "all" | "70" | "75" | "80" | "85" | "90"
 type SectorFilterType = "all" | string
 type SourceFilterType = "all" | "technical_only" | "filing_only" | "both"
+type InsiderFilterType = "all" | "yes" | "cluster"
+type CongressFilterType = "all" | "yes"
+type ClusterFilterType = "all" | "yes"
 
 type MiniMetricItem = {
   label: string
@@ -403,6 +406,9 @@ export default function Home() {
   const [scoreFilter, setScoreFilter] = useState<ScoreFilterType>("70")
   const [sectorFilter, setSectorFilter] = useState<SectorFilterType>("all")
   const [sourceFilter, setSourceFilter] = useState<SourceFilterType>("all")
+  const [insiderFilter, setInsiderFilter] = useState<InsiderFilterType>("all")
+  const [congressFilter, setCongressFilter] = useState<CongressFilterType>("all")
+  const [clusterFilter, setClusterFilter] = useState<ClusterFilterType>("all")
 
   const [beginnerMode, setBeginnerMode] = useState(true)
 
@@ -654,8 +660,11 @@ export default function Home() {
       .filter((row) => matchesScoreFilter(row, scoreFilter))
       .filter((row) => matchesSectorFilter(row, sectorFilter))
       .filter((row) => matchesSourceFilter(row, sourceFilter))
+      .filter((row) => matchesInsiderFilter(row, insiderFilter))
+      .filter((row) => matchesCongressFilter(row, congressFilter))
+      .filter((row) => matchesClusterFilter(row, clusterFilter))
       .sort(compareRows)
-  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
+  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter, clusterFilter])
 
   const safeCardIndex =
     filteredRows.length === 0 ? 0 : Math.min(cardIndex, filteredRows.length - 1)
@@ -682,8 +691,11 @@ export default function Home() {
     if (scoreFilter !== "70") count += 1
     if (sectorFilter !== "all") count += 1
     if (sourceFilter !== "all") count += 1
+    if (insiderFilter !== "all") count += 1
+    if (congressFilter !== "all") count += 1
+    if (clusterFilter !== "all") count += 1
     return count
-  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter])
+  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter, clusterFilter])
 
   function openDetails(ticker: string, initialTab = 0) {
     setDetailInitialTab(initialTab)
@@ -716,6 +728,9 @@ export default function Home() {
     setScoreFilter("70")
     setSectorFilter("all")
     setSourceFilter("all")
+    setInsiderFilter("all")
+    setCongressFilter("all")
+    setClusterFilter("all")
     setSelectedTicker(null)
     setCardIndex(0)
     setFiltersOpen(false)
@@ -759,7 +774,7 @@ export default function Home() {
 
       {/* Header */}
       <header className="shrink-0 border-b border-white/[0.07] bg-black/30 px-4 py-3 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-lg items-center justify-between">
+        <div className="mx-auto flex max-w-lg items-center justify-between lg:max-w-7xl">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.26em] text-emerald-400/90">
               Market Signal Tracker
@@ -823,8 +838,8 @@ export default function Home() {
           filtersOpen ? "max-h-80 opacity-100" : "max-h-0 opacity-0",
         ].join(" ")}
       >
-        <div className="mx-auto max-w-lg px-4 pb-5 pt-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mx-auto max-w-lg px-4 pb-5 pt-4 lg:max-w-7xl">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <FilterSelect
               label="Min score"
               value={scoreFilter}
@@ -880,6 +895,34 @@ export default function Home() {
                 { value: "20", label: "P/E ≤ 20" },
                 { value: "30", label: "P/E ≤ 30" },
                 { value: "50", label: "P/E ≤ 50" },
+              ]}
+            />
+            <FilterSelect
+              label="Insider buys"
+              value={insiderFilter}
+              onChange={(v) => setInsiderFilter(v as InsiderFilterType)}
+              options={[
+                { value: "all", label: "All" },
+                { value: "yes", label: "Yes" },
+                { value: "cluster", label: "Cluster only" },
+              ]}
+            />
+            <FilterSelect
+              label="Congress buys"
+              value={congressFilter}
+              onChange={(v) => setCongressFilter(v as CongressFilterType)}
+              options={[
+                { value: "all", label: "All" },
+                { value: "yes", label: "Yes" },
+              ]}
+            />
+            <FilterSelect
+              label="Clusters"
+              value={clusterFilter}
+              onChange={(v) => setClusterFilter(v as ClusterFilterType)}
+              options={[
+                { value: "all", label: "All" },
+                { value: "yes", label: "Yes" },
               ]}
             />
             {activeFilterCount > 0 && (
@@ -974,6 +1017,13 @@ function SwipeDeck({
   const [swipeDir, setSwipeDir] = useState<"left" | "right">("right")
   const [animKey, setAnimKey] = useState(0)
 
+  // Desktop: page through 3 cards at a time
+  const DESKTOP_CARDS = 3
+  const desktopPage = Math.floor(cardIndex / DESKTOP_CARDS)
+  const totalDesktopPages = Math.ceil(rows.length / DESKTOP_CARDS)
+  const desktopStart = desktopPage * DESKTOP_CARDS
+  const desktopSlice = rows.slice(desktopStart, desktopStart + DESKTOP_CARDS)
+
   function goNext() {
     if (cardIndex >= rows.length - 1) return
     setSwipeDir("left")
@@ -985,6 +1035,20 @@ function SwipeDeck({
     if (cardIndex <= 0) return
     setSwipeDir("right")
     onIndexChange(cardIndex - 1)
+    setAnimKey((k) => k + 1)
+  }
+
+  function goDesktopNext() {
+    const nextStart = desktopStart + DESKTOP_CARDS
+    if (nextStart >= rows.length) return
+    onIndexChange(nextStart)
+    setAnimKey((k) => k + 1)
+  }
+
+  function goDesktopPrev() {
+    const prevStart = desktopStart - DESKTOP_CARDS
+    if (prevStart < 0) return
+    onIndexChange(prevStart)
     setAnimKey((k) => k + 1)
   }
 
@@ -1009,59 +1073,122 @@ function SwipeDeck({
   const hasPrev = cardIndex > 0
   const hasNext = cardIndex < rows.length - 1
   const dots = getDotRange(cardIndex, rows.length)
+  const desktopDots = getDotRange(desktopPage, totalDesktopPages)
 
   return (
-    <div className="flex h-full flex-col items-center px-3 pb-2 pt-3">
-      {/* Pagination dots */}
-      <div className="mb-2 flex shrink-0 items-center gap-1.5">
-        {dots.map((i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => {
-              setSwipeDir(i > cardIndex ? "left" : "right")
-              onIndexChange(i)
-              setAnimKey((k) => k + 1)
-            }}
-            aria-label={`Go to stock ${i + 1}`}
-            className={[
-              "rounded-full transition-all duration-200",
-              i === cardIndex
-                ? "h-2 w-5 bg-cyan-400"
-                : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
-            ].join(" ")}
-          />
-        ))}
-        <span className="ml-1.5 text-[11px] text-slate-500">
-          {cardIndex + 1}/{rows.length}
-        </span>
-      </div>
+    <>
+      {/* Mobile: single card swipe */}
+      <div className="flex h-full flex-col items-center px-3 pb-2 pt-3 lg:hidden">
+        <div className="mb-2 flex shrink-0 items-center gap-1.5">
+          {dots.map((i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                setSwipeDir(i > cardIndex ? "left" : "right")
+                onIndexChange(i)
+                setAnimKey((k) => k + 1)
+              }}
+              aria-label={`Go to stock ${i + 1}`}
+              className={[
+                "rounded-full transition-all duration-200",
+                i === cardIndex
+                  ? "h-2 w-5 bg-cyan-400"
+                  : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
+              ].join(" ")}
+            />
+          ))}
+          <span className="ml-1.5 text-[11px] text-slate-500">
+            {cardIndex + 1}/{rows.length}
+          </span>
+        </div>
 
-      {/* Swipeable card */}
-      <div
-        className="min-h-0 w-full max-w-md flex-1 overflow-hidden"
-        style={{ touchAction: "pan-y" }}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
-      >
         <div
-          key={`${row.ticker}-${animKey}`}
-          className="h-full"
-          style={{
-            animation: `${swipeDir === "left" ? "slideFromRight" : "slideFromLeft"} 260ms ease-out both`,
-          }}
+          className="min-h-0 w-full max-w-md flex-1 overflow-hidden"
+          style={{ touchAction: "pan-y" }}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
         >
-          <SwipeStockCard
-            row={row}
-            onOpen={() => onOpenDetails(row.ticker)}
-            onNext={goNext}
-            onPrev={goPrev}
-            hasNext={hasNext}
-            hasPrev={hasPrev}
-          />
+          <div
+            key={`${row.ticker}-${animKey}`}
+            className="h-full"
+            style={{
+              animation: `${swipeDir === "left" ? "slideFromRight" : "slideFromLeft"} 260ms ease-out both`,
+            }}
+          >
+            <SwipeStockCard
+              row={row}
+              onOpen={() => onOpenDetails(row.ticker)}
+              onNext={goNext}
+              onPrev={goPrev}
+              hasNext={hasNext}
+              hasPrev={hasPrev}
+            />
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Desktop: 3-card grid */}
+      <div className="hidden h-full flex-col items-center px-6 pb-4 pt-4 lg:flex">
+        <div className="mb-3 flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={goDesktopPrev}
+            disabled={desktopPage <= 0}
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200 disabled:opacity-30"
+          >
+            ← Prev
+          </button>
+          <div className="flex items-center gap-1.5">
+            {desktopDots.map((i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onIndexChange(i * DESKTOP_CARDS)}
+                aria-label={`Go to page ${i + 1}`}
+                className={[
+                  "rounded-full transition-all duration-200",
+                  i === desktopPage
+                    ? "h-2 w-5 bg-cyan-400"
+                    : "h-1.5 w-1.5 bg-slate-600 hover:bg-slate-400",
+                ].join(" ")}
+              />
+            ))}
+            <span className="ml-1.5 text-[11px] text-slate-500">
+              Page {desktopPage + 1}/{totalDesktopPages}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={goDesktopNext}
+            disabled={desktopStart + DESKTOP_CARDS >= rows.length}
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-cyan-200 disabled:opacity-30"
+          >
+            Next →
+          </button>
+        </div>
+
+        <div className="min-h-0 w-full max-w-7xl flex-1">
+          <div
+            key={`desktop-${desktopPage}-${animKey}`}
+            className="grid h-full grid-cols-3 gap-4"
+            style={{ animation: "cardFadeUp 260ms ease-out both" }}
+          >
+            {desktopSlice.map((r) => (
+              <SwipeStockCard
+                key={r.ticker}
+                row={r}
+                onOpen={() => onOpenDetails(r.ticker)}
+                onNext={goDesktopNext}
+                onPrev={goDesktopPrev}
+                hasNext={desktopStart + DESKTOP_CARDS < rows.length}
+                hasPrev={desktopPage > 0}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -1117,7 +1244,7 @@ function SwipeStockCard({
       <div className="shrink-0 px-5 pt-5 pb-2">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <h2 className="text-5xl font-black tracking-tight text-white">{row.ticker}</h2>
+            <h2 className="text-[2.8rem] font-black tracking-tight text-white sm:text-5xl">{row.ticker}</h2>
             <div className="mt-1 flex items-center gap-2">
               {row.company_name ? (
                 <span className="truncate text-sm text-slate-400">
@@ -1171,7 +1298,7 @@ function SwipeStockCard({
 
       {/* Reasons to swipe right — Hinge-style prompts */}
       <div className="shrink-0 px-4 pb-2">
-        <p className="mb-2 px-1 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+        <p className="mb-2 px-1 text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
           Why you might swipe right
         </p>
         <div className="space-y-2">
@@ -1551,6 +1678,27 @@ function matchesSourceFilter(row: UnifiedRow, sourceFilter: SourceFilterType) {
   return true
 }
 
+function matchesInsiderFilter(row: UnifiedRow, filter: InsiderFilterType) {
+  if (filter === "all") return true
+  const hasInsider =
+    Boolean(row.insider_action) ||
+    (row.insider_shares ?? 0) > 0 ||
+    (row.insider_buy_value ?? 0) > 0
+  if (filter === "yes") return hasInsider
+  if (filter === "cluster") return (row.cluster_buyers ?? 0) >= 2
+  return true
+}
+
+function matchesCongressFilter(row: UnifiedRow, filter: CongressFilterType) {
+  if (filter === "all") return true
+  return Boolean(row.ptr_amount)
+}
+
+function matchesClusterFilter(row: UnifiedRow, filter: ClusterFilterType) {
+  if (filter === "all") return true
+  return (row.cluster_buyers ?? 0) >= 2
+}
+
 function getLastUpdated(rows: UnifiedRow[]) {
   const dates = rows
     .map((row) => row.score_updated_at || row.updated_at || row.last_screened_at)
@@ -1860,10 +2008,10 @@ function MiniMetric({
 }) {
   return (
     <div className="flex min-h-[88px] w-full flex-col items-center justify-center rounded-[1.15rem] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.07),rgba(255,255,255,0.03))] px-3 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_12px_30px_rgba(0,0,0,0.2)] backdrop-blur sm:min-h-[94px] sm:px-4">
-      <p className="mb-2 break-words text-[10px] uppercase tracking-[0.22em] text-slate-400 sm:text-[11px]">
+      <p className="mb-2 break-words text-[11px] uppercase tracking-[0.22em] text-slate-400 sm:text-[11px]">
         {label}
       </p>
-      <p className="break-words text-lg font-semibold tracking-tight text-white sm:text-xl">
+      <p className="break-words text-xl font-semibold tracking-tight text-white sm:text-xl">
         {value}
       </p>
     </div>
@@ -2058,6 +2206,14 @@ function SignalDetailsModal({
   const thesis = getFeaturedThesis(row)
   const confidenceBullets = getConfidenceBullets(row)
   const setupBullets = getSimpleSetupBullets(row)
+  const scoreExplanation = getDetailedScoreExplanation(row)
+
+  const hasSmartMoney =
+    Boolean(row.insider_action) ||
+    (row.insider_shares ?? 0) > 0 ||
+    (row.insider_buy_value ?? 0) > 0 ||
+    Boolean(row.ptr_amount) ||
+    (row.cluster_buyers ?? 0) > 0
 
   const [activeSlide, setActiveSlide] = useState(initialTab)
   const touchStartX = useRef<number | null>(null)
@@ -2117,7 +2273,7 @@ function SignalDetailsModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex h-screen min-h-screen w-screen max-w-none flex-col overflow-hidden rounded-none border-0 bg-[linear-gradient(to_bottom,_#020617,_#081122_40%,_#020617)] shadow-2xl sm:h-[92vh] sm:min-h-0 sm:w-full sm:max-w-6xl sm:rounded-[2rem] sm:border sm:border-white/10">
-          <div className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur">
+          <div className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur" style={{ paddingTop: "env(safe-area-inset-top)" }}>
             <div className="flex items-center justify-between gap-3 px-4 py-4 sm:px-6">
               <div className="flex min-w-0 items-center gap-2">
                 <button
@@ -2197,17 +2353,77 @@ function SignalDetailsModal({
           </div>
 
           <div className="flex-1 overflow-hidden">
+            {/* ======= DESKTOP: two-column layout ======= */}
             <div className="hidden h-full overflow-y-auto lg:block">
               <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                {/* LEFT COLUMN — Overview: company + performance in plain English */}
                 <div>
-                  <div className="mb-5 rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                      The simple version
+                  {row.business_description ? (
+                    <div className="mb-5 rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                        About the company
+                      </p>
+                      <p className="mt-3 break-words text-sm leading-7 text-slate-300 sm:text-base">
+                        {row.business_description}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Company snapshot
                     </p>
-                    <p className="mt-2 break-words text-xl font-semibold text-white sm:text-2xl">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <ConfirmationRow label="Sector" value={row.sector || "Not available"} />
+                      <ConfirmationRow label="Industry" value={row.industry || "Not available"} />
+                      <ConfirmationRow label="Market cap" value={formatMarketCap(row.market_cap) || "—"} />
+                      <ConfirmationRow label="Valuation (P/E)" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
+                      <ConfirmationRow label="Price" value={formatMoney(row.price) || "—"} />
+                      <ConfirmationRow label="Freshness" value={getFreshnessLabel(row) || "—"} />
+                    </div>
+                  </div>
+
+                  <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Recent performance in plain english
+                    </p>
+                    <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
+                      {getPerformanceSummary(row).map((item, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {(row.earnings_surprise_pct !== null || row.revenue_growth_pct !== null || row.guidance_flag !== null) && (
+                    <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Business fundamentals
+                      </p>
+                      <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
+                        {getFundamentalsSummary(row).map((item, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                {/* RIGHT COLUMN — Why it’s here: scoring + signals + Numbers */}
+                <div className="space-y-5">
+                  <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                      Why it made the board
+                    </p>
+                    <p className="mt-2 break-words text-xl font-semibold text-white">
                       {thesis}
                     </p>
-                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-300 sm:text-base">
+                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-300">
                       {confidenceBullets.map((item, i) => (
                         <li key={i} className="flex items-start gap-2">
                           <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-cyan-400" />
@@ -2217,21 +2433,27 @@ function SignalDetailsModal({
                     </ul>
                   </div>
 
-                  {row.business_description ? (
-                    <p className="mb-5 break-words text-sm leading-7 text-slate-300 sm:text-base">
-                      {row.business_description}
-                    </p>
-                  ) : null}
+                  <ScoreBar row={row} />
 
-                  <div className="mb-5">
-                    <ScoreBar row={row} />
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-amber-300/80">
+                      How it got its score
+                    </p>
+                    <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
+                      {scoreExplanation.map((item, i) => (
+                        <li key={i} className="flex items-start gap-2">
+                          <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
 
-                  <div className="mb-5">
+                  <div>
                     <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                       Biggest score drivers
                     </p>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
                       {reasons.map((reason) => (
                         <ReasonCard
                           key={`${reason.label}-${reason.value}`}
@@ -2241,21 +2463,11 @@ function SignalDetailsModal({
                     </div>
                   </div>
 
-                  <div className="mb-5">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Score movement
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
-                      <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
-                    </div>
-                  </div>
-
-                  <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
                       What stands out
                     </p>
-                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-200 sm:text-base">
+                    <ul className="mt-3 space-y-2 break-words text-sm leading-7 text-slate-200">
                       {setupBullets.map((item, i) => (
                         <li key={i} className="flex items-start gap-2">
                           <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -2263,7 +2475,6 @@ function SignalDetailsModal({
                         </li>
                       ))}
                     </ul>
-
                     {!!tags.length && (
                       <div className="mt-4 flex flex-wrap gap-2">
                         {tags.slice(0, 12).map((tag) => (
@@ -2278,176 +2489,12 @@ function SignalDetailsModal({
                       What confirms the setup
                     </p>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <ConfirmationRow
-                        label="Price confirmation"
-                        value={formatPriceConfirmation(row)}
-                      />
-                      <ConfirmationRow
-                        label="Breakout"
-                        value={
-                          row.breakout_52w
-                            ? "52-week breakout"
-                            : row.breakout_20d
-                              ? "20-day breakout"
-                              : "No breakout flag"
-                        }
-                      />
-                      <ConfirmationRow
-                        label="Trend"
-                        value={
-                          row.trend_aligned === true
-                            ? "Aligned"
-                            : row.above_sma_20
-                              ? "Constructive"
-                              : "Mixed"
-                        }
-                      />
-                      <ConfirmationRow
-                        label="Vs market"
-                        value={formatRelativeStrengthForDisplay(row)}
-                      />
-                      <ConfirmationRow
-                        label="Volume"
-                        value={formatRatio(row.volume_ratio)}
-                      />
-                      <ConfirmationRow
-                        label="Signals stacked"
-                        value={formatSignalStack(row.stacked_signal_count, row)}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 sm:p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                    Quick snapshot
-                  </p>
-
-                  <div className="mt-4 space-y-3">
-                    <MetricRow label="Overall score" value={`${row.display_score}`} />
-                    <MetricRow
-                      label="Price strength score"
-                      value={formatSimpleNumber(row.candidate_score)}
-                    />
-                    <MetricRow
-                      label="Signals score"
-                      value={formatSimpleNumber(row.signal_score)}
-                    />
-                    <MetricRow label="Why it’s here" value={row.data_source_label} />
-                    <MetricRow
-                      label="Confidence tier"
-                      value={getConfidenceTierLabel(row.display_score)}
-                    />
-                    <MetricRow label="Price" value={formatMoney(row.price)} />
-                    <MetricRow
-                      label="Main reason"
-                      value={row.primary_title || "Price strength"}
-                    />
-                    <MetricRow
-                      label="Signal source"
-                      value={formatSource(row.primary_signal_source)}
-                    />
-                    <MetricRow
-                      label="Signal category"
-                      value={getSignalCategory(row)}
-                    />
-                    <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
-                    <MetricRow
-                      label="Filed at"
-                      value={row.filed_at ? formatDateLong(row.filed_at) : null}
-                    />
-                    {row.ptr_amount ? (
-                      <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-200/70">
-                        Note: Politicians have up to 45 days to report trades. The actual trade may have occurred before the date shown.
-                      </div>
-                    ) : null}
-                    <MetricRow
-                      label="Last screened"
-                      value={
-                        row.last_screened_at ? formatDateLong(row.last_screened_at) : null
-                      }
-                    />
-                    <MetricRow
-                      label="Signals stacked"
-                      value={formatWholeNumber(row.stacked_signal_count)}
-                    />
-                    <MetricRow
-                      label="1D score change"
-                      value={formatScoreChange(row.ticker_score_change_1d)}
-                    />
-                    <MetricRow
-                      label="7D score change"
-                      value={formatScoreChange(row.ticker_score_change_7d)}
-                    />
-                  </div>
-
-                  <div className="mt-6 border-t border-white/10 pt-6">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Price and momentum
-                    </p>
-
-                    <div className="mt-4 space-y-3">
-                      <MetricRow label="1D move" value={formatPercent(row.one_day_return)} />
-                      <MetricRow label="5D move" value={formatPercent(row.price_return_5d)} />
-                      <MetricRow label="10D move" value={formatPercent(row.return_10d)} />
-                      <MetricRow label="20D move" value={formatPercent(row.price_return_20d)} />
-                      <MetricRow label="Volume ratio" value={formatRatio(row.volume_ratio)} />
-                      <MetricRow label="Vs market 20D" value={formatPercent(row.relative_strength_20d)} />
-                      <MetricRow label="Breakout clearance" value={formatPercent(row.breakout_clearance_pct)} />
-                      <MetricRow label="From 20D average" value={formatPercent(row.extension_from_sma20_pct)} />
-                      <MetricRow label="Close in range" value={formatSimpleNumber(row.close_in_day_range)} />
-                      <MetricRow label="Above 50DMA" value={formatBooleanLabel(row.above_50dma)} />
-                      <MetricRow label="Above 20D avg" value={formatBooleanLabel(row.above_sma_20)} />
-                      <MetricRow label="Trend aligned" value={formatBooleanLabel(row.trend_aligned)} />
-                      <MetricRow label="Price confirmed" value={formatBooleanLabel(row.price_confirmed)} />
-                    </div>
-                  </div>
-
-                  <div className="mt-6 border-t border-white/10 pt-6">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Signals and filings
-                    </p>
-
-                    <div className="mt-4 space-y-3">
-                      <MetricRow
-                        label="Source forms"
-                        value={row.source_forms.length ? row.source_forms.join(", ") : null}
-                      />
-                      <MetricRow
-                        label="Accession nos"
-                        value={
-                          row.accession_nos.length
-                            ? row.accession_nos.slice(0, 3).join(", ")
-                            : null
-                        }
-                      />
-                      <MetricRow label="Insider action" value={row.insider_action || null} />
-                      <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
-                      <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
-                      <MetricRow label="Insider value" value={formatInsiderValue(row)} />
-                      <MetricRow label="PTR amount" value={row.ptr_amount} />
-                      <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
-                      <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
-                      <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
-                      <MetricRow label="Revenue growth" value={formatPercent(row.revenue_growth_pct)} />
-                      <MetricRow label="Guidance support" value={formatBooleanLabel(row.guidance_flag)} />
-                    </div>
-                  </div>
-
-                  <div className="mt-6 border-t border-white/10 pt-6">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      Company basics
-                    </p>
-
-                    <div className="mt-4 space-y-3">
-                      <MetricRow
-                        label="Valuation"
-                        value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)}
-                      />
-                      <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
-                      <MetricRow label="Sector" value={row.sector || null} />
-                      <MetricRow label="Industry" value={row.industry || null} />
-                      <MetricRow label="Catalyst count" value={formatWholeNumber(row.catalyst_count)} />
+                      <ConfirmationRow label="Price confirmation" value={formatPriceConfirmation(row)} />
+                      <ConfirmationRow label="Breakout" value={row.breakout_52w ? "52-week breakout" : row.breakout_20d ? "20-day breakout" : "No breakout flag"} />
+                      <ConfirmationRow label="Trend" value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"} />
+                      <ConfirmationRow label="Vs market" value={formatRelativeStrengthForDisplay(row)} />
+                      <ConfirmationRow label="Volume" value={formatRatio(row.volume_ratio)} />
+                      <ConfirmationRow label="Signals stacked" value={formatSignalStack(row.stacked_signal_count, row)} />
                     </div>
                   </div>
                 </div>
@@ -2460,11 +2507,70 @@ function SignalDetailsModal({
               onTouchEnd={handleTouchEnd}
             >
               <div className="p-4 pb-28">
+                {/* ===== Tab 0: Overview — Company + past performance ===== */}
                 {activeSlide === 0 ? (
+                  <div className="space-y-5">
+                    {row.business_description ? (
+                      <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
+                          About the company
+                        </p>
+                        <p className="mt-3 break-words text-sm leading-7 text-slate-300">
+                          {row.business_description}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Company snapshot
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <ConfirmationRow label="Sector" value={row.sector || "Not available"} />
+                        <ConfirmationRow label="Market cap" value={formatMarketCap(row.market_cap) || "—"} />
+                        <ConfirmationRow label="P/E ratio" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
+                        <ConfirmationRow label="Price" value={formatMoney(row.price) || "—"} />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Recent performance
+                      </p>
+                      <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
+                        {getPerformanceSummary(row).map((item, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {(row.earnings_surprise_pct !== null || row.revenue_growth_pct !== null || row.guidance_flag !== null) && (
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                          Business fundamentals
+                        </p>
+                        <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
+                          {getFundamentalsSummary(row).map((item, i) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {/* ===== Tab 1: Why it’s here — scoring, signals, explanations ===== */}
+                {activeSlide === 1 ? (
                   <div className="space-y-5">
                     <div className="rounded-[1.75rem] border border-cyan-400/15 bg-[linear-gradient(135deg,rgba(34,211,238,0.12),rgba(2,6,23,0.9)_55%,rgba(2,6,23,1))] p-5">
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                        The simple version
+                        Why it made the board
                       </p>
                       <p className="mt-2 break-words text-xl font-semibold text-white">
                         {thesis}
@@ -2481,43 +2587,20 @@ function SignalDetailsModal({
 
                     <ScoreBar row={row} />
 
-                    {row.business_description ? (
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                          Company
-                        </p>
-                        <p className="break-words text-sm leading-7 text-slate-300">
-                          {row.business_description}
-                        </p>
-                      </div>
-                    ) : null}
-
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                        What stands out
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-amber-300/80">
+                        How it got its score
                       </p>
-                      <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-200">
-                        {setupBullets.map((item, i) => (
+                      <ul className="space-y-3 break-words text-sm leading-7 text-slate-300">
+                        {scoreExplanation.map((item, i) => (
                           <li key={i} className="flex items-start gap-2">
-                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                            <span className="mt-[8px] h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
                             <span>{item}</span>
                           </li>
                         ))}
                       </ul>
-
-                      {!!tags.length && (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {tags.slice(0, 10).map((tag) => (
-                            <TagPill key={tag} tag={tag} />
-                          ))}
-                        </div>
-                      )}
                     </div>
-                  </div>
-                ) : null}
 
-                {activeSlide === 1 ? (
-                  <div className="space-y-5">
                     <div>
                       <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                         Biggest score drivers
@@ -2532,14 +2615,25 @@ function SignalDetailsModal({
                       </div>
                     </div>
 
-                    <div>
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                        Score movement
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                        What stands out
                       </p>
-                      <div className="grid gap-3">
-                        <MovementCard label="1 Day" value={row.ticker_score_change_1d} />
-                        <MovementCard label="7 Day" value={row.ticker_score_change_7d} />
-                      </div>
+                      <ul className="mt-3 space-y-2 text-sm leading-7 text-slate-200">
+                        {setupBullets.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="mt-[8px] h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {!!tags.length && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {tags.slice(0, 10).map((tag) => (
+                            <TagPill key={tag} tag={tag} />
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -2547,131 +2641,101 @@ function SignalDetailsModal({
                         What confirms the setup
                       </p>
                       <div className="mt-4 grid gap-3">
-                        <ConfirmationRow
-                          label="Price confirmation"
-                          value={formatPriceConfirmation(row)}
-                        />
-                        <ConfirmationRow
-                          label="Breakout"
-                          value={
-                            row.breakout_52w
-                              ? "52-week breakout"
-                              : row.breakout_20d
-                                ? "20-day breakout"
-                                : "No breakout flag"
-                          }
-                        />
-                        <ConfirmationRow
-                          label="Trend"
-                          value={
-                            row.trend_aligned === true
-                              ? "Aligned"
-                              : row.above_sma_20
-                                ? "Constructive"
-                                : "Mixed"
-                          }
-                        />
-                        <ConfirmationRow
-                          label="Vs market"
-                          value={formatRelativeStrengthForDisplay(row)}
-                        />
-                        <ConfirmationRow
-                          label="Volume"
-                          value={formatRatio(row.volume_ratio)}
-                        />
-                        <ConfirmationRow
-                          label="Signals stacked"
-                          value={formatSignalStack(row.stacked_signal_count, row)}
-                        />
+                        <ConfirmationRow label="Price confirmation" value={formatPriceConfirmation(row)} />
+                        <ConfirmationRow label="Breakout" value={row.breakout_52w ? "52-week breakout" : row.breakout_20d ? "20-day breakout" : "No breakout flag"} />
+                        <ConfirmationRow label="Trend" value={row.trend_aligned === true ? "Aligned" : row.above_sma_20 ? "Constructive" : "Mixed"} />
+                        <ConfirmationRow label="Vs market" value={formatRelativeStrengthForDisplay(row)} />
+                        <ConfirmationRow label="Volume" value={formatRatio(row.volume_ratio)} />
+                        <ConfirmationRow label="Signals stacked" value={formatSignalStack(row.stacked_signal_count, row)} />
                       </div>
                     </div>
                   </div>
                 ) : null}
 
+                {/* ===== Tab 2: Numbers — all raw data ===== */}
                 {activeSlide === 2 ? (
                   <div className="space-y-5">
                     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300/80">
-                        Quick snapshot
+                        Price and performance
                       </p>
-
                       <div className="mt-4 space-y-3">
-                        <MetricRow label="Overall score" value={`${row.display_score}`} />
-                        <MetricRow
-                          label="Price strength score"
-                          value={formatSimpleNumber(row.candidate_score)}
-                        />
-                        <MetricRow
-                          label="Signals score"
-                          value={formatSimpleNumber(row.signal_score)}
-                        />
-                        <MetricRow label="Why it’s here" value={row.data_source_label} />
-                        <MetricRow
-                          label="Confidence tier"
-                          value={getConfidenceTierLabel(row.display_score)}
-                        />
                         <MetricRow label="Price" value={formatMoney(row.price)} />
-                        <MetricRow
-                          label="Main reason"
-                          value={row.primary_title || "Price strength"}
-                        />
-                        <MetricRow
-                          label="Signal source"
-                          value={formatSource(row.primary_signal_source)}
-                        />
-                        <MetricRow
-                          label="Signal category"
-                          value={getSignalCategory(row)}
-                        />
-                        <MetricRow label="Freshness" value={getFreshnessLabel(row)} />
-                        <MetricRow
-                          label="Filed at"
-                          value={row.filed_at ? formatDateLong(row.filed_at) : null}
-                        />
-                        {row.ptr_amount ? (
-                          <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-200/70">
-                            Note: Politicians have up to 45 days to report trades. The actual trade may have occurred before the date shown.
-                          </div>
-                        ) : null}
-                        <MetricRow
-                          label="Last screened"
-                          value={
-                            row.last_screened_at ? formatDateLong(row.last_screened_at) : null
-                          }
-                        />
-                        <MetricRow
-                          label="Signals stacked"
-                          value={formatWholeNumber(row.stacked_signal_count)}
-                        />
-                        <MetricRow
-                          label="1D score change"
-                          value={formatScoreChange(row.ticker_score_change_1d)}
-                        />
-                        <MetricRow
-                          label="7D score change"
-                          value={formatScoreChange(row.ticker_score_change_7d)}
-                        />
                         <MetricRow label="1D move" value={formatPercent(row.one_day_return)} />
                         <MetricRow label="5D move" value={formatPercent(row.price_return_5d)} />
                         <MetricRow label="10D move" value={formatPercent(row.return_10d)} />
                         <MetricRow label="20D move" value={formatPercent(row.price_return_20d)} />
                         <MetricRow label="Volume ratio" value={formatRatio(row.volume_ratio)} />
                         <MetricRow label="Vs market 20D" value={formatPercent(row.relative_strength_20d)} />
+                        <MetricRow label="Breakout clearance" value={formatPercent(row.breakout_clearance_pct)} />
+                        <MetricRow label="From 20D average" value={formatPercent(row.extension_from_sma20_pct)} />
+                        <MetricRow label="Close in range" value={formatSimpleNumber(row.close_in_day_range)} />
+                        <MetricRow label="Above 50DMA" value={formatBooleanLabel(row.above_50dma)} />
+                        <MetricRow label="Above 20D avg" value={formatBooleanLabel(row.above_sma_20)} />
+                        <MetricRow label="Trend aligned" value={formatBooleanLabel(row.trend_aligned)} />
+                        <MetricRow label="Price confirmed" value={formatBooleanLabel(row.price_confirmed)} />
+                      </div>
+                    </div>
+
+                    {hasSmartMoney && (
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-300/80">
+                          Insider and congress trades
+                        </p>
+                        <div className="mt-4 space-y-3">
+                          <MetricRow label="Insider action" value={row.insider_action || null} />
+                          <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
+                          <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
+                          <MetricRow label="Insider value" value={formatInsiderValue(row)} />
+                          <MetricRow label="PTR amount" value={row.ptr_amount} />
+                          <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
+                          <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
+                          {row.ptr_amount ? (
+                            <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-xs leading-5 text-amber-200/70">
+                              Note: Politicians have up to 45 days to report trades. The actual trade may have occurred before the date shown.
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Valuation and fundamentals
+                      </p>
+                      <div className="mt-4 space-y-3">
                         <MetricRow label="Valuation" value={formatPe(row.pe_ratio, row.pe_forward, row.pe_type)} />
                         <MetricRow label="Market cap" value={formatMarketCap(row.market_cap)} />
                         <MetricRow label="Sector" value={row.sector || null} />
                         <MetricRow label="Industry" value={row.industry || null} />
                         <MetricRow label="Source forms" value={row.source_forms.length ? row.source_forms.join(", ") : null} />
-                        <MetricRow label="Insider action" value={row.insider_action || null} />
-                        <MetricRow label="Insider shares" value={formatShares(row.insider_shares)} />
-                        <MetricRow label="Insider avg price" value={formatMoney(row.insider_avg_price)} />
-                        <MetricRow label="Insider value" value={formatInsiderValue(row)} />
-                        <MetricRow label="PTR amount" value={row.ptr_amount} />
-                        <MetricRow label="Cluster buyers" value={formatWholeNumber(row.cluster_buyers)} />
-                        <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
                         <MetricRow label="Earnings surprise" value={formatPercent(row.earnings_surprise_pct)} />
                         <MetricRow label="Revenue growth" value={formatPercent(row.revenue_growth_pct)} />
                         <MetricRow label="Guidance support" value={formatBooleanLabel(row.guidance_flag)} />
+                        <MetricRow label="Catalyst count" value={formatWholeNumber(row.catalyst_count)} />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                        Score breakdown
+                      </p>
+                      <div className="mt-4 space-y-3">
+                        <MetricRow label="Overall score" value={`${row.display_score}`} />
+                        <MetricRow label="Price strength score" value={formatSimpleNumber(row.candidate_score)} />
+                        <MetricRow label="Signals score" value={formatSimpleNumber(row.signal_score)} />
+                        <MetricRow label="Why it’s here" value={row.data_source_label} />
+                        <MetricRow label="Confidence tier" value={getConfidenceTierLabel(row.display_score)} />
+                        <MetricRow label="Main reason" value={row.primary_title || "Price strength"} />
+                        <MetricRow label="Signal source" value={formatSource(row.primary_signal_source)} />
+                        <MetricRow label="Signal category" value={getSignalCategory(row)} />
+                        <MetricRow label="Freshness" value={getFreshnessLabel(row) || "—"} />
+                        <MetricRow label="Filed at" value={row.filed_at ? formatDateLong(row.filed_at) : null} />
+                        <MetricRow label="Last screened" value={row.last_screened_at ? formatDateLong(row.last_screened_at) : null} />
+                        <MetricRow label="Signals stacked" value={formatWholeNumber(row.stacked_signal_count)} />
+                        <MetricRow label="1D score change" value={formatScoreChange(row.ticker_score_change_1d)} />
+                        <MetricRow label="7D score change" value={formatScoreChange(row.ticker_score_change_7d)} />
+                        <MetricRow label="Screen reason" value={row.screen_reason ? truncateText(row.screen_reason, 120) : null} />
                       </div>
                     </div>
                   </div>
@@ -3214,6 +3278,216 @@ function getConfidenceBullets(row: UnifiedRow) {
   }
 
   return bullets.slice(0, 4)
+}
+
+function getPerformanceSummary(row: UnifiedRow): string[] {
+  const bullets: string[] = []
+
+  const oneDay = row.one_day_return
+  if (oneDay !== null) {
+    if (oneDay > 2) bullets.push(`The stock is up ${formatPercent(oneDay)} today — a strong move in a single day.`)
+    else if (oneDay > 0) bullets.push(`The stock is up a modest ${formatPercent(oneDay)} today.`)
+    else if (oneDay < -2) bullets.push(`The stock is down ${formatPercent(oneDay)} today — a noticeable pullback.`)
+    else if (oneDay < 0) bullets.push(`The stock is down slightly at ${formatPercent(oneDay)} today.`)
+    else bullets.push("The stock is flat today.")
+  }
+
+  const twentyDay = row.price_return_20d
+  if (twentyDay !== null) {
+    if (twentyDay > 10) bullets.push(`Over the last 20 trading days, it's gained ${formatPercent(twentyDay)} — a strong upward trend.`)
+    else if (twentyDay > 0) bullets.push(`Over the last 20 days, it has gained ${formatPercent(twentyDay)}.`)
+    else if (twentyDay < -10) bullets.push(`Over the last 20 days, the stock has fallen ${formatPercent(twentyDay)} — it's been under pressure.`)
+    else if (twentyDay < 0) bullets.push(`Over the last 20 days, it has pulled back ${formatPercent(twentyDay)}.`)
+  }
+
+  const rs = row.relative_strength_20d
+  if (rs !== null) {
+    if (rs > 5) bullets.push(`It's outperforming the broader market by ${formatPercent(rs)} over 20 days — that means it's doing better than most stocks right now.`)
+    else if (rs > 0) bullets.push(`It's slightly outperforming the broader market over the last 20 days.`)
+    else if (rs < -5) bullets.push(`It's underperforming the market by ${formatPercent(rs)} over 20 days.`)
+  }
+
+  const vol = row.volume_ratio
+  if (vol !== null) {
+    if (vol >= 2) bullets.push(`Trading volume is ${vol.toFixed(1)}x the 20-day average — that's a lot more activity than normal, which usually means something is happening.`)
+    else if (vol >= 1.3) bullets.push(`Volume is running above average at ${vol.toFixed(1)}x normal, suggesting increased interest.`)
+    else if (vol < 0.7) bullets.push("Trading volume is below average — fewer people are buying and selling than usual.")
+  }
+
+  if (row.breakout_52w) {
+    bullets.push("The stock just hit a new 52-week high — it's trading at its highest price in the last year.")
+  } else if (row.breakout_20d) {
+    bullets.push("The stock broke above its 20-day trading range — a sign that buyers are stepping in at higher prices.")
+  }
+
+  if (row.trend_aligned === true) {
+    bullets.push("The stock's short-term and medium-term trends are both pointing up — the overall direction looks positive.")
+  } else if (row.above_sma_20 === true) {
+    bullets.push("The stock is trading above its 20-day moving average, which is generally a constructive sign.")
+  }
+
+  if (!bullets.length) {
+    bullets.push("Not enough recent performance data to summarize yet. Check the Numbers tab for any available data points.")
+  }
+
+  return bullets
+}
+
+function getFundamentalsSummary(row: UnifiedRow): string[] {
+  const bullets: string[] = []
+
+  const eps = row.earnings_surprise_pct
+  if (eps !== null) {
+    if (eps >= 10) bullets.push(`Earnings came in ${formatPercent(eps)} above what analysts expected — that's a big beat. It means the company is making significantly more money than Wall Street predicted.`)
+    else if (eps > 0) bullets.push(`Earnings beat analyst expectations by ${formatPercent(eps)} — the company is earning more than predicted.`)
+    else if (eps < -5) bullets.push(`Earnings missed expectations by ${formatPercent(eps)} — the company made less than analysts predicted.`)
+    else if (eps < 0) bullets.push(`Earnings were slightly below expectations at ${formatPercent(eps)}.`)
+  }
+
+  const rev = row.revenue_growth_pct
+  if (rev !== null) {
+    if (rev >= 20) bullets.push(`Revenue is growing at ${formatPercent(rev)} — that's very fast growth, meaning the business is expanding rapidly.`)
+    else if (rev >= 10) bullets.push(`Revenue is growing at a healthy ${formatPercent(rev)} — the business is expanding at a solid pace.`)
+    else if (rev > 0) bullets.push(`Revenue growth is modest at ${formatPercent(rev)}.`)
+    else if (rev < 0) bullets.push(`Revenue is declining at ${formatPercent(rev)} — the business is shrinking.`)
+  }
+
+  if (row.guidance_flag === true) {
+    bullets.push("Management's guidance (their outlook for the future) is positive — they seem confident about what's ahead.")
+  }
+
+  const pe = row.pe_ratio ?? row.pe_forward
+  if (pe !== null) {
+    if (pe < 15) bullets.push(`At a P/E of ${pe.toFixed(1)}, the stock is priced cheaply relative to its earnings. That can mean it's undervalued or that growth expectations are low.`)
+    else if (pe < 25) bullets.push(`The P/E ratio of ${pe.toFixed(1)} is in a reasonable range — not expensive, not cheap.`)
+    else if (pe < 40) bullets.push(`A P/E of ${pe.toFixed(1)} means investors are paying a premium. They expect the company to keep growing.`)
+    else bullets.push(`The P/E ratio of ${pe.toFixed(1)} is high — investors have very high growth expectations baked in.`)
+  }
+
+  if (!bullets.length) {
+    bullets.push("No earnings or revenue data is available yet for this stock.")
+  }
+
+  return bullets
+}
+
+function getDetailedScoreExplanation(row: UnifiedRow): string[] {
+  const bullets: string[] = []
+  const score = row.display_score
+
+  // How it got on the board
+  if (row.has_candidate_data && row.has_signal_data) {
+    bullets.push(
+      `${row.ticker} scored ${score}/100 because it passed both our price-strength screening AND had additional signal support from filings or insider activity.`
+    )
+  } else if (row.has_candidate_data) {
+    bullets.push(
+      `${row.ticker} scored ${score}/100 purely based on price-strength screening — it showed strong enough technicals (momentum, volume, trend) to make the board on its own.`
+    )
+  } else {
+    bullets.push(
+      `${row.ticker} scored ${score}/100 primarily because of signal data (insider filings, congressional trades, or earnings catalysts).`
+    )
+  }
+
+  // Candidate score detail
+  if (row.candidate_score !== null && row.candidate_score > 0) {
+    bullets.push(
+      `Price strength score: ${Math.round(row.candidate_score)}/100. This measures momentum, volume patterns, trend alignment, and breakout activity over the last 20 days.`
+    )
+  }
+
+  // Signal score detail
+  if (row.signal_score !== null && row.signal_score > 0) {
+    bullets.push(
+      `Signal score: ${Math.round(row.signal_score)}/100. This combines insider buying patterns, filing activity, earnings surprises, and other catalysts.`
+    )
+  }
+
+  // Screen reason (plain English from the screening pipeline)
+  if (row.screen_reason) {
+    const reason = row.screen_reason
+    const colonIndex = reason.indexOf(":")
+    if (colonIndex > 0) {
+      const factors = reason.slice(colonIndex + 1).trim()
+      if (factors.length > 5) {
+        bullets.push(`Key factors the screener found: ${factors}.`)
+      }
+    }
+  }
+
+  // Insider/congress specifics
+  const clusterBuyers = row.cluster_buyers ?? 0
+  if (clusterBuyers >= 2) {
+    bullets.push(
+      `${clusterBuyers} company insiders recently bought shares — when multiple insiders buy around the same time, it's called a "cluster buy" and historically that's a strong bullish signal.`
+    )
+  } else if (
+    Boolean(row.insider_action) ||
+    (row.insider_shares ?? 0) > 0
+  ) {
+    bullets.push(
+      "At least one company insider recently bought shares. Insiders know their business best, so their buying can be meaningful."
+    )
+  }
+
+  if (row.ptr_amount) {
+    bullets.push(
+      `A member of Congress disclosed buying this stock (amount: ${row.ptr_amount}). Politicians sometimes have access to non-public policy insights, so their trades get extra attention.`
+    )
+  }
+
+  // Momentum / technicals
+  if (row.breakout_52w) {
+    bullets.push(
+      "The stock just broke to new 52-week highs — this means it's trading at its highest price in a year, which often attracts momentum buyers."
+    )
+  } else if (row.breakout_20d) {
+    bullets.push(
+      "The stock broke above its 20-day price range, signaling fresh buying interest."
+    )
+  }
+
+  if ((row.relative_strength_20d ?? 0) > 5) {
+    bullets.push(
+      `Over the last 20 days, this stock outperformed the broader market by ${formatPercent(row.relative_strength_20d)} — it's showing relative strength.`
+    )
+  }
+
+  if ((row.volume_ratio ?? 0) >= 1.5) {
+    bullets.push(
+      `Trading volume is ${(row.volume_ratio ?? 0).toFixed(1)}x the 20-day average, meaning significantly more buyers and sellers are active than usual.`
+    )
+  }
+
+  if ((row.earnings_surprise_pct ?? 0) >= 5) {
+    bullets.push(
+      `Recent earnings beat expectations by ${formatPercent(row.earnings_surprise_pct)} — the company is making more money than analysts predicted.`
+    )
+  }
+
+  if ((row.revenue_growth_pct ?? 0) >= 10) {
+    bullets.push(
+      `Revenue is growing at ${formatPercent(row.revenue_growth_pct)} — the business is expanding, which supports long-term stock price appreciation.`
+    )
+  }
+
+  // Score tier explanation
+  if (score >= 90) {
+    bullets.push(
+      "A 90+ score puts this in the top tier — multiple strong signals are converging, making this one of the highest-conviction ideas on today's board."
+    )
+  } else if (score >= 80) {
+    bullets.push(
+      "An 80+ score means high confidence — the combination of price action and fundamentals is strong, though not every signal is firing."
+    )
+  } else if (score >= 70) {
+    bullets.push(
+      "A 70+ score indicates a solid setup — enough positive factors are present to warrant attention, but it may still be developing."
+    )
+  }
+
+  return bullets
 }
 
 function getSimpleSetupBullets(row: UnifiedRow) {
