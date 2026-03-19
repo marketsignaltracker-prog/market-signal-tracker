@@ -1444,7 +1444,7 @@ function SwipeStockCard({
 
             // Moat / Competitive Advantage
             const moatScore = ltcs.moat
-            const moatLabel = moatScore == null ? "—" : moatScore >= 75 ? "Wide" : moatScore >= 50 ? "Narrow" : "None"
+            const moatLabel = moatScore == null ? "—" : moatScore >= 75 ? "Hard to Beat" : moatScore >= 50 ? "Some Edge" : "Easy to Copy"
 
             // PEG / Valuation
             const valScore = ltcs.valuation
@@ -1467,17 +1467,17 @@ function SwipeStockCard({
                   score={profScore} maxScore={100} color="#22d3ee" borderColor="rgba(34,211,238,0.25)"
                 />
                 <Tile
-                  iconPath={iconPaths.cash} label="Money In" value={fcfLabel}
+                  iconPath={iconPaths.cash} label="Cash Flow" value={fcfLabel}
                   sub="Does it generate real cash, not just paper profit?"
                   score={fcfScore} maxScore={100} color="#34d399" borderColor="rgba(52,211,153,0.25)"
                 />
                 <Tile
-                  iconPath={iconPaths.debt} label="Financial Health" value={debtLabel}
+                  iconPath={iconPaths.debt} label="Debt Level" value={debtLabel}
                   sub="Can it pay its bills without borrowing more?"
                   score={debtScore} maxScore={100} color="#a78bfa" borderColor="rgba(167,139,250,0.25)"
                 />
                 <Tile
-                  iconPath={iconPaths.moat} label="Edge" value={moatLabel}
+                  iconPath={iconPaths.moat} label="Competition" value={moatLabel}
                   sub="How hard is it for competitors to catch up?"
                   score={moatScore} maxScore={100} color="#f59e0b" borderColor="rgba(245,158,11,0.25)"
                 />
@@ -2706,22 +2706,22 @@ function SignalDetailsModal({
                           explain: "Is the company making more money each year? We look for earnings growth of at least 25% and return on equity above 15%. Think of it like a business getting a bigger raise every quarter.",
                         },
                         {
-                          label: "Money In", score: ltcs.profitability, color: "#34d399", borderColor: "rgba(52,211,153,0.20)",
+                          label: "Cash Flow", score: ltcs.profitability, color: "#34d399", borderColor: "rgba(52,211,153,0.20)",
                           icon: "M6 1V11M3 3.5H7.5C8.88 3.5 10 4.34 10 5.25S8.88 7 7.5 7H3M3 7H8C9.38 7 10.5 7.84 10.5 8.75S9.38 10.5 8 10.5H3",
                           verdict: ltcs.profitability == null ? "No data" : ltcs.profitability >= 65 ? "Positive" : ltcs.profitability >= 35 ? "Mixed" : "Negative",
-                          explain: "Does the company generate real cash — not just profit on paper? Free cash flow means money left over after paying all the bills. Companies with strong cash flow can grow, pay dividends, or buy back shares without borrowing.",
+                          explain: "Does the company generate real cash — not just profit on paper? Cash flow is the money left over after paying all the bills. Companies with strong cash flow can grow, pay dividends, or buy back shares without borrowing.",
                         },
                         {
-                          label: "Financial Health", score: ltcs.financial, color: "#a78bfa", borderColor: "rgba(167,139,250,0.20)",
+                          label: "Debt Level", score: ltcs.financial, color: "#a78bfa", borderColor: "rgba(167,139,250,0.20)",
                           icon: "M1.5 10V4L6 1.5L10.5 4V10M4 10V7H8V10",
                           verdict: ltcs.financial == null ? "No data" : ltcs.financial >= 70 ? "Low Debt" : ltcs.financial >= 40 ? "Moderate" : "High Debt",
                           explain: "Can this company pay its bills without borrowing more? We check how much debt they have compared to what they own. Low debt means they can survive tough times and won’t get crushed by rising interest rates.",
                         },
                         {
-                          label: "Edge", score: ltcs.moat, color: "#f59e0b", borderColor: "rgba(245,158,11,0.20)",
+                          label: "Competition", score: ltcs.moat, color: "#f59e0b", borderColor: "rgba(245,158,11,0.20)",
                           icon: "M1 8L3 6L5 8L7 4L9 7L11 5M1 10H11",
-                          verdict: ltcs.moat == null ? "No data" : ltcs.moat >= 75 ? "Wide" : ltcs.moat >= 50 ? "Narrow" : "None",
-                          explain: "How hard is it for competitors to steal this company’s customers? A ‘wide moat’ means strong brand, patents, or network effects that protect profits. Think Apple, Google, or Costco — they’re very hard to beat.",
+                          verdict: ltcs.moat == null ? "No data" : ltcs.moat >= 75 ? "Hard to Beat" : ltcs.moat >= 50 ? "Some Edge" : "Easy to Copy",
+                          explain: "How hard is it for competitors to steal this company’s customers? Strong brands, patents, or network effects protect profits. Think Apple, Google, or Costco — they’re very hard to beat.",
                         },
                         {
                           label: "Fair Price", score: ltcs.valuation, color: "#fb923c", borderColor: "rgba(251,146,60,0.20)",
