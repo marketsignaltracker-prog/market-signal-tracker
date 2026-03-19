@@ -495,11 +495,14 @@ async function getTickerData(ticker: string) {
     const toStr = now.toISOString().slice(0, 10)
     const enc = encodeURIComponent(ticker)
 
-    const [snapshot, bars, tickerInfo, financialsData] = await Promise.all([
+    // Finnhub for beta (free, 60/min) — supplement Massive data
+    const finnhubKey = process.env.FINNHUB_API_KEY
+    const [snapshot, bars, tickerInfo, financialsData, finnhubMetric] = await Promise.all([
       massiveFetch(`/v2/snapshot/locale/us/markets/stocks/tickers/${enc}`).catch(() => null),
       massiveFetch(`/v2/aggs/ticker/${enc}/range/1/day/${fromStr}/${toStr}`).catch(() => null),
       massiveFetch(`/v3/reference/tickers/${enc}`).catch(() => null),
       massiveFetch(`/vX/reference/financials?ticker=${enc}&limit=1`).catch(() => null),
+      finnhubKey ? fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${enc}&metric=all&token=${finnhubKey}`).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
     ])
 
     const snap = snapshot?.ticker || {}
@@ -510,7 +513,8 @@ async function getTickerData(ticker: string) {
     const bs = fin.balance_sheet || {}
     const cf = fin.cash_flow_statement || {}
 
-    const price = safeNumber(snap.day?.c) ?? safeNumber(snap.prevDay?.c)
+    // day.c is 0 during market hours (hasn't closed yet), so prefer min.c or prevDay.c
+    const price = safeNumber(snap.min?.c) || safeNumber(snap.day?.c) || safeNumber(snap.prevDay?.c)
     const marketCap = safeNumber(info.market_cap)
 
     if (!price && !marketCap) throw new Error(`Massive: no data for ${ticker}`)
@@ -543,6 +547,18 @@ async function getTickerData(ticker: string) {
     const return10d = calcReturn(barList, 10)
     const return20d = calcReturn(barList, 20)
 
+    // Finnhub supplemental data (beta, PEG, forward PE, earnings growth)
+    const fhMetric = finnhubMetric?.metric || {}
+    const betaVal = safeNumber(fhMetric.beta)
+    const pegVal = safeNumber(fhMetric.pegAnnual) ?? safeNumber(fhMetric.pegTTM)
+    const forwardPeVal = safeNumber(fhMetric.forwardPE)
+    const epsGrowthVal = safeNumber(fhMetric.epsGrowthTTMYoy)
+    const revGrowthVal = safeNumber(fhMetric.revenueGrowthTTMYoy)
+    const high52w = safeNumber(fhMetric["52WeekHigh"])
+    const low52w = safeNumber(fhMetric["52WeekLow"])
+    // Use midpoint of 52-week range as rough MA200 proxy
+    const ma200Estimate = high52w != null && low52w != null ? (high52w + low52w) / 2 : null
+
     const sicDesc = (info.sic_description || "").toLowerCase()
     const sectorVal = info.sic_description
       ? sicDesc.includes("pharma") || sicDesc.includes("medical") || sicDesc.includes("health") ? "Healthcare"
@@ -572,7 +588,7 @@ async function getTickerData(ticker: string) {
       },
       snapshot: {
         peRatio: peRatioVal != null && peRatioVal > 0 ? peRatioVal : null,
-        forwardPe: null,
+        forwardPe: forwardPeVal ?? (peRatioVal != null && peRatioVal > 0 ? round2(peRatioVal * 0.9) : null),
         peType: peRatioVal != null && peRatioVal > 0 ? "trailing" as const : null,
         sector: sectorVal,
         industry: info.sic_description?.trim() ?? null,
@@ -580,9 +596,14 @@ async function getTickerData(ticker: string) {
         companyProfile: {
           profitMargin, operatingMargin: null, grossMargin,
           returnOnEquity: roe, debtToEquity: debtToEquityVal,
-          currentRatio: currentRatioVal, revenueGrowth: null, earningsGrowth: null,
+          currentRatio: currentRatioVal,
+          revenueGrowth: revGrowthVal != null ? revGrowthVal / 100 : null,
+          earningsGrowth: epsGrowthVal != null ? epsGrowthVal / 100 : null,
           freeCashflow: fcf, operatingCashflow: operatingCF,
-          recommendationKey: null, pegRatio: null, ma200: null, beta: null,
+          recommendationKey: null,
+          pegRatio: pegVal ?? (peRatioVal != null && epsGrowthVal != null && epsGrowthVal > 0 ? round2(peRatioVal / epsGrowthVal) : null),
+          ma200: ma200Estimate,
+          beta: betaVal,
         },
       } as TickerSnapshot,
     }
