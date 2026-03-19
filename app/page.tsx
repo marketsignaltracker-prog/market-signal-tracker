@@ -1133,7 +1133,7 @@ function SwipeDeck({
           </span>
         </div>
         <div className="hidden items-center gap-1.5 lg:flex">
-          {Array.from({ length: desktopTotalPages }, (_, i) => (
+          {getDotRange(desktopPage, desktopTotalPages, 9).map((i) => (
             <button
               key={i}
               type="button"
