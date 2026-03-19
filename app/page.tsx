@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { supabase } from "../lib/supabase"
+import { useAuth } from "@/lib/auth-context"
+import { useRouter } from "next/navigation"
 
 type CandidateUniverseRow = {
   ticker: string
@@ -427,6 +429,13 @@ export default function Home() {
   const [beginnerMode, setBeginnerMode] = useState(true)
 
   const [detailInitialTab, setDetailInitialTab] = useState(0)
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
+
+  const { user, isPro, loading: authLoading, signOut } = useAuth()
+  const router = useRouter()
+
+  const FREE_CARD_LIMIT = 5
 
   useEffect(() => {
     let isMounted = true
@@ -810,6 +819,41 @@ export default function Home() {
             </p>
           </div>
 
+          <div className="flex items-center gap-2">
+            {/* Auth button */}
+            {!authLoading && (
+              user ? (
+                <div className="flex items-center gap-2">
+                  {!isPro && (
+                    <button
+                      onClick={() => setShowUpgradeModal(true)}
+                      className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3 py-1.5 text-[11px] font-bold text-black transition hover:from-amber-400 hover:to-orange-400"
+                    >
+                      Upgrade
+                    </button>
+                  )}
+                  {isPro && (
+                    <span className="rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+                      PRO
+                    </span>
+                  )}
+                  <button
+                    onClick={signOut}
+                    className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-slate-400 transition hover:text-white"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => router.push("/login")}
+                  className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-[11px] font-semibold text-cyan-400 transition hover:bg-cyan-500/20"
+                >
+                  Sign In
+                </button>
+              )
+            )}
+
           <button
             type="button"
             onClick={() => setFiltersOpen((prev) => !prev)}
@@ -838,6 +882,7 @@ export default function Home() {
               </span>
             )}
           </button>
+          </div>
         </div>
       </header>
 
@@ -958,10 +1003,25 @@ export default function Home() {
           </div>
         ) : (
           <SwipeDeck
-            rows={filteredRows}
+            rows={isPro ? filteredRows : filteredRows.slice(0, FREE_CARD_LIMIT)}
             cardIndex={safeCardIndex}
-            onIndexChange={setCardIndex}
-            onOpenDetails={(ticker) => openDetails(ticker, 0)}
+            onIndexChange={(idx) => {
+              if (!isPro && idx >= FREE_CARD_LIMIT) {
+                setShowUpgradeModal(true)
+                return
+              }
+              setCardIndex(idx)
+            }}
+            onOpenDetails={(ticker) => {
+              if (!isPro) {
+                const idx = filteredRows.findIndex(r => r.ticker === ticker)
+                if (idx >= FREE_CARD_LIMIT) {
+                  setShowUpgradeModal(true)
+                  return
+                }
+              }
+              openDetails(ticker, 0)
+            }}
           />
         )}
       </div>
@@ -990,6 +1050,71 @@ export default function Home() {
           initialTab={detailInitialTab}
         />
       ) : null}
+
+      {/* Upgrade modal */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm px-4" onClick={() => setShowUpgradeModal(false)}>
+          <div className="w-full max-w-sm bg-[#0d1526] border border-white/10 rounded-2xl p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 px-3 py-1 text-xs font-bold text-amber-400 mb-3">
+                PRO
+              </div>
+              <h2 className="text-xl font-bold text-white">Unlock All Signals</h2>
+              <p className="text-sm text-slate-400 mt-1">Get the full picture on every stock</p>
+            </div>
+
+            <ul className="space-y-2.5 mb-6">
+              {[
+                "Unlimited stock cards",
+                "Insider buying signals",
+                "Congress trade alerts",
+                "Full analysis & thesis",
+                "All filters unlocked",
+              ].map((f) => (
+                <li key={f} className="flex items-center gap-2 text-sm text-slate-300">
+                  <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  {f}
+                </li>
+              ))}
+            </ul>
+
+            <div className="text-center mb-4">
+              <span className="text-3xl font-bold text-white">$9.99</span>
+              <span className="text-sm text-slate-400">/month</span>
+            </div>
+
+            <button
+              onClick={async () => {
+                if (!user) {
+                  router.push("/login")
+                  return
+                }
+                setCheckoutLoading(true)
+                try {
+                  const res = await fetch("/api/stripe/checkout", { method: "POST" })
+                  const { url } = await res.json()
+                  if (url) window.location.href = url
+                } catch {
+                  setCheckoutLoading(false)
+                }
+              }}
+              disabled={checkoutLoading}
+              className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-bold py-3 rounded-xl transition text-sm disabled:opacity-50"
+            >
+              {checkoutLoading ? "Loading..." : user ? "Subscribe Now" : "Sign In to Subscribe"}
+            </button>
+
+            <button
+              onClick={() => setShowUpgradeModal(false)}
+              className="w-full mt-3 text-xs text-slate-500 hover:text-slate-400 transition"
+            >
+              Maybe later
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
