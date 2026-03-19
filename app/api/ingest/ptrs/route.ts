@@ -180,6 +180,8 @@ const CANDIDATE_LOOKBACK_DAYS = 30
 const PTR_LOOKBACK_DAYS = 30
 const RETENTION_DAYS = 30
 const AINVEST_CONGRESS_URL = "https://openapi.ainvest.com/open/ownership/congress"
+const SENATE_STOCK_WATCHER_URL =
+  "https://raw.githubusercontent.com/timothycarambat/senate-stock-watcher-data/master/aggregate/all_transactions.json"
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -701,6 +703,150 @@ function normalizeAInvestTrade(
   }
 }
 
+// ── Senate Stock Watcher Source ──
+
+type SenateStockWatcherTrade = {
+  transaction_date?: string
+  owner?: string
+  ticker?: string
+  asset_description?: string
+  asset_type?: string
+  type?: string
+  amount?: string
+  comment?: string
+  senator?: string
+  ptr_link?: string
+  disclosure_date?: string
+}
+
+function normalizeSenateStockWatcherTrade(
+  trade: SenateStockWatcherTrade,
+  fetchedAt: string,
+  lookbackDays: number
+): RawPtrTradeRow | null {
+  const filerName = (trade.senator || "").trim()
+  if (!filerName) return null
+
+  const ticker = normalizeTicker(trade.ticker)
+  if (!ticker || ticker === "--") return null
+
+  // Parse date — format is MM/DD/YYYY
+  let transactionDate: string | null = null
+  if (trade.transaction_date) {
+    const parts = trade.transaction_date.split("/")
+    if (parts.length === 3) {
+      const [mm, dd, yyyy] = parts
+      transactionDate = normalizeDate(`${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`)
+    } else {
+      transactionDate = normalizeDate(trade.transaction_date)
+    }
+  }
+
+  let disclosureDate: string | null = null
+  if (trade.disclosure_date) {
+    const parts = trade.disclosure_date.split("/")
+    if (parts.length === 3) {
+      const [mm, dd, yyyy] = parts
+      disclosureDate = normalizeDate(`${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`)
+    } else {
+      disclosureDate = normalizeDate(trade.disclosure_date)
+    }
+  }
+
+  const effectiveDate = transactionDate || disclosureDate
+  if (!effectiveDate) return null
+
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - lookbackDays)
+  const effectiveDateObj = new Date(`${effectiveDate}T00:00:00.000Z`)
+  if (Number.isNaN(effectiveDateObj.getTime())) return null
+  if (effectiveDateObj < cutoff) return null
+
+  const rawAction = trade.type || null
+  const normalizedAction = normalizeAction(rawAction)
+  const transactionType = normalizeTransactionType(rawAction)
+
+  const amountRange = (trade.amount || "").trim() || null
+  const amounts = parseAmountRange(amountRange)
+
+  const ptrUrl = trade.ptr_link || null
+
+  const tradeKey = buildTradeKey({
+    filer: filerName,
+    ticker,
+    transaction_date: transactionDate,
+    action: normalizedAction,
+    amount_range: amountRange,
+    report_date: disclosureDate,
+    ptr_url: ptrUrl,
+  })
+
+  return {
+    disclosure_source: "SENATE_STOCK_WATCHER",
+    filer_name: filerName,
+    chamber: "Senate",
+    district_or_state: null,
+    report_date: disclosureDate,
+    transaction_date: transactionDate,
+    ticker,
+    asset_name: trade.asset_description || ticker,
+    asset_type: trade.asset_type || "Stock",
+    action: normalizedAction,
+    amount_range: amountRange,
+    amount_low: amounts.amount_low,
+    amount_high: amounts.amount_high,
+    owner: trade.owner || null,
+    ptr_url: ptrUrl,
+    raw_document_url: ptrUrl,
+    trade_key: tradeKey,
+    fetched_at: fetchedAt,
+    updated_at: fetchedAt,
+    politician_name: filerName,
+    transaction_type: transactionType,
+    trade_date: transactionDate,
+    disclosure_date: disclosureDate,
+    source_url: ptrUrl,
+    ptr_id: tradeKey,
+  }
+}
+
+async function fetchSenateStockWatcherTrades(
+  targetTickers: Set<string>,
+  fetchedAt: string,
+  lookbackDays: number
+): Promise<{ rows: RawPtrTradeRow[]; error: string | null; totalUpstream: number }> {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30_000)
+
+    const res = await fetch(SENATE_STOCK_WATCHER_URL, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+    clearTimeout(timeout)
+
+    if (!res.ok) {
+      return { rows: [], error: `Senate Stock Watcher HTTP ${res.status}`, totalUpstream: 0 }
+    }
+
+    const allTrades = (await res.json()) as SenateStockWatcherTrade[]
+    const totalUpstream = allTrades.length
+
+    const filtered = allTrades.filter((t) => {
+      const ticker = normalizeTicker(t.ticker)
+      return ticker && targetTickers.has(ticker)
+    })
+
+    const normalized = filtered
+      .map((t) => normalizeSenateStockWatcherTrade(t, fetchedAt, lookbackDays))
+      .filter((r): r is RawPtrTradeRow => r !== null)
+
+    return { rows: normalized, error: null, totalUpstream }
+  } catch (err: any) {
+    return { rows: [], error: err?.message || "Senate Stock Watcher fetch failed", totalUpstream: 0 }
+  }
+}
+
 export async function GET(request: Request) {
   const pipelineToken = process.env.PIPELINE_TOKEN
   const suppliedToken = request.headers.get("x-pipeline-token")
@@ -887,8 +1033,21 @@ export async function GET(request: Request) {
     diagnostics.successfulTickerFetches = fetchResults.filter((r) => r.ok).length
     diagnostics.failedTickerFetches = fetchResults.filter((r) => !r.ok).length
 
-    const allRows = fetchResults.flatMap((r) => r.rows)
+    // Also fetch from Senate Stock Watcher (single bulk fetch, filtered to target tickers)
+    const targetTickerSet = new Set(sourceRows.map((r) => normalizeTicker(r.ticker)).filter(Boolean) as string[])
+    const senateResult = await fetchSenateStockWatcherTrades(targetTickerSet, fetchedAt, lookbackDays)
+
+    const allRows = [
+      ...fetchResults.flatMap((r) => r.rows),
+      ...senateResult.rows,
+    ]
     diagnostics.scannedRows = allRows.length
+    ;(diagnostics as any).senateStockWatcher = {
+      ok: !senateResult.error,
+      totalUpstream: senateResult.totalUpstream,
+      matchedRows: senateResult.rows.length,
+      error: senateResult.error,
+    }
 
     const dedupe = new Map<string, RawPtrTradeRow>()
     for (const row of allRows) {
@@ -951,8 +1110,8 @@ export async function GET(request: Request) {
       })),
       message:
         dedupedRows.length === 0
-          ? "PTR route ran successfully but no normalized trades were returned from AInvest."
-          : "Raw PTR trades ingested successfully.",
+          ? "PTR route ran successfully but no normalized trades were returned from AInvest or Senate Stock Watcher."
+          : `Raw PTR trades ingested successfully (AInvest + Senate Stock Watcher).`,
     })
   } catch (error: any) {
     return Response.json(
