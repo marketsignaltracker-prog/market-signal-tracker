@@ -188,7 +188,7 @@ const MIN_MARKET_CAP = 5_000_000_000
 const LTCS_INCLUDED_THRESHOLD = 50
 const DEFENSIVE_SECTORS = ["Healthcare", "Consumer Staples", "Utilities", "Consumer Defensive", "Health Care"]
 
-const TICKER_CONCURRENCY = 2
+const TICKER_CONCURRENCY = 1  // Finnhub: 60 calls/min, 3 calls/ticker = 20 tickers/min max
 const DB_CHUNK_SIZE = 250
 
 const YAHOO_RETRY_ATTEMPTS = 2
@@ -471,11 +471,15 @@ async function getTickerData(ticker: string) {
   // Try Finnhub first (60 calls/min, no daily limit), fall back to Yahoo
   if (FINNHUB_API_KEY) {
     try {
+      // Finnhub rate limit: 60 calls/min. 3 calls per ticker = 20 tickers/min.
+      // Stagger calls slightly to avoid bursts.
       const [metricData, profileData, quoteData] = await Promise.all([
         finnhubFetch(`/stock/metric?symbol=${encodeURIComponent(ticker)}&metric=all`),
         finnhubFetch(`/stock/profile2?symbol=${encodeURIComponent(ticker)}`),
         finnhubFetch(`/quote?symbol=${encodeURIComponent(ticker)}`),
       ])
+      // Wait 3.5s between tickers to stay under 60 calls/min (3 calls × ~17 tickers/min)
+      await new Promise((r) => setTimeout(r, 3500))
 
       const m = metricData?.metric || {}
       const profile = profileData || {}
