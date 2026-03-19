@@ -581,7 +581,9 @@ async function getTickerData(ticker: string) {
         averageDailyVolume3Month: safeNumber(snap.day?.v) ?? null,
         oneDayChangePct: return1d,
         return5d,
-        return13w: null,
+        return10d,
+        return20d,
+        return13w: return20d,  // alias for downstream consumer
         return26w: null,
         return52w: null,
         monthToDate: return20d,
@@ -951,15 +953,13 @@ async function prepareTickerForScoring(
   const passesDollarVolume = avgDollarVolume20d >= MIN_AVG_DOLLAR_VOLUME_20D
   const passesMarketCap = marketCap >= MIN_MARKET_CAP
 
-  // Extract Finnhub price returns from quote object
+  // Extract price returns — prefer direct values from Massive, fall back to approximations
   const oneDayReturn = safeNumber((quote as any)?.oneDayChangePct)
   const return5d = safeNumber((quote as any)?.return5d)
-  const return13w = safeNumber((quote as any)?.return13w)
-  // Approximate 10D as midpoint of 5D and 13W, 20D as ~1/3 of 13W period
-  const return10d = return5d != null && return13w != null ? round2((return5d + return13w) / 2) : return5d
-  const return20d = return13w != null ? round2(return13w / 3) : null
-  // Relative strength: use month-to-date or 5D as proxy
-  const relativeStrength20d = safeNumber((quote as any)?.monthToDate) ?? return5d
+  const return10d = safeNumber((quote as any)?.return10d) ?? return5d
+  const return20d = safeNumber((quote as any)?.return20d) ?? safeNumber((quote as any)?.monthToDate)
+  // Relative strength: use 20D return as proxy
+  const relativeStrength20d = return20d ?? return5d
 
   return {
     kind: "metric",
