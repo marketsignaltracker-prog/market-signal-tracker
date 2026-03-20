@@ -249,7 +249,7 @@ export default function LandingPage() {
     <div className="min-h-screen overflow-x-hidden">
 
       {/* ── Nav ── */}
-      <nav className="fixed top-0 z-50 w-full border-b border-white/[0.06] bg-[#080d18]/80 backdrop-blur-xl">
+      <nav className="fixed top-0 z-50 w-full border-b border-white/[0.06] bg-[#080d18]/80 backdrop-blur-xl pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/15">
