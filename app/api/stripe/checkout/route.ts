@@ -62,8 +62,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ url: session.url });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? err.stack : "";
-    console.error("Stripe checkout error:", message, stack);
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Stripe checkout error:", message);
+    return NextResponse.json({
+      error: message,
+      debug: {
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL?.slice(0, 30) + "...",
+        appUrl: process.env.NEXT_PUBLIC_APP_URL,
+        hasStripeKey: !!process.env.STRIPE_SECRET_KEY,
+        hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      }
+    }, { status: 500 });
   }
 }
