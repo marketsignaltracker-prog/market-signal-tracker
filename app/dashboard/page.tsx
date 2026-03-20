@@ -1564,7 +1564,7 @@ function SwipeDeck({
       {/* Mobile: single swipeable card */}
       <div
         className="min-h-0 w-full max-w-md flex-1 overflow-hidden lg:hidden"
-        style={{ touchAction: "pan-y" }}
+        style={{ touchAction: "none" }}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
