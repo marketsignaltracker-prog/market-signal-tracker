@@ -152,12 +152,12 @@ export default function LandingPage() {
       <section className="relative pt-28 pb-28 sm:pb-20 px-5">
         {/* Background glow effects */}
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className="absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 rounded-full bg-cyan-500/[0.07] blur-[120px]" />
+          <div className="absolute left-1/2 top-0 h-[900px] w-[800px] -translate-x-1/2 rounded-full bg-cyan-500/[0.07] blur-[120px]" />
           <div className="absolute right-0 top-1/3 h-[400px] w-[400px] rounded-full bg-purple-500/[0.05] blur-[100px]" />
         </div>
 
         <div className="relative mx-auto max-w-6xl">
-          <div className="mx-auto max-w-2xl text-center mb-24 sm:mb-16">
+          <div className="mx-auto max-w-2xl text-center mb-16">
             {/* Badge */}
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-1.5">
               <span className="relative flex h-2 w-2">
@@ -199,7 +199,7 @@ export default function LandingPage() {
           </div>
 
           {/* Card carousel preview */}
-          <div className="flex items-center justify-center gap-0 sm:gap-2 mb-8 sm:mb-0">
+          <div className="flex items-center justify-center gap-0 sm:gap-2">
             {PREVIEW_CARDS.map((card, i) => (
               <PreviewCard key={card.ticker} card={card} index={i} isCenter={i === activeCard} />
             ))}
