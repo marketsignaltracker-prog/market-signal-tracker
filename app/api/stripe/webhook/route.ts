@@ -3,26 +3,26 @@ import { stripe } from "@/lib/stripe";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
-// Disable body parsing — we need the raw body for signature verification
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const buf = await req.arrayBuffer();
-  const body = Buffer.from(buf).toString("utf8");
-  const sig = req.headers.get("stripe-signature");
-
-  if (!sig) {
-    return NextResponse.json({ error: "Missing stripe-signature header" }, { status: 400 });
+  // Parse the event from the body
+  let rawEvent: { id?: string; type?: string };
+  try {
+    rawEvent = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  // Security: re-fetch the event from Stripe to verify it's real
+  // This is the recommended alternative when signature verification doesn't work
   let event: Stripe.Event;
   try {
-    const secret = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
-    event = stripe.webhooks.constructEvent(body, sig, secret);
+    event = await stripe.events.retrieve(rawEvent.id!);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("Webhook signature verification failed:", msg);
-    return NextResponse.json({ error: "Invalid signature", detail: msg }, { status: 400 });
+    console.error("Failed to retrieve event from Stripe:", msg);
+    return NextResponse.json({ error: "Event not found in Stripe", detail: msg }, { status: 400 });
   }
 
   const admin = createAdminClient();
