@@ -1133,6 +1133,13 @@ export default function Home() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ plan: billingInterval === "yearly" ? "yearly" : "monthly" }),
                   })
+                  if (!res.ok) {
+                    const text = await res.text()
+                    console.error("Checkout HTTP error:", res.status, text)
+                    alert(`Error ${res.status}: ${text.slice(0, 200)}`)
+                    setCheckoutLoading(false)
+                    return
+                  }
                   const data = await res.json()
                   if (data.url) {
                     window.location.href = data.url
@@ -1143,7 +1150,7 @@ export default function Home() {
                   }
                 } catch (err) {
                   console.error("Checkout fetch error:", err)
-                  alert("Network error — please try again.")
+                  alert(`Network error: ${err instanceof Error ? err.message : String(err)}`)
                   setCheckoutLoading(false)
                 }
               }}
