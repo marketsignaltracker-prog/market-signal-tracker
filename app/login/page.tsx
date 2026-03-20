@@ -154,8 +154,8 @@ export default function LoginPage() {
 
         {/* Back */}
         <p className="text-center mt-4">
-          <a href="/dashboard" className="text-xs text-slate-500 hover:text-slate-400 transition">
-            ← Back to app
+          <a href="/" className="text-xs text-slate-500 hover:text-slate-400 transition">
+            ← Back to home
           </a>
         </p>
 
