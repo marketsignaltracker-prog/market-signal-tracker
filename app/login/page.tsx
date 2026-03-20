@@ -20,7 +20,7 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!captchaToken) {
-      setError("Please complete the captcha verification.");
+      setError("Verifying you're human — please try again in a moment.");
       return;
     }
     setLoading(true);
@@ -99,24 +99,22 @@ export default function LoginPage() {
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition"
             />
 
-            {/* Turnstile CAPTCHA */}
-            <div className="flex justify-center">
-              <Turnstile
-                ref={captchaRef}
-                siteKey="0x4AAAAAACtyjOAQwhbRFOFA"
-                onSuccess={(token) => setCaptchaToken(token)}
-                onExpire={() => setCaptchaToken(null)}
-                onError={() => setCaptchaToken(null)}
-                options={{
-                  theme: "dark",
-                  size: "compact",
-                }}
-              />
-            </div>
+            {/* Turnstile CAPTCHA (invisible) */}
+            <Turnstile
+              ref={captchaRef}
+              siteKey="0x4AAAAAACtyjOAQwhbRFOFA"
+              onSuccess={(token) => setCaptchaToken(token)}
+              onExpire={() => setCaptchaToken(null)}
+              onError={() => setCaptchaToken(null)}
+              options={{
+                theme: "dark",
+                size: "invisible",
+              }}
+            />
 
             <button
               type="submit"
-              disabled={loading || !captchaToken}
+              disabled={loading}
               className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-semibold py-2.5 px-4 rounded-xl transition text-sm disabled:opacity-50"
             >
               {loading ? "..." : mode === "login" ? "Sign In" : "Create Account"}
