@@ -47,8 +47,8 @@ function PreviewCard({ card, index, isCenter }: { card: typeof PREVIEW_CARDS[0];
     <div
       className={`relative w-[280px] shrink-0 rounded-2xl border bg-[#0d1526] p-5 transition-all duration-500 ${
         isCenter
-          ? "z-20 scale-100 border-white/10 opacity-100 shadow-2xl shadow-cyan-500/10"
-          : "z-10 scale-90 border-white/[0.05] opacity-40 blur-[1px]"
+          ? "z-20 scale-100 border-white/10 opacity-100"
+          : "z-10 scale-90 border-white/[0.05] opacity-40"
       }`}
       style={{ transform: isCenter ? undefined : `translateX(${index === 0 ? "20px" : "-20px"})` }}
     >
