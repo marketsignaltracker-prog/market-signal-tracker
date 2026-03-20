@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { AuthProvider } from "@/lib/auth-context";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,17 +13,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Market Signal Tracker | Insider Buying & High-Signal Stocks",
+  title: "Zorva Labs | Where Ideas Ignite",
   description:
-    "Find high-signal stock opportunities using insider buying, SEC filings, earnings surprises, and momentum signals.",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Market Signal Tracker",
-  },
-  other: {
-    "mobile-web-app-capable": "yes",
+    "Zorva Labs builds apps, websites, and digital strategies that move your business forward. App development, web services, SEO & marketing.",
+  icons: {
+    icon: "/favicon.svg",
   },
 };
 
@@ -33,7 +26,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#080d18",
+  themeColor: "#0a0a1a",
 };
 
 export default function RootLayout({
@@ -46,7 +39,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AuthProvider>{children}</AuthProvider>
+        {children}
       </body>
     </html>
   );
