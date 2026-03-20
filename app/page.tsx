@@ -107,6 +107,7 @@ function Step({ number, title, description }: { number: number; title: string; d
 export default function LandingPage() {
   const router = useRouter()
   const [activeCard, setActiveCard] = useState(1)
+  const [yearly, setYearly] = useState(true)
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -179,7 +180,7 @@ export default function LandingPage() {
               Each stock runs through our proprietary scoring engine — so you see the best ideas first.
             </p>
 
-            <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <div className="flex flex-col items-center gap-3 mb-8 sm:mb-0 sm:flex-row sm:justify-center">
               <button
                 onClick={() => router.push("/login")}
                 className="w-full rounded-full bg-cyan-500 px-8 py-3 text-base font-bold text-black transition hover:bg-cyan-400 hover:shadow-lg hover:shadow-cyan-500/25 sm:w-auto"
@@ -369,11 +370,28 @@ export default function LandingPage() {
               </div>
               <h3 className="mb-1 text-lg font-bold text-white">Pro</h3>
               <p className="mb-4 text-sm text-slate-400">Full access to every pick</p>
+
+              {/* Monthly / Yearly toggle */}
+              <div className="mb-4 inline-flex rounded-full border border-white/10 bg-white/[0.04] p-0.5">
+                <button
+                  onClick={() => setYearly(false)}
+                  className={`rounded-full px-4 py-1 text-xs font-semibold transition ${!yearly ? "bg-cyan-500 text-black" : "text-slate-400 hover:text-white"}`}
+                >
+                  Monthly
+                </button>
+                <button
+                  onClick={() => setYearly(true)}
+                  className={`rounded-full px-4 py-1 text-xs font-semibold transition ${yearly ? "bg-cyan-500 text-black" : "text-slate-400 hover:text-white"}`}
+                >
+                  Yearly
+                </button>
+              </div>
+
               <p className="mb-1">
-                <span className="text-3xl font-black text-white">$99.99</span>
-                <span className="text-sm text-slate-500"> /year</span>
+                <span className="text-3xl font-black text-white">{yearly ? "$99.99" : "$9.99"}</span>
+                <span className="text-sm text-slate-500">{yearly ? " /year" : " /month"}</span>
               </p>
-              <p className="mb-6 text-xs text-emerald-400 font-medium">Save $19.89 vs monthly ($9.99/mo)</p>
+              <p className="mb-6 text-xs text-emerald-400 font-medium">{yearly ? "Save $19.89 vs monthly" : "$119.88/yr — switch to yearly & save"}</p>
               <ul className="mb-6 space-y-2.5">
                 {[
                   "All buy ideas unlocked",
