@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Signal Tracker",
+    title: "Market Signal Tracker",
   },
   other: {
     "mobile-web-app-capable": "yes",

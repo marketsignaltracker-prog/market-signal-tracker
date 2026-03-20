@@ -65,7 +65,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white">Signal Tracker</h1>
+          <h1 className="text-2xl font-bold text-white">Market Signal Tracker</h1>
           <p className="text-sm text-slate-400 mt-1">
             {mode === "login" ? "Welcome back" : "Create your account"}
           </p>

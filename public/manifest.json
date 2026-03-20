@@ -1,6 +1,6 @@
 {
   "name": "Market Signal Tracker",
-  "short_name": "Signals",
+  "short_name": "MST",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#080d18",
