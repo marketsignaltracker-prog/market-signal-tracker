@@ -638,39 +638,58 @@ export default function ZorvaLabsPage() {
           </p>
 
           {/* Contact form */}
-          <div className="mx-auto max-w-md space-y-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              const form = e.currentTarget
+              const name = (form.elements.namedItem("name") as HTMLInputElement).value
+              const email = (form.elements.namedItem("email") as HTMLInputElement).value
+              const service = (form.elements.namedItem("service") as HTMLSelectElement).value
+              const message = (form.elements.namedItem("message") as HTMLTextAreaElement).value
+              const subject = encodeURIComponent(`New Inquiry: ${service || "General"} — from ${name}`)
+              const body = encodeURIComponent(`Name: ${name}\nEmail: ${email}\nService: ${service || "Not specified"}\n\nMessage:\n${message}`)
+              window.location.href = `mailto:zorvalabs@outlook.com?subject=${subject}&body=${body}`
+            }}
+            className="mx-auto max-w-md space-y-4"
+          >
             <input
+              name="name"
               type="text"
+              required
               placeholder="Your name"
               className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 py-3.5 text-sm text-white placeholder:text-slate-500 transition focus:border-purple-500/40 focus:outline-none focus:ring-1 focus:ring-purple-500/40"
             />
             <input
+              name="email"
               type="email"
+              required
               placeholder="Your email"
               className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 py-3.5 text-sm text-white placeholder:text-slate-500 transition focus:border-purple-500/40 focus:outline-none focus:ring-1 focus:ring-purple-500/40"
             />
-            <select className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 py-3.5 text-sm text-slate-500 transition focus:border-purple-500/40 focus:outline-none focus:ring-1 focus:ring-purple-500/40">
+            <select name="service" className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 py-3.5 text-sm text-slate-500 transition focus:border-purple-500/40 focus:outline-none focus:ring-1 focus:ring-purple-500/40">
               <option value="">What do you need?</option>
-              <option value="app">App Development</option>
-              <option value="website">Website Services</option>
-              <option value="seo">SEO Optimization</option>
-              <option value="marketing">Digital Marketing</option>
-              <option value="all">Full Package</option>
+              <option value="App Development">App Development</option>
+              <option value="Website Services">Website Services</option>
+              <option value="SEO Optimization">SEO Optimization</option>
+              <option value="Digital Marketing">Digital Marketing</option>
+              <option value="Full Package">Full Package</option>
             </select>
             <textarea
+              name="message"
               rows={4}
+              required
               placeholder="Tell us about your project..."
               className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 py-3.5 text-sm text-white placeholder:text-slate-500 transition focus:border-purple-500/40 focus:outline-none focus:ring-1 focus:ring-purple-500/40 resize-none"
             />
-            <button className="animate-gradient w-full rounded-xl bg-gradient-to-r from-purple-500 via-pink-500 to-amber-500 py-4 text-base font-bold text-white transition hover:shadow-2xl hover:shadow-purple-500/30">
+            <button type="submit" className="animate-gradient w-full rounded-xl bg-gradient-to-r from-purple-500 via-pink-500 to-amber-500 py-4 text-base font-bold text-white transition hover:shadow-2xl hover:shadow-purple-500/30">
               Send Message
             </button>
-          </div>
+          </form>
 
           <p className="mt-6 text-xs text-slate-600">
             Or email us directly at{" "}
-            <a href="mailto:hello@zorvalabs.com" className="text-purple-400 transition hover:text-purple-300">
-              hello@zorvalabs.com
+            <a href="mailto:zorvalabs@outlook.com" className="text-purple-400 transition hover:text-purple-300">
+              zorvalabs@outlook.com
             </a>
           </p>
         </div>
@@ -727,7 +746,7 @@ export default function ZorvaLabsPage() {
               <h4 className="mb-4 text-sm font-bold text-white">Connect</h4>
               <ul className="space-y-2.5">
                 <li>
-                  <a href="mailto:hello@zorvalabs.com" className="text-sm text-slate-500 transition hover:text-white">hello@zorvalabs.com</a>
+                  <a href="mailto:zorvalabs@outlook.com" className="text-sm text-slate-500 transition hover:text-white">zorvalabs@outlook.com</a>
                 </li>
                 <li>
                   <a href="https://twitter.com/zorvalabs" target="_blank" rel="noopener noreferrer" className="text-sm text-slate-500 transition hover:text-white">Twitter / X</a>
