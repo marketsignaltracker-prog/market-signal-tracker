@@ -24,12 +24,12 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
       });
       if (error) {
         setError(error.message);
       } else {
-        setMessage("Check your email for a confirmation link.");
+        router.push("/dashboard");
+        router.refresh();
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({
