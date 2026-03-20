@@ -645,7 +645,7 @@ export default function LandingPage() {
             </span>
           </div>
           <div className="flex items-center gap-6">
-            <a href="mailto:support@zorvalabs.com" className="text-xs text-slate-600 transition hover:text-slate-400">
+            <a href="mailto:zorvalabs@outlook.com" className="text-xs text-slate-600 transition hover:text-slate-400">
               Support
             </a>
             <span className="text-xs text-slate-700">Not financial advice.</span>
