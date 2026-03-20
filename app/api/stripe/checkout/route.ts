@@ -5,6 +5,17 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
+    // Debug: check env vars are present
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+      return NextResponse.json({ error: "Missing NEXT_PUBLIC_SUPABASE_URL env var" }, { status: 500 });
+    }
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY env var" }, { status: 500 });
+    }
+    if (!process.env.NEXT_PUBLIC_APP_URL) {
+      return NextResponse.json({ error: "Missing NEXT_PUBLIC_APP_URL env var" }, { status: 500 });
+    }
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
