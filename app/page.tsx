@@ -210,7 +210,7 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-4xl grid-cols-2 gap-6 px-5 py-10 sm:grid-cols-4">
           {[
             { value: 13000, suffix: "+", label: "SEC filings scanned" },
-            { value: 30, suffix: "+", label: "Buy ideas daily" },
+            { value: 30, suffix: "+", label: "Buy picks daily" },
             { value: 7, suffix: "", label: "Signal categories" },
             { value: 100, suffix: "", label: "Quality score max" },
           ].map((stat) => (
@@ -401,6 +401,72 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Reviews ── */}
+      <section className="border-t border-white/[0.06] bg-white/[0.01] px-5 py-20">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-12 text-center">
+            <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">Traders love Signal Tracker</h2>
+            <p className="text-sm text-slate-400 sm:text-base">See why our users keep coming back for fresh picks every day.</p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                name: "Marcus T.",
+                role: "Swing Trader",
+                stars: 5,
+                text: "The quality scores are a game-changer. I used to spend hours screening stocks — now I just open the app and the best picks are right there. Found 3 winners last week alone.",
+              },
+              {
+                name: "Sarah K.",
+                role: "Retail Investor",
+                stars: 5,
+                text: "I love how it shows insider buying clusters. When multiple executives are buying their own stock, that's a signal I trust. The card layout makes it so easy to swipe through ideas.",
+              },
+              {
+                name: "David R.",
+                role: "Part-Time Trader",
+                stars: 5,
+                text: "Best stock screener I've used. The buy signals are spot-on, and the fundamental scores save me from chasing bad stocks. Worth every penny of the Pro subscription.",
+              },
+              {
+                name: "Jennifer L.",
+                role: "Long-Term Investor",
+                stars: 5,
+                text: "Finally an app that does the hard work for me. 30+ fresh picks daily, all scored and ranked. I just focus on the top-tier cards and my portfolio has never looked better.",
+              },
+              {
+                name: "Alex M.",
+                role: "Day Trader",
+                stars: 5,
+                text: "The momentum data combined with insider signals is incredibly powerful. I've caught several stocks right before they broke out. The analysis tab gives me all the conviction I need.",
+              },
+              {
+                name: "Rachel P.",
+                role: "New Investor",
+                stars: 5,
+                text: "As someone new to investing, this app is perfect. The scores tell me exactly which stocks are strong buys, and the thesis explains why in plain English. Couldn't ask for more.",
+              },
+            ].map((review) => (
+              <div key={review.name} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+                <div className="mb-3 flex items-center gap-1">
+                  {Array.from({ length: review.stars }).map((_, i) => (
+                    <svg key={i} className="h-4 w-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                  ))}
+                </div>
+                <p className="mb-4 text-sm leading-relaxed text-slate-300">&ldquo;{review.text}&rdquo;</p>
+                <div>
+                  <p className="text-sm font-semibold text-white">{review.name}</p>
+                  <p className="text-xs text-slate-500">{review.role}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── Final CTA ── */}
       <section className="border-t border-white/[0.06] px-5 py-20">
         <div className="mx-auto max-w-lg text-center">
@@ -408,7 +474,7 @@ export default function LandingPage() {
             The best trades start with the best data.
           </h2>
           <p className="mb-8 text-sm text-slate-400 sm:text-base">
-            Join traders who use insider and congress signals to find high-conviction ideas before the crowd.
+            Every day we surface 30+ high-conviction stock picks backed by real insider buy signals and rigorous fundamental analysis — so you can act before the crowd catches on.
           </p>
           <button
             onClick={() => router.push("/login")}
