@@ -179,7 +179,7 @@ export default function LandingPage() {
               Each stock runs through our proprietary scoring engine — so you see the best ideas first.
             </p>
 
-            <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+            <div className="flex flex-col items-center gap-3 pb-6 sm:pb-0 sm:flex-row sm:justify-center">
               <button
                 onClick={() => router.push("/login")}
                 className="w-full rounded-full bg-cyan-500 px-8 py-3 text-base font-bold text-black transition hover:bg-cyan-400 hover:shadow-lg hover:shadow-cyan-500/25 sm:w-auto"
