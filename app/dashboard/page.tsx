@@ -438,6 +438,47 @@ export default function Home() {
 
   const FREE_CARD_LIMIT = 3
 
+  // PWA install banner
+  const [showInstallBanner, setShowInstallBanner] = useState(false)
+  const [deferredPrompt, setDeferredPrompt] = useState<Event | null>(null)
+
+  useEffect(() => {
+    // Don't show if already in standalone (PWA) mode
+    if (window.matchMedia("(display-mode: standalone)").matches) return
+    // Don't show if user dismissed before
+    if (localStorage.getItem("pwa-dismissed")) return
+
+    // Android/Chrome: capture the beforeinstallprompt event
+    const handler = (e: Event) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+      setShowInstallBanner(true)
+    }
+    window.addEventListener("beforeinstallprompt", handler)
+
+    // iOS Safari: show manual instructions (no beforeinstallprompt on iOS)
+    const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)
+    if (isIos && isSafari) {
+      setShowInstallBanner(true)
+    }
+
+    return () => window.removeEventListener("beforeinstallprompt", handler)
+  }, [])
+
+  const dismissInstallBanner = () => {
+    setShowInstallBanner(false)
+    localStorage.setItem("pwa-dismissed", "1")
+  }
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt && "prompt" in deferredPrompt) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (deferredPrompt as any).prompt()
+      setShowInstallBanner(false)
+    }
+  }
+
   // After Stripe checkout redirect, poll for subscription activation
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -915,6 +956,46 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {/* PWA Install Banner */}
+      {showInstallBanner && (
+        <div className="shrink-0 border-b border-[rgba(255,255,255,0.07)] bg-gradient-to-r from-cyan-500/10 via-cyan-500/5 to-transparent px-4 py-2.5">
+          <div className="mx-auto flex max-w-lg items-center justify-between gap-3 lg:max-w-7xl">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-500/15">
+                <svg className="h-4 w-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-white">Install the App</p>
+                <p className="truncate text-[10px] text-[#8a8a8a]">
+                  {deferredPrompt ? "Tap Install for the full app experience" : "Tap Share → Add to Home Screen"}
+                </p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {deferredPrompt ? (
+                <button
+                  onClick={handleInstallClick}
+                  className="rounded-full bg-cyan-500 px-3 py-1 text-[11px] font-bold text-black transition hover:bg-cyan-400"
+                >
+                  Install
+                </button>
+              ) : null}
+              <button
+                onClick={dismissInstallBanner}
+                className="flex h-6 w-6 items-center justify-center rounded-full text-[#8a8a8a] transition hover:bg-white/10 hover:text-white"
+                aria-label="Dismiss"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Collapsible filters */}
       <div
