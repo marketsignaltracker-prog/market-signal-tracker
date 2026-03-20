@@ -1133,9 +1133,17 @@ export default function Home() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ plan: billingInterval === "yearly" ? "yearly" : "monthly" }),
                   })
-                  const { url } = await res.json()
-                  if (url) window.location.href = url
-                } catch {
+                  const data = await res.json()
+                  if (data.url) {
+                    window.location.href = data.url
+                  } else {
+                    console.error("Checkout error:", data)
+                    alert(data.error || "Something went wrong — please try again.")
+                    setCheckoutLoading(false)
+                  }
+                } catch (err) {
+                  console.error("Checkout fetch error:", err)
+                  alert("Network error — please try again.")
                   setCheckoutLoading(false)
                 }
               }}
