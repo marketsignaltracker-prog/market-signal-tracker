@@ -440,11 +440,15 @@ export default function Home() {
 
   // PWA install banner
   const [showInstallBanner, setShowInstallBanner] = useState(false)
+  const [showInstallGuide, setShowInstallGuide] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<Event | null>(null)
+  const [isIosDevice, setIsIosDevice] = useState(false)
 
   useEffect(() => {
     // Don't show if already in standalone (PWA) mode
     if (window.matchMedia("(display-mode: standalone)").matches) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((navigator as any).standalone === true) return
     // Don't show if user dismissed before
     if (localStorage.getItem("pwa-dismissed")) return
 
@@ -456,10 +460,10 @@ export default function Home() {
     }
     window.addEventListener("beforeinstallprompt", handler)
 
-    // iOS Safari: show manual instructions (no beforeinstallprompt on iOS)
+    // iOS: show manual instructions (no beforeinstallprompt on iOS)
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
-    const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)
-    if (isIos && isSafari) {
+    if (isIos) {
+      setIsIosDevice(true)
       setShowInstallBanner(true)
     }
 
@@ -468,6 +472,7 @@ export default function Home() {
 
   const dismissInstallBanner = () => {
     setShowInstallBanner(false)
+    setShowInstallGuide(false)
     localStorage.setItem("pwa-dismissed", "1")
   }
 
@@ -476,6 +481,9 @@ export default function Home() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (deferredPrompt as any).prompt()
       setShowInstallBanner(false)
+    } else {
+      // iOS or no prompt available — show step-by-step guide
+      setShowInstallGuide(true)
     }
   }
 
@@ -959,7 +967,11 @@ export default function Home() {
 
       {/* PWA Install Banner */}
       {showInstallBanner && (
-        <div className="shrink-0 border-b border-[rgba(255,255,255,0.07)] bg-gradient-to-r from-cyan-500/10 via-cyan-500/5 to-transparent px-4 py-2.5">
+        <button
+          type="button"
+          onClick={handleInstallClick}
+          className="shrink-0 w-full border-b border-[rgba(255,255,255,0.07)] bg-gradient-to-r from-cyan-500/10 via-cyan-500/5 to-transparent px-4 py-2.5 text-left transition active:bg-cyan-500/15"
+        >
           <div className="mx-auto flex max-w-lg items-center justify-between gap-3 lg:max-w-7xl">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-500/15">
@@ -968,31 +980,104 @@ export default function Home() {
                 </svg>
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-white">Install the App</p>
+                <p className="text-xs font-semibold text-white">Add to Home Screen</p>
                 <p className="truncate text-[10px] text-[#8a8a8a]">
-                  {deferredPrompt ? "Tap Install for the full app experience" : "Tap Share → Add to Home Screen"}
+                  Get the full app experience — tap to learn how
                 </p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {deferredPrompt ? (
-                <button
-                  onClick={handleInstallClick}
-                  className="rounded-full bg-cyan-500 px-3 py-1 text-[11px] font-bold text-black transition hover:bg-cyan-400"
-                >
-                  Install
-                </button>
-              ) : null}
-              <button
-                onClick={dismissInstallBanner}
+              <span className="rounded-full bg-cyan-500 px-3 py-1 text-[11px] font-bold text-black">
+                Install
+              </span>
+              <span
+                role="button"
+                onClick={(e) => { e.stopPropagation(); dismissInstallBanner() }}
                 className="flex h-6 w-6 items-center justify-center rounded-full text-[#8a8a8a] transition hover:bg-white/10 hover:text-white"
                 aria-label="Dismiss"
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
+              </span>
+            </div>
+          </div>
+        </button>
+      )}
+
+      {/* PWA Install Guide Modal (iOS) */}
+      {showInstallGuide && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 backdrop-blur-sm" onClick={dismissInstallBanner}>
+          <div
+            className="w-full max-w-md rounded-t-2xl border border-[rgba(255,255,255,0.1)] border-b-0 p-6 pb-10"
+            style={{ background: "#141a2a" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">Install the App</h3>
+              <button
+                onClick={dismissInstallBanner}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
+
+            <div className="space-y-4">
+              {isIosDevice ? (
+                <>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-400">1</div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Tap the Share button</p>
+                      <p className="mt-0.5 text-xs text-[#8a8a8a]">The square with an arrow at the bottom of Safari</p>
+                      <div className="mt-1.5 flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
+                        <svg className="h-5 w-5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 8.25H7.5a2.25 2.25 0 0 0-2.25 2.25v9a2.25 2.25 0 0 0 2.25 2.25h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25H15m0-3-3-3m0 0-3 3m3-3V15" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-400">2</div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Scroll down and tap &quot;Add to Home Screen&quot;</p>
+                      <p className="mt-0.5 text-xs text-[#8a8a8a]">It may be below the first row of icons</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-400">3</div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Tap &quot;Add&quot;</p>
+                      <p className="mt-0.5 text-xs text-[#8a8a8a]">The app will appear on your home screen</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-400">1</div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Tap the menu button</p>
+                      <p className="mt-0.5 text-xs text-[#8a8a8a]">The three dots in the top-right corner of Chrome</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-400">2</div>
+                    <div>
+                      <p className="text-sm font-semibold text-white">Tap &quot;Add to Home Screen&quot;</p>
+                      <p className="mt-0.5 text-xs text-[#8a8a8a]">Or &quot;Install app&quot; if available</p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <p className="mt-5 text-center text-[11px] text-[#8a8a8a]">
+              Opens like a native app — no browser bar, faster loading
+            </p>
           </div>
         </div>
       )}
