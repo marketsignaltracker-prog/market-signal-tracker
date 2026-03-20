@@ -26,7 +26,14 @@ export async function middleware(request: NextRequest) {
   );
 
   // Refresh session — important for Server Components
-  await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Redirect logged-in users from landing page to dashboard
+  if (user && request.nextUrl.pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
 
   return supabaseResponse;
 }

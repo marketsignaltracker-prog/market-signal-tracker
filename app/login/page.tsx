@@ -39,7 +39,7 @@ export default function LoginPage() {
       if (error) {
         setError(error.message);
       } else {
-        router.push("/");
+        router.push("/dashboard");
         router.refresh();
       }
     }
@@ -154,7 +154,7 @@ export default function LoginPage() {
 
         {/* Back */}
         <p className="text-center mt-4">
-          <a href="/" className="text-xs text-slate-500 hover:text-slate-400 transition">
+          <a href="/dashboard" className="text-xs text-slate-500 hover:text-slate-400 transition">
             ← Back to app
           </a>
         </p>
