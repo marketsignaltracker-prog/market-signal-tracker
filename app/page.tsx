@@ -620,12 +620,6 @@ export default function ZorvaLabsPage() {
             ))}
           </div>
 
-          {/* Tech stack used */}
-          <div className="mt-6 text-center">
-            <p className="text-xs text-slate-600">
-              Built with <span className="text-slate-400">Next.js</span> · <span className="text-slate-400">React</span> · <span className="text-slate-400">Supabase</span> · <span className="text-slate-400">Stripe</span> · <span className="text-slate-400">Vercel</span> · <span className="text-slate-400">Tailwind CSS</span>
-            </p>
-          </div>
         </div>
       </section>
 
