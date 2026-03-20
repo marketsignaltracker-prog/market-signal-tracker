@@ -1132,7 +1132,7 @@ export default function Home() {
               disabled={checkoutLoading}
               className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-bold py-3 rounded-xl transition text-sm disabled:opacity-50"
             >
-              {checkoutLoading ? "Loading..." : user ? "Subscribe Now" : "Sign In to Subscribe"}
+              {checkoutLoading ? "Loading..." : "Subscribe"}
             </button>
 
             <button
