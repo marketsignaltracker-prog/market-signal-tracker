@@ -191,7 +191,7 @@ export default function LandingPage() {
                 onClick={() => {
                   document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" })
                 }}
-                className="w-full rounded-full border border-white/10 px-8 py-3 text-base font-medium text-slate-300 transition hover:border-white/20 hover:text-white sm:w-auto"
+                className="mb-10 sm:mb-0 w-full rounded-full border border-white/10 px-8 py-3 text-base font-medium text-slate-300 transition hover:border-white/20 hover:text-white sm:w-auto"
               >
                 How it works
               </button>
