@@ -157,7 +157,7 @@ export default function LandingPage() {
         </div>
 
         <div className="relative mx-auto max-w-6xl">
-          <div className="mx-auto max-w-2xl text-center mb-16">
+          <div className="mx-auto max-w-2xl text-center mb-24 sm:mb-16">
             {/* Badge */}
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/[0.08] px-4 py-1.5">
               <span className="relative flex h-2 w-2">
@@ -199,7 +199,7 @@ export default function LandingPage() {
           </div>
 
           {/* Card carousel preview */}
-          <div className="flex items-center justify-center gap-0 sm:gap-2">
+          <div className="flex items-center justify-center gap-0 sm:gap-2 mb-8 sm:mb-0">
             {PREVIEW_CARDS.map((card, i) => (
               <PreviewCard key={card.ticker} card={card} index={i} isCenter={i === activeCard} />
             ))}
