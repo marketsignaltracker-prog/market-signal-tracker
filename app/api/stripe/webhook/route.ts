@@ -13,8 +13,14 @@ export async function POST(req: NextRequest) {
     event = stripe.webhooks.constructEvent(body, sig, secret);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("Webhook signature verification failed:", msg);
-    return NextResponse.json({ error: "Invalid signature", detail: msg }, { status: 400 });
+    console.error("Webhook sig failed. Secret length:", (process.env.STRIPE_WEBHOOK_SECRET || "").length, "Trimmed length:", (process.env.STRIPE_WEBHOOK_SECRET || "").trim().length, "Body length:", body.length, "Sig header:", sig?.slice(0, 30));
+    return NextResponse.json({
+      error: "Invalid signature",
+      detail: msg,
+      secretLen: (process.env.STRIPE_WEBHOOK_SECRET || "").length,
+      secretStart: (process.env.STRIPE_WEBHOOK_SECRET || "").slice(0, 10),
+      bodyLen: body.length,
+    }, { status: 400 });
   }
 
   const admin = createAdminClient();
