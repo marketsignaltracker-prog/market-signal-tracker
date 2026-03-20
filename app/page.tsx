@@ -5,9 +5,57 @@ import { useEffect, useState } from "react"
 
 /* ---------- Fake card data for the hero preview ---------- */
 const PREVIEW_CARDS = [
-  { ticker: "PLTR", name: "Palantir Technologies", score: 94, sector: "Technology", price: 87.42, change: "+12.3%", insiders: 3, congress: true },
-  { ticker: "UTHR", name: "United Therapeutics", score: 93, sector: "Healthcare", price: 342.18, change: "+9.1%", insiders: 5, congress: false },
-  { ticker: "AXON", name: "Axon Enterprise", score: 89, sector: "Technology", price: 614.30, change: "+7.8%", insiders: 2, congress: true },
+  {
+    ticker: "PLTR", name: "Palantir Technologies", score: 94, sector: "Technology", price: "$87.42",
+    returns: [
+      { label: "1D", value: 2.1 },
+      { label: "5D", value: 5.4 },
+      { label: "10D", value: 8.7 },
+      { label: "20D", value: 12.3 },
+    ],
+    tiles: [
+      { label: "Profit Growth", value: "Strong", score: 82, color: "#22d3ee", iconPath: "M2 9L4.5 4L7 6.5L10 2M10 2H7.5M10 2V4.5" },
+      { label: "Cash Flow", value: "Positive", score: 78, color: "#34d399", iconPath: "M6 1V11M3 3.5H7.5C8.88 3.5 10 4.34 10 5.25S8.88 7 7.5 7H3M3 7H8C9.38 7 10.5 7.84 10.5 8.75S9.38 10.5 8 10.5H3" },
+      { label: "Debt Level", value: "Low Debt", score: 88, color: "#a78bfa", iconPath: "M1.5 10V4L6 1.5L10.5 4V10M4 10V7H8V10" },
+      { label: "Competition", value: "Hard to Beat", score: 91, color: "#f59e0b", iconPath: "M1 8L3 6L5 8L7 4L9 7L11 5M1 10H11" },
+      { label: "Fair Price", value: "Attractive", score: 72, color: "#fb923c", iconPath: "M2 2V10H10M4 8V6M6.5 8V4M9 8V5" },
+      { label: "Momentum", value: "Near Highs", score: 85, color: "#ec4899", iconPath: "M6 1L8.5 4H7V7.5H5V4H3.5L6 1M2 9.5H10" },
+    ],
+  },
+  {
+    ticker: "UTHR", name: "United Therapeutics", score: 93, sector: "Healthcare", price: "$342.18",
+    returns: [
+      { label: "1D", value: 1.3 },
+      { label: "5D", value: 3.8 },
+      { label: "10D", value: 6.2 },
+      { label: "20D", value: 9.1 },
+    ],
+    tiles: [
+      { label: "Profit Growth", value: "Strong", score: 90, color: "#22d3ee", iconPath: "M2 9L4.5 4L7 6.5L10 2M10 2H7.5M10 2V4.5" },
+      { label: "Cash Flow", value: "Positive", score: 85, color: "#34d399", iconPath: "M6 1V11M3 3.5H7.5C8.88 3.5 10 4.34 10 5.25S8.88 7 7.5 7H3M3 7H8C9.38 7 10.5 7.84 10.5 8.75S9.38 10.5 8 10.5H3" },
+      { label: "Debt Level", value: "Low Debt", score: 92, color: "#a78bfa", iconPath: "M1.5 10V4L6 1.5L10.5 4V10M4 10V7H8V10" },
+      { label: "Competition", value: "Some Edge", score: 65, color: "#f59e0b", iconPath: "M1 8L3 6L5 8L7 4L9 7L11 5M1 10H11" },
+      { label: "Fair Price", value: "Attractive", score: 80, color: "#fb923c", iconPath: "M2 2V10H10M4 8V6M6.5 8V4M9 8V5" },
+      { label: "Momentum", value: "Strong", score: 70, color: "#ec4899", iconPath: "M6 1L8.5 4H7V7.5H5V4H3.5L6 1M2 9.5H10" },
+    ],
+  },
+  {
+    ticker: "AXON", name: "Axon Enterprise", score: 89, sector: "Technology", price: "$614.30",
+    returns: [
+      { label: "1D", value: 0.8 },
+      { label: "5D", value: 2.4 },
+      { label: "10D", value: 4.9 },
+      { label: "20D", value: 7.8 },
+    ],
+    tiles: [
+      { label: "Profit Growth", value: "Growing", score: 68, color: "#22d3ee", iconPath: "M2 9L4.5 4L7 6.5L10 2M10 2H7.5M10 2V4.5" },
+      { label: "Cash Flow", value: "Positive", score: 74, color: "#34d399", iconPath: "M6 1V11M3 3.5H7.5C8.88 3.5 10 4.34 10 5.25S8.88 7 7.5 7H3M3 7H8C9.38 7 10.5 7.84 10.5 8.75S9.38 10.5 8 10.5H3" },
+      { label: "Debt Level", value: "Low Debt", score: 85, color: "#a78bfa", iconPath: "M1.5 10V4L6 1.5L10.5 4V10M4 10V7H8V10" },
+      { label: "Competition", value: "Hard to Beat", score: 88, color: "#f59e0b", iconPath: "M1 8L3 6L5 8L7 4L9 7L11 5M1 10H11" },
+      { label: "Fair Price", value: "Fair", score: 48, color: "#fb923c", iconPath: "M2 2V10H10M4 8V6M6.5 8V4M9 8V5" },
+      { label: "Momentum", value: "Strong", score: 72, color: "#ec4899", iconPath: "M6 1L8.5 4H7V7.5H5V4H3.5L6 1M2 9.5H10" },
+    ],
+  },
 ]
 
 /* ---------- Animated counter ---------- */
@@ -40,48 +88,129 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode; titl
   )
 }
 
-/* ---------- Mini preview card ---------- */
+/* ---------- Score ring (matches dashboard) ---------- */
+function PreviewScoreRing({ score }: { score: number }) {
+  const color = score >= 90 ? "#30d158" : score >= 80 ? "#f0a500" : score >= 70 ? "#f0a500" : "#7a8ba0"
+  const radius = 22
+  const strokeWidth = 4
+  const circumference = 2 * Math.PI * radius
+  const dashOffset = circumference - (score / 100) * circumference
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: 56, height: 56 }}>
+      <svg width="56" height="56" viewBox="0 0 56 56" style={{ transform: "rotate(-90deg)" }}>
+        <circle cx="28" cy="28" r={radius} fill="none" stroke="#1e2d45" strokeWidth={strokeWidth} />
+        <circle cx="28" cy="28" r={radius} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={dashOffset} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-base font-black leading-none text-white">{score}</span>
+        <span className="text-[8px] leading-none text-[#7a8ba0] mt-0.5">/100</span>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- Preview card (faithful replica of real dashboard card) ---------- */
 function PreviewCard({ card, index, isCenter }: { card: typeof PREVIEW_CARDS[0]; index: number; isCenter: boolean }) {
-  const scoreColor = card.score >= 90 ? "#30d158" : card.score >= 75 ? "#22d3ee" : "#f0a500"
   return (
     <div
-      className={`relative w-[280px] shrink-0 rounded-2xl border bg-[#0d1526] p-5 transition-all duration-500 ${
+      className={`relative w-[300px] shrink-0 rounded-[1.75rem] border transition-all duration-500 overflow-hidden ${
         isCenter
-          ? "z-20 scale-100 border-white/10 opacity-100"
-          : "z-10 scale-90 border-white/[0.05] opacity-40"
+          ? "z-20 scale-100 border-white/[0.08] opacity-100"
+          : "z-10 scale-[0.88] border-white/[0.04] opacity-35"
       }`}
-      style={{ transform: isCenter ? undefined : `translateX(${index === 0 ? "20px" : "-20px"})` }}
+      style={{
+        background: "#0f1729",
+        transform: isCenter ? undefined : `translateX(${index === 0 ? "20px" : "-20px"})`,
+      }}
     >
-      {/* Score badge */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-baseline gap-1">
-          <span className="text-3xl font-black" style={{ color: scoreColor }}>{card.score}</span>
-          <span className="text-sm text-slate-500">/100</span>
+      {/* ── Header ── */}
+      <div className="px-4 pt-4 pb-2">
+        <div className="flex items-center gap-3">
+          <PreviewScoreRing score={card.score} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-2xl font-black tracking-tight text-white">{card.ticker}</h3>
+              <span className="text-sm font-bold text-white/70">{card.price}</span>
+            </div>
+            <p className="truncate text-xs text-white/40">{card.name} · {card.sector}</p>
+          </div>
+          <div className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-400">
+            Buy
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M3 9L9 3M9 3H4M9 3V8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
         </div>
-        {card.congress && (
-          <span className="rounded-full bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 text-[9px] font-bold text-purple-400">
-            CONGRESS
-          </span>
-        )}
       </div>
 
-      {/* Ticker */}
-      <h3 className="text-2xl font-black tracking-tight text-white">{card.ticker}</h3>
-      <p className="mb-4 text-xs text-slate-500">{card.name} · {card.sector}</p>
+      {/* ── Returns strip ── */}
+      <div className="px-4 pb-1">
+        <div className="grid grid-cols-4 gap-1.5">
+          {card.returns.map(({ label, value }) => {
+            const isPos = value >= 0
+            return (
+              <div
+                key={label}
+                className="flex flex-col items-center justify-center rounded-lg border py-1.5"
+                style={{
+                  borderColor: isPos ? "rgba(48,209,88,0.22)" : "rgba(255,69,58,0.22)",
+                  background: isPos ? "rgba(48,209,88,0.07)" : "rgba(255,69,58,0.07)",
+                }}
+              >
+                <span className="text-[8px] font-medium text-white/40">{label}</span>
+                <span className="mt-0.5 text-xs font-black" style={{ color: isPos ? "#4ade80" : "#f87171" }}>
+                  {isPos ? "+" : ""}{value.toFixed(1)}%
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
-      {/* Metrics grid */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg bg-white/[0.03] p-2 text-center">
-          <p className="text-[9px] text-slate-500">PRICE</p>
-          <p className="text-sm font-semibold text-white">${card.price}</p>
+      {/* ── Fundamental tiles ── */}
+      <div className="px-4 pt-1.5 pb-1">
+        <div className="grid grid-cols-2 gap-1.5">
+          {card.tiles.map((tile) => {
+            const active = tile.score > 0
+            return (
+              <div
+                key={tile.label}
+                className="relative overflow-hidden rounded-xl p-2"
+                style={{
+                  background: active ? `linear-gradient(160deg, ${tile.color}18 0%, ${tile.color}04 100%)` : "#111827",
+                  border: `1px solid ${active ? `${tile.color}40` : "rgba(255,255,255,0.05)"}`,
+                }}
+              >
+                {active && (
+                  <div className="absolute top-0 right-0 h-6 w-6 opacity-20" style={{
+                    background: `radial-gradient(circle at top right, ${tile.color}, transparent 70%)`,
+                  }} />
+                )}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" className="shrink-0">
+                      <path d={tile.iconPath} stroke={tile.color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <p className="text-[8px] font-bold uppercase tracking-[0.12em]" style={{ color: tile.color }}>{tile.label}</p>
+                  </div>
+                  <span className="text-[9px] font-black" style={{ color: tile.color }}>{tile.score}</span>
+                </div>
+                <p className="mt-0.5 text-sm font-black leading-tight text-[#f0f0f0]">{tile.value}</p>
+                <div className="mt-1 h-[4px] overflow-hidden rounded-full bg-[#1a2540]">
+                  <div className="h-full rounded-full" style={{
+                    width: `${Math.min((tile.score / 100) * 100, 100)}%`,
+                    background: `linear-gradient(90deg, ${tile.color}90, ${tile.color})`,
+                    boxShadow: `0 0 6px ${tile.color}40`,
+                  }} />
+                </div>
+              </div>
+            )
+          })}
         </div>
-        <div className="rounded-lg bg-white/[0.03] p-2 text-center">
-          <p className="text-[9px] text-slate-500">20D</p>
-          <p className="text-sm font-semibold text-emerald-400">{card.change}</p>
-        </div>
-        <div className="rounded-lg bg-white/[0.03] p-2 text-center">
-          <p className="text-[9px] text-slate-500">INSIDERS</p>
-          <p className="text-sm font-semibold text-amber-400">{card.insiders}</p>
+      </div>
+
+      {/* ── CTA ── */}
+      <div className="px-4 pt-2 pb-3">
+        <div className="w-full rounded-2xl bg-[#f0a500] px-4 py-2.5 text-center text-sm font-bold text-black">
+          View Analysis →
         </div>
       </div>
     </div>
