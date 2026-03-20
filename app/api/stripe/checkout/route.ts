@@ -5,17 +5,6 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    // Debug: check env vars are present
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-      return NextResponse.json({ error: "Missing NEXT_PUBLIC_SUPABASE_URL env var" }, { status: 500 });
-    }
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return NextResponse.json({ error: "Missing STRIPE_SECRET_KEY env var" }, { status: 500 });
-    }
-    if (!process.env.NEXT_PUBLIC_APP_URL) {
-      return NextResponse.json({ error: "Missing NEXT_PUBLIC_APP_URL env var" }, { status: 500 });
-    }
-
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -48,12 +37,14 @@ export async function POST(req: Request) {
         .upsert({ id: user.id, stripe_customer_id: customerId });
     }
 
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "").trim();
+
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       line_items: [{ price: plan.priceId, quantity: 1 }],
       mode: "subscription",
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?upgraded=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
+      success_url: `${appUrl}/dashboard?upgraded=true`,
+      cancel_url: `${appUrl}/dashboard`,
       subscription_data: {
         metadata: { supabase_user_id: user.id },
       },
@@ -63,14 +54,6 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("Stripe checkout error:", message);
-    return NextResponse.json({
-      error: message,
-      debug: {
-        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL?.slice(0, 30) + "...",
-        appUrl: process.env.NEXT_PUBLIC_APP_URL,
-        hasStripeKey: !!process.env.STRIPE_SECRET_KEY,
-        hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      }
-    }, { status: 500 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
