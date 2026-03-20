@@ -433,10 +433,31 @@ export default function Home() {
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly">("yearly")
 
-  const { user, isPro, loading: authLoading, signOut } = useAuth()
+  const { user, isPro, loading: authLoading, signOut, refreshProfile } = useAuth()
   const router = useRouter()
 
   const FREE_CARD_LIMIT = 3
+
+  // After Stripe checkout redirect, poll for subscription activation
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    if (!params.get("upgraded")) return
+
+    // Clean the URL
+    window.history.replaceState({}, "", "/dashboard")
+
+    // Poll profile until isPro or timeout
+    let attempts = 0
+    const interval = setInterval(async () => {
+      attempts++
+      await refreshProfile()
+      if (attempts >= 15) clearInterval(interval)
+    }, 2000)
+
+    return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     let isMounted = true

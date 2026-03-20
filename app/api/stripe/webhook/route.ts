@@ -31,13 +31,14 @@ export async function POST(req: NextRequest) {
         const userId = subscription.metadata.supabase_user_id;
 
         if (userId) {
-          await admin.from("profiles").update({
+          await admin.from("profiles").upsert({
+            id: userId,
             subscription_status: "active",
             subscription_id: subscription.id,
             stripe_customer_id: session.customer as string,
             price_id: subscription.items.data[0]?.price.id,
             updated_at: new Date().toISOString(),
-          }).eq("id", userId);
+          });
         }
       }
       break;
