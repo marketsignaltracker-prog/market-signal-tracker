@@ -4,40 +4,39 @@ import { stripe, PLANS } from "@/lib/stripe";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
-  const body = await req.json().catch(() => ({}));
-  const plan = body.plan === "yearly" ? PLANS.proYearly : PLANS.proMonthly;
-
-  // Get or create Stripe customer
-  const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("stripe_customer_id")
-    .eq("id", user.id)
-    .single();
-
-  let customerId = profile?.stripe_customer_id;
-
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: user.email,
-      metadata: { supabase_user_id: user.id },
-    });
-    customerId = customer.id;
-
-    await admin
-      .from("profiles")
-      .update({ stripe_customer_id: customerId })
-      .eq("id", user.id);
-  }
-
   try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const plan = body.plan === "yearly" ? PLANS.proYearly : PLANS.proMonthly;
+
+    // Get or create Stripe customer
+    const admin = createAdminClient();
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("id", user.id)
+      .single();
+
+    let customerId = profile?.stripe_customer_id;
+
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: { supabase_user_id: user.id },
+      });
+      customerId = customer.id;
+
+      await admin
+        .from("profiles")
+        .upsert({ id: user.id, stripe_customer_id: customerId });
+    }
+
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       line_items: [{ price: plan.priceId, quantity: 1 }],
@@ -51,8 +50,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ url: session.url });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("Stripe checkout error:", message);
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : "";
+    console.error("Stripe checkout error:", message, stack);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
