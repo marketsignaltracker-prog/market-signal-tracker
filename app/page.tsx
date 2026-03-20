@@ -127,18 +127,19 @@ export default function LandingPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
               </svg>
             </div>
-            <span className="text-sm font-bold text-white tracking-wide">MARKET SIGNAL TRACKER</span>
+            <span className="hidden sm:inline text-sm font-bold text-white tracking-wide">MARKET SIGNAL TRACKER</span>
+            <span className="sm:hidden text-sm font-bold text-white tracking-wide">MST</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => router.push("/login")}
-              className="text-sm text-slate-400 transition hover:text-white"
+              className="text-xs sm:text-sm text-slate-400 transition hover:text-white"
             >
               Sign In
             </button>
             <button
               onClick={() => router.push("/login")}
-              className="rounded-full bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-black transition hover:bg-cyan-400"
+              className="rounded-full bg-cyan-500 px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-semibold text-black transition hover:bg-cyan-400"
             >
               Get Started
             </button>
@@ -162,7 +163,7 @@ export default function LandingPage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-500" />
               </span>
-              <span className="text-xs font-medium text-cyan-400">Updated daily with fresh signals</span>
+              <span className="text-xs font-medium text-cyan-400">Updated daily with fresh stocks</span>
             </div>
 
             <h1 className="mb-5 text-4xl font-black leading-[1.1] tracking-tight text-white sm:text-5xl md:text-6xl">
@@ -175,7 +176,7 @@ export default function LandingPage() {
 
             <p className="mb-8 text-base leading-relaxed text-slate-400 sm:text-lg">
               We screen every SEC filing daily to find stocks where insiders and congress members are buying.
-              Each stock gets scored on fundamentals, momentum, and signal strength — so you see the best ideas first.
+              Each stock runs through our proprietary scoring engine — so you see the best ideas first.
             </p>
 
             <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
@@ -211,7 +212,7 @@ export default function LandingPage() {
           {[
             { value: 13000, suffix: "+", label: "SEC filings scanned" },
             { value: 30, suffix: "+", label: "Buy picks daily" },
-            { value: 7, suffix: "", label: "Signal categories" },
+            { value: 50, suffix: "+", label: "Data points per stock" },
             { value: 100, suffix: "", label: "Quality score max" },
           ].map((stat) => (
             <div key={stat.label} className="text-center">
@@ -228,8 +229,8 @@ export default function LandingPage() {
       <section className="px-5 py-20">
         <div className="mx-auto max-w-6xl">
           <div className="mx-auto mb-12 max-w-lg text-center">
-            <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">Every signal. One card.</h2>
-            <p className="text-sm text-slate-400 sm:text-base">Each stock card combines insider trades, congress buys, fundamentals, and momentum into a single actionable view.</p>
+            <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">Everything you need. One card.</h2>
+            <p className="text-sm text-slate-400 sm:text-base">Each stock card distills our proprietary analysis into a single actionable view — no digging required.</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -260,7 +261,7 @@ export default function LandingPage() {
                 </svg>
               }
               title="Quality Score (0-100)"
-              description="Every stock is scored on profitability, cash flow, debt, moat, valuation, and momentum. Higher score = stronger signal."
+              description="Our proprietary scoring engine distills dozens of data points into a single quality score. Higher score = stronger conviction."
             />
             <FeatureCard
               icon={
@@ -304,13 +305,13 @@ export default function LandingPage() {
           <div className="space-y-8">
             <Step
               number={1}
-              title="We scan SEC filings"
-              description="Every day, we pull the latest Form 4s (insider trades) and PTR disclosures (congress trades) directly from SEC EDGAR."
+              title="We scan thousands of filings"
+              description="Every day, our engine ingests thousands of SEC filings and market data points to identify stocks with unusual buying activity."
             />
             <Step
               number={2}
               title="Screen for quality"
-              description="Each stock with a buy signal is scored on 7 fundamental factors: profitability, cash flow, debt, moat, valuation, stability, and momentum."
+              description="Each stock runs through our proprietary scoring engine — a multi-factor model we've tuned to surface only the highest-conviction picks."
             />
             <Step
               number={3}
@@ -338,7 +339,7 @@ export default function LandingPage() {
             {/* Free tier */}
             <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6">
               <h3 className="mb-1 text-lg font-bold text-white">Free</h3>
-              <p className="mb-4 text-sm text-slate-400">Get a taste of the signals</p>
+              <p className="mb-4 text-sm text-slate-400">Get a taste of the picks</p>
               <p className="mb-6">
                 <span className="text-3xl font-black text-white">$0</span>
                 <span className="text-sm text-slate-500"> /forever</span>
@@ -367,7 +368,7 @@ export default function LandingPage() {
                 MOST POPULAR
               </div>
               <h3 className="mb-1 text-lg font-bold text-white">Pro</h3>
-              <p className="mb-4 text-sm text-slate-400">Full access to every signal</p>
+              <p className="mb-4 text-sm text-slate-400">Full access to every pick</p>
               <p className="mb-1">
                 <span className="text-3xl font-black text-white">$99.99</span>
                 <span className="text-sm text-slate-500"> /year</span>
@@ -427,7 +428,7 @@ export default function LandingPage() {
                 name: "David R.",
                 role: "Part-Time Trader",
                 stars: 5,
-                text: "Best stock screener I've used. The buy signals are spot-on, and the fundamental scores save me from chasing bad stocks. Worth every penny of the Pro subscription.",
+                text: "Best stock screener I've used. The buy picks are spot-on, and the quality scores save me from chasing bad stocks. Worth every penny of the Pro subscription.",
               },
               {
                 name: "Jennifer L.",
@@ -439,7 +440,7 @@ export default function LandingPage() {
                 name: "Alex M.",
                 role: "Day Trader",
                 stars: 5,
-                text: "The momentum data combined with insider signals is incredibly powerful. I've caught several stocks right before they broke out. The analysis tab gives me all the conviction I need.",
+                text: "The momentum data combined with the scoring engine is incredibly powerful. I've caught several stocks right before they broke out. The analysis tab gives me all the conviction I need.",
               },
               {
                 name: "Rachel P.",
@@ -474,7 +475,7 @@ export default function LandingPage() {
             The best trades start with the best data.
           </h2>
           <p className="mb-8 text-sm text-slate-400 sm:text-base">
-            Every day we surface 30+ high-conviction stock picks backed by real insider buy signals and rigorous fundamental analysis — so you can act before the crowd catches on.
+            Every day we surface 30+ high-conviction stock picks screened through our proprietary engine — so you can act before the crowd catches on.
           </p>
           <button
             onClick={() => router.push("/login")}
