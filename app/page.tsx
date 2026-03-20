@@ -503,24 +503,128 @@ export default function ZorvaLabsPage() {
         </div>
       </section>
 
-      {/* ═══ PORTFOLIO / WORK ═══ */}
+      {/* ═══ FEATURED PROJECT — MARKET SIGNAL TRACKER ═══ */}
       <section id="work" className="px-5 py-24">
         <div className="mx-auto max-w-6xl">
           <div className="mx-auto mb-16 max-w-lg text-center">
-            <span className="mb-3 inline-block text-xs font-bold uppercase tracking-[0.2em] text-pink-400">Our Work</span>
+            <span className="mb-3 inline-block text-xs font-bold uppercase tracking-[0.2em] text-pink-400">Our Favorite Build</span>
             <h2 className="mb-4 text-3xl font-black text-white sm:text-4xl">
-              Projects that <span className="gradient-text-cyan">stand out</span>
+              Built by us. <span className="gradient-text-cyan">Loved by traders.</span>
             </h2>
-            <p className="text-slate-400">A glimpse of the digital experiences we&apos;ve crafted for our clients.</p>
+            <p className="text-slate-400">Market Signal Tracker is our flagship product — a full-stack platform we designed, built, and continue to grow.</p>
           </div>
 
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            <PortfolioCard delay={0} title="FinTrack Pro" category="Mobile App" gradient="from-purple-600 via-purple-800 to-indigo-900" />
-            <PortfolioCard delay={0.1} title="Bloom & Co" category="E-Commerce Website" gradient="from-pink-600 via-rose-700 to-red-900" />
-            <PortfolioCard delay={0.2} title="NexusAI Dashboard" category="Web Application" gradient="from-cyan-600 via-blue-700 to-indigo-900" />
-            <PortfolioCard delay={0.3} title="GreenLeaf Organics" category="SEO & Marketing" gradient="from-emerald-600 via-green-700 to-teal-900" />
-            <PortfolioCard delay={0.4} title="CloudSync Platform" category="SaaS Website" gradient="from-amber-600 via-orange-700 to-red-900" />
-            <PortfolioCard delay={0.5} title="UrbanEats" category="Mobile App" gradient="from-violet-600 via-purple-700 to-fuchsia-900" />
+          {/* Hero showcase card */}
+          <a
+            href="https://www.marketsignaltracker.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group relative mb-10 block overflow-hidden rounded-3xl border border-white/[0.08] transition-all duration-500 hover:border-cyan-500/30 hover:shadow-2xl hover:shadow-cyan-500/10"
+          >
+            {/* Animated gradient background */}
+            <div className="relative aspect-[16/7] overflow-hidden bg-gradient-to-br from-[#080d18] via-[#0d1a2d] to-[#081122]">
+              {/* Glow effects */}
+              <div className="absolute left-1/4 top-0 h-80 w-80 rounded-full bg-cyan-500/[0.12] blur-[100px] transition-all duration-700 group-hover:bg-cyan-500/[0.2]" />
+              <div className="absolute bottom-0 right-1/4 h-64 w-64 rounded-full bg-purple-500/[0.08] blur-[80px] transition-all duration-700 group-hover:bg-purple-500/[0.15]" />
+              <div className="absolute right-10 top-10 h-48 w-48 rounded-full bg-emerald-500/[0.06] blur-[60px] transition-all duration-700 group-hover:bg-emerald-500/[0.12]" />
+
+              {/* Content overlay */}
+              <div className="relative flex h-full flex-col items-center justify-center p-8 text-center sm:p-12">
+                {/* MST Logo mark */}
+                <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-500/15 shadow-lg shadow-cyan-500/10 transition-transform duration-500 group-hover:scale-110">
+                  <svg className="h-9 w-9 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+                  </svg>
+                </div>
+
+                <h3 className="mb-2 text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
+                  Market Signal Tracker
+                </h3>
+                <p className="mb-6 max-w-xl text-base text-slate-400 sm:text-lg">
+                  Stop guessing. Follow the smart money.
+                </p>
+
+                {/* Feature pills */}
+                <div className="mb-8 flex flex-wrap justify-center gap-2">
+                  {[
+                    { label: "SEC Filing Scanner", color: "cyan" },
+                    { label: "Insider Buy Alerts", color: "emerald" },
+                    { label: "Congress Trades", color: "purple" },
+                    { label: "AI Quality Scores", color: "amber" },
+                    { label: "Daily Stock Picks", color: "pink" },
+                  ].map((pill) => (
+                    <span
+                      key={pill.label}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                        pill.color === "cyan" ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-300" :
+                        pill.color === "emerald" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" :
+                        pill.color === "purple" ? "border-purple-500/30 bg-purple-500/10 text-purple-300" :
+                        pill.color === "amber" ? "border-amber-500/30 bg-amber-500/10 text-amber-300" :
+                        "border-pink-500/30 bg-pink-500/10 text-pink-300"
+                      }`}
+                    >
+                      {pill.label}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Floating mock cards */}
+                <div className="flex items-center justify-center gap-3 sm:gap-5">
+                  {[
+                    { ticker: "PLTR", score: 94, change: "+12.3%", color: "#30d158" },
+                    { ticker: "AXON", score: 89, change: "+7.8%", color: "#22d3ee" },
+                    { ticker: "UTHR", score: 93, change: "+9.1%", color: "#30d158" },
+                  ].map((card, i) => (
+                    <div
+                      key={card.ticker}
+                      className={`animate-float rounded-xl border border-white/[0.08] bg-[#0d1526]/80 backdrop-blur-sm p-3 sm:p-4 shadow-xl transition-transform duration-500 group-hover:scale-105 ${
+                        i === 1 ? "z-10 scale-105" : "opacity-70"
+                      }`}
+                      style={{ animationDelay: `${i * -2}s` }}
+                    >
+                      <div className="flex items-baseline gap-1 mb-1">
+                        <span className="text-lg font-black sm:text-xl" style={{ color: card.color }}>{card.score}</span>
+                        <span className="text-[10px] text-slate-500">/100</span>
+                      </div>
+                      <p className="text-sm font-bold text-white sm:text-base">{card.ticker}</p>
+                      <p className="text-xs font-semibold text-emerald-400">{card.change}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Visit CTA */}
+                <div className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-cyan-400 transition group-hover:gap-3">
+                  Visit marketsignaltracker.com
+                  <svg className="h-4 w-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </a>
+
+          {/* Stats row */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {[
+              { label: "SEC filings scanned daily", value: "13,000+", gradient: "from-cyan-500 to-blue-600" },
+              { label: "Buy picks generated daily", value: "30+", gradient: "from-emerald-500 to-green-600" },
+              { label: "Data points per stock", value: "50+", gradient: "from-purple-500 to-violet-600" },
+              { label: "Proprietary quality score", value: "0–100", gradient: "from-amber-500 to-orange-600" },
+            ].map((stat) => (
+              <div key={stat.label} className="glass-card rounded-xl p-4 text-center transition hover:border-white/10">
+                <p className={`mb-1 text-xl font-black sm:text-2xl bg-gradient-to-r ${stat.gradient} bg-clip-text text-transparent`}>
+                  {stat.value}
+                </p>
+                <p className="text-xs text-slate-500">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Tech stack used */}
+          <div className="mt-6 text-center">
+            <p className="text-xs text-slate-600">
+              Built with <span className="text-slate-400">Next.js</span> · <span className="text-slate-400">React</span> · <span className="text-slate-400">Supabase</span> · <span className="text-slate-400">Stripe</span> · <span className="text-slate-400">Vercel</span> · <span className="text-slate-400">Tailwind CSS</span>
+            </p>
           </div>
         </div>
       </section>
