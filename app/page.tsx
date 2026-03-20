@@ -1382,7 +1382,7 @@ function SwipeDeck({
                 <p className="text-sm font-semibold text-white">Sign up to unlock all buy cards</p>
                 <p className="text-xs text-slate-400 text-center">Free cards: {freeLimit} · You&apos;re viewing #{cardIndex + 1}</p>
                 <button className="mt-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 px-6 py-2 text-sm font-bold text-black transition">
-                  Sign Up Free
+                  Upgrade to Pro
                 </button>
               </div>
             </div>
@@ -1420,7 +1420,7 @@ function SwipeDeck({
                     </svg>
                     <p className="text-sm font-semibold text-white">Sign up to unlock</p>
                     <button className="mt-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 px-5 py-1.5 text-xs font-bold text-black transition">
-                      Sign Up Free
+                      Upgrade to Pro
                     </button>
                   </div>
                 </div>
