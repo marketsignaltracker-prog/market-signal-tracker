@@ -308,10 +308,10 @@ export default function ZorvaLabsPage() {
 
           {/* Desktop nav */}
           <div className="hidden items-center gap-8 md:flex">
-            {["Services", "Work", "Process", "Testimonials", "Contact"].map((item) => (
+            {["Home", "Services", "Work", "Process", "Testimonials", "Contact"].map((item) => (
               <button
                 key={item}
-                onClick={() => scrollTo(item.toLowerCase())}
+                onClick={() => scrollTo(item === "Home" ? "hero" : item.toLowerCase())}
                 className="text-sm font-medium text-slate-400 transition hover:text-white"
               >
                 {item}
@@ -340,10 +340,10 @@ export default function ZorvaLabsPage() {
         {/* Mobile menu */}
         {menuOpen && (
           <div className="border-t border-white/[0.06] bg-[#0a0a1a]/95 backdrop-blur-xl px-5 py-6 md:hidden">
-            {["Services", "Work", "Process", "Testimonials", "Contact"].map((item) => (
+            {["Home", "Services", "Work", "Process", "Testimonials", "Contact"].map((item) => (
               <button
                 key={item}
-                onClick={() => scrollTo(item.toLowerCase())}
+                onClick={() => scrollTo(item === "Home" ? "hero" : item.toLowerCase())}
                 className="block w-full py-3 text-left text-base font-medium text-slate-300 transition hover:text-white"
               >
                 {item}
