@@ -87,21 +87,25 @@ function nowIso() {
 }
 
 function getBaseUrl() {
-  // Prefer VERCEL_URL for internal calls — bypasses Cloudflare bot protection
-  // which blocks server-to-server fetch on the custom domain.
-  const vercelUrl = process.env.VERCEL_URL?.trim()
-  if (vercelUrl) {
-    const base = vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`
-    return base.replace(/\/$/, "")
+  // Priority for internal pipeline calls:
+  // 1. PIPELINE_BASE_URL — explicit override for self-calls
+  // 2. Vercel project production URL (project-level alias, bypasses both
+  //    Cloudflare bot protection on custom domains AND Vercel deployment auth
+  //    on per-deployment URLs)
+  // 3. APP_URL fallback
+  const candidates = [
+    process.env.PIPELINE_BASE_URL?.trim(),
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim(),
+    process.env.APP_URL?.trim(),
+  ].filter(Boolean)
+
+  for (const raw of candidates) {
+    if (!raw) continue
+    const url = raw.startsWith("http") ? raw : `https://${raw}`
+    return url.replace(/\/$/, "")
   }
 
-  const appUrl = process.env.APP_URL?.trim()
-
-  if (!appUrl) {
-    throw new Error("Missing APP_URL and VERCEL_URL environment variables")
-  }
-
-  return appUrl.replace(/\/$/, "")
+  throw new Error("Missing PIPELINE_BASE_URL, VERCEL_PROJECT_PRODUCTION_URL, and APP_URL environment variables")
 }
 
 function getSupabaseAdmin(): any {
