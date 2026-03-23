@@ -188,12 +188,20 @@ async function runStep(
 
   let response: Response
 
+  const headers: Record<string, string> = {
+    "x-pipeline-token": pipelineToken,
+  }
+
+  // Bypass Vercel Deployment Protection for internal pipeline calls
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim()
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret
+  }
+
   try {
     response = await fetch(url, {
       method: "GET",
-      headers: {
-        "x-pipeline-token": pipelineToken,
-      },
+      headers,
       cache: "no-store",
       signal: controller.signal,
     })
