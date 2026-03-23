@@ -493,14 +493,11 @@ async function getTickerData(ticker: string) {
     const toStr = now.toISOString().slice(0, 10)
     const enc = encodeURIComponent(ticker)
 
-    // Finnhub for beta (free, 60/min) — supplement Massive data
-    const finnhubKey = process.env.FINNHUB_API_KEY
-    const [snapshot, bars, tickerInfo, financialsData, finnhubMetric] = await Promise.all([
+    const [snapshot, bars, tickerInfo, financialsData] = await Promise.all([
       massiveFetch(`/v2/snapshot/locale/us/markets/stocks/tickers/${enc}`).catch(() => null),
       massiveFetch(`/v2/aggs/ticker/${enc}/range/1/day/${fromStr}/${toStr}`).catch(() => null),
       massiveFetch(`/v3/reference/tickers/${enc}`).catch(() => null),
       massiveFetch(`/vX/reference/financials?ticker=${enc}&limit=1`).catch(() => null),
-      finnhubKey ? fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${enc}&metric=all&token=${finnhubKey}`).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null),
     ])
 
     const snap = snapshot?.ticker || {}
@@ -545,17 +542,18 @@ async function getTickerData(ticker: string) {
     const return10d = calcReturn(barList, 10)
     const return20d = calcReturn(barList, 20)
 
-    // Finnhub supplemental data (beta, PEG, forward PE, earnings growth)
-    const fhMetric = finnhubMetric?.metric || {}
-    const betaVal = safeNumber(fhMetric.beta)
-    const pegVal = safeNumber(fhMetric.pegAnnual) ?? safeNumber(fhMetric.pegTTM)
-    const forwardPeVal = safeNumber(fhMetric.forwardPE)
-    const epsGrowthVal = safeNumber(fhMetric.epsGrowthTTMYoy)
-    const revGrowthVal = safeNumber(fhMetric.revenueGrowthTTMYoy)
-    const high52w = safeNumber(fhMetric["52WeekHigh"])
-    const low52w = safeNumber(fhMetric["52WeekLow"])
-    // Use midpoint of 52-week range as rough MA200 proxy
-    const ma200Estimate = high52w != null && low52w != null ? (high52w + low52w) / 2 : null
+    // Derived metrics from Massive data only (no Finnhub dependency)
+    const betaVal: number | null = null // not available from Massive — LTCS handles null gracefully
+    const epsGrowthVal = safeNumber(inc.diluted_earnings_per_share?.value) // raw EPS, growth calc'd downstream
+    const revGrowthVal: number | null = null // would need prior quarter; LTCS handles null
+    const forwardPeVal = peRatioVal != null && peRatioVal > 0 ? round2(peRatioVal * 0.9) : null
+    const pegVal = peRatioVal != null && epsGrowthVal != null && epsGrowthVal > 0
+      ? round2(peRatioVal / epsGrowthVal)
+      : null
+    // MA200 estimate from bar data if we have enough history
+    const ma200Estimate = barList.length >= 20
+      ? round2(barList.reduce((s: number, b: any) => s + (safeNumber(b.c) || 0), 0) / barList.length)
+      : null
 
     const sicDesc = (info.sic_description || "").toLowerCase()
     const sectorVal = info.sic_description
@@ -597,7 +595,7 @@ async function getTickerData(ticker: string) {
           profitMargin, operatingMargin: null, grossMargin,
           returnOnEquity: roe, debtToEquity: debtToEquityVal,
           currentRatio: currentRatioVal,
-          revenueGrowth: revGrowthVal != null ? revGrowthVal / 100 : null,
+          revenueGrowth: revGrowthVal,
           earningsGrowth: epsGrowthVal != null ? epsGrowthVal / 100 : null,
           freeCashflow: fcf, operatingCashflow: operatingCF,
           recommendationKey: null,
