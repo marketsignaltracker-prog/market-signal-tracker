@@ -179,7 +179,7 @@ const MAX_LIMIT_PER_TICKER = 50
 const CANDIDATE_LOOKBACK_DAYS = 30
 const PTR_LOOKBACK_DAYS = 30
 const RETENTION_DAYS = 30
-const AINVEST_CONGRESS_URL = "https://openapi.ainvest.com/open/ownership/congress"
+const FMP_BASE = "https://financialmodelingprep.com/stable"
 
 function getSupabaseAdmin() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -709,10 +709,10 @@ export async function GET(request: Request) {
     return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 })
   }
 
-  const ainvestToken = process.env.AINVEST_API_TOKEN?.trim()
-  if (!ainvestToken) {
+  const fmpApiKey = process.env.FMP_API_KEY?.trim()
+  if (!fmpApiKey) {
     return Response.json(
-      { ok: false, error: "Missing AINVEST_API_TOKEN environment variable" },
+      { ok: false, error: "Missing FMP_API_KEY environment variable" },
       { status: 500 }
     )
   }
@@ -797,101 +797,140 @@ export async function GET(request: Request) {
 
     const fetchedAt = new Date().toISOString()
 
-    const fetchResults = await mapWithConcurrency<SourceRow, FetchResult>(
-      sourceRows,
-      API_CONCURRENCY,
-      async (row) => {
-        const ticker = normalizeTicker(row.ticker)
-
-        if (!ticker) {
-          return {
-            ticker: null,
-            ok: false,
-            rows: [],
-            upstreamCount: 0,
-            error: "Missing ticker",
-          }
-        }
-
-        const url = new URL(AINVEST_CONGRESS_URL)
-        url.searchParams.set("ticker", ticker)
-        url.searchParams.set("page", "1")
-        url.searchParams.set("size", String(perTickerLimit))
-
-        try {
-          const res = await fetchWithTimeout(url.toString(), ainvestToken)
-          const contentType = res.headers.get("content-type") || ""
-          const rawBody = await res.text()
-
-          if (!res.ok) {
-            let message = rawBody.slice(0, 300)
-
-            if (contentType.includes("application/json")) {
-              try {
-                const parsedError = JSON.parse(rawBody)
-                message =
-                  parsedError?.message ||
-                  parsedError?.status_msg ||
-                  JSON.stringify(parsedError).slice(0, 300)
-              } catch {
-                // keep raw fallback
-              }
-            }
-
-            return {
-              ticker,
-              ok: false,
-              rows: [],
-              upstreamCount: 0,
-              error: `AInvest ${res.status}: ${message}`,
-            }
-          }
-
-          let parsed: AInvestResponse
-          try {
-            parsed = JSON.parse(rawBody) as AInvestResponse
-          } catch {
-            return {
-              ticker,
-              ok: false,
-              rows: [],
-              upstreamCount: 0,
-              error: `AInvest returned non-JSON response: ${rawBody.slice(0, 300)}`,
-            }
-          }
-
-          const tradeRows = extractTradeArray(parsed)
-          const normalizedRows = tradeRows
-            .map((trade) => normalizeAInvestTrade(ticker, trade, fetchedAt, lookbackDays))
-            .filter((trade): trade is RawPtrTradeRow => trade !== null)
-
-          return {
-            ticker,
-            ok: true,
-            rows: normalizedRows,
-            upstreamCount: tradeRows.length,
-            error: null,
-          }
-        } catch (error: any) {
-          return {
-            ticker,
-            ok: false,
-            rows: [],
-            upstreamCount: 0,
-            error: error?.message || "Unknown AInvest error",
-          }
-        }
-      }
+    // Build set of target tickers for filtering FMP results
+    const targetTickers = new Set(
+      sourceRows.map((r) => normalizeTicker(r.ticker)).filter(Boolean) as string[]
     )
 
-    diagnostics.successfulTickerFetches = fetchResults.filter((r) => r.ok).length
-    diagnostics.failedTickerFetches = fetchResults.filter((r) => !r.ok).length
+    // Fetch latest trades from FMP — bulk endpoints (25 per chamber)
+    type FmpTrade = {
+      symbol?: string
+      disclosureDate?: string
+      transactionDate?: string
+      firstName?: string
+      lastName?: string
+      office?: string
+      district?: string
+      owner?: string
+      assetDescription?: string
+      assetType?: string
+      type?: string
+      amount?: string
+      capitalGainsOver200USD?: string
+      comment?: string
+      link?: string
+    }
 
-    const allRows = fetchResults.flatMap((r) => r.rows)
-    diagnostics.scannedRows = allRows.length
+    async function fetchFmpEndpoint(endpoint: string): Promise<{ trades: FmpTrade[]; error: string | null }> {
+      try {
+        const url = `${FMP_BASE}/${endpoint}?apikey=${fmpApiKey}&limit=25&page=0`
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 15_000)
+        const res = await fetch(url, { cache: "no-store", signal: controller.signal })
+        clearTimeout(timeout)
+        if (!res.ok) {
+          const body = await res.text().catch(() => "")
+          return { trades: [], error: `FMP ${endpoint} ${res.status}: ${body.slice(0, 200)}` }
+        }
+        const data = await res.json()
+        if (!Array.isArray(data)) return { trades: [], error: `FMP ${endpoint}: non-array response` }
+        return { trades: data as FmpTrade[], error: null }
+      } catch (err: any) {
+        return { trades: [], error: err?.message || `FMP ${endpoint} fetch failed` }
+      }
+    }
+
+    const [senateResult, houseResult] = await Promise.all([
+      fetchFmpEndpoint("senate-latest"),
+      fetchFmpEndpoint("house-latest"),
+    ])
+
+    function normalizeFmpTrade(
+      trade: FmpTrade,
+      chamber: string
+    ): RawPtrTradeRow | null {
+      const ticker = normalizeTicker(trade.symbol)
+      if (!ticker || ticker === "--") return null
+
+      const filerName = [trade.firstName, trade.lastName].filter(Boolean).join(" ").trim()
+      if (!filerName) return null
+
+      const transactionDate = normalizeDate(trade.transactionDate || null)
+      const disclosureDate = normalizeDate(trade.disclosureDate || null)
+      const effectiveDate = transactionDate || disclosureDate
+      if (!effectiveDate) return null
+
+      // Apply lookback filter
+      const cutoff = new Date()
+      cutoff.setDate(cutoff.getDate() - lookbackDays)
+      if (new Date(`${effectiveDate}T00:00:00Z`) < cutoff) return null
+
+      const rawAction = trade.type || null
+      const normalizedAction = normalizeAction(rawAction)
+      const transactionType = normalizeTransactionType(rawAction)
+      const amountRange = (trade.amount || "").trim() || null
+      const amounts = parseAmountRange(amountRange)
+
+      const tradeKey = buildTradeKey({
+        filer: filerName,
+        ticker,
+        transaction_date: transactionDate,
+        action: normalizedAction,
+        amount_range: amountRange,
+        report_date: disclosureDate,
+        ptr_url: trade.link || null,
+      })
+
+      return {
+        disclosure_source: "FMP",
+        filer_name: filerName,
+        politician_name: filerName,
+        chamber,
+        district_or_state: trade.district || null,
+        report_date: disclosureDate,
+        transaction_date: transactionDate,
+        ticker,
+        asset_name: trade.assetDescription || ticker,
+        asset_type: trade.assetType || "Stock",
+        action: normalizedAction,
+        transaction_type: transactionType,
+        amount_range: amountRange,
+        amount_low: amounts.amount_low,
+        amount_high: amounts.amount_high,
+        owner: trade.owner || null,
+        ptr_url: trade.link || null,
+        raw_document_url: trade.link || null,
+        source_url: trade.link || null,
+        trade_key: tradeKey,
+        trade_date: transactionDate,
+        disclosure_date: disclosureDate,
+        ptr_id: tradeKey,
+        fetched_at: fetchedAt,
+        updated_at: fetchedAt,
+      }
+    }
+
+    const senateTrades = senateResult.trades
+      .map((t) => normalizeFmpTrade(t, "Senate"))
+      .filter((r): r is RawPtrTradeRow => r !== null)
+
+    const houseTrades = houseResult.trades
+      .map((t) => normalizeFmpTrade(t, "House"))
+      .filter((r): r is RawPtrTradeRow => r !== null)
+
+    const allRows = [...senateTrades, ...houseTrades]
+
+    // Filter to target tickers if we have a scoped set, otherwise keep all
+    const filteredRows = targetTickers.size > 0
+      ? allRows.filter((r) => r.ticker && targetTickers.has(r.ticker))
+      : allRows
+
+    diagnostics.successfulTickerFetches = (senateResult.error ? 0 : 1) + (houseResult.error ? 0 : 1)
+    diagnostics.failedTickerFetches = (senateResult.error ? 1 : 0) + (houseResult.error ? 1 : 0)
+    diagnostics.scannedRows = filteredRows.length
 
     const dedupe = new Map<string, RawPtrTradeRow>()
-    for (const row of allRows) {
+    for (const row of filteredRows) {
       if (!dedupe.has(row.trade_key)) {
         dedupe.set(row.trade_key, row)
       }
@@ -942,17 +981,17 @@ export async function GET(request: Request) {
       processedTickers: sourceRows.length,
       ptrCount,
       diagnostics,
-      tickerDiagnostics: fetchResults.map((r) => ({
-        ticker: r.ticker,
-        ok: r.ok,
-        upstreamCount: r.upstreamCount,
-        normalizedRows: r.rows.length,
-        error: r.error,
-      })),
+      tickerDiagnostics: [],
+      fmpDiagnostics: {
+        senate: { count: senateTrades.length, error: senateResult.error },
+        house: { count: houseTrades.length, error: houseResult.error },
+        totalBeforeFilter: allRows.length,
+        afterTargetFilter: filteredRows.length,
+      },
       message:
         dedupedRows.length === 0
-          ? "PTR route ran successfully but no normalized trades were returned from AInvest or Senate Stock Watcher."
-          : `Raw PTR trades ingested successfully (AInvest + Senate Stock Watcher).`,
+          ? "PTR route ran successfully but no matching trades found in FMP data."
+          : `Raw PTR trades ingested successfully from FMP (Senate + House).`,
     })
   } catch (error: any) {
     return Response.json(
