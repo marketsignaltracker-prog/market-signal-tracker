@@ -699,9 +699,25 @@ export default function Home() {
           )
           if (!unified) continue
 
-          const include =
-            (unified.candidate_score ?? -1) >= 50 ||
-            (unified.signal_score ?? -1) >= 50
+          // "Buy Today" inclusion: require signal score >= 65, fresh signal (<= 14 days),
+          // and non-negative relative strength to narrow from ~1000 to actionable buys
+          const hasSignal = (unified.signal_score ?? -1) >= 65
+
+          // Freshness gate: signal must be within 14 days
+          let signalAgeDays: number | null = unified.age_days ?? null
+          if (signalAgeDays === null && unified.filed_at) {
+            const filedMs = new Date(unified.filed_at).getTime()
+            if (!Number.isNaN(filedMs)) {
+              signalAgeDays = Math.max(0, Math.floor((Date.now() - filedMs) / (24 * 60 * 60 * 1000)))
+            }
+          }
+          const isFresh = signalAgeDays === null || signalAgeDays <= 14
+
+          // Relative strength gate: exclude confirmed underperformers
+          const rs20d = unified.relative_strength_20d
+          const hasPositiveRS = rs20d === null || rs20d === undefined || rs20d > 0
+
+          const include = hasSignal && isFresh && hasPositiveRS
 
           if (include) merged.push(unified)
         }
@@ -781,7 +797,20 @@ export default function Home() {
 
   const lastUpdated = getLastUpdated(rows)
   const strongBuyCount = filteredRows.length
-  const eliteCount = filteredRows.filter((row) => row.display_score >= 90).length
+  const eliteCount = filteredRows.filter((row) => {
+    if (row.display_score < 90) return false
+    // Top tier requires a signal score (not just candidate score) and a fresh signal (<= 7 days)
+    if (row.signal_score === null || row.signal_score === undefined) return false
+    let ageDays: number | null = row.age_days ?? null
+    if (ageDays === null && row.filed_at) {
+      const filedMs = new Date(row.filed_at).getTime()
+      if (!Number.isNaN(filedMs)) {
+        ageDays = Math.max(0, Math.floor((Date.now() - filedMs) / (24 * 60 * 60 * 1000)))
+      }
+    }
+    if (ageDays !== null && ageDays > 7) return false
+    return true
+  }).length
 
   const activeFilterCount = useMemo(() => {
     let count = 0
@@ -874,7 +903,7 @@ export default function Home() {
                 <span className="text-[#7a8ba0] normal-case tracking-normal">Loading…</span>
               ) : (
                 <>
-                  <span>{filteredRows.length} Buys</span>
+                  <span>{filteredRows.length} Buy Today</span>
                   {eliteCount > 0 && (
                     <span className="text-[#30d158]">
                       {eliteCount} Top Tier
