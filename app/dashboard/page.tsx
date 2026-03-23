@@ -537,7 +537,7 @@ export default function Home() {
 
         const [candidateRes, signalRes, ptrRes] = await Promise.all([
           supabase
-            .from("candidate_universe")
+            .from("candidate_screen_history")
             .select(`
               ticker,
               cik,
@@ -577,9 +577,10 @@ export default function Home() {
               sector,
               industry
             `)
-            .gte("candidate_score", 60)
+            .gte("candidate_score", 50)
+            .order("screened_on", { ascending: false })
             .order("candidate_score", { ascending: false })
-            .limit(500),
+            .limit(2000),
 
           supabase
             .from("ticker_scores_current")
@@ -685,7 +686,8 @@ export default function Home() {
         for (const row of candidateRows) {
           const ticker = normalizeTicker(row.ticker)
           if (!ticker) continue
-          candidateMap.set(ticker, row)
+          // Keep the most recent screen (first occurrence since ordered by screened_on DESC)
+          if (!candidateMap.has(ticker)) candidateMap.set(ticker, row)
         }
 
         for (const row of signalRows) {
