@@ -188,11 +188,12 @@ const MAX_LIMIT = 1000
 const DEFAULT_LOOKBACK_DAYS = 30
 const MAX_LOOKBACK_DAYS = 60
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v11-rebalanced-scoring"
+const SCORE_VERSION = "v12-catalyst-first"
 const DB_CHUNK_SIZE = 100
 
-const DEFAULT_MIN_SIGNAL_APP_SCORE = 58
+const DEFAULT_MIN_SIGNAL_APP_SCORE = 65
 const MIN_CANDIDATE_SCORE = 58
+const CATALYST_MAX_AGE_DAYS = 14
 const PTR_LOOKBACK_DAYS = 30
 const PTR_RECENT_DAYS = 14
 
@@ -526,6 +527,7 @@ function scoreCandidateSignal(params: {
   const totalCandidates = Math.max(1, breadthStats.totalCandidates)
   const sectorShare = sectorCount / totalCandidates
   const industryShare = industryCount / totalCandidates
+  const marketCap = Number(context.market_cap || 0)
 
   const breakdown: Record<string, number> = {}
   const reasons: string[] = []
@@ -537,171 +539,117 @@ function scoreCandidateSignal(params: {
     if (reason) reasons.push(reason)
   }
 
-  const hasPtrEvidence = Boolean(ptrSummary?.buyTradeCount)
-  const hasFilingEvidence =
-    Boolean(filingSummary?.hasForm4) ||
-    Boolean(filingSummary?.has13DOr13G) ||
-    Boolean(filingSummary?.hasCatalystForm)
+  // --- Catalyst detection & age ---
+  const filingAge = filingSummary?.latestFiledAt ? daysAgo(filingSummary.latestFiledAt) : null
+  const ptrAge = ptrSummary?.latestTradeDate ? daysAgo(ptrSummary.latestTradeDate) : null
+  const hasRecentFiling = filingAge !== null && filingAge <= CATALYST_MAX_AGE_DAYS
+  const hasRecentPtr = ptrAge !== null && ptrAge <= CATALYST_MAX_AGE_DAYS
+  const hasBreakout = Boolean(context.breakout_20d) || Boolean(context.breakout_10d)
 
-  const hasTechnicalEvidence =
-    Boolean(context.breakout_20d) ||
-    Boolean(context.breakout_10d) ||
-    Boolean(context.above_sma_20) ||
-    (context.relative_strength_20d ?? 0) >= 2 ||
-    (context.volume_ratio ?? 0) >= 1.2
-
-  const signalFamilyCount =
-    Number(hasPtrEvidence) + Number(hasFilingEvidence) + Number(hasTechnicalEvidence)
-
-  add("base", 38, "Base priority signal")
-
-  if (context.included) add("included", 6, "Already made final candidate set")
-
-  if (candidateScore >= 92) add("candidate_score", 11, "Strong candidate score")
-  else if (candidateScore >= 84) add("candidate_score", 8, "Good candidate score")
-  else if (candidateScore >= 74) add("candidate_score", 5, "Constructive candidate score")
-  else if (candidateScore >= 64) add("candidate_score", 2, "Passing candidate score")
-
-  if (ptrSummary) {
-    if (ptrSummary.buyTradeCount >= 1) add("ptr", 7, "At least one PTR buy")
-    if (ptrSummary.buyTradeCount >= 2) add("ptr", 5, "Multiple PTR buys")
-    if (ptrSummary.buyTradeCount >= 3) add("ptr", 4, "Three or more PTR buys")
-
-    if (ptrSummary.uniqueBuyFilers >= 2) add("ptr", 6, "Multiple PTR buyers")
-    if (ptrSummary.uniqueBuyFilers >= 3) add("ptr", 5, "Broad PTR participation")
-
-    if (ptrSummary.recentBuyCount >= 1) add("ptr", 4, "Recent PTR buy")
-    if (ptrSummary.recentBuyCount >= 2) add("ptr", 4, "Multiple recent PTR buys")
-
-    if (ptrSummary.totalBuyAmountLow >= 100_001) add("ptr", 3, "Meaningful PTR size")
-    if (ptrSummary.totalBuyAmountLow >= 250_001) add("ptr", 4, "Large PTR size")
-    if (ptrSummary.totalBuyAmountLow >= 500_001) add("ptr", 5, "Very large PTR size")
-    if (ptrSummary.totalBuyAmountLow >= 1_000_000) add("ptr", 5, "Institutional-scale PTR size")
-
-    if (ptrSummary.buyCluster) add("ptr_cluster", 6, "PTR buy cluster")
-    if (ptrSummary.strongBuying) add("ptr_cluster", 7, "Strong PTR buying support")
-    if (ptrSummary.strongSelling) add("ptr_penalty", -6, "PTR selling headwind")
+  // Hard catalyst gate — no recent catalyst = no signal
+  if (!hasRecentFiling && !hasRecentPtr && !hasBreakout) {
+    return null
   }
 
-  if (filingSummary) {
-    if (filingSummary.hasForm4) add("filings", 8, "Insider filing support")
-    if (filingSummary.insiderFormCount >= 2) add("filings", 3, "Multiple insider filings")
-
-    if (filingSummary.has13DOr13G) add("filings", 8, "Ownership filing support")
-    if (filingSummary.ownershipFormCount >= 2) add("filings", 3, "Multiple ownership filings")
-
-    if (filingSummary.hasCatalystForm) add("filings", 4, "Corporate catalyst filing support")
-    if (filingSummary.catalystFormCount >= 2) add("filings", 2, "Multiple catalyst filings")
-
-    const filingAge = daysAgo(filingSummary.latestFiledAt)
-    if (filingAge !== null) {
-      if (fileingAgeSafe(filingAge) <= 1) add("freshness", 4, "Fresh filing activity")
-      else if (fileingAgeSafe(filingAge) <= 3) add("freshness", 3, "Recent filing activity")
-      else if (fileingAgeSafe(filingAge) <= 7) add("freshness", 1, "Active filing window")
-      else if (fileingAgeSafe(filingAge) > 21) add("freshness_penalty", -2, "Older filing activity")
-    }
+  // --- PILLAR 1: Catalyst Recency (40 pts max) ---
+  let filingCatalystScore = 0
+  if (hasRecentFiling && filingAge !== null) {
+    if (filingAge <= 0) filingCatalystScore = 40
+    else if (filingAge <= 1) filingCatalystScore = 36
+    else if (filingAge <= 3) filingCatalystScore = 30
+    else if (filingAge <= 7) filingCatalystScore = 20
+    else filingCatalystScore = 10
   }
 
-  if ((context.return_20d ?? 0) >= 10) add("momentum", 3, "Strong 20-day momentum")
-  else if ((context.return_20d ?? 0) >= 5) add("momentum", 2, "Positive 20-day momentum")
-  else if ((context.return_20d ?? 0) >= 2) add("momentum", 1, "Constructive 20-day momentum")
-
-  if ((context.return_10d ?? 0) >= 4) add("short_momentum", 2, "Strong 10-day momentum")
-  else if ((context.return_10d ?? 0) >= 2) add("short_momentum", 1, "Positive 10-day momentum")
-
-  if ((context.relative_strength_20d ?? 0) >= 7) add("relative_strength", 5, "Strong relative strength")
-  else if ((context.relative_strength_20d ?? 0) >= 4) add("relative_strength", 3, "Positive relative strength")
-  else if ((context.relative_strength_20d ?? 0) >= 2) add("relative_strength", 2, "Constructive relative strength")
-
-  if ((context.volume_ratio ?? 0) >= 2.2) add("volume", 4, "Heavy volume")
-  else if ((context.volume_ratio ?? 0) >= 1.5) add("volume", 3, "Good volume support")
-  else if ((context.volume_ratio ?? 0) >= 1.2) add("volume", 1, "Constructive volume support")
-
-  if (context.breakout_20d) add("breakout", 4, "20-day breakout")
-  else if (context.breakout_10d) add("breakout", 2, "10-day breakout")
-  else if ((context.breakout_clearance_pct ?? -999) >= -0.35) add("breakout", 1, "Near breakout")
-
-  if (context.above_sma_20) add("trend", 3, "Above 20-day moving average")
-
-  if ((context.close_in_day_range ?? 0) >= 0.8) add("close_strength", 2, "Strong close")
-  else if ((context.close_in_day_range ?? 0) >= 0.6) add("close_strength", 1, "Constructive close")
-
-  if ((context.extension_from_sma20_pct ?? 999) > 20) {
-    add("extension_penalty", -8, "Too extended")
-    caps.push("overextended-cap")
-  } else if ((context.extension_from_sma20_pct ?? 999) > 15) {
-    add("extension_penalty", -4, "Somewhat extended")
-  } else if ((context.extension_from_sma20_pct ?? 999) > 10) {
-    add("extension_penalty", -2, "Mildly extended")
+  let ptrCatalystScore = 0
+  if (hasRecentPtr && ptrAge !== null) {
+    if (ptrAge <= 3) ptrCatalystScore = 35
+    else if (ptrAge <= 7) ptrCatalystScore = 22
+    else ptrCatalystScore = 10
   }
 
-  if ((context.return_5d ?? 0) >= 12 && !ptrSummary?.strongBuying) {
-    add("chase_penalty", -4, "Too sharp of a short-term move without strong PTR support")
+  let breakoutCatalystScore = 0
+  if (context.breakout_20d) breakoutCatalystScore = 25
+  else if (context.breakout_10d) breakoutCatalystScore = 18
+
+  const catalystScore = Math.max(filingCatalystScore, ptrCatalystScore, breakoutCatalystScore)
+  const catalystTypeCount = Number(hasRecentFiling) + Number(hasRecentPtr) + Number(hasBreakout)
+  const catalystBonus = catalystTypeCount >= 2 ? 5 : 0
+
+  add("catalyst", Math.min(catalystScore + catalystBonus, 40),
+    filingCatalystScore >= ptrCatalystScore && filingCatalystScore >= breakoutCatalystScore
+      ? `Fresh filing catalyst (${filingAge}d ago)`
+      : ptrCatalystScore >= breakoutCatalystScore
+        ? `Congressional/insider trade (${ptrAge}d ago)`
+        : `Technical breakout catalyst`)
+  if (catalystBonus > 0) reasons.push("Multiple catalyst types aligned")
+
+  // --- PILLAR 2: Technical Setup (25 pts max) ---
+  let techScore = 0
+  if (context.above_sma_20) { techScore += 8; add("tech_trend", 8, "Above 20-day moving average") }
+  if ((context.volume_ratio ?? 0) >= 2.0) { techScore += 10; add("tech_volume", 10, "Heavy volume support") }
+  else if ((context.volume_ratio ?? 0) >= 1.5) { techScore += 7; add("tech_volume", 7, "Good volume support") }
+  if ((context.relative_strength_20d ?? 0) >= 10) { techScore += 8; add("tech_rs", 8, "Strong relative strength") }
+  else if ((context.relative_strength_20d ?? 0) >= 5) { techScore += 5; add("tech_rs", 5, "Positive relative strength") }
+  if ((context.close_in_day_range ?? 0) >= 0.7) { techScore += 4; add("tech_close", 4, "Strong close in day range") }
+
+  // Extension penalty
+  const ext = context.extension_from_sma20_pct ?? 0
+  if (ext > 15) { add("tech_extension_penalty", -8, "Too extended from SMA20"); caps.push("overextended") }
+  else if (ext > 10) { add("tech_extension_penalty", -4, "Somewhat extended from SMA20") }
+
+  // --- PILLAR 3: Fundamental Quality (20 pts max) ---
+  if (candidateScore >= 80) add("fundamental", 20, "Strong fundamental quality (LTCS)")
+  else if (candidateScore >= 70) add("fundamental", 15, "Good fundamental quality")
+  else if (candidateScore >= 60) add("fundamental", 10, "Adequate fundamental quality")
+  else if (candidateScore >= 50) add("fundamental", 5, "Passing fundamental quality")
+
+  // --- PILLAR 4: Risk/Reward (15 pts max) ---
+  if ((context.return_5d ?? 0) < 12) add("risk_entry", 5, "Not chasing short-term move")
+  if (ext < 8) add("risk_position", 5, "Good entry point near support")
+
+  const passesAllLiquidity = (context.passes_price ?? true) && (context.passes_volume ?? true) &&
+    (context.passes_dollar_volume ?? true) && (context.passes_market_cap ?? true)
+  if (passesAllLiquidity) add("risk_liquidity", 5, "All liquidity gates pass")
+
+  // Chase penalty
+  if ((context.return_5d ?? 0) >= 15 && !ptrSummary?.strongBuying) {
+    add("chase_penalty", -8, "Chasing short-term move without strong insider support")
   }
 
-  if ((context.return_10d ?? 0) >= 18 && !filingSummary?.has13DOr13G && !ptrSummary?.buyCluster) {
-    add("chase_penalty", -5, "Move may be too crowded or event-driven")
-  }
+  // Market cap diversity bonus/penalty
+  if (marketCap >= 5e9 && marketCap <= 20e9) add("cap_diversity", 3, "Mid-cap opportunity (underrepresented)")
+  else if (marketCap > 500e9) add("cap_diversity", -3, "Mega-cap crowding penalty")
 
-  if (sectorShare >= 0.24) {
-    add("crowding_penalty", -6, `Sector is overcrowded in current candidate set (${sector})`)
-    caps.push("sector-crowding-cap")
-  } else if (sectorShare >= 0.16) {
-    add("crowding_penalty", -3, `Sector is getting crowded in current candidate set (${sector})`)
-  }
-
-  if (industryShare >= 0.14) {
-    add("industry_penalty", -4, `Industry is crowded in current candidate set (${industry})`)
-    caps.push("industry-crowding-cap")
-  }
-
-  if (!(context.passes_price ?? true)) add("liquidity_penalty", -5, "Failed minimum price")
-  if (!(context.passes_volume ?? true)) add("liquidity_penalty", -4, "Failed minimum volume")
-  if (!(context.passes_dollar_volume ?? true)) add("liquidity_penalty", -5, "Failed minimum dollar volume")
-  if (!(context.passes_market_cap ?? true)) add("liquidity_penalty", -4, "Failed minimum market cap")
-
-  if (signalFamilyCount >= 3) add("stacking_bonus", 8, "PTR, filings, and technicals are aligned")
-  else if (signalFamilyCount === 2) add("stacking_bonus", 4, "Multiple signal families are aligned")
-  else add("single_signal_penalty", -2, "Only one signal family is carrying the setup")
-
+  // --- Compute raw score ---
   let rawScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
   rawScore = clamp(Math.round(rawScore), 0, 100)
 
-  let appScore = rawScore
+  // --- Staleness decay based on newest catalyst age ---
+  const newestCatalystAge = Math.min(
+    hasRecentFiling && filingAge !== null ? filingAge : 999,
+    hasRecentPtr && ptrAge !== null ? ptrAge : 999,
+    hasBreakout ? 0 : 999
+  )
 
-  const hasPriorityEvidence =
-    hasPtrEvidence || hasFilingEvidence
+  let decayMultiplier = 1.0
+  if (newestCatalystAge <= 1) decayMultiplier = 1.0
+  else if (newestCatalystAge <= 2) decayMultiplier = 0.95
+  else if (newestCatalystAge <= 3) decayMultiplier = 0.90
+  else if (newestCatalystAge <= 5) decayMultiplier = 0.80
+  else if (newestCatalystAge <= 7) decayMultiplier = 0.65
+  else if (newestCatalystAge <= 10) decayMultiplier = 0.45
+  else if (newestCatalystAge <= 14) decayMultiplier = 0.25
+  else return null // signal expired
 
-  if (!hasPriorityEvidence) {
-    appScore = Math.min(appScore, 70)
-    caps.push("no-priority-evidence-cap")
+  let appScore = clamp(Math.round(rawScore * decayMultiplier), 0, 100)
+
+  if (decayMultiplier < 1.0) {
+    caps.push(`staleness-decay-${Math.round(decayMultiplier * 100)}pct`)
+    reasons.push(`Catalyst aging (${newestCatalystAge}d) — score decayed to ${Math.round(decayMultiplier * 100)}%`)
   }
 
-  if (signalFamilyCount < 2) {
-    appScore = Math.min(appScore, 76)
-    caps.push("single-family-cap")
-  }
-
-  if (
-    !ptrSummary?.strongBuying &&
-    !filingSummary?.hasForm4 &&
-    !filingSummary?.has13DOr13G &&
-    (context.relative_strength_20d ?? 0) < 3 &&
-    (context.volume_ratio ?? 0) < 1.25
-  ) {
-    appScore = Math.min(appScore, 68)
-    caps.push("weak-confirmation-cap")
-  }
-
-  if ((context.extension_from_sma20_pct ?? 999) > 20) {
-    appScore = Math.min(appScore, 78)
-  }
-
-  if (sectorShare >= 0.24) {
-    appScore = Math.min(appScore, 82)
-  }
-
-  appScore = clamp(appScore, 0, 100)
+  const signalFamilyCount = catalystTypeCount
 
   return {
     rawScore,
@@ -734,6 +682,7 @@ function buildSignalRow(
 
   const companyId = getContextCompanyId(context)
   const scored = scoreCandidateSignal({ context, filingSummary, ptrSummary, breadthStats })
+  if (!scored) return null // No recent catalyst — no signal
   const signalKey = buildSignalKey(ticker, runDate)
 
   const title =
@@ -1224,12 +1173,33 @@ export async function GET(request: Request) {
 
     diagnostics.candidateSignalsBuilt = signalRows.length
 
+    // Apply sector/size diversity caps — max 8 per sector, max 50 total
+    const MAX_PER_SECTOR = 8
+    const MAX_TOTAL_SIGNALS = 50
+    signalRows.sort((a: any, b: any) => (b.app_score ?? 0) - (a.app_score ?? 0))
+    const sectorSignalCounts = new Map<string, number>()
+    const diverseSignalRows: any[] = []
+    for (const row of signalRows) {
+      const sec = row.sector || "Unknown"
+      const count = sectorSignalCounts.get(sec) || 0
+      if (count >= MAX_PER_SECTOR) continue
+      if (diverseSignalRows.length >= MAX_TOTAL_SIGNALS) break
+      sectorSignalCounts.set(sec, count + 1)
+      diverseSignalRows.push(row)
+    }
+    const filteredByDiversity = signalRows.length - diverseSignalRows.length
+    if (filteredByDiversity > 0) {
+      (diagnostics as any).filteredByDiversityCap = filteredByDiversity
+    }
+
+    const finalSignalRows = diverseSignalRows
+
     const signalWriteResult =
-      signalRows.length > 0
+      finalSignalRows.length > 0
         ? await upsertInChunksDetailed(
             supabase.from("signals"),
             "signals",
-            signalRows,
+            finalSignalRows,
             "signal_key",
             (row) => row.signal_key
           )
@@ -1251,12 +1221,15 @@ export async function GET(request: Request) {
 
     diagnostics.candidateSignalsInserted = signalWriteResult.insertedOrUpdated
 
+    // Rebuild history rows from diversity-filtered signals
+    const finalHistoryRows = finalSignalRows.map((row: any) => buildSignalHistoryRow(row, runDate, runTimestamp))
+
     const historyWriteResult =
-      historyRows.length > 0
+      finalHistoryRows.length > 0
         ? await upsertInChunksDetailed(
             supabase.from("signal_history"),
             "signal_history",
-            historyRows,
+            finalHistoryRows,
             "signal_history_key",
             (row) => row.signal_history_key
           )

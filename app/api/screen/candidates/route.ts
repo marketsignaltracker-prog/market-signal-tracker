@@ -102,6 +102,17 @@ type TickerSnapshot = {
   companyProfile: StrongCompanyProfile
 }
 
+type TechnicalIndicators = {
+  sma20: number | null
+  aboveSma20: boolean
+  extensionFromSma20Pct: number | null
+  volumeRatio: number | null
+  breakout20d: boolean
+  breakout10d: boolean
+  breakoutClearancePct: number | null
+  closeInDayRange: number | null
+}
+
 type CandidateMetricRow = {
   company: CompanyRow
   ticker: string
@@ -119,7 +130,7 @@ type CandidateMetricRow = {
   return10d: number | null
   return20d: number | null
   relativeStrength20d: number | null
-  volumeRatio: number | null
+  technicals: TechnicalIndicators
 }
 
 type LTCSScoreInput = {
@@ -478,6 +489,63 @@ function calcReturn(bars: any[], daysAgo: number): number | null {
   return round2(((latest.c - target.c) / target.c) * 100)
 }
 
+function computeTechnicals(barList: any[], latestClose: number): TechnicalIndicators {
+  if (!barList || barList.length < 5 || !latestClose || latestClose <= 0) {
+    return {
+      sma20: null, aboveSma20: false, extensionFromSma20Pct: null,
+      volumeRatio: null, breakout20d: false, breakout10d: false,
+      breakoutClearancePct: null, closeInDayRange: null,
+    }
+  }
+
+  const closes = barList.map((b: any) => safeNumber(b.c)).filter((c): c is number => c !== null && c > 0)
+  const volumes = barList.map((b: any) => safeNumber(b.v)).filter((v): v is number => v !== null && v > 0)
+
+  // SMA20
+  const sma20Slice = closes.slice(-20)
+  const sma20 = sma20Slice.length >= 15
+    ? round2(sma20Slice.reduce((s, c) => s + c, 0) / sma20Slice.length)
+    : null
+  const aboveSma20 = sma20 !== null && latestClose > sma20
+  const extensionFromSma20Pct = sma20 !== null && sma20 > 0
+    ? round2(((latestClose - sma20) / sma20) * 100)
+    : null
+
+  // Volume ratio: latest volume / avg of prior 20 days
+  const todayVolume = volumes.length > 0 ? volumes[volumes.length - 1] : null
+  const priorVolumes = volumes.length >= 2 ? volumes.slice(0, -1).slice(-20) : []
+  const avgVolume = priorVolumes.length > 0
+    ? priorVolumes.reduce((s, v) => s + v, 0) / priorVolumes.length
+    : null
+  const volumeRatio = todayVolume !== null && avgVolume !== null && avgVolume > 0
+    ? round2(todayVolume / avgVolume)
+    : null
+
+  // Breakout: latest close > highest close of prior N days
+  const prior20Closes = closes.length > 1 ? closes.slice(-21, -1) : []
+  const prior10Closes = closes.length > 1 ? closes.slice(-11, -1) : []
+  const high20 = prior20Closes.length > 0 ? Math.max(...prior20Closes) : null
+  const high10 = prior10Closes.length > 0 ? Math.max(...prior10Closes) : null
+  const breakout20d = high20 !== null && latestClose > high20
+  const breakout10d = high10 !== null && latestClose > high10
+  const breakoutClearancePct = high20 !== null && high20 > 0
+    ? round2(((latestClose - high20) / high20) * 100)
+    : null
+
+  // Close in day range: (close - low) / (high - low)
+  const latest = barList[barList.length - 1]
+  const dayHigh = safeNumber(latest?.h)
+  const dayLow = safeNumber(latest?.l)
+  const closeInDayRange = dayHigh !== null && dayLow !== null && dayHigh > dayLow
+    ? round2((latestClose - dayLow) / (dayHigh - dayLow))
+    : null
+
+  return {
+    sma20, aboveSma20, extensionFromSma20Pct, volumeRatio,
+    breakout20d, breakout10d, breakoutClearancePct, closeInDayRange,
+  }
+}
+
 function safeDiv(a: number | null, b: number | null): number | null {
   if (a == null || b == null || b === 0) return null
   return a / b
@@ -542,6 +610,9 @@ async function getTickerData(ticker: string) {
     const return10d = calcReturn(barList, 10)
     const return20d = calcReturn(barList, 20)
 
+    // Compute real technical indicators from bar data
+    const technicals = computeTechnicals(barList, price || 0)
+
     // Derived metrics from Massive data only (no Finnhub dependency)
     const betaVal: number | null = null // not available from Massive — LTCS handles null gracefully
     const epsGrowthVal = safeNumber(inc.diluted_earnings_per_share?.value) // raw EPS, growth calc'd downstream
@@ -584,6 +655,7 @@ async function getTickerData(ticker: string) {
         return52w: null,
         monthToDate: return20d,
       },
+      technicals,
       snapshot: {
         peRatio: peRatioVal != null && peRatioVal > 0 ? peRatioVal : null,
         forwardPe: forwardPeVal ?? (peRatioVal != null && peRatioVal > 0 ? round2(peRatioVal * 0.9) : null),
@@ -906,11 +978,17 @@ async function prepareTickerForScoring(
 
   let quote: any = null
   let snapshot: TickerSnapshot = emptySnapshot()
+  let technicals: TechnicalIndicators = {
+    sma20: null, aboveSma20: false, extensionFromSma20Pct: null,
+    volumeRatio: null, breakout20d: false, breakout10d: false,
+    breakoutClearancePct: null, closeInDayRange: null,
+  }
 
   try {
     const tickerData = await getTickerData(ticker)
     quote = tickerData.quote
     snapshot = tickerData.snapshot
+    technicals = tickerData.technicals
   } catch (err: any) {
     // Finnhub/FMP errors should be permanent (no rate limit), not transient
     const msg = String(err?.message || "")
@@ -997,7 +1075,7 @@ async function prepareTickerForScoring(
       return10d,
       return20d,
       relativeStrength20d,
-      volumeRatio: null,
+      technicals,
     },
   }
 }
@@ -1236,13 +1314,13 @@ export async function GET(request: Request) {
         return_10d: metric.return10d,
         return_20d: metric.return20d,
         relative_strength_20d: metric.relativeStrength20d,
-        volume_ratio: metric.volumeRatio,
-        breakout_20d: false,
-        breakout_10d: false,
-        above_sma_20: false,
-        breakout_clearance_pct: null,
-        extension_from_sma20_pct: null,
-        close_in_day_range: null,
+        volume_ratio: metric.technicals.volumeRatio,
+        breakout_20d: metric.technicals.breakout20d,
+        breakout_10d: metric.technicals.breakout10d,
+        above_sma_20: metric.technicals.aboveSma20,
+        breakout_clearance_pct: metric.technicals.breakoutClearancePct,
+        extension_from_sma20_pct: metric.technicals.extensionFromSma20Pct,
+        close_in_day_range: metric.technicals.closeInDayRange,
         catalyst_count: 0,
         passes_price: metric.passesPrice,
         passes_volume: metric.passesVolume,

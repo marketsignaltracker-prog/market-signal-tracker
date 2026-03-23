@@ -115,10 +115,10 @@ type BreadthStats = {
 
 const DEFAULT_LOOKBACK_DAYS = 31
 const MAX_LOOKBACK_DAYS = 90
-const DEFAULT_LIMIT = 1000
+const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 3000
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v12-ltcs-compounder"
+const SCORE_VERSION = "v13-catalyst-first"
 
 const DEFAULT_PTR_LOOKBACK_DAYS = 60
 const MAX_PTR_LOOKBACK_DAYS = 120
@@ -127,7 +127,7 @@ const MAX_PTR_RECENT_DAYS = 30
 
 const MIN_SIGNAL_APP_SCORE = 58
 const MIN_TICKER_APP_SCORE = 55
-const MIN_COMBINED_SCORE = 60
+const MIN_COMBINED_SCORE = 68
 
 const DB_CHUNK_SIZE = 100
 

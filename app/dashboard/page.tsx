@@ -620,7 +620,7 @@ export default function Home() {
               created_at
             `)
             .order("app_score", { ascending: false })
-            .limit(1000),
+            .limit(100),
 
           supabase
             .from("raw_ptr_trades")
@@ -699,7 +699,7 @@ export default function Home() {
           )
           if (!unified) continue
 
-          // "Buy Today" filter: higher bar than before
+          // "Buy Today" filter: require catalyst-driven signal, recent, and quality
           const signalScore = unified.signal_score ?? -1
           const candidateScore = unified.candidate_score ?? -1
           const displayScore = Math.max(signalScore, candidateScore)
@@ -708,9 +708,9 @@ export default function Home() {
           const hasSignalData = signalScore >= 0
 
           const include =
-            displayScore >= 65 &&
-            (hasSignalData ? ageDays <= 14 : true) &&
-            rs20d > -5
+            displayScore >= 70 &&
+            hasSignalData &&
+            ageDays <= 10
 
           if (include) merged.push(unified)
         }
