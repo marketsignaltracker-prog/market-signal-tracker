@@ -103,8 +103,8 @@ type Diagnostics = {
 }
 
 const DEFAULT_SCOPE: Scope = "eligible"
-const DEFAULT_BATCH = 15
-const MAX_BATCH = 50
+const DEFAULT_BATCH = 50
+const MAX_BATCH = 200
 const DB_CHUNK_SIZE = 250
 const RETENTION_DAYS = 30
 
@@ -650,23 +650,30 @@ export async function GET(request: Request) {
     const fetchedAt = nowIso()
     const builtRows: RawFilingInsertRow[] = []
 
-    for (const sourceRow of sourceRows) {
-      try {
-        const submission = await fetchSecSubmissions(sourceRow.cik)
-        diagnostics.secSubmissionsFetched += 1
-
-        const built = buildRecentRowsFromSubmission({
-          submission,
-          sourceRow,
-          fetchedAt,
-          lookbackDays,
+    // Process tickers with concurrency (SEC EDGAR allows ~10 req/sec)
+    const SEC_CONCURRENCY = 8
+    for (let i = 0; i < sourceRows.length; i += SEC_CONCURRENCY) {
+      const chunk = sourceRows.slice(i, i + SEC_CONCURRENCY)
+      const results = await Promise.allSettled(
+        chunk.map(async (sourceRow) => {
+          const submission = await fetchSecSubmissions(sourceRow.cik)
+          return buildRecentRowsFromSubmission({
+            submission,
+            sourceRow,
+            fetchedAt,
+            lookbackDays,
+          })
         })
-
-        diagnostics.unsupportedFormsSkipped += built.unsupportedFormsSkipped
-        diagnostics.olderThanCutoffSkipped += built.olderThanCutoffSkipped
-        builtRows.push(...built.rows)
-      } catch {
-        diagnostics.secSubmissionsFailed += 1
+      )
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          diagnostics.secSubmissionsFetched += 1
+          diagnostics.unsupportedFormsSkipped += result.value.unsupportedFormsSkipped
+          diagnostics.olderThanCutoffSkipped += result.value.olderThanCutoffSkipped
+          builtRows.push(...result.value.rows)
+        } else {
+          diagnostics.secSubmissionsFailed += 1
+        }
       }
     }
 
