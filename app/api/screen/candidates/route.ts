@@ -186,7 +186,7 @@ const MIN_MARKET_CAP = 5_000_000_000
 const LTCS_INCLUDED_THRESHOLD = 50
 const DEFENSIVE_SECTORS = ["Healthcare", "Consumer Staples", "Utilities", "Consumer Defensive", "Health Care"]
 
-const TICKER_CONCURRENCY = 10  // Massive: unlimited API calls
+const TICKER_CONCURRENCY = 25  // Massive: unlimited API calls
 const DB_CHUNK_SIZE = 250
 
 const YAHOO_RETRY_ATTEMPTS = 2

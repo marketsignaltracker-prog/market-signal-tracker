@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
-export const maxDuration = 60
+export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
 type StepResult = {
@@ -52,7 +52,7 @@ type PipelineStateRow = {
 
 const PIPELINE_JOB_NAME = "market_signal_pipeline"
 
-const DEFAULT_SCREEN_BATCH = 200
+const DEFAULT_SCREEN_BATCH = 300
 const MAX_SCREEN_BATCH = 500
 
 const DEFAULT_FILINGS_BATCH = 50
@@ -77,8 +77,8 @@ const DEFAULT_STEP_TIMEOUT_MS = 50_000
 const FILINGS_STEP_TIMEOUT_MS = 55_000
 const PTRS_STEP_TIMEOUT_MS = 45_000
 const SEED_ELIGIBLE_STEP_TIMEOUT_MS = 35_000
-const SCREENING_STEP_TIMEOUT_MS = 55_000
-const RUN_LOCK_WINDOW_MS = 2 * 60 * 1000
+const SCREENING_STEP_TIMEOUT_MS = 280_000  // screening function has 300s max
+const RUN_LOCK_WINDOW_MS = 6 * 60 * 1000
 const COMPANIES_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000
 const CHAIN_BUDGET_MS = 45_000
 
