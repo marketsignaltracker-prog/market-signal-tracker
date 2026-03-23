@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js"
-import YahooFinance from "yahoo-finance2"
+// yahoo-finance2 kept as dependency but no longer imported — Massive is primary source
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
@@ -171,10 +171,8 @@ type ScreeningPreparationResult =
     }
 
 
-const yahooFinance = new YahooFinance({
-  queue: { concurrency: 2 },
-  suppressNotices: ["ripHistorical", "yahooSurvey"],
-})
+// Yahoo Finance instance removed — Massive is the primary data source.
+// Error handling code still references "Yahoo" naming but errors come from Massive.
 
 const MAX_BATCH = 500
 const DEFAULT_BATCH = 200

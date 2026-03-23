@@ -4,12 +4,6 @@ import { createClient } from "@supabase/supabase-js"
 export const dynamic = "force-dynamic"
 export const maxDuration = 300
 
-type SecCompanyTickerRow = {
-  cik_str?: number | string | null
-  ticker?: string | null
-  title?: string | null
-}
-
 type CompanyRow = {
   ticker: string
   cik: string | null
@@ -20,8 +14,28 @@ type CompanyRow = {
   updated_at: string
 }
 
-const SEC_COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+type MassiveTickerResult = {
+  ticker?: string
+  name?: string
+  cik?: string | null
+  market?: string
+  locale?: string
+  type?: string
+  active?: boolean
+  primary_exchange?: string
+  currency_name?: string
+}
+
+type MassiveTickersResponse = {
+  results?: MassiveTickerResult[]
+  next_url?: string | null
+  count?: number
+  status?: string
+}
+
+const MASSIVE_BASE = "https://api.massive.com"
 const UPSERT_CHUNK_SIZE = 500
+const MAX_PAGES = 50 // safety limit — usually ~12 pages for all US stocks
 
 function normalizeTicker(value: string | null | undefined) {
   return (value || "").trim().toUpperCase()
@@ -39,42 +53,82 @@ function normalizeCik(value: unknown) {
   return digits.length ? digits : null
 }
 
-async function fetchSecCompanies() {
-  const response = await fetch(SEC_COMPANY_TICKERS_URL, {
-    method: "GET",
-    headers: {
-      "User-Agent": "MarketSignalTracker/1.0 support@marketsignaltracker.com",
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  })
+async function fetchMassivePage(
+  url: string,
+  apiKey: string
+): Promise<MassiveTickersResponse> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30_000)
 
-  if (!response.ok) {
-    throw new Error(`SEC fetch failed with status ${response.status}`)
+  try {
+    // If it's a next_url, it already includes apiKey param from Massive.
+    // But Massive uses Bearer auth, so we always send the header.
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+
+    if (!res.ok) {
+      throw new Error(`Massive tickers fetch failed: ${res.status}`)
+    }
+
+    return (await res.json()) as MassiveTickersResponse
+  } finally {
+    clearTimeout(timeout)
   }
-
-  const json = await response.json()
-
-  if (!json || typeof json !== "object") {
-    throw new Error("SEC response was not a valid object")
-  }
-
-  return Object.values(json) as SecCompanyTickerRow[]
 }
 
-function mapSecRowToCompany(row: SecCompanyTickerRow, nowIso: string): CompanyRow | null {
-  const ticker = normalizeTicker(row.ticker)
-  const cik = normalizeCik(row.cik_str)
-  const name = cleanString(row.title)
+async function fetchAllMassiveTickers(apiKey: string) {
+  const allTickers: MassiveTickerResult[] = []
+  let page = 0
 
+  // Initial URL: all active US stock tickers, 1000 per page
+  let url = `${MASSIVE_BASE}/v3/reference/tickers?market=stocks&active=true&limit=1000&locale=us`
+
+  while (url && page < MAX_PAGES) {
+    page++
+    const response = await fetchMassivePage(url, apiKey)
+    const results = response.results || []
+    allTickers.push(...results)
+
+    // Massive returns next_url for pagination
+    if (response.next_url) {
+      // next_url may be absolute or may need base URL
+      url = response.next_url.startsWith("http")
+        ? response.next_url
+        : `${MASSIVE_BASE}${response.next_url}`
+    } else {
+      break
+    }
+  }
+
+  return { tickers: allTickers, pages: page }
+}
+
+function mapMassiveRowToCompany(
+  row: MassiveTickerResult,
+  nowIso: string
+): CompanyRow | null {
+  const ticker = normalizeTicker(row.ticker)
   if (!ticker) return null
+
+  // Skip non-common-stock types (warrants, rights, units, preferred, etc.)
+  const tickerType = (row.type || "").toUpperCase()
+  if (tickerType && !["CS", "ADRC", ""].includes(tickerType)) return null
+
+  // Skip tickers with special characters (warrants, units)
+  if (/[.\-\/+]/.test(ticker) && ticker.length > 5) return null
+
+  const cik = normalizeCik(row.cik)
+  const name = cleanString(row.name)
 
   return {
     ticker,
     cik,
     name,
     is_active: true,
-    source: "sec_company_tickers",
+    source: "massive_reference_tickers",
     last_seen_at: nowIso,
     updated_at: nowIso,
   }
@@ -143,6 +197,15 @@ export async function GET(request: Request) {
     )
   }
 
+  const massiveApiKey = process.env.MASSIVE_API_KEY
+
+  if (!massiveApiKey) {
+    return NextResponse.json(
+      { ok: false, error: "Missing MASSIVE_API_KEY environment variable" },
+      { status: 500 }
+    )
+  }
+
   try {
     const nowIso = new Date().toISOString()
 
@@ -154,10 +217,11 @@ export async function GET(request: Request) {
     })
 
     const companiesTable = supabase.from("companies") as any
-    const secRows = await fetchSecCompanies()
 
-    const mappedRows = secRows
-      .map((row) => mapSecRowToCompany(row, nowIso))
+    const { tickers: massiveRows, pages } = await fetchAllMassiveTickers(massiveApiKey)
+
+    const mappedRows = massiveRows
+      .map((row) => mapMassiveRowToCompany(row, nowIso))
       .filter((row): row is CompanyRow => Boolean(row))
 
     const dedupedMap = new Map<string, CompanyRow>()
@@ -171,10 +235,11 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error: "No valid companies were parsed from SEC source",
+          error: "No valid companies were parsed from Massive source",
           debug: {
-            sourceRowCount: secRows.length,
+            sourceRowCount: massiveRows.length,
             mappedRowCount: mappedRows.length,
+            pagesLoaded: pages,
           },
         },
         { status: 500 }
@@ -189,9 +254,10 @@ export async function GET(request: Request) {
           ok: false,
           error: "Failed writing one or more company chunks to Supabase",
           debug: {
-            sourceRowCount: secRows.length,
+            sourceRowCount: massiveRows.length,
             mappedRowCount: mappedRows.length,
             dedupedRowCount: dedupedRows.length,
+            pagesLoaded: pages,
             errorCount: upsertResult.errors.length,
             errorSamples: upsertResult.errors.slice(0, 5),
           },
@@ -207,10 +273,11 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      source: "sec_company_tickers",
-      sourceRowCount: secRows.length,
+      source: "massive_reference_tickers",
+      sourceRowCount: massiveRows.length,
       mappedRowCount: mappedRows.length,
       dedupedRowCount: dedupedRows.length,
+      pagesLoaded: pages,
       upsertedCount: upsertResult.upsertedCount,
       totalCompanies: totalCount ?? null,
       activeCompanies: activeCount ?? null,
