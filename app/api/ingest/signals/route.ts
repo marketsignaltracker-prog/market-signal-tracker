@@ -188,7 +188,7 @@ const MAX_LIMIT = 1000
 const DEFAULT_LOOKBACK_DAYS = 30
 const MAX_LOOKBACK_DAYS = 60
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v10-priority-signals-balanced"
+const SCORE_VERSION = "v11-rebalanced-scoring"
 const DB_CHUNK_SIZE = 100
 
 const DEFAULT_MIN_SIGNAL_APP_SCORE = 58
@@ -553,7 +553,7 @@ function scoreCandidateSignal(params: {
   const signalFamilyCount =
     Number(hasPtrEvidence) + Number(hasFilingEvidence) + Number(hasTechnicalEvidence)
 
-  add("base", 26, "Base priority signal")
+  add("base", 38, "Base priority signal")
 
   if (context.included) add("included", 6, "Already made final candidate set")
 
@@ -662,12 +662,12 @@ function scoreCandidateSignal(params: {
 
   if (signalFamilyCount >= 3) add("stacking_bonus", 8, "PTR, filings, and technicals are aligned")
   else if (signalFamilyCount === 2) add("stacking_bonus", 4, "Multiple signal families are aligned")
-  else add("single_signal_penalty", -5, "Only one signal family is carrying the setup")
+  else add("single_signal_penalty", -2, "Only one signal family is carrying the setup")
 
   let rawScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
   rawScore = clamp(Math.round(rawScore), 0, 100)
 
-  let appScore = Math.round(Math.pow(rawScore / 100, 1.08) * 100)
+  let appScore = rawScore
 
   const hasPriorityEvidence =
     hasPtrEvidence || hasFilingEvidence
