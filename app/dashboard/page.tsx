@@ -2910,62 +2910,66 @@ function SignalDetailsModal({
                     <p className="mt-2 text-sm font-semibold leading-6 text-white">{thesis}</p>
                   </div>
 
-                  {/* EXIT STRATEGY — Prominent placement */}
-                  {row.exit_strategy && (
-                    <div className="rounded-2xl border-2 border-[rgba(239,68,68,0.35)] p-5" style={{ background: "linear-gradient(160deg, rgba(239,68,68,0.12) 0%, rgba(239,68,68,0.03) 40%, #0d1117 80%)" }}>
-                      <div className="mb-4 flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20">
-                          <span className="text-base">&#x1F6E1;</span>
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-[0.15em] text-red-400">Exit Strategy</p>
-                          <p className="text-[10px] text-red-400/50">When to sell this position</p>
-                        </div>
+                  {/* EXIT STRATEGY — Prominent placement (always visible) */}
+                  <div className="rounded-2xl border-2 border-[rgba(239,68,68,0.35)] p-5" style={{ background: "linear-gradient(160deg, rgba(239,68,68,0.12) 0%, rgba(239,68,68,0.03) 40%, #0d1117 80%)" }}>
+                    <div className="mb-4 flex items-center gap-2.5">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20">
+                        <span className="text-base">&#x1F6E1;</span>
                       </div>
-
-                      {/* Key levels — big and bold */}
-                      <div className="mb-4 grid grid-cols-3 gap-3">
-                        {row.exit_strategy.stop_loss_price && (
-                          <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-center">
-                            <p className="text-[9px] font-bold uppercase tracking-wider text-red-400/60">Stop-Loss</p>
-                            <p className="mt-1 text-lg font-black text-red-400">${row.exit_strategy.stop_loss_price}</p>
-                            <p className="mt-0.5 text-[9px] text-red-400/40">{row.exit_strategy.stop_loss_type}</p>
-                          </div>
-                        )}
-                        {row.exit_strategy.profit_target && (
-                          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-center">
-                            <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-400/60">Target</p>
-                            <p className="mt-1 text-lg font-black text-emerald-400">${row.exit_strategy.profit_target}</p>
-                            <p className="mt-0.5 text-[9px] text-emerald-400/40">{row.exit_strategy.risk_reward_ratio}:1 R/R</p>
-                          </div>
-                        )}
-                        {row.exit_strategy.catalyst_expiry_days !== null && (
-                          <div className={`rounded-xl border px-3 py-2.5 text-center ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "border-emerald-500/20 bg-emerald-500/5" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "border-yellow-500/20 bg-yellow-500/5" : "border-red-500/20 bg-red-500/5"}`}>
-                            <p className={`text-[9px] font-bold uppercase tracking-wider ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400/60" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400/60" : "text-red-400/60"}`}>Catalyst</p>
-                            <p className={`mt-1 text-lg font-black ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400" : "text-red-400"}`}>
-                              {(row.exit_strategy.catalyst_expiry_days ?? 0) > 0 ? `${row.exit_strategy.catalyst_expiry_days}d` : "0d"}
-                            </p>
-                            <p className={`mt-0.5 text-[9px] ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400/40" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400/40" : "text-red-400/40"}`}>
-                              {(row.exit_strategy.catalyst_expiry_days ?? 0) > 0 ? "remaining" : "expired"}
-                            </p>
-                          </div>
-                        )}
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.15em] text-red-400">Exit Strategy</p>
+                        <p className="text-[10px] text-red-400/50">When to sell this position</p>
                       </div>
-
-                      {/* Sell signals */}
-                      {row.exit_strategy.exit_signals && row.exit_strategy.exit_signals.length > 0 && (
-                        <div className="space-y-2 border-t border-red-500/10 pt-3">
-                          <p className="text-[9px] font-bold uppercase tracking-wider text-red-400/50">Sell Triggers</p>
-                          {row.exit_strategy.exit_signals.slice(0, 6).map((signal, i) => (
-                            <div key={i} className="flex items-start gap-2">
-                              <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-red-500/10 text-[8px] text-red-400/70">{i + 1}</span>
-                              <p className="text-[11px] leading-4 text-[#9ca3af]">{signal}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                  )}
+
+                    {row.exit_strategy ? (
+                      <>
+                        {/* Key levels — big and bold */}
+                        <div className="mb-4 grid grid-cols-3 gap-3">
+                          {row.exit_strategy.stop_loss_price && (
+                            <div className="rounded-xl border border-red-500/20 bg-red-500/5 px-3 py-2.5 text-center">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-red-400/60">Stop-Loss</p>
+                              <p className="mt-1 text-lg font-black text-red-400">${row.exit_strategy.stop_loss_price}</p>
+                              <p className="mt-0.5 text-[9px] text-red-400/40">{row.exit_strategy.stop_loss_type}</p>
+                            </div>
+                          )}
+                          {row.exit_strategy.profit_target && (
+                            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-center">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-400/60">Target</p>
+                              <p className="mt-1 text-lg font-black text-emerald-400">${row.exit_strategy.profit_target}</p>
+                              <p className="mt-0.5 text-[9px] text-emerald-400/40">{row.exit_strategy.risk_reward_ratio}:1 R/R</p>
+                            </div>
+                          )}
+                          {row.exit_strategy.catalyst_expiry_days !== null && (
+                            <div className={`rounded-xl border px-3 py-2.5 text-center ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "border-emerald-500/20 bg-emerald-500/5" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "border-yellow-500/20 bg-yellow-500/5" : "border-red-500/20 bg-red-500/5"}`}>
+                              <p className={`text-[9px] font-bold uppercase tracking-wider ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400/60" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400/60" : "text-red-400/60"}`}>Catalyst</p>
+                              <p className={`mt-1 text-lg font-black ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400" : "text-red-400"}`}>
+                                {(row.exit_strategy.catalyst_expiry_days ?? 0) > 0 ? `${row.exit_strategy.catalyst_expiry_days}d` : "0d"}
+                              </p>
+                              <p className={`mt-0.5 text-[9px] ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400/40" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400/40" : "text-red-400/40"}`}>
+                                {(row.exit_strategy.catalyst_expiry_days ?? 0) > 0 ? "remaining" : "expired"}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Sell signals */}
+                        {row.exit_strategy.exit_signals && row.exit_strategy.exit_signals.length > 0 && (
+                          <div className="space-y-2 border-t border-red-500/10 pt-3">
+                            <p className="text-[9px] font-bold uppercase tracking-wider text-red-400/50">Sell Triggers</p>
+                            {row.exit_strategy.exit_signals.slice(0, 6).map((signal, i) => (
+                              <div key={i} className="flex items-start gap-2">
+                                <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-red-500/10 text-[8px] text-red-400/70">{i + 1}</span>
+                                <p className="text-[11px] leading-4 text-[#9ca3af]">{signal}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm text-[#7a8ba0]">Exit strategy data will populate after the next pipeline cycle.</p>
+                    )}
+                  </div>
 
                   {/* Smart Money */}
                   <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-5">
