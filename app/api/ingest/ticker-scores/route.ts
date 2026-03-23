@@ -498,13 +498,150 @@ function buildPtrSummaryMap(rows: RawPtrTradeRow[], ptrRecentDays: number) {
   return output
 }
 
+function computeExitStrategy(params: {
+  ticker: string
+  finalScore: number
+  price: number | null
+  extensionFromSma20Pct: number | null
+  aboveSma20: boolean | null
+  volumeRatio: number | null
+  return5d: number | null
+  return20d: number | null
+  relativeStrength20d: number | null
+  peRatio: number | null
+  sector: string | null
+  ageDays: number | null
+  filedAt: string | null
+  hasPtr: boolean
+  hasInsiderBuying: boolean
+  breakout20d: boolean | null
+  signalReasons: string[]
+}) {
+  const {
+    price, extensionFromSma20Pct, aboveSma20, volumeRatio,
+    return5d, return20d, relativeStrength20d, peRatio, sector,
+    ageDays, filedAt, hasPtr, hasInsiderBuying, breakout20d, finalScore,
+  } = params
+
+  if (!price || price <= 0) {
+    return {
+      stop_loss_price: null,
+      stop_loss_type: "Insufficient data",
+      profit_target: null,
+      catalyst_expiry_days: null,
+      risk_reward_ratio: null,
+      exit_signals: ["Monitor for updated price data"],
+      strategy_summary: "Insufficient price data to compute exit strategy.",
+    }
+  }
+
+  const ext = extensionFromSma20Pct ?? 0
+  const exitSignals: string[] = []
+
+  // --- STOP-LOSS ---
+  // Compute SMA20 from extension
+  const sma20 = ext !== 0 ? round2(price / (1 + ext / 100)) : null
+
+  // Primary stop: below SMA20 support (or 7% trailing if no SMA)
+  let stopLossPrice: number
+  let stopLossType: string
+
+  if (sma20 && aboveSma20) {
+    // Place stop just below the 20-day MA (2% below for buffer)
+    stopLossPrice = round2(sma20 * 0.98)
+    stopLossType = "Below 20-day moving average"
+    exitSignals.push(`Sell if price closes below $${stopLossPrice} (SMA20 support broken)`)
+  } else {
+    // No SMA data or below SMA — use 7% trailing stop
+    stopLossPrice = round2(price * 0.93)
+    stopLossType = "7% trailing stop-loss"
+    exitSignals.push(`Sell if price drops to $${stopLossPrice} (7% trailing stop)`)
+  }
+
+  // --- PROFIT TARGET ---
+  // Risk/reward ratio of at least 2:1
+  const riskAmount = price - stopLossPrice
+  const profitTarget = round2(price + riskAmount * 2.5)
+  const riskRewardRatio = riskAmount > 0 ? round2((profitTarget - price) / riskAmount) : null
+
+  exitSignals.push(`Take profit near $${profitTarget} (2.5:1 risk/reward target)`)
+
+  // --- EXTENSION WARNING ---
+  if (ext > 12) {
+    exitSignals.push(`Caution: ${round2(ext)}% extended above SMA20 — consider partial profit-taking`)
+  } else if (ext > 8) {
+    exitSignals.push(`Getting extended (${round2(ext)}% above SMA20) — tighten stop-loss`)
+  }
+
+  // --- VOLUME REVERSAL ---
+  if ((volumeRatio ?? 0) >= 2.0) {
+    exitSignals.push("High volume detected — watch for reversal if price turns down on heavy volume")
+  }
+
+  // --- CHASE WARNING ---
+  if ((return5d ?? 0) >= 10) {
+    exitSignals.push(`Up ${round2(return5d!)}% in 5 days — avoid adding here, consider trailing stop`)
+  }
+
+  // --- CATALYST EXPIRY ---
+  const catalystAge = ageDays ?? 0
+  let catalystExpiryDays: number | null = null
+
+  if (catalystAge <= 3) {
+    catalystExpiryDays = 10 - catalystAge
+    exitSignals.push(`Catalyst is fresh (${catalystAge}d old) — thesis valid for ~${catalystExpiryDays} more days`)
+  } else if (catalystAge <= 7) {
+    catalystExpiryDays = 10 - catalystAge
+    exitSignals.push(`Catalyst aging (${catalystAge}d old) — re-evaluate within ${catalystExpiryDays} days`)
+  } else {
+    catalystExpiryDays = 0
+    exitSignals.push(`Catalyst is ${catalystAge}d old — consider exiting unless new catalysts emerge`)
+  }
+
+  // --- INSIDER / PTR REVERSAL WATCH ---
+  if (hasInsiderBuying) {
+    exitSignals.push("Watch for Form 4 insider SELL filings — would negate buy thesis")
+  }
+  if (hasPtr) {
+    exitSignals.push("Monitor for congressional sell disclosures — would reverse PTR signal")
+  }
+
+  // --- RELATIVE STRENGTH ---
+  if ((relativeStrength20d ?? 0) < 0) {
+    exitSignals.push("Relative strength is negative — stock underperforming the market")
+  }
+
+  // --- SCORE DEGRADATION ---
+  exitSignals.push(`Exit if score drops below 60 (currently ${finalScore})`)
+
+  // --- STRATEGY SUMMARY ---
+  const summaryParts: string[] = []
+  summaryParts.push(`Stop-loss at $${stopLossPrice} (${stopLossType})`)
+  summaryParts.push(`Profit target at $${profitTarget}`)
+  if (catalystExpiryDays !== null && catalystExpiryDays > 0) {
+    summaryParts.push(`Catalyst window: ${catalystExpiryDays} days remaining`)
+  }
+  if (ext > 8) summaryParts.push("Position is extended — manage risk closely")
+
+  return {
+    stop_loss_price: stopLossPrice,
+    stop_loss_type: stopLossType,
+    profit_target: profitTarget,
+    catalyst_expiry_days: catalystExpiryDays,
+    risk_reward_ratio: riskRewardRatio,
+    exit_signals: exitSignals,
+    strategy_summary: summaryParts.join(". ") + ".",
+  }
+}
+
 function buildTickerScoresCurrentRows(
   signalRows: SignalRow[],
   runTimestamp: string,
   ptrMap: Map<string, PtrSummary>,
   breadthStats: BreadthStats,
   minCombinedScore: number,
-  ltcsScoreMap: Map<string, number>
+  ltcsScoreMap: Map<string, number>,
+  tickerPriceDataMap: Map<string, any>
 ) {
   const byTicker = new Map<string, SignalRow[]>()
 
@@ -832,6 +969,28 @@ function buildTickerScoresCurrentRows(
         ? `Evidence is stacking for this ticker across ${maxSignalFamilyCount} signal families. Sources: ${sourceList.join(", ")}${ptr?.summary ? `. ${ptr.summary}` : ""}. Primary setup: ${primary.title || "Constructive signal"}`
         : primary.summary
 
+    // Compute exit strategy from price data + signal context
+    const priceData = tickerPriceDataMap.get(ticker)
+    const exitStrategy = computeExitStrategy({
+      ticker,
+      finalScore,
+      price: priceData?.price ?? null,
+      extensionFromSma20Pct: priceData?.extension_from_sma20_pct ?? null,
+      aboveSma20: priceData?.above_sma_20 ?? null,
+      volumeRatio: priceData?.volume_ratio ?? primary.volume_ratio ?? null,
+      return5d: priceData?.return_5d ?? primary.price_return_5d ?? null,
+      return20d: priceData?.return_20d ?? primary.price_return_20d ?? null,
+      relativeStrength20d: priceData?.relative_strength_20d ?? primary.relative_strength_20d ?? null,
+      peRatio: primary.pe_ratio ?? null,
+      sector: primary.sector ?? null,
+      ageDays: primary.age_days ?? null,
+      filedAt: primary.filed_at ?? null,
+      hasPtr: Boolean(ptr?.buyTradeCount),
+      hasInsiderBuying: Boolean(primary.insider_buy_value),
+      breakout20d: priceData?.breakout_20d ?? primary.breakout_20d ?? null,
+      signalReasons: Array.from(signalReasons),
+    })
+
     rows.push({
       ticker,
       company_name: primary.company_name,
@@ -911,6 +1070,7 @@ function buildTickerScoresCurrentRows(
       freshness_bucket: primary.freshness_bucket,
       ticker_score_change_1d: null,
       ticker_score_change_7d: null,
+      exit_strategy: exitStrategy,
       updated_at: runTimestamp,
     })
   }
@@ -1088,10 +1248,10 @@ export async function GET(request: Request) {
       )
     }
 
-    // Load latest LTCS scores from candidate_screen_history
+    // Load latest LTCS scores + price/technical data from candidate_screen_history
     const { data: ltcsRows } = await supabase
       .from("candidate_screen_history")
-      .select("ticker, candidate_score, screened_on")
+      .select("ticker, candidate_score, screened_on, price, market_cap, above_sma_20, extension_from_sma20_pct, volume_ratio, breakout_20d, relative_strength_20d, return_5d, return_20d, pe_ratio, sector")
       .gte("candidate_score", 40)
       .order("screened_on", { ascending: false })
       .order("candidate_score", { ascending: false })
@@ -1099,10 +1259,12 @@ export async function GET(request: Request) {
 
     // Build map of ticker → best LTCS score (most recent screen date)
     const ltcsScoreMap = new Map<string, number>()
+    const tickerPriceDataMap = new Map<string, any>()
     for (const row of (ltcsRows || []) as any[]) {
       const t = (row.ticker || "").toUpperCase()
       if (t && !ltcsScoreMap.has(t)) {
         ltcsScoreMap.set(t, row.candidate_score ?? 0)
+        tickerPriceDataMap.set(t, row)
       }
     }
 
@@ -1116,7 +1278,8 @@ export async function GET(request: Request) {
       ptrSummaryMap,
       breadthStats,
       minCombinedScore,
-      ltcsScoreMap
+      ltcsScoreMap,
+      tickerPriceDataMap
     )
 
     const tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(

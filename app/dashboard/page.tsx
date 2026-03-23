@@ -97,6 +97,15 @@ type TickerScoreRow = {
   freshness_bucket?: string | null
   ticker_score_change_1d?: number | null
   ticker_score_change_7d?: number | null
+  exit_strategy?: {
+    stop_loss_price: number | null
+    stop_loss_type: string | null
+    profit_target: number | null
+    catalyst_expiry_days: number | null
+    risk_reward_ratio: number | null
+    exit_signals: string[]
+    strategy_summary: string | null
+  } | null
   updated_at?: string | null
   created_at?: string | null
 }
@@ -186,6 +195,15 @@ type UnifiedRow = {
   score_version: string | null
   score_updated_at: string | null
   stacked_signal_count: number | null
+  exit_strategy: {
+    stop_loss_price: number | null
+    stop_loss_type: string | null
+    profit_target: number | null
+    catalyst_expiry_days: number | null
+    risk_reward_ratio: number | null
+    exit_signals: string[]
+    strategy_summary: string | null
+  } | null
   updated_at: string | null
   created_at: string | null
 
@@ -391,6 +409,7 @@ function makeUnifiedRow(
     score_version: signal?.score_version ?? "candidate-universe",
     score_updated_at: firstString(signal?.score_updated_at, candidate?.updated_at),
     stacked_signal_count: signal?.stacked_signal_count ?? (candidate ? 1 : null),
+    exit_strategy: signal?.exit_strategy ?? null,
     updated_at: firstString(signal?.updated_at, candidate?.updated_at),
     created_at: signal?.created_at ?? null,
 
@@ -616,6 +635,7 @@ export default function Home() {
               freshness_bucket,
               ticker_score_change_1d,
               ticker_score_change_7d,
+              exit_strategy,
               updated_at,
               created_at
             `)
@@ -2987,6 +3007,54 @@ function SignalDetailsModal({
                       <MetricRow label="Data freshness" value={getFreshnessLabel(row)} />
                     </div>
                   </div>
+
+                  {/* Exit Strategy */}
+                  {row.exit_strategy && (
+                    <div className="rounded-2xl border border-[rgba(239,68,68,0.20)] p-4" style={{ background: "linear-gradient(160deg, rgba(239,68,68,0.08) 0%, #111827 60%)" }}>
+                      <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-red-400">Exit Strategy</p>
+                      {row.exit_strategy.strategy_summary && (
+                        <p className="mb-3 text-xs leading-5 text-[#9ca3af]">{row.exit_strategy.strategy_summary}</p>
+                      )}
+                      <div className="space-y-2">
+                        {row.exit_strategy.stop_loss_price && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-[#7a8ba0]">Stop-loss</span>
+                            <span className="text-xs font-bold text-red-400">${row.exit_strategy.stop_loss_price}</span>
+                          </div>
+                        )}
+                        {row.exit_strategy.profit_target && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-[#7a8ba0]">Profit target</span>
+                            <span className="text-xs font-bold text-emerald-400">${row.exit_strategy.profit_target}</span>
+                          </div>
+                        )}
+                        {row.exit_strategy.risk_reward_ratio && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-[#7a8ba0]">Risk/Reward</span>
+                            <span className="text-xs font-bold text-white">{row.exit_strategy.risk_reward_ratio}:1</span>
+                          </div>
+                        )}
+                        {row.exit_strategy.catalyst_expiry_days !== null && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-[#7a8ba0]">Catalyst window</span>
+                            <span className={`text-xs font-bold ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400" : "text-red-400"}`}>
+                              {(row.exit_strategy.catalyst_expiry_days ?? 0) > 0 ? `${row.exit_strategy.catalyst_expiry_days}d left` : "Expired"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {row.exit_strategy.exit_signals && row.exit_strategy.exit_signals.length > 0 && (
+                        <div className="mt-3 space-y-1.5 border-t border-[rgba(255,255,255,0.05)] pt-3">
+                          {row.exit_strategy.exit_signals.slice(0, 5).map((signal, i) => (
+                            <div key={i} className="flex items-start gap-2">
+                              <span className="mt-0.5 text-[10px] text-red-400/60">&#x25CF;</span>
+                              <p className="text-[11px] leading-4 text-[#7a8ba0]">{signal}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -3274,6 +3342,54 @@ function SignalDetailsModal({
                         <MetricRow label="Last updated" value={row.last_screened_at ? formatDateLong(row.last_screened_at) : null} />
                       </div>
                     </div>
+
+                    {/* Exit Strategy */}
+                    {row.exit_strategy && (
+                      <div className="rounded-2xl border border-[rgba(239,68,68,0.20)] p-4" style={{ background: "linear-gradient(160deg, rgba(239,68,68,0.08) 0%, #111827 60%)" }}>
+                        <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-red-400">Exit Strategy</p>
+                        {row.exit_strategy.strategy_summary && (
+                          <p className="mb-3 text-xs leading-5 text-[#9ca3af]">{row.exit_strategy.strategy_summary}</p>
+                        )}
+                        <div className="space-y-2">
+                          {row.exit_strategy.stop_loss_price && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-[#7a8ba0]">Stop-loss</span>
+                              <span className="text-xs font-bold text-red-400">${row.exit_strategy.stop_loss_price}</span>
+                            </div>
+                          )}
+                          {row.exit_strategy.profit_target && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-[#7a8ba0]">Profit target</span>
+                              <span className="text-xs font-bold text-emerald-400">${row.exit_strategy.profit_target}</span>
+                            </div>
+                          )}
+                          {row.exit_strategy.risk_reward_ratio && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-[#7a8ba0]">Risk/Reward</span>
+                              <span className="text-xs font-bold text-white">{row.exit_strategy.risk_reward_ratio}:1</span>
+                            </div>
+                          )}
+                          {row.exit_strategy.catalyst_expiry_days !== null && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-[#7a8ba0]">Catalyst window</span>
+                              <span className={`text-xs font-bold ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400" : "text-red-400"}`}>
+                                {(row.exit_strategy.catalyst_expiry_days ?? 0) > 0 ? `${row.exit_strategy.catalyst_expiry_days}d left` : "Expired"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {row.exit_strategy.exit_signals && row.exit_strategy.exit_signals.length > 0 && (
+                          <div className="mt-3 space-y-1.5 border-t border-[rgba(255,255,255,0.05)] pt-3">
+                            {row.exit_strategy.exit_signals.slice(0, 5).map((signal, i) => (
+                              <div key={i} className="flex items-start gap-2">
+                                <span className="mt-0.5 text-[10px] text-red-400/60">&#x25CF;</span>
+                                <p className="text-[11px] leading-4 text-[#7a8ba0]">{signal}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>
