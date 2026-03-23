@@ -548,12 +548,12 @@ function computeExitStrategy(params: {
 
   if (sma20 && aboveSma20) {
     // Place stop just below the 20-day MA (2% below for buffer)
-    stopLossPrice = round2(sma20 * 0.98)
+    stopLossPrice = round2(sma20 * 0.98) ?? Math.round(sma20 * 0.98 * 100) / 100
     stopLossType = "Below 20-day moving average"
     exitSignals.push(`Sell if price closes below $${stopLossPrice} (SMA20 support broken)`)
   } else {
     // No SMA data or below SMA — use 7% trailing stop
-    stopLossPrice = round2(price * 0.93)
+    stopLossPrice = round2(price * 0.93) ?? Math.round(price * 0.93 * 100) / 100
     stopLossType = "7% trailing stop-loss"
     exitSignals.push(`Sell if price drops to $${stopLossPrice} (7% trailing stop)`)
   }
@@ -561,8 +561,8 @@ function computeExitStrategy(params: {
   // --- PROFIT TARGET ---
   // Risk/reward ratio of at least 2:1
   const riskAmount = price - stopLossPrice
-  const profitTarget = round2(price + riskAmount * 2.5)
-  const riskRewardRatio = riskAmount > 0 ? round2((profitTarget - price) / riskAmount) : null
+  const profitTarget = round2(price + riskAmount * 2.5) ?? Math.round((price + riskAmount * 2.5) * 100) / 100
+  const riskRewardRatio = riskAmount > 0 ? (round2((profitTarget - price) / riskAmount) ?? 2.5) : null
 
   exitSignals.push(`Take profit near $${profitTarget} (2.5:1 risk/reward target)`)
 
