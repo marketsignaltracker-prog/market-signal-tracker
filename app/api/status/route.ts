@@ -41,7 +41,7 @@ export async function GET() {
     const { count: strongBuyCount, error: strongBuyError } = await supabase
       .from("ticker_scores_current")
       .select("*", { count: "exact", head: true })
-      .gte("score", 84);
+      .gte("app_score", 84);
 
     if (strongBuyError) {
       throw new Error(`ticker_scores_current strong_buy count query failed: ${strongBuyError.message}`);
@@ -51,7 +51,7 @@ export async function GET() {
     const { count: eliteCount, error: eliteError } = await supabase
       .from("ticker_scores_current")
       .select("*", { count: "exact", head: true })
-      .gte("score", 94);
+      .gte("app_score", 94);
 
     if (eliteError) {
       throw new Error(`ticker_scores_current elite count query failed: ${eliteError.message}`);
