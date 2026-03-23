@@ -742,12 +742,25 @@ function buildTickerScoresCurrentRows(
     }
 
     if (primary.age_days !== null && primary.age_days !== undefined) {
-      if (Number(primary.age_days) <= 2) {
+      const ageDays = Number(primary.age_days)
+      if (ageDays <= 2) {
+        stackedScore += 4
+        scoreBreakdown.freshness = round2((scoreBreakdown.freshness || 0) + 4) ?? 0
+      } else if (ageDays <= 5) {
         stackedScore += 2
         scoreBreakdown.freshness = round2((scoreBreakdown.freshness || 0) + 2) ?? 0
-      } else if (Number(primary.age_days) >= 21) {
-        stackedScore -= 2
-        scoreBreakdown.freshness = round2((scoreBreakdown.freshness || 0) - 2) ?? 0
+      } else if (ageDays >= 28) {
+        stackedScore -= 15
+        scoreBreakdown.freshness = round2((scoreBreakdown.freshness || 0) - 15) ?? 0
+        scoreCapsApplied.add("stale-signal-heavy-decay")
+      } else if (ageDays >= 21) {
+        stackedScore -= 10
+        scoreBreakdown.freshness = round2((scoreBreakdown.freshness || 0) - 10) ?? 0
+        scoreCapsApplied.add("stale-signal-decay")
+      } else if (ageDays >= 14) {
+        stackedScore -= 5
+        scoreBreakdown.freshness = round2((scoreBreakdown.freshness || 0) - 5) ?? 0
+        scoreCapsApplied.add("aging-signal-decay")
       }
     }
 

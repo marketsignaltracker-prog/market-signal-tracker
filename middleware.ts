@@ -47,7 +47,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match all routes except static files, API routes, and webhook
-    "/((?!_next/static|_next/image|favicon.ico|manifest.json|api/stripe/webhook|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Match all routes except static files, ALL API routes, and assets
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

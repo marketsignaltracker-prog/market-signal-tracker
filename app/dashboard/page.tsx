@@ -558,9 +558,9 @@ export default function Home() {
               sector,
               industry
             `)
-            .gte("candidate_score", 50)
+            .gte("candidate_score", 60)
             .order("candidate_score", { ascending: false })
-            .limit(1000),
+            .limit(500),
 
           supabase
             .from("ticker_scores_current")
@@ -699,9 +699,18 @@ export default function Home() {
           )
           if (!unified) continue
 
+          // "Buy Today" filter: higher bar than before
+          const signalScore = unified.signal_score ?? -1
+          const candidateScore = unified.candidate_score ?? -1
+          const displayScore = Math.max(signalScore, candidateScore)
+          const rs20d = unified.relative_strength_20d ?? 0
+          const ageDays = unified.age_days ?? 999
+          const hasSignalData = signalScore >= 0
+
           const include =
-            (unified.candidate_score ?? -1) >= 50 ||
-            (unified.signal_score ?? -1) >= 50
+            displayScore >= 65 &&
+            (hasSignalData ? ageDays <= 14 : true) &&
+            rs20d > -5
 
           if (include) merged.push(unified)
         }
@@ -781,7 +790,11 @@ export default function Home() {
 
   const lastUpdated = getLastUpdated(rows)
   const strongBuyCount = filteredRows.length
-  const eliteCount = filteredRows.filter((row) => row.display_score >= 90).length
+  const eliteCount = filteredRows.filter((row) =>
+    row.display_score >= 90 &&
+    (row.signal_score ?? 0) > 0 &&
+    (row.age_days ?? 999) <= 7
+  ).length
 
   const activeFilterCount = useMemo(() => {
     let count = 0
@@ -874,7 +887,7 @@ export default function Home() {
                 <span className="text-[#7a8ba0] normal-case tracking-normal">Loading…</span>
               ) : (
                 <>
-                  <span>{filteredRows.length} Buys</span>
+                  <span>{filteredRows.length} Buy Today</span>
                   {eliteCount > 0 && (
                     <span className="text-[#30d158]">
                       {eliteCount} Top Tier
