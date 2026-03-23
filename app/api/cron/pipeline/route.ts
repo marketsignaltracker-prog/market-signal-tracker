@@ -87,10 +87,18 @@ function nowIso() {
 }
 
 function getBaseUrl() {
+  // Prefer VERCEL_URL for internal calls — bypasses Cloudflare bot protection
+  // which blocks server-to-server fetch on the custom domain.
+  const vercelUrl = process.env.VERCEL_URL?.trim()
+  if (vercelUrl) {
+    const base = vercelUrl.startsWith("http") ? vercelUrl : `https://${vercelUrl}`
+    return base.replace(/\/$/, "")
+  }
+
   const appUrl = process.env.APP_URL?.trim()
 
   if (!appUrl) {
-    throw new Error("Missing APP_URL environment variable")
+    throw new Error("Missing APP_URL and VERCEL_URL environment variables")
   }
 
   return appUrl.replace(/\/$/, "")
