@@ -213,10 +213,19 @@ async function runStep(
 
   let data: unknown = null
 
+  let rawText = ""
   try {
-    data = await response.json()
+    rawText = await response.text()
+  } catch { /* ignore */ }
+
+  try {
+    data = rawText ? JSON.parse(rawText) : {}
   } catch {
-    data = { ok: false, error: "Non-JSON response returned by step" }
+    const snippet = rawText.slice(0, 300)
+    data = {
+      ok: false,
+      error: `Non-JSON response returned by step (status=${response.status}, url=${url}, snippet=${snippet})`,
+    }
   }
 
   return {
