@@ -455,7 +455,7 @@ export default function Home() {
   const { user, isPro, loading: authLoading, signOut, refreshProfile } = useAuth()
   const router = useRouter()
 
-  const FREE_CARD_LIMIT = 3
+  const FREE_CARD_LIMIT = 1
 
   // PWA install banner
   const [showInstallBanner, setShowInstallBanner] = useState(false)
@@ -1627,7 +1627,7 @@ function SwipeDeck({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
                 </svg>
                 <p className="text-sm font-semibold text-white">Sign up to unlock all buy cards</p>
-                <p className="text-xs text-slate-400 text-center">Free cards: {freeLimit} · You&apos;re viewing #{cardIndex + 1}</p>
+                <p className="text-xs text-slate-400 text-center">Free plan: 1 card · Upgrade to see all</p>
                 <button className="mt-1 rounded-xl bg-cyan-500 hover:bg-cyan-400 px-6 py-2 text-sm font-bold text-black transition">
                   Upgrade to Pro
                 </button>

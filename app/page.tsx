@@ -314,7 +314,7 @@ export default function LandingPage() {
                 onClick={() => router.push("/login")}
                 className="w-full rounded-full bg-cyan-500 px-8 py-3 text-base font-bold text-black transition hover:bg-cyan-400 hover:shadow-lg hover:shadow-cyan-500/25 sm:w-auto"
               >
-                Start Free — See 3 Picks
+                Start Free — See Today&apos;s Top Pick
               </button>
               <button
                 onClick={() => {
@@ -475,7 +475,7 @@ export default function LandingPage() {
                 <span className="text-sm text-slate-500"> /forever</span>
               </p>
               <ul className="mb-6 space-y-2.5">
-                {["3 buy cards per day", "Quality scores visible", "Basic card details"].map((f) => (
+                {["1 buy card per day", "Quality scores visible", "Basic card details"].map((f) => (
                   <li key={f} className="flex items-center gap-2 text-sm text-slate-400">
                     <svg className="h-4 w-4 shrink-0 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
