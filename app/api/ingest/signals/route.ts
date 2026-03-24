@@ -1143,10 +1143,13 @@ export async function GET(request: Request) {
 
     const signalRows: any[] = []
     const historyRows: any[] = []
+    const seenTickers = new Set<string>()
 
     for (const context of candidateRows) {
       const ticker = normalizeTicker(context.ticker)
       if (!ticker) continue
+      if (seenTickers.has(ticker)) continue
+      seenTickers.add(ticker)
 
       const filingSummary = filingSummaryMap.get(ticker) ?? null
       const ptrSummary = ptrSummaryMap.get(ticker) ?? null
