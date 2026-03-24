@@ -991,6 +991,31 @@ async function loadCandidateContext(
 
     const historyRows = (historyResult.data || []) as CandidateHistoryRow[]
 
+    // Also load PTR tickers that might not be in the top N by candidate_score
+    const ptrTickersResult = await supabase
+      .from("raw_ptr_trades")
+      .select("ticker")
+    const ptrTickers = new Set(
+      (ptrTickersResult.data || []).map((r: any) => String(r.ticker).toUpperCase().trim()).filter(Boolean)
+    )
+    const loadedTickers = new Set(historyRows.map((r) => String(r.ticker).toUpperCase().trim()))
+    const missingPtrTickers = [...ptrTickers].filter((t) => !loadedTickers.has(t))
+
+    if (missingPtrTickers.length > 0) {
+      const ptrHistoryResult = await supabase
+        .from("candidate_screen_history")
+        .select(
+          "id, company_id, ticker, cik, name, is_active, is_eligible, has_insider_trades, has_ptr_forms, has_clusters, eligibility_reason, price, market_cap, pe_ratio, pe_forward, pe_type, sector, industry, business_description, avg_volume_20d, avg_dollar_volume_20d, one_day_return, return_5d, return_10d, return_20d, relative_strength_20d, volume_ratio, breakout_20d, breakout_10d, above_sma_20, breakout_clearance_pct, extension_from_sma20_pct, close_in_day_range, catalyst_count, passes_price, passes_volume, passes_dollar_volume, passes_market_cap, candidate_score, included, screen_reason, last_screened_at, updated_at, screened_on"
+        )
+        .in("ticker", missingPtrTickers)
+        .order("candidate_score", { ascending: false })
+        .limit(100)
+
+      if (!ptrHistoryResult.error && ptrHistoryResult.data?.length) {
+        historyRows.push(...(ptrHistoryResult.data as CandidateHistoryRow[]))
+      }
+    }
+
     if (historyRows.length > 0) {
       return {
         candidateRows: historyRows,
