@@ -1975,7 +1975,7 @@ function SwipeStockCard({
                   // Insider display value
                   const insiderVal = !insider ? "None"
                     : row.insider_buy_value && row.insider_buy_value > 0 ? `$${Math.round(row.insider_buy_value).toLocaleString()}`
-                    : row.insider_shares && row.insider_shares > 0 ? `${row.insider_shares.toLocaleString()} sh`
+                    : row.insider_shares && row.insider_shares > 0 ? `${row.insider_shares.toLocaleString()} Shares`
                     : "Active"
 
                   // PTR display value
@@ -2726,7 +2726,7 @@ function SmartMoneyTiles({ row }: { row: UnifiedRow }) {
               {cluster ? "Cluster Buy" : "Insider"}
             </p>
             <p className="text-lg font-black" style={{ color: insider ? "#fed7aa" : "#333" }}>
-              {cluster ? "Yes" : insider ? (row.insider_shares ? `${row.insider_shares.toLocaleString()} sh` : "Yes") : "No"}
+              {cluster ? "Yes" : insider ? (row.insider_shares ? `${row.insider_shares.toLocaleString()} Shares` : "Yes") : "No"}
             </p>
             {insider && row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") && (
               <p className="mt-1 text-[10px] leading-tight text-orange-300/50 line-clamp-2">

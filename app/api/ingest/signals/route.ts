@@ -641,21 +641,36 @@ function scoreCandidateSignal(params: {
   rawScore = clamp(Math.round(rawScore), 0, 100)
 
   // --- Staleness decay based on newest catalyst age ---
-  const newestCatalystAge = Math.min(
-    hasRecentFiling && filingAge !== null ? filingAge : 999,
-    hasRecentPtr && ptrAge !== null ? ptrAge : 999,
-    hasBreakout ? 0 : 999
-  )
+  // PTR/congress trades are inherently delayed (45-day disclosure), so use a much gentler decay
+  const filingAgeEffective = hasRecentFiling && filingAge !== null ? filingAge : 999
+  const ptrAgeEffective = hasRecentPtr && ptrAge !== null ? ptrAge : 999
+  const breakoutAge = hasBreakout ? 0 : 999
+  const newestCatalystAge = Math.min(filingAgeEffective, ptrAgeEffective, breakoutAge)
+  const hasPtrCatalyst = hasRecentPtr && ptrAge !== null
 
   let decayMultiplier = 1.0
-  if (newestCatalystAge <= 1) decayMultiplier = 1.0
-  else if (newestCatalystAge <= 2) decayMultiplier = 0.95
-  else if (newestCatalystAge <= 3) decayMultiplier = 0.90
-  else if (newestCatalystAge <= 5) decayMultiplier = 0.80
-  else if (newestCatalystAge <= 7) decayMultiplier = 0.65
-  else if (newestCatalystAge <= 10) decayMultiplier = 0.45
-  else if (newestCatalystAge <= 14) decayMultiplier = 0.25
-  else return null // signal expired
+  if (hasPtrCatalyst) {
+    // Gentle decay for PTR/congress — they're always "old" by nature
+    if (ptrAgeEffective <= 7) decayMultiplier = 1.0
+    else if (ptrAgeEffective <= 14) decayMultiplier = 0.90
+    else if (ptrAgeEffective <= 21) decayMultiplier = 0.80
+    else if (ptrAgeEffective <= 30) decayMultiplier = 0.65
+    else decayMultiplier = 0.45
+    // If also has a fresh filing, use the better of the two
+    if (filingAgeEffective <= 3) decayMultiplier = Math.max(decayMultiplier, 1.0)
+    else if (filingAgeEffective <= 7) decayMultiplier = Math.max(decayMultiplier, 0.90)
+  } else {
+    // Standard filing/breakout decay
+    if (newestCatalystAge <= 1) decayMultiplier = 1.0
+    else if (newestCatalystAge <= 2) decayMultiplier = 0.95
+    else if (newestCatalystAge <= 3) decayMultiplier = 0.90
+    else if (newestCatalystAge <= 5) decayMultiplier = 0.80
+    else if (newestCatalystAge <= 7) decayMultiplier = 0.70
+    else if (newestCatalystAge <= 10) decayMultiplier = 0.55
+    else if (newestCatalystAge <= 14) decayMultiplier = 0.40
+    else if (newestCatalystAge <= 21) decayMultiplier = 0.25
+    else return null // signal expired (no PTR, filing > 21d old)
+  }
 
   let appScore = clamp(Math.round(rawScore * decayMultiplier), 0, 100)
 
