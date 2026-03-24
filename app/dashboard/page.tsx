@@ -3029,10 +3029,10 @@ function SignalDetailsModal({
                       }}>
                         <p className="text-xs font-bold" style={{ color: hasInsiderSignal(row) ? "#fb923c" : "#374151" }}>Insider Trades</p>
                         <p className="mt-1 text-lg font-black" style={{ color: hasInsiderSignal(row) ? "#fed7aa" : "#1f2937" }}>
-                          {(row.cluster_buyers ?? 0) >= 2 ? "Cluster" : hasInsiderSignal(row) ? "Yes" : "No"}
+                          {hasInsiderSignal(row) ? `${row.insider_shares ?? "?"} Filing${(row.insider_shares ?? 0) === 1 ? "" : "s"}` : "No"}
                         </p>
                         <p className="mt-1 text-[11px]" style={{ color: hasInsiderSignal(row) ? "rgba(253,186,116,0.6)" : "#1f2937" }}>
-                          {(row.cluster_buyers ?? 0) >= 2 ? `${row.cluster_buyers} insiders buying together` : hasInsiderSignal(row) ? "SEC Form 4 filed" : "None detected"}
+                          {row.insider_signal_flavor || (hasInsiderSignal(row) ? "SEC Form 4 filed" : "None detected")}
                         </p>
                       </div>
                       <div className="rounded-xl p-3" style={{
@@ -3041,10 +3041,10 @@ function SignalDetailsModal({
                       }}>
                         <p className="text-xs font-bold" style={{ color: hasPtrSignal(row) ? "#c084fc" : "#374151" }}>Congress Trades</p>
                         <p className="mt-1 text-lg font-black" style={{ color: hasPtrSignal(row) ? "#e9d5ff" : "#1f2937" }}>
-                          {hasPtrSignal(row) ? "Yes" : "No"}
+                          {hasPtrSignal(row) ? `${row.cluster_buyers ?? "?"} Buyer${(row.cluster_buyers ?? 0) === 1 ? "" : "s"}` : "No"}
                         </p>
                         <p className="mt-1 text-[11px]" style={{ color: hasPtrSignal(row) ? "rgba(196,181,253,0.6)" : "#1f2937" }}>
-                          {row.ptr_amount ? `${row.ptr_amount} disclosed` : (row.has_ptr_forms) ? "PTR filed" : "None detected"}
+                          {row.insider_signal_flavor?.startsWith("PTR:") ? row.insider_signal_flavor.slice(5) : row.insider_buy_value ? `$${Number(row.insider_buy_value).toLocaleString()}+ disclosed` : hasPtrSignal(row) ? "PTR filed" : "None detected"}
                         </p>
                       </div>
                     </div>
@@ -3091,14 +3091,12 @@ function SignalDetailsModal({
                   <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
                     <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-400">Insider & Congress</p>
                     <div className="space-y-2">
-                      <MetricRow label="Insider buying?" value={hasInsiderSignal(row) ? "Yes" : "No"} />
-                      <MetricRow label="What they did" value={row.insider_action || null} />
-                      <MetricRow label="Total invested" value={formatInsiderValue(row)} />
-                      <MetricRow label="Buy value" value={row.insider_buy_value != null && row.insider_buy_value > 0 ? formatMoney(row.insider_buy_value) : null} />
-                      <MetricRow label="Cluster buy?" value={(row.cluster_buyers ?? 0) >= 2 ? `Yes — ${row.cluster_buyers} insiders` : "No"} />
-                      <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
+                      <MetricRow label="Insider filings" value={hasInsiderSignal(row) ? `${row.insider_shares ?? "?"} Form 4 filing${(row.insider_shares ?? 0) === 1 ? "" : "s"}` : "None"} />
+                      <MetricRow label="Filing detail" value={row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? row.insider_signal_flavor : null} />
                       <MetricRow label="Congress buying?" value={hasPtrSignal(row) ? "Yes" : "No"} />
-                      <MetricRow label="Congress amount" value={row.ptr_amount} />
+                      <MetricRow label="Congress buyers" value={hasPtrSignal(row) && row.insider_signal_flavor?.startsWith("PTR:") ? row.insider_signal_flavor.slice(5) : null} />
+                      <MetricRow label="Congress amount" value={row.insider_buy_value != null && row.insider_buy_value > 0 && hasPtrSignal(row) ? `$${Number(row.insider_buy_value).toLocaleString()}+` : null} />
+                      <MetricRow label="Congress trades" value={(row.cluster_shares ?? 0) > 0 && hasPtrSignal(row) ? `${row.cluster_shares} trade${(row.cluster_shares ?? 0) === 1 ? "" : "s"}` : null} />
                     </div>
                   </div>
 
@@ -3164,23 +3162,17 @@ function SignalDetailsModal({
                               Insider Trades (Form 4)
                             </p>
                             <span className="text-sm font-black" style={{ color: hasInsiderSignal(row) ? "#fed7aa" : "#1f2937" }}>
-                              {(row.cluster_buyers ?? 0) >= 2 ? "Cluster" : hasInsiderSignal(row) ? "Yes" : "No"}
+                              {hasInsiderSignal(row) ? `${row.insider_shares ?? "?"}` : "No"}
                             </span>
                           </div>
                           {hasInsiderSignal(row) ? (
                             <p className="mt-1 text-[11px] text-orange-300/60">
-                              {(row.cluster_buyers ?? 0) >= 2
-                                ? `${row.cluster_buyers} insiders bought around the same time — that’s unusual and often a bullish sign.`
-                                : "A company insider recently filed a purchase with the SEC — they’re putting their own money in."}
+                              {row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:")
+                                ? row.insider_signal_flavor
+                                : "Company insiders recently filed with the SEC — they’re putting their own money in."}
                             </p>
                           ) : (
-                            <p className="mt-1 text-[11px] text-[#374151]">No recent insider purchases detected.</p>
-                          )}
-                          {(row.insider_buy_value ?? 0) > 0 && (
-                            <p className="mt-1 text-xs font-bold text-orange-200">Value: {formatMoney(row.insider_buy_value!)}</p>
-                          )}
-                          {(row.insider_shares ?? 0) > 0 && (
-                            <p className="mt-1 text-xs font-bold text-orange-200">Shares: {formatWholeNumber(row.insider_shares!)}</p>
+                            <p className="mt-1 text-[11px] text-[#374151]">No recent insider filings detected.</p>
                           )}
                         </div>
 
@@ -3194,16 +3186,20 @@ function SignalDetailsModal({
                               Congress Trades (PTR)
                             </p>
                             <span className="text-sm font-black" style={{ color: hasPtrSignal(row) ? "#e9d5ff" : "#1f2937" }}>
-                              {hasPtrSignal(row) ? "Yes" : "No"}
+                              {hasPtrSignal(row) ? `${row.cluster_buyers ?? "?"} Buyer${(row.cluster_buyers ?? 0) === 1 ? "" : "s"}` : "No"}
                             </span>
                           </div>
                           {hasPtrSignal(row) ? (
                             <>
                               <p className="mt-1 text-[11px] text-purple-300/60">
-                                A member of Congress disclosed a purchase. They must report within 45 days, so the actual buy may have been earlier.
+                                {row.insider_signal_flavor?.startsWith("PTR:") ? row.insider_signal_flavor.slice(5) : "A member of Congress disclosed a purchase."}
+                                {" "}They must report within 45 days, so the actual buy may have been earlier.
                               </p>
-                              {row.ptr_amount && (
-                                <p className="mt-1 text-xs font-bold text-purple-200">Amount: {row.ptr_amount}</p>
+                              {(row.insider_buy_value ?? 0) > 0 && (
+                                <p className="mt-1 text-xs font-bold text-purple-200">Amount: ${Number(row.insider_buy_value).toLocaleString()}+</p>
+                              )}
+                              {(row.cluster_shares ?? 0) > 0 && (
+                                <p className="mt-1 text-xs font-bold text-purple-200">Trades: {row.cluster_shares}</p>
                               )}
                             </>
                           ) : (
@@ -3435,17 +3431,13 @@ function SignalDetailsModal({
                         Insider & Congress Trades
                       </p>
                       <div className="space-y-2">
-                        <MetricRow label="Insider buying?" value={hasInsiderSignal(row) ? "Yes" : "No"} />
-                        <MetricRow label="What they did" value={row.insider_action || null} />
-                        <MetricRow label="Shares bought" value={formatShares(row.insider_shares)} />
-                        <MetricRow label="Price they paid" value={formatMoney(row.insider_avg_price)} />
-                        <MetricRow label="Total invested" value={formatInsiderValue(row)} />
-                        <MetricRow label="Buy value" value={row.insider_buy_value != null && row.insider_buy_value > 0 ? formatMoney(row.insider_buy_value) : null} />
-                        <MetricRow label="Cluster buy?" value={(row.cluster_buyers ?? 0) >= 2 ? `Yes — ${row.cluster_buyers} insiders` : "No"} />
-                        <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
+                        <MetricRow label="Insider filings" value={hasInsiderSignal(row) ? `${row.insider_shares ?? "?"} Form 4 filing${(row.insider_shares ?? 0) === 1 ? "" : "s"}` : "None"} />
+                        <MetricRow label="Filing detail" value={row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? row.insider_signal_flavor : null} />
                         <MetricRow label="Congress buying?" value={hasPtrSignal(row) ? "Yes" : "No"} />
-                        <MetricRow label="Congress amount" value={row.ptr_amount} />
-                        {row.ptr_amount ? (
+                        <MetricRow label="Congress buyers" value={hasPtrSignal(row) && row.insider_signal_flavor?.startsWith("PTR:") ? row.insider_signal_flavor.slice(5) : null} />
+                        <MetricRow label="Congress amount" value={row.insider_buy_value != null && row.insider_buy_value > 0 && hasPtrSignal(row) ? `$${Number(row.insider_buy_value).toLocaleString()}+` : null} />
+                        <MetricRow label="Congress trades" value={(row.cluster_shares ?? 0) > 0 && hasPtrSignal(row) ? `${row.cluster_shares} trade${(row.cluster_shares ?? 0) === 1 ? "" : "s"}` : null} />
+                        {hasPtrSignal(row) ? (
                           <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-[11px] leading-5 text-amber-200/60">
                             Congress members have up to 45 days to report. The trade may have happened earlier.
                           </div>

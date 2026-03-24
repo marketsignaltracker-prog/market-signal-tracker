@@ -420,6 +420,14 @@ function buildPtrSummaryMap(rows: RawPtrTradeRow[]) {
     if (recentBuyCount > 0) summaryParts.push(`${recentBuyCount} recent`)
     if (totalBuyAmountLow > 0) summaryParts.push(`min disclosed $${totalBuyAmountLow.toLocaleString()}`)
 
+    const buyerNames = Array.from(new Set(
+      buys.map((row) => String(row.filer_name || "").trim()).filter(Boolean)
+    ))
+
+    const buyAmountRange = buys.length > 0
+      ? buys.map(r => String(r.amount_range || "").trim()).filter(Boolean)[0] ?? null
+      : null
+
     output.set(ticker, {
       buyTradeCount: buys.length,
       sellTradeCount: sells.length,
@@ -434,6 +442,8 @@ function buildPtrSummaryMap(rows: RawPtrTradeRow[]) {
       strongSelling,
       latestTradeDate: allDates[0] ?? null,
       summary: summaryParts.length ? `PTR support: ${summaryParts.join(", ")}` : null,
+      buyerNames,
+      buyAmountRange,
     })
   }
 
@@ -800,15 +810,17 @@ function buildSignalRow(
     filed_at: latestFiledAt,
     filing_url: null,
     accession_no: signalKey,
-    insider_action: null,
-    insider_shares: null,
+    insider_action: filingSummary?.hasForm4 ? "Filed" : null,
+    insider_shares: filingSummary?.insiderFormCount ?? null,
     insider_avg_price: null,
     insider_buy_value: ptrSummary?.totalBuyAmountLow ?? null,
     insider_signal_flavor: ptrSummary?.buyTradeCount
-      ? "PTR + Filings + Technical"
-      : "Filings + Technical",
+      ? `PTR: ${ptrSummary.buyerNames?.join(", ") ?? "Congress"}`
+      : filingSummary?.hasForm4
+        ? `${filingSummary.insiderFormCount} Form 4 filing${filingSummary.insiderFormCount === 1 ? "" : "s"}`
+        : "Technical",
     cluster_buyers: ptrSummary?.uniqueBuyFilers ?? null,
-    cluster_shares: null,
+    cluster_shares: ptrSummary?.buyTradeCount ?? null,
     price_return_5d: round2(context.return_5d ?? null),
     price_return_20d: round2(context.return_20d ?? null),
     volume_ratio: round2(context.volume_ratio ?? null),
