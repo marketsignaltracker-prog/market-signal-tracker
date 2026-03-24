@@ -226,12 +226,13 @@ type PriceFilterType =
   | "100plus"
 
 type PeFilterType = "all" | "20" | "30" | "50"
-type FreshnessFilterType = "all" | "today" | "3d" | "7d" | "14d"
-type ScoreFilterType = "all" | "70" | "75" | "80" | "85" | "90"
+type FreshnessFilterType = "all" | "today" | "3d" | "7d"
+type ScoreFilterType = "all" | "60" | "70" | "80" | "90"
 type SectorFilterType = "all" | string
 type SourceFilterType = "all" | "technical_only" | "filing_only" | "both"
 type InsiderFilterType = "all" | "yes" | "cluster"
 type CongressFilterType = "all" | "yes"
+type MomentumFilterType = "all" | "strong" | "positive" | "negative"
 
 type MiniMetricItem = {
   label: string
@@ -444,6 +445,7 @@ export default function Home() {
   const [sourceFilter, setSourceFilter] = useState<SourceFilterType>("all")
   const [insiderFilter, setInsiderFilter] = useState<InsiderFilterType>("all")
   const [congressFilter, setCongressFilter] = useState<CongressFilterType>("all")
+  const [momentumFilter, setMomentumFilter] = useState<MomentumFilterType>("all")
 
   const [beginnerMode, setBeginnerMode] = useState(true)
 
@@ -774,7 +776,7 @@ export default function Home() {
 
   useEffect(() => {
     setCardIndex(0)
-  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter])
+  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter, momentumFilter])
 
   const sectorOptions = useMemo(() => {
     const sectors = Array.from(
@@ -794,8 +796,9 @@ export default function Home() {
       .filter((row) => matchesSourceFilter(row, sourceFilter))
       .filter((row) => matchesInsiderFilter(row, insiderFilter))
       .filter((row) => matchesCongressFilter(row, congressFilter))
+      .filter((row) => matchesMomentumFilter(row, momentumFilter))
       .sort(compareRows)
-  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter])
+  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter, momentumFilter])
 
   const safeCardIndex =
     filteredRows.length === 0 ? 0 : Math.min(cardIndex, filteredRows.length - 1)
@@ -828,8 +831,9 @@ export default function Home() {
     if (sourceFilter !== "all") count += 1
     if (insiderFilter !== "all") count += 1
     if (congressFilter !== "all") count += 1
+    if (momentumFilter !== "all") count += 1
     return count
-  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter])
+  }, [priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter, momentumFilter])
 
   function openDetails(ticker: string, initialTab = 0) {
     setDetailInitialTab(initialTab)
@@ -864,6 +868,7 @@ export default function Home() {
     setSourceFilter("all")
     setInsiderFilter("all")
     setCongressFilter("all")
+    setMomentumFilter("all")
     setSelectedTicker(null)
     setCardIndex(0)
     setFiltersOpen(false)
@@ -1133,21 +1138,54 @@ export default function Home() {
           )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             <FilterSelect
-              label="Min score"
+              label="Catalyst"
+              value={freshnessFilter}
+              onChange={(v) => setFreshnessFilter(v as FreshnessFilterType)}
+              disabled={!user}
+              options={[
+                { value: "all", label: "Any catalyst" },
+                { value: "today", label: "Today only" },
+                { value: "3d", label: "Last 3 days" },
+                { value: "7d", label: "This week" },
+              ]}
+            />
+            <FilterSelect
+              label="Momentum"
+              value={momentumFilter}
+              onChange={(v) => setMomentumFilter(v as MomentumFilterType)}
+              disabled={!user}
+              options={[
+                { value: "all", label: "Any momentum" },
+                { value: "strong", label: "Beating market 5%+" },
+                { value: "positive", label: "Beating market" },
+                { value: "negative", label: "Lagging market" },
+              ]}
+            />
+            <FilterSelect
+              label="Conviction"
               value={scoreFilter}
               onChange={(v) => setScoreFilter(v as ScoreFilterType)}
               disabled={!user}
               options={[
-                { value: "all", label: "Any score" },
-                { value: "70", label: "70+" },
-                { value: "75", label: "75+" },
-                { value: "80", label: "80+" },
-                { value: "85", label: "85+" },
-                { value: "90", label: "90+" },
+                { value: "all", label: "All signals" },
+                { value: "60", label: "Score 60+" },
+                { value: "70", label: "Score 70+" },
+                { value: "80", label: "Score 80+" },
+                { value: "90", label: "Elite 90+" },
               ]}
             />
             <FilterSelect
-              label="Price"
+              label="Sector"
+              value={sectorFilter}
+              onChange={(v) => setSectorFilter(v)}
+              disabled={!user}
+              options={sectorOptions.map((s) => ({
+                value: s,
+                label: s === "all" ? "All sectors" : s,
+              }))}
+            />
+            <FilterSelect
+              label="Price range"
               value={priceFilter}
               onChange={(v) => setPriceFilter(v as PriceFilterType)}
               disabled={!user}
@@ -1160,53 +1198,30 @@ export default function Home() {
               ]}
             />
             <FilterSelect
-              label="How recent"
-              value={freshnessFilter}
-              onChange={(v) => setFreshnessFilter(v as FreshnessFilterType)}
-              disabled={!user}
-              options={[
-                { value: "all", label: "Any time" },
-                { value: "today", label: "Today" },
-                { value: "3d", label: "Last 3 days" },
-                { value: "7d", label: "Last 7 days" },
-                { value: "14d", label: "Last 14 days" },
-              ]}
-            />
-            <FilterSelect
-              label="Business area"
-              value={sectorFilter}
-              onChange={(v) => setSectorFilter(v)}
-              disabled={!user}
-              options={sectorOptions.map((s) => ({
-                value: s,
-                label: s === "all" ? "All sectors" : s,
-              }))}
-            />
-            <FilterSelect
               label="Valuation"
               value={peFilter}
               onChange={(v) => setPeFilter(v as PeFilterType)}
               disabled={!user}
               options={[
                 { value: "all", label: "Any P/E" },
-                { value: "20", label: "P/E ≤ 20" },
-                { value: "30", label: "P/E ≤ 30" },
-                { value: "50", label: "P/E ≤ 50" },
+                { value: "20", label: "Value (P/E ≤ 20)" },
+                { value: "30", label: "Moderate (P/E ≤ 30)" },
+                { value: "50", label: "Growth (P/E ≤ 50)" },
               ]}
             />
             <FilterSelect
-              label="Insider buys"
+              label="Insider activity"
               value={insiderFilter}
               onChange={(v) => setInsiderFilter(v as InsiderFilterType)}
               disabled={!user}
               options={[
                 { value: "all", label: "All" },
                 { value: "yes", label: "Insiders buying" },
-                { value: "cluster", label: "Clusters only" },
+                { value: "cluster", label: "Cluster buys" },
               ]}
             />
             <FilterSelect
-              label="Congress buys"
+              label="Congress trades"
               value={congressFilter}
               onChange={(v) => setCongressFilter(v as CongressFilterType)}
               disabled={!user}
@@ -2152,16 +2167,27 @@ function EmptyPanel() {
 }
 
 function compareRows(a: UnifiedRow, b: UnifiedRow) {
-  if (a.display_score !== b.display_score) return b.display_score - a.display_score
+  // "Buy Today" rank: freshest catalyst + strongest momentum first
+  const aAge = a.age_days ?? 999
+  const bAge = b.age_days ?? 999
+  const aRS = a.relative_strength_20d ?? 0
+  const bRS = b.relative_strength_20d ?? 0
+  const aScore = a.signal_score ?? a.display_score ?? 0
+  const bScore = b.signal_score ?? b.display_score ?? 0
 
-  const aSignal = a.signal_score ?? -1
-  const bSignal = b.signal_score ?? -1
-  if (aSignal !== bSignal) return bSignal - aSignal
+  // Freshness tier: today (0-1d) > fresh (2-3d) > recent (4-7d) > aging (8+)
+  const freshTier = (age: number) => age <= 1 ? 3 : age <= 3 ? 2 : age <= 7 ? 1 : 0
+  const aFresh = freshTier(aAge)
+  const bFresh = freshTier(bAge)
+  if (aFresh !== bFresh) return bFresh - aFresh
 
-  const aCandidate = a.candidate_score ?? -1
-  const bCandidate = b.candidate_score ?? -1
-  if (aCandidate !== bCandidate) return bCandidate - aCandidate
+  // Within same freshness tier: strongest relative strength first
+  if (Math.abs(aRS - bRS) > 1) return bRS - aRS
 
+  // Then by signal score
+  if (aScore !== bScore) return bScore - aScore
+
+  // Final tiebreaker: most recent filing date
   const aDate = getDateValue(a.filed_at ?? a.last_screened_at ?? a.updated_at)
   const bDate = getDateValue(b.filed_at ?? b.last_screened_at ?? b.updated_at)
   return bDate - aDate
@@ -2247,6 +2273,15 @@ function matchesInsiderFilter(row: UnifiedRow, filter: InsiderFilterType) {
 function matchesCongressFilter(row: UnifiedRow, filter: CongressFilterType) {
   if (filter === "all") return true
   return row.has_ptr_forms === true || !!row.ptr_amount
+}
+
+function matchesMomentumFilter(row: UnifiedRow, filter: MomentumFilterType) {
+  if (filter === "all") return true
+  const rs = row.relative_strength_20d ?? 0
+  if (filter === "strong") return rs >= 5
+  if (filter === "positive") return rs > 0
+  if (filter === "negative") return rs < 0
+  return true
 }
 
 function getLastUpdated(rows: UnifiedRow[]) {
