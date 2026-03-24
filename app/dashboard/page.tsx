@@ -2176,14 +2176,16 @@ function compareRows(a: UnifiedRow, b: UnifiedRow) {
   const hasPtr = (row: UnifiedRow) => tags(row).some(t => t.includes("ptr"))
   const hasCluster = (row: UnifiedRow) => (row.cluster_buyers ?? 0) >= 2 || tags(row).includes("ptr-cluster")
 
-  // Smart money tier: double signal > single signal > none (max 50 pts)
+  // Smart money tier: stacked signals dominate the sort
   const smartMoneyPts = (row: UnifiedRow) => {
     const insider = hasInsider(row)
     const ptr = hasPtr(row)
     const cluster = hasCluster(row)
-    if ((insider && ptr) || cluster) return 50 // Insiders + Congress or Cluster = top tier
-    if (ptr) return 40 // Congress alone is very high signal
-    if (insider) return 25 // Insider filing
+    if (cluster && ptr) return 100 // Cluster + Congress = HUGE
+    if (insider && ptr) return 85  // Insider + Congress = Really Big
+    if (cluster) return 70         // Cluster buy alone
+    if (ptr) return 60             // Congress alone
+    if (insider) return 25         // Insider filing
     return 0
   }
 
