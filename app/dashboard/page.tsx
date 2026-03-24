@@ -748,9 +748,10 @@ export default function Home() {
           // PTR/congress trades are disclosed with 45-day delay, allow longer window
           const isPtrTicker = (unified.signal_tags || []).some(t => t.includes("ptr"))
           const maxAge = isPtrTicker ? 45 : 10
+          const minScore = isPtrTicker ? 40 : 55
 
           const include =
-            displayScore >= 55 &&
+            displayScore >= minScore &&
             hasSignalData &&
             ageDays <= maxAge
 
@@ -2259,47 +2260,37 @@ function EmptyPanel() {
 }
 
 function compareRows(a: UnifiedRow, b: UnifiedRow) {
-  // "Buy Today" rank: smart money conviction first, then value + momentum
+  // "Buy Today" rank: smart money conviction FIRST, then attractive price, then momentum
   const tags = (row: UnifiedRow) => row.signal_tags || []
   const hasInsider = (row: UnifiedRow) => tags(row).some(t => t.includes("insider"))
   const hasPtr = (row: UnifiedRow) => tags(row).some(t => t.includes("ptr"))
   const hasCluster = (row: UnifiedRow) => (row.cluster_buyers ?? 0) >= 2 || tags(row).includes("ptr-cluster")
 
-  // Smart money tier: stacked signals dominate the sort
+  // TIER 1: Smart money conviction (0-200 pts) — dominates the sort
   const smartMoneyPts = (row: UnifiedRow) => {
     const insider = hasInsider(row)
     const ptr = hasPtr(row)
     const cluster = hasCluster(row)
-    if (cluster && ptr) return 100 // Cluster + Congress = HUGE
-    if (insider && ptr) return 85  // Insider + Congress = Really Big
-    if (cluster) return 70         // Cluster buy alone
-    if (ptr) return 60             // Congress alone
-    if (insider) return 25         // Insider filing
+    if (cluster && ptr) return 200 // Cluster + Congress = HUGE — always top
+    if (insider && ptr) return 170 // Insider + Congress = Really Big
+    if (cluster) return 140        // Cluster buy alone
+    if (ptr) return 120            // Congress alone
+    if (insider) return 50         // Insider filing
     return 0
   }
 
-  const aAge = a.age_days ?? 999
-  const bAge = b.age_days ?? 999
-  const aRS = a.relative_strength_20d ?? 0
-  const bRS = b.relative_strength_20d ?? 0
-  const aScore = a.signal_score ?? a.display_score ?? 0
-  const bScore = b.signal_score ?? b.display_score ?? 0
-
-  // Freshness tier: today (0-1d) > fresh (2-3d) > recent (4-7d) > aging (8+)
-  const freshTier = (age: number) => age <= 1 ? 3 : age <= 3 ? 2 : age <= 7 ? 1 : 0
-  const aFresh = freshTier(aAge)
-  const bFresh = freshTier(bAge)
-  if (aFresh !== bFresh) return bFresh - aFresh
-
-  // Smart money: insiders + congress + clusters weighted heaviest
   const aSmart = smartMoneyPts(a)
   const bSmart = smartMoneyPts(b)
 
-  // Value score: lower forward P/E = more attractive price (max 40 pts)
+  // If there's a big smart money difference, sort by that immediately
+  if (aSmart !== bSmart) return bSmart - aSmart
+
+  // TIER 2: Attractive price — lower forward P/E = better value (max 50 pts)
   const valuePts = (pe: number | null | undefined) => {
-    if (!pe || pe <= 0) return 10
-    if (pe <= 12) return 40
-    if (pe <= 18) return 35
+    if (!pe || pe <= 0) return 15
+    if (pe <= 10) return 50
+    if (pe <= 15) return 42
+    if (pe <= 20) return 35
     if (pe <= 25) return 28
     if (pe <= 35) return 18
     return 5
@@ -2307,19 +2298,26 @@ function compareRows(a: UnifiedRow, b: UnifiedRow) {
   const aValue = valuePts(a.pe_forward ?? a.pe_ratio)
   const bValue = valuePts(b.pe_forward ?? b.pe_ratio)
 
-  // Momentum score: relative strength (max 30 pts)
+  // TIER 3: Momentum — relative strength (max 35 pts)
+  const aRS = a.relative_strength_20d ?? 0
+  const bRS = b.relative_strength_20d ?? 0
   const momentumPts = (rs: number) => {
+    if (rs >= 15) return 35
     if (rs >= 10) return 30
-    if (rs >= 5) return 25
-    if (rs > 0) return 15
+    if (rs >= 5) return 22
+    if (rs > 0) return 12
     return 0
   }
   const aMomentum = momentumPts(aRS)
   const bMomentum = momentumPts(bRS)
 
-  // Combined rank: smart money > value > momentum > score
-  const aRank = aSmart * 2 + aValue * 1.5 + aMomentum + (aScore * 0.3)
-  const bRank = bSmart * 2 + bValue * 1.5 + bMomentum + (bScore * 0.3)
+  // TIER 4: Signal quality score (scaled down — tiebreaker)
+  const aScore = (a.signal_score ?? a.display_score ?? 0) * 0.3
+  const bScore = (b.signal_score ?? b.display_score ?? 0) * 0.3
+
+  // Combined rank: value > momentum > score (smart money already handled above)
+  const aRank = aValue * 1.5 + aMomentum + aScore
+  const bRank = bValue * 1.5 + bMomentum + bScore
   if (Math.abs(aRank - bRank) > 2) return bRank - aRank
 
   // Final tiebreaker: most recent filing date

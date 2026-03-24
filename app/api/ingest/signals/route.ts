@@ -589,15 +589,19 @@ function scoreCandidateSignal(params: {
 
   const catalystScore = Math.max(filingCatalystScore, ptrCatalystScore, breakoutCatalystScore)
   const catalystTypeCount = Number(hasRecentFiling) + Number(hasRecentPtr) + Number(hasBreakout)
-  const catalystBonus = catalystTypeCount >= 2 ? 5 : 0
 
-  add("catalyst", Math.min(catalystScore + catalystBonus, 40),
+  // Smart money stacking bonus: insider + congress = huge conviction
+  const hasInsiderAndCongress = hasRecentFiling && hasRecentPtr
+  const catalystBonus = hasInsiderAndCongress ? 12 : catalystTypeCount >= 2 ? 5 : 0
+
+  add("catalyst", Math.min(catalystScore + catalystBonus, 45),
     filingCatalystScore >= ptrCatalystScore && filingCatalystScore >= breakoutCatalystScore
       ? `Fresh filing catalyst (${filingAge}d ago)`
       : ptrCatalystScore >= breakoutCatalystScore
         ? `Congressional/insider trade (${ptrAge}d ago)`
         : `Technical breakout catalyst`)
-  if (catalystBonus > 0) reasons.push("Multiple catalyst types aligned")
+  if (hasInsiderAndCongress) reasons.push("Insider + Congress double conviction")
+  else if (catalystBonus > 0) reasons.push("Multiple catalyst types aligned")
 
   // --- PILLAR 2: Technical Setup (25 pts max) ---
   let techScore = 0
@@ -1222,7 +1226,10 @@ export async function GET(request: Request) {
 
       if (!signalRow) continue
 
-      if (signalRow.app_score < minSignalStrength) {
+      // PTR/congress tickers get a lower threshold — they're high conviction even at lower scores
+      const isPtrSignal = (signalRow.signal_tags || []).some((t: string) => t.includes("ptr"))
+      const effectiveMinStrength = isPtrSignal ? Math.min(minSignalStrength, 40) : minSignalStrength
+      if (signalRow.app_score < effectiveMinStrength) {
         diagnostics.filteredBelowSignalScore += 1
         continue
       }
