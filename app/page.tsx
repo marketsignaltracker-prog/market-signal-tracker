@@ -305,8 +305,8 @@ export default function LandingPage() {
             </h1>
 
             <p className="mb-8 text-base leading-relaxed text-slate-400 sm:text-lg">
-              We screen every SEC filing daily to find stocks where insiders and congress members are buying.
-              Each stock runs through our proprietary scoring engine — so you see the best ideas first.
+              Every day, our engine finds the stocks you should be looking at right now — not just good companies, but the ones where something just happened.
+              A proprietary blend of catalysts, momentum, and insider intelligence surfaces only the most actionable ideas.
             </p>
 
             <div className="flex flex-col items-center gap-3 mb-8 sm:mb-0 sm:flex-row sm:justify-center">
@@ -340,10 +340,10 @@ export default function LandingPage() {
       <section className="border-y border-white/[0.06] bg-white/[0.01]">
         <div className="mx-auto grid max-w-4xl grid-cols-2 gap-6 px-5 py-10 sm:grid-cols-4">
           {[
-            { value: 13000, suffix: "+", label: "SEC filings scanned" },
-            { value: 30, suffix: "+", label: "Buy picks daily" },
-            { value: 50, suffix: "+", label: "Data points per stock" },
-            { value: 100, suffix: "", label: "Quality score max" },
+            { value: 10000, suffix: "+", label: "Stocks screened daily" },
+            { value: 30, suffix: "+", label: "Buy Today picks" },
+            { value: 50, suffix: "+", label: "Signals per stock" },
+            { value: 100, suffix: "", label: "Max conviction score" },
           ].map((stat) => (
             <div key={stat.label} className="text-center">
               <p className="text-2xl font-black text-white sm:text-3xl">
@@ -360,7 +360,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl">
           <div className="mx-auto mb-12 max-w-lg text-center">
             <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">Everything you need. One card.</h2>
-            <p className="text-sm text-slate-400 sm:text-base">Each stock card distills our proprietary analysis into a single actionable view — no digging required.</p>
+            <p className="text-sm text-slate-400 sm:text-base">Each card tells you what happened, why it matters, and when to get out — powered by our proprietary signal engine.</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -390,8 +390,8 @@ export default function LandingPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
                 </svg>
               }
-              title="Quality Score (0-100)"
-              description="Our proprietary scoring engine distills dozens of data points into a single quality score. Higher score = stronger conviction."
+              title="Conviction Score (0-100)"
+              description="Our secret sauce blends catalyst timing, momentum, and fundamentals into one number. The highest scores appear first in your deck."
             />
             <FeatureCard
               icon={
@@ -399,8 +399,8 @@ export default function LandingPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
                 </svg>
               }
-              title="Momentum & Returns"
-              description="See 1-day, 5-day, 10-day, and 20-day returns at a glance. Relative strength vs the market is calculated automatically."
+              title="Momentum & Timing"
+              description="Stocks beating the market rise to the top. We track relative strength, price action, and trend alignment so you enter at the right moment."
             />
             <FeatureCard
               icon={
@@ -409,7 +409,7 @@ export default function LandingPage() {
                 </svg>
               }
               title="Smart Filters"
-              description="Filter by score, price, sector, valuation, insider activity, and congress trades. Zero in on exactly what you're looking for."
+              description="Filter by catalyst freshness, momentum, conviction, sector, valuation, and insider activity. Find exactly the setup you want."
             />
             <FeatureCard
               icon={
@@ -417,8 +417,8 @@ export default function LandingPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
                 </svg>
               }
-              title="Full Analysis & Thesis"
-              description="Tap any card for a deep-dive: AI-generated thesis, fundamental breakdown, filing details, and a direct link to buy."
+              title="Exit Strategy Included"
+              description="Every card includes a stop-loss, profit target, and catalyst expiry window. Know when to get in and when to get out."
             />
           </div>
         </div>
@@ -429,29 +429,29 @@ export default function LandingPage() {
         <div className="mx-auto max-w-2xl">
           <div className="mb-12 text-center">
             <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">How it works</h2>
-            <p className="text-sm text-slate-400 sm:text-base">Our pipeline runs daily so you always have fresh ideas.</p>
+            <p className="text-sm text-slate-400 sm:text-base">Our engine runs daily so you always see what matters right now.</p>
           </div>
 
           <div className="space-y-8">
             <Step
               number={1}
-              title="We scan thousands of filings"
-              description="Every day, our engine ingests thousands of SEC filings and market data points to identify stocks with unusual buying activity."
+              title="Detect fresh catalysts"
+              description="We scan thousands of SEC filings, insider trades, and congressional disclosures daily. If something just happened — we catch it."
             />
             <Step
               number={2}
-              title="Screen for quality"
-              description="Each stock runs through our proprietary scoring engine — a multi-factor model we've tuned to surface only the highest-conviction picks."
+              title="Score with our secret sauce"
+              description="Each stock runs through a proprietary model that blends catalyst timing, market momentum, and fundamental quality into a single conviction score."
             />
             <Step
               number={3}
-              title="Rank and deliver"
-              description="Stocks are ranked by overall score. The top ideas appear as swipeable cards with everything you need to make a decision."
+              title="Rank by actionability"
+              description="Cards are ordered by what you should look at first — the freshest catalysts with the strongest momentum lead the deck, not just the biggest companies."
             />
             <Step
               number={4}
               title="You decide"
-              description="Review the analysis, check the thesis, and if you like what you see — buy directly through Robinhood with one tap."
+              description="Review the analysis, check the exit strategy, and if you like what you see — buy directly through Robinhood with one tap."
             />
           </div>
         </div>
