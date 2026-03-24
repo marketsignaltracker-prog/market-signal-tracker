@@ -207,15 +207,16 @@ async function fetchForm4Details(
     if (arr.length < 5) arr.push(f)
   }
 
-  // Build XML URLs from accession numbers
+  // Build XML URLs from filing_url (which has the correct filename)
   const fetchTasks: { ticker: string; url: string }[] = []
   for (const [ticker, tickerFilings] of byTicker.entries()) {
     for (const f of tickerFilings) {
-      const accession = (f.accession_no || "").trim()
-      const cik = String(f.cik || "").trim()
-      if (!accession || !cik) continue
-      const accNoDash = accession.replace(/-/g, "")
-      const url = `https://www.sec.gov/Archives/edgar/data/${cik}/${accNoDash}/form4.xml`
+      // The filing_url contains the XSLT-rendered path like .../xslF345X06/wk-form4_123.xml
+      // We need the raw XML which is one level up: .../wk-form4_123.xml
+      const filingUrl = String(f.filing_url || "").trim()
+      if (!filingUrl) continue
+      // Strip the xslF345X0N/ prefix to get the raw XML URL
+      const url = filingUrl.replace(/\/xslF345X\d+\//, "/")
       fetchTasks.push({ ticker, url })
     }
   }
