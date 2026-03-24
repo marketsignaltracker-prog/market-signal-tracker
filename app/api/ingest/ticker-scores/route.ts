@@ -270,14 +270,16 @@ async function fetchForm4Details(
     }
 
     for (const tx of parsed.transactions) {
-      // P = open-market purchase, S = open-market sale
-      // A = award/grant, M = exercise, G = gift — skip these for buy/sell counts
-      const isPurchase = tx.transactionCode === "P" || (tx.acquired && tx.transactionCode === "P")
-      const isSale = tx.transactionCode === "S"
+      // Acquired = any acquisition (P=purchase, A=award, M=exercise, J=other)
+      // Disposed = any disposal (S=sale, G=gift, F=tax withholding)
+      const isAcquisition = tx.acquired
+      const isSale = !tx.acquired && (tx.transactionCode === "S" || tx.transactionCode === "F")
 
-      if (isPurchase) {
+      if (isAcquisition) {
         existing.totalBuyShares += tx.shares
-        existing.totalBuyValue += tx.shares * tx.pricePerShare
+        if (tx.pricePerShare > 0) {
+          existing.totalBuyValue += tx.shares * tx.pricePerShare
+        }
         existing.buyTransactionCount += 1
         if (!existing.buyerNames.includes(parsed.insiderName)) {
           existing.buyerNames.push(parsed.insiderName)
@@ -295,13 +297,13 @@ async function fetchForm4Details(
       }
     }
 
-    existing.avgBuyPrice = existing.buyTransactionCount > 0
+    existing.avgBuyPrice = existing.buyTransactionCount > 0 && existing.totalBuyValue > 0
       ? Math.round((existing.totalBuyValue / existing.totalBuyShares) * 100) / 100
       : null
     existing.action = existing.buyTransactionCount > 0 && existing.sellTransactionCount > 0
       ? "Mixed"
       : existing.buyTransactionCount > 0
-        ? "Buy"
+        ? "Acquiring"
         : existing.sellTransactionCount > 0
           ? "Sell"
           : "Filed"
