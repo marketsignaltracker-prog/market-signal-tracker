@@ -3053,7 +3053,7 @@ function SignalDetailsModal({
                       }}>
                         <p className="text-xs font-bold" style={{ color: hasInsiderSignal(row) ? "#fb923c" : "#374151" }}>Insider Trades</p>
                         <p className="mt-1 text-lg font-black" style={{ color: hasInsiderSignal(row) ? "#fed7aa" : "#1f2937" }}>
-                          {hasInsiderSignal(row) ? `${row.insider_shares ?? "?"} Filing${(row.insider_shares ?? 0) === 1 ? "" : "s"}` : "No"}
+                          {hasInsiderSignal(row) ? (row.insider_shares ? `${row.insider_shares} Filing${row.insider_shares === 1 ? "" : "s"}` : "Yes") : "No"}
                         </p>
                         <p className="mt-1 text-[11px]" style={{ color: hasInsiderSignal(row) ? "rgba(253,186,116,0.6)" : "#1f2937" }}>
                           {row.insider_signal_flavor || (hasInsiderSignal(row) ? "SEC Form 4 filed" : "None detected")}
@@ -3065,7 +3065,7 @@ function SignalDetailsModal({
                       }}>
                         <p className="text-xs font-bold" style={{ color: hasPtrSignal(row) ? "#c084fc" : "#374151" }}>Congress Trades</p>
                         <p className="mt-1 text-lg font-black" style={{ color: hasPtrSignal(row) ? "#e9d5ff" : "#1f2937" }}>
-                          {hasPtrSignal(row) ? `${row.cluster_buyers ?? "?"} Buyer${(row.cluster_buyers ?? 0) === 1 ? "" : "s"}` : "No"}
+                          {hasPtrSignal(row) ? (row.cluster_buyers ? `${row.cluster_buyers} Buyer${row.cluster_buyers === 1 ? "" : "s"}` : "Yes") : "No"}
                         </p>
                         <p className="mt-1 text-[11px]" style={{ color: hasPtrSignal(row) ? "rgba(196,181,253,0.6)" : "#1f2937" }}>
                           {row.insider_signal_flavor?.startsWith("PTR:") ? row.insider_signal_flavor.slice(5) : row.insider_buy_value ? `$${Number(row.insider_buy_value).toLocaleString()}+ disclosed` : hasPtrSignal(row) ? "PTR filed" : "None detected"}
@@ -3115,7 +3115,7 @@ function SignalDetailsModal({
                   <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
                     <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-400">Insider & Congress</p>
                     <div className="space-y-2">
-                      <MetricRow label="Insider filings" value={hasInsiderSignal(row) ? `${row.insider_shares ?? "?"} Form 4 filing${(row.insider_shares ?? 0) === 1 ? "" : "s"}` : "None"} />
+                      <MetricRow label="Insider filings" value={hasInsiderSignal(row) ? (row.insider_shares ? `${row.insider_shares} Form 4 filing${row.insider_shares === 1 ? "" : "s"}` : "Form 4 filed") : "None"} />
                       <MetricRow label="Filing detail" value={row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? row.insider_signal_flavor : null} />
                       <MetricRow label="Congress buying?" value={hasPtrSignal(row) ? "Yes" : "No"} />
                       <MetricRow label="Congress buyers" value={hasPtrSignal(row) && row.insider_signal_flavor?.startsWith("PTR:") ? row.insider_signal_flavor.slice(5) : null} />
@@ -3210,7 +3210,7 @@ function SignalDetailsModal({
                               Congress Trades (PTR)
                             </p>
                             <span className="text-sm font-black" style={{ color: hasPtrSignal(row) ? "#e9d5ff" : "#1f2937" }}>
-                              {hasPtrSignal(row) ? `${row.cluster_buyers ?? "?"} Buyer${(row.cluster_buyers ?? 0) === 1 ? "" : "s"}` : "No"}
+                              {hasPtrSignal(row) ? (row.cluster_buyers ? `${row.cluster_buyers} Buyer${row.cluster_buyers === 1 ? "" : "s"}` : "Yes") : "No"}
                             </span>
                           </div>
                           {hasPtrSignal(row) ? (
@@ -3455,7 +3455,7 @@ function SignalDetailsModal({
                         Insider & Congress Trades
                       </p>
                       <div className="space-y-2">
-                        <MetricRow label="Insider filings" value={hasInsiderSignal(row) ? `${row.insider_shares ?? "?"} Form 4 filing${(row.insider_shares ?? 0) === 1 ? "" : "s"}` : "None"} />
+                        <MetricRow label="Insider filings" value={hasInsiderSignal(row) ? (row.insider_shares ? `${row.insider_shares} Form 4 filing${row.insider_shares === 1 ? "" : "s"}` : "Form 4 filed") : "None"} />
                         <MetricRow label="Filing detail" value={row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? row.insider_signal_flavor : null} />
                         <MetricRow label="Congress buying?" value={hasPtrSignal(row) ? "Yes" : "No"} />
                         <MetricRow label="Congress buyers" value={hasPtrSignal(row) && row.insider_signal_flavor?.startsWith("PTR:") ? row.insider_signal_flavor.slice(5) : null} />
