@@ -105,12 +105,209 @@ type PtrSummary = {
   latestReportDate: string | null
   notes: string[]
   summary: string | null
+  buyerNames: string[]
 }
 
 type BreadthStats = {
   sectorCounts: Map<string, number>
   industryCounts: Map<string, number>
   totalTickers: number
+}
+
+type InsiderEnrichment = {
+  totalBuyShares: number
+  totalSellShares: number
+  avgBuyPrice: number | null
+  totalBuyValue: number
+  buyerNames: string[]
+  sellerNames: string[]
+  buyTransactionCount: number
+  sellTransactionCount: number
+  latestTransactionDate: string | null
+  action: string // "Buy", "Sell", "Mixed"
+}
+
+// --- Form 4 XML Parser ---
+function parseForm4Xml(xml: string): {
+  insiderName: string
+  isDirector: boolean
+  isOfficer: boolean
+  officerTitle: string | null
+  transactions: {
+    shares: number
+    pricePerShare: number
+    acquired: boolean // true = acquired, false = disposed
+    transactionCode: string // P=purchase, S=sale, A=award, etc
+    date: string | null
+  }[]
+} | null {
+  const nameMatch = xml.match(/<rptOwnerName>([^<]+)</)
+  if (!nameMatch) return null
+
+  const isDirector = /<isDirector>1</.test(xml)
+  const isOfficer = /<isOfficer>1</.test(xml)
+  const titleMatch = xml.match(/<officerTitle>([^<]+)</)
+
+  const transactions: any[] = []
+  const txBlocks = xml.split(/<nonDerivativeTransaction>/).slice(1)
+
+  for (const block of txBlocks) {
+    const sharesMatch = block.match(/<transactionShares>\s*<value>([^<]+)</)
+    const priceMatch = block.match(/<transactionPricePerShare>\s*<value>([^<]+)</)
+    const adCode = block.match(/<transactionAcquiredDisposedCode>\s*<value>([^<]+)</)
+    const txCode = block.match(/<transactionCode>([^<]+)</)
+    const dateMatch = block.match(/<transactionDate>\s*<value>([^<]+)</)
+
+    const shares = parseFloat(sharesMatch?.[1] || "0")
+    const price = parseFloat(priceMatch?.[1] || "0")
+    if (shares <= 0) continue
+
+    transactions.push({
+      shares,
+      pricePerShare: price,
+      acquired: adCode?.[1]?.trim() === "A",
+      transactionCode: txCode?.[1]?.trim() || "?",
+      date: dateMatch?.[1]?.trim() || null,
+    })
+  }
+
+  return {
+    insiderName: nameMatch[1].trim(),
+    isDirector,
+    isOfficer,
+    officerTitle: titleMatch?.[1]?.trim() || null,
+    transactions,
+  }
+}
+
+async function fetchForm4Details(
+  supabase: any,
+  tickers: string[]
+): Promise<Map<string, InsiderEnrichment>> {
+  const enrichMap = new Map<string, InsiderEnrichment>()
+  if (tickers.length === 0) return enrichMap
+
+  // Load raw_filings for these tickers (Form 4 only)
+  const { data: filings } = await supabase
+    .from("raw_filings")
+    .select("ticker, accession_no, cik, filing_url, filed_at")
+    .in("ticker", tickers)
+    .in("form_type", ["4", "4/A"])
+    .order("filed_at", { ascending: false })
+    .limit(500)
+
+  if (!filings || filings.length === 0) return enrichMap
+
+  // Group by ticker, take up to 5 most recent filings per ticker
+  const byTicker = new Map<string, any[]>()
+  for (const f of filings) {
+    const t = (f.ticker || "").toUpperCase()
+    if (!byTicker.has(t)) byTicker.set(t, [])
+    const arr = byTicker.get(t)!
+    if (arr.length < 5) arr.push(f)
+  }
+
+  // Build XML URLs from accession numbers
+  const fetchTasks: { ticker: string; url: string }[] = []
+  for (const [ticker, tickerFilings] of byTicker.entries()) {
+    for (const f of tickerFilings) {
+      const accession = (f.accession_no || "").trim()
+      const cik = String(f.cik || "").trim()
+      if (!accession || !cik) continue
+      const accNoDash = accession.replace(/-/g, "")
+      const url = `https://www.sec.gov/Archives/edgar/data/${cik}/${accNoDash}/form4.xml`
+      fetchTasks.push({ ticker, url })
+    }
+  }
+
+  // Fetch XMLs with concurrency limit of 10
+  const CONCURRENCY = 10
+  const SEC_DELAY = 110 // SEC rate limit: 10 req/sec
+  const parsedResults: { ticker: string; parsed: ReturnType<typeof parseForm4Xml> }[] = []
+
+  for (let i = 0; i < fetchTasks.length; i += CONCURRENCY) {
+    const batch = fetchTasks.slice(i, i + CONCURRENCY)
+    const results = await Promise.allSettled(
+      batch.map(async ({ ticker, url }) => {
+        const resp = await fetch(url, {
+          headers: { "User-Agent": "MarketSignalTracker research@marketsignaltracker.com" },
+          signal: AbortSignal.timeout(8000),
+        })
+        if (!resp.ok) return { ticker, parsed: null }
+        const xml = await resp.text()
+        return { ticker, parsed: parseForm4Xml(xml) }
+      })
+    )
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value) {
+        parsedResults.push(r.value)
+      }
+    }
+    if (i + CONCURRENCY < fetchTasks.length) {
+      await new Promise((r) => setTimeout(r, SEC_DELAY))
+    }
+  }
+
+  // Aggregate per ticker
+  for (const { ticker, parsed } of parsedResults) {
+    if (!parsed || parsed.transactions.length === 0) continue
+
+    let existing = enrichMap.get(ticker)
+    if (!existing) {
+      existing = {
+        totalBuyShares: 0,
+        totalSellShares: 0,
+        avgBuyPrice: null,
+        totalBuyValue: 0,
+        buyerNames: [],
+        sellerNames: [],
+        buyTransactionCount: 0,
+        sellTransactionCount: 0,
+        latestTransactionDate: null,
+        action: "Filed",
+      }
+      enrichMap.set(ticker, existing)
+    }
+
+    for (const tx of parsed.transactions) {
+      // P = open-market purchase, S = open-market sale
+      // A = award/grant, M = exercise, G = gift — skip these for buy/sell counts
+      const isPurchase = tx.transactionCode === "P" || (tx.acquired && tx.transactionCode === "P")
+      const isSale = tx.transactionCode === "S"
+
+      if (isPurchase) {
+        existing.totalBuyShares += tx.shares
+        existing.totalBuyValue += tx.shares * tx.pricePerShare
+        existing.buyTransactionCount += 1
+        if (!existing.buyerNames.includes(parsed.insiderName)) {
+          existing.buyerNames.push(parsed.insiderName)
+        }
+      } else if (isSale) {
+        existing.totalSellShares += tx.shares
+        existing.sellTransactionCount += 1
+        if (!existing.sellerNames.includes(parsed.insiderName)) {
+          existing.sellerNames.push(parsed.insiderName)
+        }
+      }
+
+      if (tx.date && (!existing.latestTransactionDate || tx.date > existing.latestTransactionDate)) {
+        existing.latestTransactionDate = tx.date
+      }
+    }
+
+    existing.avgBuyPrice = existing.buyTransactionCount > 0
+      ? Math.round((existing.totalBuyValue / existing.totalBuyShares) * 100) / 100
+      : null
+    existing.action = existing.buyTransactionCount > 0 && existing.sellTransactionCount > 0
+      ? "Mixed"
+      : existing.buyTransactionCount > 0
+        ? "Buy"
+        : existing.sellTransactionCount > 0
+          ? "Sell"
+          : "Filed"
+  }
+
+  return enrichMap
 }
 
 const DEFAULT_LOOKBACK_DAYS = 31
@@ -492,6 +689,9 @@ function buildPtrSummaryMap(rows: RawPtrTradeRow[], ptrRecentDays: number) {
       latestReportDate: allReportDates[0] ?? null,
       notes,
       summary: summaryParts.length ? `PTR support: ${summaryParts.join(", ")}` : null,
+      buyerNames: Array.from(new Set(
+        buys.map((r: any) => String(r.filer_name || "").trim()).filter(Boolean)
+      )),
     })
   }
 
@@ -1281,6 +1481,49 @@ export async function GET(request: Request) {
       ltcsScoreMap,
       tickerPriceDataMap
     )
+
+    // --- Enrich with Form 4 insider details (parsed from SEC EDGAR XML) ---
+    const tickersToEnrich = tickerCurrentRowsBase.map((r: any) => r.ticker).filter(Boolean)
+    let insiderEnrichMap = new Map<string, InsiderEnrichment>()
+    try {
+      insiderEnrichMap = await fetchForm4Details(supabase, tickersToEnrich)
+    } catch (e) {
+      console.error("Form 4 enrichment failed (non-fatal):", e)
+    }
+
+    // Apply enrichment to rows
+    for (const row of tickerCurrentRowsBase) {
+      const enrich = insiderEnrichMap.get(row.ticker)
+      if (enrich) {
+        row.insider_action = enrich.action
+        if (enrich.buyTransactionCount > 0) {
+          row.insider_shares = enrich.totalBuyShares
+          row.insider_avg_price = enrich.avgBuyPrice
+          row.insider_buy_value = Math.round(enrich.totalBuyValue)
+          row.cluster_buyers = enrich.buyerNames.length
+          row.insider_signal_flavor = enrich.buyerNames.length > 0
+            ? `${enrich.buyerNames.slice(0, 3).join(", ")}${enrich.buyerNames.length > 3 ? ` +${enrich.buyerNames.length - 3} more` : ""}`
+            : row.insider_signal_flavor
+        } else if (enrich.sellTransactionCount > 0) {
+          row.insider_shares = enrich.totalSellShares
+          row.insider_action = "Sell"
+          row.insider_signal_flavor = enrich.sellerNames.length > 0
+            ? `${enrich.sellerNames.slice(0, 3).join(", ")} selling`
+            : "Insider selling"
+        }
+      }
+
+      // PTR enrichment from ptrSummaryMap
+      const ptr = ptrSummaryMap.get(row.ticker)
+      if (ptr && ptr.buyTradeCount > 0) {
+        row.cluster_buyers = row.cluster_buyers ?? ptr.uniqueBuyFilers
+        row.cluster_shares = ptr.buyTradeCount
+        row.insider_buy_value = row.insider_buy_value ?? (ptr.totalBuyAmountLow > 0 ? ptr.totalBuyAmountLow : null)
+        if (ptr.buyerNames && ptr.buyerNames.length > 0) {
+          row.insider_signal_flavor = `PTR: ${ptr.buyerNames.slice(0, 3).join(", ")}`
+        }
+      }
+    }
 
     const tickerCurrentRows = await attachTickerScoreChangesToCurrentRows(
       supabase,
