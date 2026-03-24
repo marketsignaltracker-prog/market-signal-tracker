@@ -730,7 +730,7 @@ export default function Home() {
           const hasSignalData = signalScore >= 0
 
           const include =
-            displayScore >= 70 &&
+            displayScore >= 55 &&
             hasSignalData &&
             ageDays <= 10
 
