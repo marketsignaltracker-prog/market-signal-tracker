@@ -2167,7 +2167,7 @@ function EmptyPanel() {
 }
 
 function compareRows(a: UnifiedRow, b: UnifiedRow) {
-  // "Buy Today" rank: freshest catalyst + strongest momentum first
+  // "Buy Today" rank: freshness first, then value + momentum blend
   const aAge = a.age_days ?? 999
   const bAge = b.age_days ?? 999
   const aRS = a.relative_strength_20d ?? 0
@@ -2181,11 +2181,32 @@ function compareRows(a: UnifiedRow, b: UnifiedRow) {
   const bFresh = freshTier(bAge)
   if (aFresh !== bFresh) return bFresh - aFresh
 
-  // Within same freshness tier: strongest relative strength first
-  if (Math.abs(aRS - bRS) > 1) return bRS - aRS
+  // Value score: lower forward P/E = more attractive price (max 40 pts)
+  const valuePts = (pe: number | null | undefined) => {
+    if (!pe || pe <= 0) return 10 // unknown = neutral
+    if (pe <= 12) return 40
+    if (pe <= 18) return 35
+    if (pe <= 25) return 28
+    if (pe <= 35) return 18
+    return 5 // expensive
+  }
+  const aValue = valuePts(a.pe_forward ?? a.pe_ratio)
+  const bValue = valuePts(b.pe_forward ?? b.pe_ratio)
 
-  // Then by signal score
-  if (aScore !== bScore) return bScore - aScore
+  // Momentum score: relative strength (max 30 pts)
+  const momentumPts = (rs: number) => {
+    if (rs >= 10) return 30
+    if (rs >= 5) return 25
+    if (rs > 0) return 15
+    return 0
+  }
+  const aMomentum = momentumPts(aRS)
+  const bMomentum = momentumPts(bRS)
+
+  // Combined rank: value weighted heavier than momentum
+  const aRank = aValue * 1.5 + aMomentum + (aScore * 0.3)
+  const bRank = bValue * 1.5 + bMomentum + (bScore * 0.3)
+  if (Math.abs(aRank - bRank) > 2) return bRank - aRank
 
   // Final tiebreaker: most recent filing date
   const aDate = getDateValue(a.filed_at ?? a.last_screened_at ?? a.updated_at)
