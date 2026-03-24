@@ -189,7 +189,7 @@ const DEFAULT_LOOKBACK_DAYS = 30
 const MAX_LOOKBACK_DAYS = 60
 const RETENTION_DAYS = 30
 const SCORE_VERSION = "v12-catalyst-first"
-const DB_CHUNK_SIZE = 100
+const DB_CHUNK_SIZE = 25
 
 const DEFAULT_MIN_SIGNAL_APP_SCORE = 50
 const MIN_CANDIDATE_SCORE = 50
@@ -1206,17 +1206,23 @@ export async function GET(request: Request) {
         : { insertedOrUpdated: 0, errors: [] as ChunkWriteResult["errors"] }
 
     if (signalWriteResult.errors.length > 0) {
-      return Response.json(
-        {
-          ok: false,
-          error: "Failed writing signals rows",
-          debug: {
-            diagnostics,
-            errorSamples: signalWriteResult.errors.slice(0, 5),
+      // Log errors but continue if some chunks succeeded
+      console.error("Signal write errors:", JSON.stringify(signalWriteResult.errors.slice(0, 3)))
+      if (signalWriteResult.insertedOrUpdated === 0) {
+        return Response.json(
+          {
+            ok: false,
+            error: "Failed writing signals rows",
+            debug: {
+              diagnostics,
+              errorSamples: signalWriteResult.errors.slice(0, 5),
+            },
           },
-        },
-        { status: 500 }
-      )
+          { status: 500 }
+        )
+      }
+      // Partial success — continue with what we have
+      ;(diagnostics as any).signalWriteErrors = signalWriteResult.errors.length
     }
 
     diagnostics.candidateSignalsInserted = signalWriteResult.insertedOrUpdated
