@@ -1823,7 +1823,7 @@ function SwipeStockCard({
 
       {/* ── Fundamentals Scanner ── */}
       <div className="min-h-0 flex-1 overflow-hidden px-4 pt-2 pb-1">
-        <div className="grid h-full grid-cols-2 grid-rows-3 gap-1.5">
+        <div className="grid h-full grid-cols-2 grid-rows-4 gap-1">
           {(() => {
             const ltcs = parseScreenReasonScores(row.screen_reason)
 
@@ -1864,7 +1864,7 @@ function SwipeStockCard({
             }) {
               const active = score != null && score > 0
               return (
-                <div className="relative overflow-hidden rounded-xl p-2.5" style={{
+                <div className="relative overflow-hidden rounded-xl p-2" style={{
                   background: active ? `linear-gradient(160deg, ${color}18 0%, ${color}04 100%)` : "#111827",
                   border: `1px solid ${active ? borderColor : "rgba(255,255,255,0.05)"}`,
                 }}>
@@ -1956,6 +1956,50 @@ function SwipeStockCard({
                   sub={rs != null ? `${rs >= 0 ? "+" : ""}${rs.toFixed(1)}% vs market over 20 days` : "Is the stock outperforming most others?"}
                   score={rsScore} maxScore={100} color="#ec4899" borderColor="rgba(236,72,153,0.25)"
                 />
+                {(() => {
+                  const insider = hasInsiderSignal(row)
+                  const ptr = hasPtrSignal(row)
+                  const both = insider && ptr
+                  const insiderScore = insider ? (row.insider_shares ? Math.min(100, Math.round(row.insider_shares / 10)) : 75) : 0
+                  const ptrScore = ptr ? 90 : 0
+                  const insiderVal = insider
+                    ? (row.insider_buy_value ? `$${Math.round(row.insider_buy_value).toLocaleString()}` : "Active")
+                    : "None"
+                  const ptrVal = ptr
+                    ? (row.cluster_buyers ? `${row.cluster_buyers} Member${row.cluster_buyers === 1 ? "" : "s"}` : "Active")
+                    : "None"
+                  const insiderSub = row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:")
+                    ? row.insider_signal_flavor
+                    : insider ? "Company insiders are buying shares" : "No recent insider activity"
+                  const ptrSub = row.insider_signal_flavor?.startsWith("PTR:")
+                    ? row.insider_signal_flavor.slice(5)
+                    : ptr ? "Congress members disclosed purchases" : "No congressional trades detected"
+
+                  return (
+                    <>
+                      {both && (
+                        <div className="col-span-2 flex items-center justify-center rounded-lg py-1" style={{
+                          background: "linear-gradient(90deg, rgba(249,115,22,0.15), rgba(250,204,21,0.10), rgba(168,85,247,0.15))",
+                          border: "1px solid rgba(250,204,21,0.25)",
+                        }}>
+                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-yellow-300">
+                            Double Smart Money Signal
+                          </span>
+                        </div>
+                      )}
+                      <Tile
+                        iconPath={iconPaths.eps} label={hasClusterBuy(row) ? "Cluster Buy" : "Insider"} value={insiderVal}
+                        sub={insiderSub}
+                        score={insiderScore} maxScore={100} color="#f97316" borderColor={both ? "rgba(250,204,21,0.40)" : "rgba(249,115,22,0.25)"}
+                      />
+                      <Tile
+                        iconPath={iconPaths.debt} label="Congress" value={ptrVal}
+                        sub={ptrSub}
+                        score={ptrScore} maxScore={100} color="#a855f7" borderColor={both ? "rgba(250,204,21,0.40)" : "rgba(168,85,247,0.25)"}
+                      />
+                    </>
+                  )
+                })()}
               </>
             )
           })()}
