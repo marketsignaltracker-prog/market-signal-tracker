@@ -848,12 +848,12 @@ function buildSignalRow(
     },
     score_version: SCORE_VERSION,
     score_updated_at: runTimestamp,
-    stacked_signal_count:
+    stacked_signal_count: Math.max(1,
       (ptrSummary?.buyTradeCount || 0) +
       (filingSummary?.insiderFormCount || 0) +
       (filingSummary?.ownershipFormCount || 0) +
       (filingSummary?.catalystFormCount || 0) +
-      (scored.signalFamilyCount >= 2 ? 1 : 0),
+      (scored.signalFamilyCount >= 2 ? 1 : 0)),
     signal_reasons: scored.reasons,
     score_caps_applied: scored.caps,
     ticker_score_change_1d: null,
