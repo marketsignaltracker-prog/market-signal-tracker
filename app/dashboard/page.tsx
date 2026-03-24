@@ -2266,13 +2266,16 @@ function matchesSourceFilter(row: UnifiedRow, sourceFilter: SourceFilterType) {
 
 function matchesInsiderFilter(row: UnifiedRow, filter: InsiderFilterType) {
   if (filter === "all") return true
-  if (filter === "cluster") return (row.cluster_buyers ?? 0) >= 2
-  return row.has_insider_trades === true
+  const tags = row.signal_tags || []
+  const hasInsider = row.has_insider_trades === true || tags.some(t => t.includes("insider"))
+  if (filter === "cluster") return (row.cluster_buyers ?? 0) >= 2 || tags.includes("ptr-cluster")
+  return hasInsider
 }
 
 function matchesCongressFilter(row: UnifiedRow, filter: CongressFilterType) {
   if (filter === "all") return true
-  return row.has_ptr_forms === true || !!row.ptr_amount
+  const tags = row.signal_tags || []
+  return row.has_ptr_forms === true || !!row.ptr_amount || tags.some(t => t.includes("ptr"))
 }
 
 function matchesMomentumFilter(row: UnifiedRow, filter: MomentumFilterType) {
