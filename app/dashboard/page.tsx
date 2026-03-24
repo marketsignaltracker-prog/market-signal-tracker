@@ -745,10 +745,14 @@ export default function Home() {
           const ageDays = unified.age_days ?? 999
           const hasSignalData = signalScore >= 0
 
+          // PTR/congress trades are disclosed with 45-day delay, allow longer window
+          const isPtrTicker = (unified.signal_tags || []).some(t => t.includes("ptr"))
+          const maxAge = isPtrTicker ? 45 : 10
+
           const include =
             displayScore >= 55 &&
             hasSignalData &&
-            ageDays <= 10
+            ageDays <= maxAge
 
           if (include) merged.push(unified)
         }
