@@ -125,9 +125,9 @@ const MAX_PTR_LOOKBACK_DAYS = 120
 const DEFAULT_PTR_RECENT_DAYS = 14
 const MAX_PTR_RECENT_DAYS = 30
 
-const MIN_SIGNAL_APP_SCORE = 45
-const MIN_TICKER_APP_SCORE = 45
-const MIN_COMBINED_SCORE = 50
+const MIN_SIGNAL_APP_SCORE = 30
+const MIN_TICKER_APP_SCORE = 30
+const MIN_COMBINED_SCORE = 35
 
 const DB_CHUNK_SIZE = 100
 
@@ -953,8 +953,8 @@ function buildTickerScoresCurrentRows(
       scoreCapsApplied.add("platinum-conviction")
     }
 
-    if (ltcsBase < 40 && insiderBonus === 0) continue
-    if (finalScore < 40) continue
+    if (ltcsBase < 25 && insiderBonus === 0) continue
+    if (finalScore < 30) continue
 
     const sourceList = Array.from(signalSources)
     const primaryTitle =
@@ -1252,7 +1252,7 @@ export async function GET(request: Request) {
     const { data: ltcsRows } = await supabase
       .from("candidate_screen_history")
       .select("ticker, candidate_score, screened_on, price, market_cap, above_sma_20, extension_from_sma20_pct, volume_ratio, breakout_20d, relative_strength_20d, return_5d, return_20d, pe_ratio, sector")
-      .gte("candidate_score", 40)
+      .gte("candidate_score", 25)
       .order("screened_on", { ascending: false })
       .order("candidate_score", { ascending: false })
       .limit(5000)
