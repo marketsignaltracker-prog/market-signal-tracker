@@ -191,11 +191,12 @@ const RETENTION_DAYS = 30
 const SCORE_VERSION = "v12-catalyst-first"
 const DB_CHUNK_SIZE = 25
 
-const DEFAULT_MIN_SIGNAL_APP_SCORE = 50
-const MIN_CANDIDATE_SCORE = 50
+const DEFAULT_MIN_SIGNAL_APP_SCORE = 35
+const MIN_CANDIDATE_SCORE = 40
 const CATALYST_MAX_AGE_DAYS = 14
-const PTR_LOOKBACK_DAYS = 30
-const PTR_RECENT_DAYS = 14
+const PTR_CATALYST_MAX_AGE_DAYS = 30  // Congress trades disclosed with 45-day delay
+const PTR_LOOKBACK_DAYS = 60
+const PTR_RECENT_DAYS = 30
 
 function normalizeTicker(ticker: string | null | undefined) {
   return (ticker || "").trim().toUpperCase()
@@ -543,7 +544,7 @@ function scoreCandidateSignal(params: {
   const filingAge = filingSummary?.latestFiledAt ? daysAgo(filingSummary.latestFiledAt) : null
   const ptrAge = ptrSummary?.latestTradeDate ? daysAgo(ptrSummary.latestTradeDate) : null
   const hasRecentFiling = filingAge !== null && filingAge <= CATALYST_MAX_AGE_DAYS
-  const hasRecentPtr = ptrAge !== null && ptrAge <= CATALYST_MAX_AGE_DAYS
+  const hasRecentPtr = ptrAge !== null && ptrAge <= PTR_CATALYST_MAX_AGE_DAYS
   const hasBreakout = Boolean(context.breakout_20d) || Boolean(context.breakout_10d)
 
   // Hard catalyst gate — no recent catalyst = no signal
@@ -563,9 +564,11 @@ function scoreCandidateSignal(params: {
 
   let ptrCatalystScore = 0
   if (hasRecentPtr && ptrAge !== null) {
-    if (ptrAge <= 3) ptrCatalystScore = 35
-    else if (ptrAge <= 7) ptrCatalystScore = 22
-    else ptrCatalystScore = 10
+    if (ptrAge <= 3) ptrCatalystScore = 38
+    else if (ptrAge <= 7) ptrCatalystScore = 32
+    else if (ptrAge <= 14) ptrCatalystScore = 25
+    else if (ptrAge <= 21) ptrCatalystScore = 18
+    else ptrCatalystScore = 12
   }
 
   let breakoutCatalystScore = 0
