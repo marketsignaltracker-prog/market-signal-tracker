@@ -1959,18 +1959,34 @@ function SwipeStockCard({
                 {(() => {
                   const insider = hasInsiderSignal(row)
                   const ptr = hasPtrSignal(row)
+                  const cluster = hasClusterBuy(row)
                   const both = insider && ptr
-                  const insiderScore = insider ? (row.insider_shares ? Math.min(100, Math.round(row.insider_shares / 10)) : 75) : 0
+
+                  // Insider score: based on buy value or filing activity
+                  const insiderScore = insider
+                    ? (row.insider_buy_value && row.insider_buy_value > 0
+                        ? Math.min(100, 60 + Math.round(row.insider_buy_value / 50000))
+                        : row.insider_shares && row.insider_shares > 0
+                          ? Math.min(95, 55 + row.insider_shares * 5)
+                          : 70)
+                    : 0
                   const ptrScore = ptr ? 90 : 0
-                  const insiderVal = insider
-                    ? (row.insider_buy_value ? `$${Math.round(row.insider_buy_value).toLocaleString()}` : "Active")
-                    : "None"
-                  const ptrVal = ptr
-                    ? (row.cluster_buyers ? `${row.cluster_buyers} Member${row.cluster_buyers === 1 ? "" : "s"}` : "Active")
-                    : "None"
+
+                  // Insider display value
+                  const insiderVal = !insider ? "None"
+                    : row.insider_buy_value && row.insider_buy_value > 0 ? `$${Math.round(row.insider_buy_value).toLocaleString()}`
+                    : row.insider_shares && row.insider_shares > 0 ? `${row.insider_shares.toLocaleString()} sh`
+                    : "Active"
+
+                  // PTR display value
+                  const ptrVal = !ptr ? "None"
+                    : row.cluster_buyers && row.cluster_buyers > 0 ? `${row.cluster_buyers} Member${row.cluster_buyers === 1 ? "" : "s"}`
+                    : "Active"
+
+                  // Sub text
                   const insiderSub = row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:")
                     ? row.insider_signal_flavor
-                    : insider ? "Company insiders are buying shares" : "No recent insider activity"
+                    : insider ? "Insiders are acquiring shares" : "No recent insider activity"
                   const ptrSub = row.insider_signal_flavor?.startsWith("PTR:")
                     ? row.insider_signal_flavor.slice(5)
                     : ptr ? "Congress members disclosed purchases" : "No congressional trades detected"
