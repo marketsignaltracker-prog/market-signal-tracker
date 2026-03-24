@@ -3217,7 +3217,7 @@ function SignalDetailsModal({
                   {/* Smart Money */}
                   <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-5">
                     <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-[#f0a500]">Smart Money is Moving</p>
-                    <p className="mb-3 text-sm leading-6 text-[#7a8ba0]">Our engine flagged insider or congressional activity on this stock. Smart money moves often precede price moves.</p>
+                    <p className="mb-3 text-sm leading-6 text-[#7a8ba0]">Our proprietary algorithm detected stacked smart money signals on this stock. When insiders AND Congress buy together, that's our highest-conviction Smart Buy signal.</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-xl p-3" style={{
                         background: hasInsiderSignal(row) ? "linear-gradient(135deg, rgba(249,115,22,0.14) 0%, rgba(249,115,22,0.03) 100%)" : "#0d1117",
@@ -3345,7 +3345,7 @@ function SignalDetailsModal({
                         Smart Money is Moving
                       </p>
                       <p className="mb-3 text-xs leading-5 text-[#7a8ba0]">
-                        Our engine detected insider or congressional trading activity. These signals are a key ingredient in our scoring model.
+                        Our algorithm stacks insider and congressional trading signals. When both are buying, that's the secret sauce behind our highest Smart Buy scores.
                       </p>
                       <div className="space-y-2">
                         {/* Insider Trades */}
@@ -3803,7 +3803,7 @@ function getFeaturedThesis(row: UnifiedRow) {
   const ltcs = parseScreenReasonScores(row.screen_reason)
 
   if ((row.cluster_buyers ?? 0) >= 3 && row.ptr_amount) {
-    return "Company insiders and members of Congress are both buying this stock right now — that's a rare signal worth paying attention to."
+    return "Company insiders and members of Congress are both buying this stock right now — that's a rare stacked Smart Buy signal worth paying attention to."
   }
 
   if ((row.cluster_buyers ?? 0) >= 2) {
@@ -3898,19 +3898,19 @@ function getPremiumSummaryBullets(row: UnifiedRow) {
 
   if (row.has_candidate_data && row.has_signal_data) {
     bullets.push(
-      "This one has both price strength and extra signal support working in its favor."
+      "This one has multiple stacked Smart Buy signals — price strength, valuation, and smart money activity working in its favor."
     )
   }
 
   if (row.has_candidate_data && !row.has_signal_data) {
     bullets.push(
-      "This one mainly made the list because its price setup looks strong."
+      "This one made the Smart Buy list mainly on its price setup and valuation — our algorithm favors these fundamentals."
     )
   }
 
   if (row.has_signal_data && !row.has_candidate_data) {
     bullets.push(
-      "This one mainly made the list because the signal layer was strong enough on its own."
+      "This one made the Smart Buy list because the stacked smart money signals were strong enough on their own."
     )
   }
 

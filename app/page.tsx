@@ -293,20 +293,20 @@ export default function LandingPage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-500" />
               </span>
-              <span className="text-xs font-medium text-cyan-400">Updated daily with fresh stocks</span>
+              <span className="text-xs font-medium text-cyan-400">Smart Buy signals updated daily</span>
             </div>
 
             <h1 className="mb-5 text-4xl font-black leading-[1.1] tracking-tight text-white sm:text-5xl md:text-6xl">
-              Stop guessing.
+              When insiders AND Congress buy,
               <br />
               <span className="bg-gradient-to-r from-cyan-400 to-emerald-400 bg-clip-text text-transparent">
-                Follow the smart money.
+                that&apos;s a Smart Buy signal.
               </span>
             </h1>
 
             <p className="mb-8 text-base leading-relaxed text-slate-400 sm:text-lg">
-              Every day, our engine finds the stocks you should be looking at right now — not just good companies, but the ones where something just happened.
-              A proprietary blend of catalysts, momentum, and insider intelligence surfaces only the most actionable ideas.
+              We stack insider trades + congressional trades + attractive valuations + momentum into one proprietary score.
+              Out of thousands of stocks, our algorithm surfaces only 30-50 high-conviction Smart Buy picks per day.
             </p>
 
             <div className="flex flex-col items-center gap-3 mb-8 sm:mb-0 sm:flex-row sm:justify-center">
@@ -314,7 +314,7 @@ export default function LandingPage() {
                 onClick={() => router.push("/login")}
                 className="w-full rounded-full bg-cyan-500 px-8 py-3 text-base font-bold text-black transition hover:bg-cyan-400 hover:shadow-lg hover:shadow-cyan-500/25 sm:w-auto"
               >
-                Start Free — See Today&apos;s Top Pick
+                Start Free — See Today&apos;s Smart Buys
               </button>
               <button
                 onClick={() => {
@@ -341,8 +341,8 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-4xl grid-cols-2 gap-6 px-5 py-10 sm:grid-cols-4">
           {[
             { value: 10000, suffix: "+", label: "Stocks screened daily" },
-            { value: 30, suffix: "+", label: "Buy Today picks" },
-            { value: 50, suffix: "+", label: "Signals per stock" },
+            { value: 30, suffix: "-50", label: "Smart Buy picks per day" },
+            { value: 4, suffix: "", label: "Stacked signal layers" },
             { value: 100, suffix: "", label: "Max conviction score" },
           ].map((stat) => (
             <div key={stat.label} className="text-center">
@@ -359,8 +359,8 @@ export default function LandingPage() {
       <section className="px-5 py-20">
         <div className="mx-auto max-w-6xl">
           <div className="mx-auto mb-12 max-w-lg text-center">
-            <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">Everything you need. One card.</h2>
-            <p className="text-sm text-slate-400 sm:text-base">Each card tells you what happened, why it matters, and when to get out — powered by our proprietary signal engine.</p>
+            <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">The Smart Buy methodology. One card.</h2>
+            <p className="text-sm text-slate-400 sm:text-base">Each card layers insider trades, congressional activity, valuation, and momentum — powered by our proprietary scoring algorithm.</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -371,7 +371,7 @@ export default function LandingPage() {
                 </svg>
               }
               title="Insider Buy Tracking"
-              description="See when CEOs, CFOs, and directors buy shares of their own company. Cluster buys from multiple insiders are flagged."
+              description="Signal layer 1: We track when CEOs, CFOs, and directors buy shares of their own company. Cluster buys from multiple insiders get extra weight in our algorithm."
             />
             <FeatureCard
               icon={
@@ -380,7 +380,7 @@ export default function LandingPage() {
                 </svg>
               }
               title="Congress Trade Data"
-              description="Track what members of Congress are buying. Required disclosures (PTR forms) are parsed and matched to stocks."
+              description="Signal layer 2: When a member of Congress buys the same stock insiders are buying, that's the high-conviction Smart Buy signal our algorithm looks for."
             />
             <FeatureCard
               icon={
@@ -390,8 +390,8 @@ export default function LandingPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
                 </svg>
               }
-              title="Conviction Score (0-100)"
-              description="Our secret sauce blends catalyst timing, momentum, and fundamentals into one number. The highest scores appear first in your deck."
+              title="Smart Buy Score (0-100)"
+              description="Our secret sauce stacks all four signal layers into one proprietary conviction number. The highest Smart Buy scores rise to the top of your deck."
             />
             <FeatureCard
               icon={
@@ -399,8 +399,8 @@ export default function LandingPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
                 </svg>
               }
-              title="Momentum & Timing"
-              description="Stocks beating the market rise to the top. We track relative strength, price action, and trend alignment so you enter at the right moment."
+              title="Momentum & Valuation"
+              description="Signal layers 3 & 4: We layer in attractive valuations and price momentum. Stocks beating the market at a fair price get the highest Smart Buy scores."
             />
             <FeatureCard
               icon={
@@ -408,8 +408,8 @@ export default function LandingPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
                 </svg>
               }
-              title="Smart Filters"
-              description="Filter by catalyst freshness, momentum, conviction, sector, valuation, and insider activity. Find exactly the setup you want."
+              title="Smart Buy Filters"
+              description="Filter by signal type, momentum, Smart Buy score, sector, valuation, and insider activity. Drill down to the exact setup you want."
             />
             <FeatureCard
               icon={
@@ -429,24 +429,24 @@ export default function LandingPage() {
         <div className="mx-auto max-w-2xl">
           <div className="mb-12 text-center">
             <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">How it works</h2>
-            <p className="text-sm text-slate-400 sm:text-base">Our engine runs daily so you always see what matters right now.</p>
+            <p className="text-sm text-slate-400 sm:text-base">Our proprietary algorithm runs daily, stacking four signal layers to find only the strongest Smart Buy picks.</p>
           </div>
 
           <div className="space-y-8">
             <Step
               number={1}
-              title="Detect fresh catalysts"
-              description="We scan thousands of SEC filings, insider trades, and congressional disclosures daily. If something just happened — we catch it."
+              title="Detect smart money moves"
+              description="We scan thousands of SEC filings, insider trades, and congressional disclosures daily. When insiders AND Congress buy the same stock, our algorithm flags it immediately."
             />
             <Step
               number={2}
-              title="Score with our secret sauce"
-              description="Each stock runs through a proprietary model that blends catalyst timing, market momentum, and fundamental quality into a single conviction score."
+              title="Stack the signal layers"
+              description="Each stock runs through our proprietary algorithm that stacks insider trades + congressional trades + attractive valuations + momentum into a single Smart Buy score."
             />
             <Step
               number={3}
-              title="Rank by actionability"
-              description="Cards are ordered by what you should look at first — the freshest catalysts with the strongest momentum lead the deck, not just the biggest companies."
+              title="Cut to 30-50 actionable picks"
+              description="Out of thousands of stocks, only 30-50 make the cut each day. Cards are ranked by Smart Buy score — the strongest stacked signals lead the deck, not just the biggest companies."
             />
             <Step
               number={4}
@@ -462,20 +462,20 @@ export default function LandingPage() {
         <div className="mx-auto max-w-4xl">
           <div className="mb-12 text-center">
             <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">Simple pricing</h2>
-            <p className="text-sm text-slate-400 sm:text-base">Start free. Upgrade when you want the full picture.</p>
+            <p className="text-sm text-slate-400 sm:text-base">Start free. Upgrade to unlock every Smart Buy signal.</p>
           </div>
 
           <div className="grid gap-6 sm:grid-cols-2 mx-auto max-w-2xl">
             {/* Free tier */}
             <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6">
               <h3 className="mb-1 text-lg font-bold text-white">Free</h3>
-              <p className="mb-4 text-sm text-slate-400">Get a taste of the picks</p>
+              <p className="mb-4 text-sm text-slate-400">See one Smart Buy pick daily</p>
               <p className="mb-6">
                 <span className="text-3xl font-black text-white">$0</span>
                 <span className="text-sm text-slate-500"> /forever</span>
               </p>
               <ul className="mb-6 space-y-2.5">
-                {["1 buy card per day", "Quality scores visible", "Basic card details"].map((f) => (
+                {["1 Smart Buy card per day", "Smart Buy scores visible", "Basic signal details"].map((f) => (
                   <li key={f} className="flex items-center gap-2 text-sm text-slate-400">
                     <svg className="h-4 w-4 shrink-0 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -498,7 +498,7 @@ export default function LandingPage() {
                 MOST POPULAR
               </div>
               <h3 className="mb-1 text-lg font-bold text-white">Pro</h3>
-              <p className="mb-4 text-sm text-slate-400">Full access to every pick</p>
+              <p className="mb-4 text-sm text-slate-400">All 30-50 Smart Buy picks daily</p>
 
               {/* Monthly / Yearly toggle */}
               <div className="mb-4 inline-flex rounded-full border border-white/10 bg-white/[0.04] p-0.5">
@@ -523,11 +523,11 @@ export default function LandingPage() {
               <p className="mb-6 text-xs text-emerald-400 font-medium">{yearly ? "Save $19.89 vs monthly" : "$119.88/yr — switch to yearly & save"}</p>
               <ul className="mb-6 space-y-2.5">
                 {[
-                  "All buy ideas unlocked",
-                  "Insider buying data",
-                  "Congress trade data",
-                  "Full analysis & thesis",
-                  "All filters unlocked",
+                  "All Smart Buy picks unlocked",
+                  "Full stacked signal breakdown",
+                  "Insider + Congress trade data",
+                  "Full analysis & exit strategy",
+                  "All Smart Buy filters",
                   "Updated daily",
                 ].map((f) => (
                   <li key={f} className="flex items-center gap-2 text-sm text-slate-300">
@@ -553,8 +553,8 @@ export default function LandingPage() {
       <section className="border-t border-white/[0.06] bg-white/[0.01] px-5 py-20">
         <div className="mx-auto max-w-5xl">
           <div className="mb-12 text-center">
-            <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">Traders love Market Signal Tracker</h2>
-            <p className="text-sm text-slate-400 sm:text-base">See why our users keep coming back for fresh picks every day.</p>
+            <h2 className="mb-3 text-2xl font-bold text-white sm:text-3xl">Traders love our Smart Buy picks</h2>
+            <p className="text-sm text-slate-400 sm:text-base">See why our users keep coming back for fresh stacked signals every day.</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -563,37 +563,37 @@ export default function LandingPage() {
                 name: "Marcus T.",
                 role: "Swing Trader",
                 stars: 5,
-                text: "The quality scores are a game-changer. I used to spend hours screening stocks — now I just open the app and the best picks are right there. Found 3 winners last week alone.",
+                text: "The Smart Buy scores are a game-changer. I used to spend hours screening stocks — now I just open the app and the best stacked signals are right there. Found 3 winners last week alone.",
               },
               {
                 name: "Sarah K.",
                 role: "Retail Investor",
                 stars: 5,
-                text: "I love how it shows insider buying clusters. When multiple executives are buying their own stock, that's a signal I trust. The card layout makes it so easy to swipe through ideas.",
+                text: "I love how it stacks insider buys with Congress trades. When both are buying the same stock, that's a Smart Buy signal I trust. The card layout makes it so easy to swipe through ideas.",
               },
               {
                 name: "David R.",
                 role: "Part-Time Trader",
                 stars: 5,
-                text: "Best stock screener I've used. The buy picks are spot-on, and the quality scores save me from chasing bad stocks. Worth every penny of the Pro subscription.",
+                text: "Best stock screener I've used. The Smart Buy picks are spot-on, and the stacked signal scores save me from chasing bad stocks. Worth every penny of the Pro subscription.",
               },
               {
                 name: "Jennifer L.",
                 role: "Long-Term Investor",
                 stars: 5,
-                text: "Finally an app that does the hard work for me. 30+ fresh picks daily, all scored and ranked. I just focus on the top-tier cards and my portfolio has never looked better.",
+                text: "Finally an app that does the hard work for me. 30-50 Smart Buy picks daily, all scored by their proprietary algorithm. I just focus on the top-tier cards and my portfolio has never looked better.",
               },
               {
                 name: "Alex M.",
                 role: "Day Trader",
                 stars: 5,
-                text: "The momentum data combined with the scoring engine is incredibly powerful. I've caught several stocks right before they broke out. The analysis tab gives me all the conviction I need.",
+                text: "The stacked signals — insiders, Congress, value, and momentum — are incredibly powerful together. I've caught several stocks right before they broke out. The Smart Buy score gives me all the conviction I need.",
               },
               {
                 name: "Rachel P.",
                 role: "New Investor",
                 stars: 5,
-                text: "As someone new to investing, this app is perfect. The scores tell me exactly which stocks are strong buys, and the thesis explains why in plain English. Couldn't ask for more.",
+                text: "As someone new to investing, this app is perfect. The Smart Buy scores tell me exactly which stocks have the strongest stacked signals, and the thesis explains why in plain English. Couldn't ask for more.",
               },
             ].map((review) => (
               <div key={review.name} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
@@ -619,16 +619,16 @@ export default function LandingPage() {
       <section className="border-t border-white/[0.06] px-5 py-20">
         <div className="mx-auto max-w-lg text-center">
           <h2 className="mb-4 text-2xl font-bold text-white sm:text-3xl">
-            The best trades start with the best data.
+            Insiders + Congress + Value + Momentum = Smart Buy.
           </h2>
           <p className="mb-8 text-sm text-slate-400 sm:text-base">
-            Every day we surface 30+ high-conviction stock picks screened through our proprietary engine — so you can act before the crowd catches on.
+            Every day our proprietary algorithm stacks four signal layers and surfaces only 30-50 high-conviction Smart Buy picks — so you can act before the crowd catches on.
           </p>
           <button
             onClick={() => router.push("/login")}
             className="rounded-full bg-cyan-500 px-10 py-3 text-base font-bold text-black transition hover:bg-cyan-400 hover:shadow-lg hover:shadow-cyan-500/25"
           >
-            Get Started Free
+            See Today&apos;s Smart Buys
           </button>
         </div>
       </section>
