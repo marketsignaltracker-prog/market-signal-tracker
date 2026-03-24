@@ -191,8 +191,8 @@ const RETENTION_DAYS = 30
 const SCORE_VERSION = "v12-catalyst-first"
 const DB_CHUNK_SIZE = 100
 
-const DEFAULT_MIN_SIGNAL_APP_SCORE = 65
-const MIN_CANDIDATE_SCORE = 58
+const DEFAULT_MIN_SIGNAL_APP_SCORE = 50
+const MIN_CANDIDATE_SCORE = 50
 const CATALYST_MAX_AGE_DAYS = 14
 const PTR_LOOKBACK_DAYS = 30
 const PTR_RECENT_DAYS = 14
@@ -1173,9 +1173,9 @@ export async function GET(request: Request) {
 
     diagnostics.candidateSignalsBuilt = signalRows.length
 
-    // Apply sector/size diversity caps — max 8 per sector, max 50 total
-    const MAX_PER_SECTOR = 8
-    const MAX_TOTAL_SIGNALS = 50
+    // Apply sector/size diversity caps — max 15 per sector, max 150 total
+    const MAX_PER_SECTOR = 15
+    const MAX_TOTAL_SIGNALS = 150
     signalRows.sort((a: any, b: any) => (b.app_score ?? 0) - (a.app_score ?? 0))
     const sectorSignalCounts = new Map<string, number>()
     const diverseSignalRows: any[] = []
