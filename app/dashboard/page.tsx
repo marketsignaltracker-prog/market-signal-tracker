@@ -2170,7 +2170,23 @@ function EmptyPanel() {
 }
 
 function compareRows(a: UnifiedRow, b: UnifiedRow) {
-  // "Buy Today" rank: freshness first, then value + momentum blend
+  // "Buy Today" rank: smart money conviction first, then value + momentum
+  const tags = (row: UnifiedRow) => row.signal_tags || []
+  const hasInsider = (row: UnifiedRow) => tags(row).some(t => t.includes("insider"))
+  const hasPtr = (row: UnifiedRow) => tags(row).some(t => t.includes("ptr"))
+  const hasCluster = (row: UnifiedRow) => (row.cluster_buyers ?? 0) >= 2 || tags(row).includes("ptr-cluster")
+
+  // Smart money tier: double signal > single signal > none (max 50 pts)
+  const smartMoneyPts = (row: UnifiedRow) => {
+    const insider = hasInsider(row)
+    const ptr = hasPtr(row)
+    const cluster = hasCluster(row)
+    if ((insider && ptr) || cluster) return 50 // Insiders + Congress or Cluster = top tier
+    if (ptr) return 40 // Congress alone is very high signal
+    if (insider) return 25 // Insider filing
+    return 0
+  }
+
   const aAge = a.age_days ?? 999
   const bAge = b.age_days ?? 999
   const aRS = a.relative_strength_20d ?? 0
@@ -2184,14 +2200,18 @@ function compareRows(a: UnifiedRow, b: UnifiedRow) {
   const bFresh = freshTier(bAge)
   if (aFresh !== bFresh) return bFresh - aFresh
 
+  // Smart money: insiders + congress + clusters weighted heaviest
+  const aSmart = smartMoneyPts(a)
+  const bSmart = smartMoneyPts(b)
+
   // Value score: lower forward P/E = more attractive price (max 40 pts)
   const valuePts = (pe: number | null | undefined) => {
-    if (!pe || pe <= 0) return 10 // unknown = neutral
+    if (!pe || pe <= 0) return 10
     if (pe <= 12) return 40
     if (pe <= 18) return 35
     if (pe <= 25) return 28
     if (pe <= 35) return 18
-    return 5 // expensive
+    return 5
   }
   const aValue = valuePts(a.pe_forward ?? a.pe_ratio)
   const bValue = valuePts(b.pe_forward ?? b.pe_ratio)
@@ -2206,9 +2226,9 @@ function compareRows(a: UnifiedRow, b: UnifiedRow) {
   const aMomentum = momentumPts(aRS)
   const bMomentum = momentumPts(bRS)
 
-  // Combined rank: value weighted heavier than momentum
-  const aRank = aValue * 1.5 + aMomentum + (aScore * 0.3)
-  const bRank = bValue * 1.5 + bMomentum + (bScore * 0.3)
+  // Combined rank: smart money > value > momentum > score
+  const aRank = aSmart * 2 + aValue * 1.5 + aMomentum + (aScore * 0.3)
+  const bRank = bSmart * 2 + bValue * 1.5 + bMomentum + (bScore * 0.3)
   if (Math.abs(aRank - bRank) > 2) return bRank - aRank
 
   // Final tiebreaker: most recent filing date
