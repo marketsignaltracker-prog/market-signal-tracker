@@ -2006,27 +2006,41 @@ function SwipeStockCard({
                     ? row.insider_signal_flavor.slice(5)
                     : ptr ? "Congress members disclosed purchases" : "No congressional trades detected"
 
-                  return (
-                    <>
-                      {both && (
-                        <div className="col-span-2 flex items-center justify-center rounded-lg py-1" style={{
-                          background: "linear-gradient(90deg, rgba(249,115,22,0.15), rgba(250,204,21,0.10), rgba(168,85,247,0.15))",
-                          border: "1px solid rgba(250,204,21,0.25)",
-                        }}>
-                          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-yellow-300">
-                            Double Smart Money Signal
-                          </span>
-                        </div>
-                      )}
+                  return both ? (
+                    <div className="col-span-2 grid grid-cols-2 gap-2 rounded-xl p-[3px]" style={{
+                      background: "linear-gradient(135deg, rgba(249,115,22,0.25), rgba(250,204,21,0.20), rgba(168,85,247,0.25))",
+                      border: "1px solid rgba(250,204,21,0.35)",
+                      position: "relative",
+                    }}>
+                      <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full" style={{
+                        background: "linear-gradient(90deg, #f97316, #facc15, #a855f7)",
+                      }}>
+                        <span className="text-[8px] font-black uppercase tracking-[0.15em] text-black whitespace-nowrap">
+                          Double Smart Money
+                        </span>
+                      </div>
                       <Tile
                         iconPath={iconPaths.eps} label={hasClusterBuy(row) ? "Cluster Buy" : "Insider"} value={insiderVal}
                         sub={insiderSub}
-                        score={insiderScore} maxScore={100} color="#f97316" borderColor={both ? "rgba(250,204,21,0.40)" : "rgba(249,115,22,0.25)"}
+                        score={insiderScore} maxScore={100} color="#f97316" borderColor="transparent"
                       />
                       <Tile
                         iconPath={iconPaths.debt} label="Congress" value={ptrVal}
                         sub={ptrSub}
-                        score={ptrScore} maxScore={100} color="#a855f7" borderColor={both ? "rgba(250,204,21,0.40)" : "rgba(168,85,247,0.25)"}
+                        score={ptrScore} maxScore={100} color="#a855f7" borderColor="transparent"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <Tile
+                        iconPath={iconPaths.eps} label={hasClusterBuy(row) ? "Cluster Buy" : "Insider"} value={insiderVal}
+                        sub={insiderSub}
+                        score={insiderScore} maxScore={100} color="#f97316" borderColor="rgba(249,115,22,0.25)"
+                      />
+                      <Tile
+                        iconPath={iconPaths.debt} label="Congress" value={ptrVal}
+                        sub={ptrSub}
+                        score={ptrScore} maxScore={100} color="#a855f7" borderColor="rgba(168,85,247,0.25)"
                       />
                     </>
                   )
@@ -2724,11 +2738,11 @@ function SmartMoneyTiles({ row }: { row: UnifiedRow }) {
 
   return (
     <div className={wrapperClass}>
-      <div className={bothActive ? "rounded-[14px] bg-[#141414] p-1" : ""}>
+      <div className={bothActive ? "relative rounded-[14px] bg-[#141414] p-2" : ""}>
         {bothActive && (
-          <div className="mb-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500/20 via-yellow-400/10 to-purple-500/20 px-3 py-2">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-yellow-300">
-              Double Smart Money Signal
+          <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-10 px-3 py-0.5 rounded-full bg-gradient-to-r from-orange-500 via-yellow-400 to-purple-500">
+            <span className="text-[8px] font-black uppercase tracking-[0.15em] text-black whitespace-nowrap">
+              Double Smart Money
             </span>
           </div>
         )}
