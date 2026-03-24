@@ -1014,7 +1014,7 @@ async function loadCandidateContext(
       (ptrTickersResult.data || []).map((r: any) => String(r.ticker).toUpperCase().trim()).filter(Boolean)
     )
     const loadedTickers = new Set(historyRows.map((r) => String(r.ticker).toUpperCase().trim()))
-    const missingPtrTickers = [...ptrTickers].filter((t) => !loadedTickers.has(t))
+    const missingPtrTickers = (Array.from(ptrTickers) as string[]).filter((t) => !loadedTickers.has(t))
 
     if (missingPtrTickers.length > 0) {
       const ptrHistoryResult = await supabase
