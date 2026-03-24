@@ -2266,16 +2266,13 @@ function matchesSourceFilter(row: UnifiedRow, sourceFilter: SourceFilterType) {
 
 function matchesInsiderFilter(row: UnifiedRow, filter: InsiderFilterType) {
   if (filter === "all") return true
-  const tags = row.signal_tags || []
-  const hasInsider = row.has_insider_trades === true || tags.some(t => t.includes("insider"))
-  if (filter === "cluster") return (row.cluster_buyers ?? 0) >= 2 || tags.includes("ptr-cluster")
-  return hasInsider
+  if (filter === "cluster") return hasClusterBuy(row)
+  return hasInsiderSignal(row)
 }
 
 function matchesCongressFilter(row: UnifiedRow, filter: CongressFilterType) {
   if (filter === "all") return true
-  const tags = row.signal_tags || []
-  return row.has_ptr_forms === true || !!row.ptr_amount || tags.some(t => t.includes("ptr"))
+  return hasPtrSignal(row)
 }
 
 function matchesMomentumFilter(row: UnifiedRow, filter: MomentumFilterType) {
@@ -2304,6 +2301,18 @@ function getLastUpdated(rows: UnifiedRow[]) {
     hour: "numeric",
     minute: "2-digit",
   }).format(dates[0])
+}
+
+function hasInsiderSignal(row: UnifiedRow): boolean {
+  return row.has_insider_trades === true || (row.signal_tags || []).some(t => t.includes("insider"))
+}
+
+function hasClusterBuy(row: UnifiedRow): boolean {
+  return (row.cluster_buyers ?? 0) >= 2 || (row.signal_tags || []).includes("ptr-cluster")
+}
+
+function hasPtrSignal(row: UnifiedRow): boolean {
+  return row.has_ptr_forms === true || !!row.ptr_amount || (row.signal_tags || []).some(t => t.includes("ptr"))
 }
 
 function getDateValue(dateString: string | null | undefined) {
@@ -3015,26 +3024,26 @@ function SignalDetailsModal({
                     <p className="mb-3 text-sm leading-6 text-[#7a8ba0]">When insiders or Congress buy, they may know something. Here’s what we found:</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="rounded-xl p-3" style={{
-                        background: row.has_insider_trades ? "linear-gradient(135deg, rgba(249,115,22,0.14) 0%, rgba(249,115,22,0.03) 100%)" : "#0d1117",
-                        border: row.has_insider_trades ? "1px solid rgba(249,115,22,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                        background: hasInsiderSignal(row) ? "linear-gradient(135deg, rgba(249,115,22,0.14) 0%, rgba(249,115,22,0.03) 100%)" : "#0d1117",
+                        border: hasInsiderSignal(row) ? "1px solid rgba(249,115,22,0.25)" : "1px solid rgba(255,255,255,0.05)",
                       }}>
-                        <p className="text-xs font-bold" style={{ color: row.has_insider_trades ? "#fb923c" : "#374151" }}>Insider Trades</p>
-                        <p className="mt-1 text-lg font-black" style={{ color: row.has_insider_trades ? "#fed7aa" : "#1f2937" }}>
-                          {(row.cluster_buyers ?? 0) >= 2 ? "Cluster" : row.has_insider_trades ? "Yes" : "No"}
+                        <p className="text-xs font-bold" style={{ color: hasInsiderSignal(row) ? "#fb923c" : "#374151" }}>Insider Trades</p>
+                        <p className="mt-1 text-lg font-black" style={{ color: hasInsiderSignal(row) ? "#fed7aa" : "#1f2937" }}>
+                          {(row.cluster_buyers ?? 0) >= 2 ? "Cluster" : hasInsiderSignal(row) ? "Yes" : "No"}
                         </p>
-                        <p className="mt-1 text-[11px]" style={{ color: row.has_insider_trades ? "rgba(253,186,116,0.6)" : "#1f2937" }}>
-                          {(row.cluster_buyers ?? 0) >= 2 ? `${row.cluster_buyers} insiders buying together` : row.has_insider_trades ? "SEC Form 4 filed" : "None detected"}
+                        <p className="mt-1 text-[11px]" style={{ color: hasInsiderSignal(row) ? "rgba(253,186,116,0.6)" : "#1f2937" }}>
+                          {(row.cluster_buyers ?? 0) >= 2 ? `${row.cluster_buyers} insiders buying together` : hasInsiderSignal(row) ? "SEC Form 4 filed" : "None detected"}
                         </p>
                       </div>
                       <div className="rounded-xl p-3" style={{
-                        background: (row.has_ptr_forms || row.ptr_amount) ? "linear-gradient(135deg, rgba(168,85,247,0.14) 0%, rgba(168,85,247,0.03) 100%)" : "#0d1117",
-                        border: (row.has_ptr_forms || row.ptr_amount) ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                        background: hasPtrSignal(row) ? "linear-gradient(135deg, rgba(168,85,247,0.14) 0%, rgba(168,85,247,0.03) 100%)" : "#0d1117",
+                        border: hasPtrSignal(row) ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(255,255,255,0.05)",
                       }}>
-                        <p className="text-xs font-bold" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#c084fc" : "#374151" }}>Congress Trades</p>
-                        <p className="mt-1 text-lg font-black" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#e9d5ff" : "#1f2937" }}>
-                          {(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"}
+                        <p className="text-xs font-bold" style={{ color: hasPtrSignal(row) ? "#c084fc" : "#374151" }}>Congress Trades</p>
+                        <p className="mt-1 text-lg font-black" style={{ color: hasPtrSignal(row) ? "#e9d5ff" : "#1f2937" }}>
+                          {hasPtrSignal(row) ? "Yes" : "No"}
                         </p>
-                        <p className="mt-1 text-[11px]" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "rgba(196,181,253,0.6)" : "#1f2937" }}>
+                        <p className="mt-1 text-[11px]" style={{ color: hasPtrSignal(row) ? "rgba(196,181,253,0.6)" : "#1f2937" }}>
                           {row.ptr_amount ? `${row.ptr_amount} disclosed` : (row.has_ptr_forms) ? "PTR filed" : "None detected"}
                         </p>
                       </div>
@@ -3082,13 +3091,13 @@ function SignalDetailsModal({
                   <div className="rounded-2xl border border-[rgba(255,255,255,0.07)] bg-[#111827] p-4">
                     <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-400">Insider & Congress</p>
                     <div className="space-y-2">
-                      <MetricRow label="Insider buying?" value={row.has_insider_trades ? "Yes" : "No"} />
+                      <MetricRow label="Insider buying?" value={hasInsiderSignal(row) ? "Yes" : "No"} />
                       <MetricRow label="What they did" value={row.insider_action || null} />
                       <MetricRow label="Total invested" value={formatInsiderValue(row)} />
                       <MetricRow label="Buy value" value={row.insider_buy_value != null && row.insider_buy_value > 0 ? formatMoney(row.insider_buy_value) : null} />
                       <MetricRow label="Cluster buy?" value={(row.cluster_buyers ?? 0) >= 2 ? `Yes — ${row.cluster_buyers} insiders` : "No"} />
                       <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
-                      <MetricRow label="Congress buying?" value={(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"} />
+                      <MetricRow label="Congress buying?" value={hasPtrSignal(row) ? "Yes" : "No"} />
                       <MetricRow label="Congress amount" value={row.ptr_amount} />
                     </div>
                   </div>
@@ -3147,18 +3156,18 @@ function SignalDetailsModal({
                       <div className="space-y-2">
                         {/* Insider Trades */}
                         <div className="rounded-xl p-3" style={{
-                          background: row.has_insider_trades ? "linear-gradient(135deg, rgba(249,115,22,0.14) 0%, rgba(249,115,22,0.03) 100%)" : "#0d1117",
-                          border: row.has_insider_trades ? "1px solid rgba(249,115,22,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                          background: hasInsiderSignal(row) ? "linear-gradient(135deg, rgba(249,115,22,0.14) 0%, rgba(249,115,22,0.03) 100%)" : "#0d1117",
+                          border: hasInsiderSignal(row) ? "1px solid rgba(249,115,22,0.25)" : "1px solid rgba(255,255,255,0.05)",
                         }}>
                           <div className="flex items-center justify-between">
-                            <p className="text-xs font-bold" style={{ color: row.has_insider_trades ? "#fb923c" : "#374151" }}>
+                            <p className="text-xs font-bold" style={{ color: hasInsiderSignal(row) ? "#fb923c" : "#374151" }}>
                               Insider Trades (Form 4)
                             </p>
-                            <span className="text-sm font-black" style={{ color: row.has_insider_trades ? "#fed7aa" : "#1f2937" }}>
-                              {(row.cluster_buyers ?? 0) >= 2 ? "Cluster" : row.has_insider_trades ? "Yes" : "No"}
+                            <span className="text-sm font-black" style={{ color: hasInsiderSignal(row) ? "#fed7aa" : "#1f2937" }}>
+                              {(row.cluster_buyers ?? 0) >= 2 ? "Cluster" : hasInsiderSignal(row) ? "Yes" : "No"}
                             </span>
                           </div>
-                          {row.has_insider_trades ? (
+                          {hasInsiderSignal(row) ? (
                             <p className="mt-1 text-[11px] text-orange-300/60">
                               {(row.cluster_buyers ?? 0) >= 2
                                 ? `${row.cluster_buyers} insiders bought around the same time — that’s unusual and often a bullish sign.`
@@ -3177,18 +3186,18 @@ function SignalDetailsModal({
 
                         {/* Congressional Trades */}
                         <div className="rounded-xl p-3" style={{
-                          background: (row.has_ptr_forms || row.ptr_amount) ? "linear-gradient(135deg, rgba(168,85,247,0.14) 0%, rgba(168,85,247,0.03) 100%)" : "#0d1117",
-                          border: (row.has_ptr_forms || row.ptr_amount) ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                          background: hasPtrSignal(row) ? "linear-gradient(135deg, rgba(168,85,247,0.14) 0%, rgba(168,85,247,0.03) 100%)" : "#0d1117",
+                          border: hasPtrSignal(row) ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(255,255,255,0.05)",
                         }}>
                           <div className="flex items-center justify-between">
-                            <p className="text-xs font-bold" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#c084fc" : "#374151" }}>
+                            <p className="text-xs font-bold" style={{ color: hasPtrSignal(row) ? "#c084fc" : "#374151" }}>
                               Congress Trades (PTR)
                             </p>
-                            <span className="text-sm font-black" style={{ color: (row.has_ptr_forms || row.ptr_amount) ? "#e9d5ff" : "#1f2937" }}>
-                              {(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"}
+                            <span className="text-sm font-black" style={{ color: hasPtrSignal(row) ? "#e9d5ff" : "#1f2937" }}>
+                              {hasPtrSignal(row) ? "Yes" : "No"}
                             </span>
                           </div>
-                          {(row.has_ptr_forms || row.ptr_amount) ? (
+                          {hasPtrSignal(row) ? (
                             <>
                               <p className="mt-1 text-[11px] text-purple-300/60">
                                 A member of Congress disclosed a purchase. They must report within 45 days, so the actual buy may have been earlier.
@@ -3426,7 +3435,7 @@ function SignalDetailsModal({
                         Insider & Congress Trades
                       </p>
                       <div className="space-y-2">
-                        <MetricRow label="Insider buying?" value={row.has_insider_trades ? "Yes" : "No"} />
+                        <MetricRow label="Insider buying?" value={hasInsiderSignal(row) ? "Yes" : "No"} />
                         <MetricRow label="What they did" value={row.insider_action || null} />
                         <MetricRow label="Shares bought" value={formatShares(row.insider_shares)} />
                         <MetricRow label="Price they paid" value={formatMoney(row.insider_avg_price)} />
@@ -3434,7 +3443,7 @@ function SignalDetailsModal({
                         <MetricRow label="Buy value" value={row.insider_buy_value != null && row.insider_buy_value > 0 ? formatMoney(row.insider_buy_value) : null} />
                         <MetricRow label="Cluster buy?" value={(row.cluster_buyers ?? 0) >= 2 ? `Yes — ${row.cluster_buyers} insiders` : "No"} />
                         <MetricRow label="Cluster shares" value={formatShares(row.cluster_shares)} />
-                        <MetricRow label="Congress buying?" value={(row.has_ptr_forms || row.ptr_amount) ? "Yes" : "No"} />
+                        <MetricRow label="Congress buying?" value={hasPtrSignal(row) ? "Yes" : "No"} />
                         <MetricRow label="Congress amount" value={row.ptr_amount} />
                         {row.ptr_amount ? (
                           <div className="rounded-xl border border-amber-400/15 bg-amber-400/5 px-3 py-2 text-[11px] leading-5 text-amber-200/60">
