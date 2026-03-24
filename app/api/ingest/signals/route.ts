@@ -149,6 +149,8 @@ type PtrSummary = {
   strongSelling: boolean
   latestTradeDate: string | null
   summary: string | null
+  buyerNames: string[]
+  buyAmountRange: string | null
 }
 
 type FilingSummary = {

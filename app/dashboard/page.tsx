@@ -79,6 +79,7 @@ type TickerScoreRow = {
   insider_shares?: number | null
   insider_avg_price?: number | null
   insider_buy_value?: number | null
+  insider_signal_flavor?: string | null
   cluster_buyers?: number | null
   cluster_shares?: number | null
   price_return_5d?: number | null
@@ -181,6 +182,7 @@ type UnifiedRow = {
   insider_shares: number | null
   insider_avg_price: number | null
   insider_buy_value: number | null
+  insider_signal_flavor: string | null
   ptr_amount: string | null
   cluster_buyers: number | null
   cluster_shares: number | null
@@ -396,6 +398,7 @@ function makeUnifiedRow(
     insider_shares: signal?.insider_shares ?? null,
     insider_avg_price: signal?.insider_avg_price ?? null,
     insider_buy_value: signal?.insider_buy_value ?? null,
+    insider_signal_flavor: signal?.insider_signal_flavor ?? null,
     ptr_amount: ptrAmount,
     cluster_buyers: signal?.cluster_buyers ?? null,
     cluster_shares: signal?.cluster_shares ?? null,
