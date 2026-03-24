@@ -234,14 +234,23 @@ async function fetchForm4Details(
           headers: { "User-Agent": "MarketSignalTracker research@marketsignaltracker.com" },
           signal: AbortSignal.timeout(8000),
         })
-        if (!resp.ok) return { ticker, parsed: null }
+        if (!resp.ok) {
+          console.warn(`Form4 fetch failed: ${ticker} ${resp.status} ${url.slice(-40)}`)
+          return { ticker, parsed: null }
+        }
         const xml = await resp.text()
-        return { ticker, parsed: parseForm4Xml(xml) }
+        const parsed = parseForm4Xml(xml)
+        if (parsed && parsed.transactions.length > 0) {
+          console.log(`Form4 parsed: ${ticker} ${parsed.insiderName} ${parsed.transactions.length} txns`)
+        }
+        return { ticker, parsed }
       })
     )
     for (const r of results) {
       if (r.status === "fulfilled" && r.value) {
         parsedResults.push(r.value)
+      } else if (r.status === "rejected") {
+        console.warn(`Form4 fetch rejected: ${r.reason}`)
       }
     }
     if (i + CONCURRENCY < fetchTasks.length) {
@@ -1489,7 +1498,12 @@ export async function GET(request: Request) {
     const tickersToEnrich = tickerCurrentRowsBase.map((r: any) => r.ticker).filter(Boolean)
     let insiderEnrichMap = new Map<string, InsiderEnrichment>()
     try {
+      console.log(`Form4 enrichment: starting for ${tickersToEnrich.length} tickers`)
       insiderEnrichMap = await fetchForm4Details(supabase, tickersToEnrich)
+      console.log(`Form4 enrichment: got data for ${insiderEnrichMap.size} tickers`)
+      for (const [t, e] of insiderEnrichMap.entries()) {
+        console.log(`  ${t}: buys=${e.buyTransactionCount} sells=${e.sellTransactionCount} buyShares=${e.totalBuyShares} buyVal=${Math.round(e.totalBuyValue)} buyers=[${e.buyerNames.join(",")}]`)
+      }
     } catch (e) {
       console.error("Form 4 enrichment failed (non-fatal):", e)
     }
