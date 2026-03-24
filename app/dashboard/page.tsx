@@ -886,7 +886,7 @@ export default function Home() {
   }, [selectedTicker, filteredRows.length])
 
   return (
-    <main className="flex h-[100dvh] w-full flex-col overflow-hidden text-white" style={{ background: "#080d18" }}>
+    <main className={`flex w-full flex-col text-white ${filtersOpen ? "min-h-[100dvh] overflow-y-auto" : "h-[100dvh] overflow-hidden"}`} style={{ background: "#080d18" }}>
       <style jsx global>{`
         @keyframes cardFadeUp {
           from { opacity: 0; transform: translateY(16px) scale(0.985); }
@@ -1246,7 +1246,7 @@ export default function Home() {
       </div>
 
       {/* Main swipe area */}
-      <div className={filtersOpen ? "min-h-0 flex-1 overflow-y-auto" : "min-h-0 flex-1 overflow-hidden"}>
+      <div className="min-h-0 flex-1 overflow-hidden">
         {loading ? (
           <div className="flex h-full items-center justify-center">
             <LoadingPanel />
