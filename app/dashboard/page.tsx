@@ -255,6 +255,19 @@ function normalizeTicker(value: string | null | undefined) {
   return (value || "").trim().toUpperCase()
 }
 
+// Parse postgres text[] arrays which may come as JS arrays OR as postgres string "{a,b,c}"
+function parsePgArray(val: unknown): string[] {
+  if (Array.isArray(val)) return val.map(String)
+  if (typeof val === "string") {
+    const trimmed = val.trim()
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      return trimmed.slice(1, -1).split(",").map(s => s.trim().replace(/^"|"$/g, "")).filter(Boolean)
+    }
+    if (trimmed) return [trimmed]
+  }
+  return []
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
@@ -375,12 +388,10 @@ function makeUnifiedRow(
     bias: signal?.bias ?? null,
     board_bucket: signal?.board_bucket ?? null,
 
-    signal_tags: Array.isArray(signal?.signal_tags) ? signal.signal_tags : [],
-    signal_reasons: Array.isArray(signal?.signal_reasons) ? signal.signal_reasons : [],
+    signal_tags: parsePgArray(signal?.signal_tags),
+    signal_reasons: parsePgArray(signal?.signal_reasons),
     score_breakdown: signal?.score_breakdown ?? null,
-    score_caps_applied: Array.isArray(signal?.score_caps_applied)
-      ? signal.score_caps_applied
-      : [],
+    score_caps_applied: parsePgArray(signal?.score_caps_applied),
 
     primary_signal_type: signal?.primary_signal_type ?? null,
     primary_signal_source: signal?.primary_signal_source ?? null,
