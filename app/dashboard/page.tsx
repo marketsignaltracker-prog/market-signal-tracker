@@ -2567,6 +2567,8 @@ function TopSignalCard({
         </div>
       )}
 
+      <SmartMoneyTiles row={row} />
+
       <div className="mt-auto rounded-2xl bg-[#1c1c1c] p-4">
         <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#00c805]">
           Plain-English takeaway
@@ -2629,6 +2631,67 @@ function ScoreBar({
           <span>Top tier</span>
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function SmartMoneyTiles({ row }: { row: UnifiedRow }) {
+  const insider = hasInsiderSignal(row)
+  const ptr = hasPtrSignal(row)
+  const cluster = hasClusterBuy(row)
+  const bothActive = insider && ptr
+
+  if (!insider && !ptr) return null
+
+  const wrapperClass = bothActive
+    ? "mb-4 rounded-2xl p-[2px] bg-gradient-to-r from-orange-500 via-yellow-400 to-purple-500"
+    : "mb-4"
+
+  return (
+    <div className={wrapperClass}>
+      <div className={bothActive ? "rounded-[14px] bg-[#141414] p-1" : ""}>
+        {bothActive && (
+          <div className="mb-1 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500/20 via-yellow-400/10 to-purple-500/20 px-3 py-2">
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-yellow-300">
+              Double Smart Money Signal
+            </span>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col items-center justify-center rounded-xl px-3 py-3 text-center" style={{
+            background: insider ? "linear-gradient(135deg, rgba(249,115,22,0.18) 0%, rgba(249,115,22,0.04) 100%)" : "#1c1c1c",
+            border: insider ? "1px solid rgba(249,115,22,0.30)" : "1px solid rgba(255,255,255,0.07)",
+          }}>
+            <p className="mb-1 text-[10px] uppercase tracking-[0.18em]" style={{ color: insider ? "#fb923c" : "#555" }}>
+              {cluster ? "Cluster Buy" : "Insider"}
+            </p>
+            <p className="text-lg font-black" style={{ color: insider ? "#fed7aa" : "#333" }}>
+              {cluster ? "Yes" : insider ? (row.insider_shares ? `${row.insider_shares.toLocaleString()} sh` : "Yes") : "No"}
+            </p>
+            {insider && row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") && (
+              <p className="mt-1 text-[10px] leading-tight text-orange-300/50 line-clamp-2">
+                {row.insider_signal_flavor}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col items-center justify-center rounded-xl px-3 py-3 text-center" style={{
+            background: ptr ? "linear-gradient(135deg, rgba(168,85,247,0.18) 0%, rgba(168,85,247,0.04) 100%)" : "#1c1c1c",
+            border: ptr ? "1px solid rgba(168,85,247,0.30)" : "1px solid rgba(255,255,255,0.07)",
+          }}>
+            <p className="mb-1 text-[10px] uppercase tracking-[0.18em]" style={{ color: ptr ? "#c084fc" : "#555" }}>
+              Congress
+            </p>
+            <p className="text-lg font-black" style={{ color: ptr ? "#e9d5ff" : "#333" }}>
+              {ptr ? (row.cluster_buyers && row.cluster_buyers > 0 ? `${row.cluster_buyers} Buyer${row.cluster_buyers === 1 ? "" : "s"}` : "Yes") : "No"}
+            </p>
+            {ptr && row.insider_signal_flavor?.startsWith("PTR:") && (
+              <p className="mt-1 text-[10px] leading-tight text-purple-300/50 line-clamp-2">
+                {row.insider_signal_flavor.slice(5)}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
