@@ -1246,7 +1246,7 @@ export default function Home() {
       </div>
 
       {/* Main swipe area */}
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className={filtersOpen ? "min-h-0 flex-1 overflow-y-auto" : "min-h-0 flex-1 overflow-hidden"}>
         {loading ? (
           <div className="flex h-full items-center justify-center">
             <LoadingPanel />
