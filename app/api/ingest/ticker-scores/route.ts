@@ -1654,6 +1654,13 @@ export async function GET(request: Request) {
 
     return Response.json({
       ok: true,
+      form4EnrichmentCount: insiderEnrichMap.size,
+      form4EnrichmentTickers: [...insiderEnrichMap.keys()].slice(0, 10),
+      form4SampleData: [...insiderEnrichMap.entries()].slice(0, 3).map(([t, e]) => ({
+        ticker: t, buys: e.buyTransactionCount, sells: e.sellTransactionCount,
+        buyShares: e.totalBuyShares, buyVal: Math.round(e.totalBuyValue),
+        buyers: e.buyerNames.slice(0, 3),
+      })),
       scannedSignals: signalRows.length,
       ptrRowsScanned: (ptrRows || []).length,
       ptrTickersMapped: ptrSummaryMap.size,
