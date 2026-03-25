@@ -280,12 +280,13 @@ async function fetchForm4Details(
     }
 
     for (const tx of parsed.transactions) {
-      // Acquired = any acquisition (P=purchase, A=award, M=exercise, J=other)
-      // Disposed = any disposal (S=sale, G=gift, F=tax withholding)
-      const isAcquisition = tx.acquired
+      // Only count open market purchases (P) as real insider buying conviction
+      // A=award, M=exercise are not conviction signals
+      // S=sale, F=tax withholding are disposals
+      const isOpenMarketPurchase = tx.acquired && tx.transactionCode === "P"
       const isSale = !tx.acquired && (tx.transactionCode === "S" || tx.transactionCode === "F")
 
-      if (isAcquisition) {
+      if (isOpenMarketPurchase) {
         existing.totalBuyShares += tx.shares
         if (tx.pricePerShare > 0) {
           existing.totalBuyValue += tx.shares * tx.pricePerShare
@@ -311,11 +312,11 @@ async function fetchForm4Details(
       ? Math.round((existing.totalBuyValue / existing.totalBuyShares) * 100) / 100
       : null
     existing.action = existing.buyTransactionCount > 0 && existing.sellTransactionCount > 0
-      ? "Mixed"
+      ? "Buying & Selling"
       : existing.buyTransactionCount > 0
-        ? "Acquiring"
+        ? "Buying"
         : existing.sellTransactionCount > 0
-          ? "Sell"
+          ? "Selling"
           : "Filed"
   }
 
