@@ -1492,9 +1492,6 @@ export async function GET(request: Request) {
     }
 
     // Apply enrichment to rows — also fix filing-count-as-shares for non-enriched tickers
-    const tickersWithFilings = new Set(
-      (await supabase.from("raw_filings").select("ticker").in("ticker", tickersToEnrich).in("form_type", ["4", "4/A"])).data?.map((r: any) => r.ticker) || []
-    )
     for (const row of tickerCurrentRowsBase) {
       const enrich = insiderEnrichMap.get(row.ticker)
       if (enrich) {
@@ -1526,13 +1523,11 @@ export async function GET(request: Request) {
           row.insider_buy_value = null
           row.insider_signal_flavor = "No open market purchases"
         }
-      } else if (tickersWithFilings.has(row.ticker) && row.insider_action === "Filed") {
-        // Has Form 4 filings but XML wasn't fetched/parsed — clear misleading filing count
-        // insider_shares currently holds filing count, not real shares
+      } else if (row.insider_action === "Filed" && row.insider_buy_value == null) {
+        // No enrichment data — insider_shares is a filing count, not real shares
         const filingCount = row.insider_shares
         row.insider_shares = null
         row.insider_avg_price = null
-        row.insider_buy_value = null
         row.insider_signal_flavor = filingCount ? `${filingCount} Form 4 filing${filingCount === 1 ? "" : "s"}` : null
         row.insider_action = "Form 4 filed"
       }
