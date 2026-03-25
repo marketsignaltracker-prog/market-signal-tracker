@@ -460,6 +460,7 @@ export default function Home() {
   const [insiderFilter, setInsiderFilter] = useState<InsiderFilterType>("all")
   const [congressFilter, setCongressFilter] = useState<CongressFilterType>("all")
   const [momentumFilter, setMomentumFilter] = useState<MomentumFilterType>("all")
+  const [sortMode, setSortMode] = useState<"score" | "smartMoney">("score")
 
   const [beginnerMode, setBeginnerMode] = useState(true)
 
@@ -758,7 +759,7 @@ export default function Home() {
           if (include) merged.push(unified)
         }
 
-        merged.sort(compareRows)
+        merged.sort((a, b) => compareRows(a, b, sortMode))
 
         setRows(merged)
         setLoading(false)
@@ -816,8 +817,8 @@ export default function Home() {
       .filter((row) => matchesInsiderFilter(row, insiderFilter))
       .filter((row) => matchesCongressFilter(row, congressFilter))
       .filter((row) => matchesMomentumFilter(row, momentumFilter))
-      .sort(compareRows)
-  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter, momentumFilter])
+      .sort((a, b) => compareRows(a, b, sortMode))
+  }, [rows, priceFilter, peFilter, freshnessFilter, scoreFilter, sectorFilter, sourceFilter, insiderFilter, congressFilter, momentumFilter, sortMode])
 
   const safeCardIndex =
     filteredRows.length === 0 ? 0 : Math.min(cardIndex, filteredRows.length - 1)
@@ -1156,6 +1157,16 @@ export default function Home() {
             </p>
           )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <FilterSelect
+              label="Sort by"
+              value={sortMode}
+              onChange={(v) => { setSortMode(v as "score" | "smartMoney"); setCardIndex(0) }}
+              disabled={false}
+              options={[
+                { value: "score", label: "Highest score" },
+                { value: "smartMoney", label: "Smart Money first" },
+              ]}
+            />
             <FilterSelect
               label="Catalyst"
               value={freshnessFilter}
@@ -2259,71 +2270,55 @@ function EmptyPanel() {
   )
 }
 
-function compareRows(a: UnifiedRow, b: UnifiedRow) {
-  // "Buy Today" rank: smart money conviction FIRST, then attractive price, then momentum
-  const tags = (row: UnifiedRow) => row.signal_tags || []
-  const hasInsider = (row: UnifiedRow) => tags(row).some(t => t.includes("insider"))
-  const hasPtr = (row: UnifiedRow) => tags(row).some(t => t.includes("ptr"))
-  const hasCluster = (row: UnifiedRow) => (row.cluster_buyers ?? 0) >= 2 || tags(row).includes("ptr-cluster")
+function smartMoneyPts(row: UnifiedRow) {
+  const tags = row.signal_tags || []
+  const insider = tags.some(t => t.includes("insider"))
+  const ptr = tags.some(t => t.includes("ptr"))
+  const cluster = (row.cluster_buyers ?? 0) >= 2 || tags.includes("ptr-cluster")
+  if (cluster && ptr) return 200
+  if (insider && ptr) return 170
+  if (cluster) return 140
+  if (ptr) return 120
+  if (insider) return 50
+  return 0
+}
 
-  // TIER 1: Smart money conviction (0-200 pts) — dominates the sort
-  const smartMoneyPts = (row: UnifiedRow) => {
-    const insider = hasInsider(row)
-    const ptr = hasPtr(row)
-    const cluster = hasCluster(row)
-    if (cluster && ptr) return 200 // Cluster + Congress = HUGE — always top
-    if (insider && ptr) return 170 // Insider + Congress = Really Big
-    if (cluster) return 140        // Cluster buy alone
-    if (ptr) return 120            // Congress alone
-    if (insider) return 50         // Insider filing
-    return 0
-  }
+function compareRowsByScore(a: UnifiedRow, b: UnifiedRow) {
+  // Default sort: highest score first, tiebreak by smart money then recency
+  const aScore = a.signal_score ?? a.display_score ?? 0
+  const bScore = b.signal_score ?? b.display_score ?? 0
+  if (aScore !== bScore) return bScore - aScore
 
+  // Tiebreaker: smart money
   const aSmart = smartMoneyPts(a)
   const bSmart = smartMoneyPts(b)
-
-  // If there's a big smart money difference, sort by that immediately
   if (aSmart !== bSmart) return bSmart - aSmart
-
-  // TIER 2: Attractive price — lower forward P/E = better value (max 50 pts)
-  const valuePts = (pe: number | null | undefined) => {
-    if (!pe || pe <= 0) return 15
-    if (pe <= 10) return 50
-    if (pe <= 15) return 42
-    if (pe <= 20) return 35
-    if (pe <= 25) return 28
-    if (pe <= 35) return 18
-    return 5
-  }
-  const aValue = valuePts(a.pe_forward ?? a.pe_ratio)
-  const bValue = valuePts(b.pe_forward ?? b.pe_ratio)
-
-  // TIER 3: Momentum — relative strength (max 35 pts)
-  const aRS = a.relative_strength_20d ?? 0
-  const bRS = b.relative_strength_20d ?? 0
-  const momentumPts = (rs: number) => {
-    if (rs >= 15) return 35
-    if (rs >= 10) return 30
-    if (rs >= 5) return 22
-    if (rs > 0) return 12
-    return 0
-  }
-  const aMomentum = momentumPts(aRS)
-  const bMomentum = momentumPts(bRS)
-
-  // TIER 4: Signal quality score (scaled down — tiebreaker)
-  const aScore = (a.signal_score ?? a.display_score ?? 0) * 0.3
-  const bScore = (b.signal_score ?? b.display_score ?? 0) * 0.3
-
-  // Combined rank: value > momentum > score (smart money already handled above)
-  const aRank = aValue * 1.5 + aMomentum + aScore
-  const bRank = bValue * 1.5 + bMomentum + bScore
-  if (Math.abs(aRank - bRank) > 2) return bRank - aRank
 
   // Final tiebreaker: most recent filing date
   const aDate = getDateValue(a.filed_at ?? a.last_screened_at ?? a.updated_at)
   const bDate = getDateValue(b.filed_at ?? b.last_screened_at ?? b.updated_at)
   return bDate - aDate
+}
+
+function compareRowsBySmartMoney(a: UnifiedRow, b: UnifiedRow) {
+  // Smart Money sort: conviction FIRST, then score, then value
+  const aSmart = smartMoneyPts(a)
+  const bSmart = smartMoneyPts(b)
+  if (aSmart !== bSmart) return bSmart - aSmart
+
+  // Then by score
+  const aScore = a.signal_score ?? a.display_score ?? 0
+  const bScore = b.signal_score ?? b.display_score ?? 0
+  if (aScore !== bScore) return bScore - aScore
+
+  // Final tiebreaker: most recent filing date
+  const aDate = getDateValue(a.filed_at ?? a.last_screened_at ?? a.updated_at)
+  const bDate = getDateValue(b.filed_at ?? b.last_screened_at ?? b.updated_at)
+  return bDate - aDate
+}
+
+function compareRows(a: UnifiedRow, b: UnifiedRow, mode: "score" | "smartMoney" = "score") {
+  return mode === "smartMoney" ? compareRowsBySmartMoney(a, b) : compareRowsByScore(a, b)
 }
 
 function matchesPriceFilter(row: UnifiedRow, priceFilter: PriceFilterType) {

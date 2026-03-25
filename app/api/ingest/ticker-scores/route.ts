@@ -462,8 +462,8 @@ async function deleteInChunksByTickerDetailed(table: any, tickers: string[]) {
 }
 
 function getStrengthBucket(score: number): "Buy" | "Strong Buy" | "Elite Buy" {
-  if (score >= 94) return "Elite Buy"
-  if (score >= 84) return "Strong Buy"
+  if (score >= 90) return "Elite Buy"
+  if (score >= 80) return "Strong Buy"
   return "Buy"
 }
 
@@ -1018,36 +1018,17 @@ function buildTickerScoresCurrentRows(
       scoreBreakdown.confirmation = round2((scoreBreakdown.confirmation || 0) + 2) ?? 0
     }
 
+    // Signal stacking bonus — reward multiple signal families, no penalty for single
     if (maxSignalFamilyCount >= 3) {
-      stackedScore += 6
-      scoreBreakdown.family_diversity = round2((scoreBreakdown.family_diversity || 0) + 6) ?? 0
+      stackedScore += 8
+      scoreBreakdown.family_diversity = round2((scoreBreakdown.family_diversity || 0) + 8) ?? 0
+      scoreCapsApplied.add("triple-stacked")
     } else if (maxSignalFamilyCount >= 2) {
-      stackedScore += 3
-      scoreBreakdown.family_diversity = round2((scoreBreakdown.family_diversity || 0) + 3) ?? 0
-    } else {
-      // Strong cluster buy (3+ insiders) exempts from single-family penalty
-      if ((primary.cluster_buyers ?? 0) >= 3) {
-        stackedScore += 2
-        scoreBreakdown.family_diversity = round2((scoreBreakdown.family_diversity || 0) + 2) ?? 0
-        scoreCapsApplied.add("cluster-conviction-exemption")
-      } else {
-        stackedScore -= 5
-        scoreBreakdown.family_diversity = round2((scoreBreakdown.family_diversity || 0) - 5) ?? 0
-        scoreCapsApplied.add("single-family-penalty")
-      }
+      stackedScore += 4
+      scoreBreakdown.family_diversity = round2((scoreBreakdown.family_diversity || 0) + 4) ?? 0
+      scoreCapsApplied.add("double-stacked")
     }
-
-    const positivePillars = countPositiveEvidencePillars(scoreBreakdown)
-
-    if (positivePillars < 3) {
-      stackedScore = Math.min(stackedScore, 78)
-      scoreCapsApplied.add("limited-evidence-cap")
-    }
-
-    if (positivePillars < 4) {
-      stackedScore = Math.min(stackedScore, 86)
-      scoreCapsApplied.add("broad-confirmation-cap")
-    }
+    // No penalty for single-family — a fresh Form 4 alone is a valid signal
 
     const hasStrongPtrOrOwnership =
       Boolean(ptr?.strongBuying) || has13D || has13G || hasForm4
@@ -1070,23 +1051,24 @@ function buildTickerScoresCurrentRows(
       scoreCapsApplied.add("volume-spike-penalty")
     }
 
-    if (sectorShare >= 0.24) {
-      stackedScore -= 7
-      scoreBreakdown.crowding_penalty = round2((scoreBreakdown.crowding_penalty || 0) - 7) ?? 0
-      scoreCapsApplied.add("sector-crowding-penalty")
-    } else if (sectorShare >= 0.16) {
+    // Softer crowding penalties — with ~50 stocks, some concentration is expected
+    if (sectorShare >= 0.30) {
       stackedScore -= 4
       scoreBreakdown.crowding_penalty = round2((scoreBreakdown.crowding_penalty || 0) - 4) ?? 0
+      scoreCapsApplied.add("sector-crowding-penalty")
+    } else if (sectorShare >= 0.20) {
+      stackedScore -= 2
+      scoreBreakdown.crowding_penalty = round2((scoreBreakdown.crowding_penalty || 0) - 2) ?? 0
       scoreCapsApplied.add("sector-crowding-warning")
     }
 
-    if (industryShare >= 0.14) {
-      stackedScore -= 5
-      scoreBreakdown.crowding_penalty = round2((scoreBreakdown.crowding_penalty || 0) - 5) ?? 0
+    if (industryShare >= 0.18) {
+      stackedScore -= 3
+      scoreBreakdown.crowding_penalty = round2((scoreBreakdown.crowding_penalty || 0) - 3) ?? 0
       scoreCapsApplied.add("industry-crowding-penalty")
-    } else if (industryShare >= 0.1) {
-      stackedScore -= 2
-      scoreBreakdown.crowding_penalty = round2((scoreBreakdown.crowding_penalty || 0) - 2) ?? 0
+    } else if (industryShare >= 0.12) {
+      stackedScore -= 1
+      scoreBreakdown.crowding_penalty = round2((scoreBreakdown.crowding_penalty || 0) - 1) ?? 0
       scoreCapsApplied.add("industry-crowding-warning")
     }
 
@@ -1211,9 +1193,9 @@ function buildTickerScoresCurrentRows(
       raw_score: finalScore,
       bias: "Bullish",
       board_bucket:
-        finalScore >= 88
+        finalScore >= 85
           ? "High Conviction"
-          : finalScore >= 76
+          : finalScore >= 70
             ? "Buy"
             : "Watch",
       signal_strength_bucket: getStrengthBucket(finalScore),
