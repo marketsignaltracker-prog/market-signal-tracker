@@ -1495,8 +1495,9 @@ export async function GET(request: Request) {
     for (const row of tickerCurrentRowsBase) {
       const enrich = insiderEnrichMap.get(row.ticker)
       if (enrich) {
-        row.insider_action = enrich.action
         if (enrich.buyTransactionCount > 0) {
+          // Real open market purchases found
+          row.insider_action = enrich.sellTransactionCount > 0 ? "Buying & Selling" : "Buying"
           row.insider_shares = Math.round(enrich.totalBuyShares)
           row.insider_avg_price = enrich.avgBuyPrice
           row.insider_buy_value = Math.round(enrich.totalBuyValue)
@@ -1505,11 +1506,22 @@ export async function GET(request: Request) {
             ? `${enrich.buyerNames.slice(0, 3).join(", ")}${enrich.buyerNames.length > 3 ? ` +${enrich.buyerNames.length - 3} more` : ""}`
             : row.insider_signal_flavor
         } else if (enrich.sellTransactionCount > 0) {
+          // Only selling, no open market purchases
+          row.insider_action = "Selling"
           row.insider_shares = Math.round(enrich.totalSellShares)
-          row.insider_action = "Sell"
+          row.insider_avg_price = null
+          row.insider_buy_value = null
           row.insider_signal_flavor = enrich.sellerNames.length > 0
             ? `${enrich.sellerNames.slice(0, 3).join(", ")} selling`
             : "Insider selling"
+        } else {
+          // Form 4 filings exist but no P-code purchases and no sales
+          // (only awards/exercises/gifts) — clear the misleading filing count
+          row.insider_action = "Awards only"
+          row.insider_shares = null
+          row.insider_avg_price = null
+          row.insider_buy_value = null
+          row.insider_signal_flavor = "No open market purchases"
         }
       }
 
