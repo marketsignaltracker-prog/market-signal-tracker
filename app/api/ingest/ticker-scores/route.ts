@@ -1496,7 +1496,7 @@ export async function GET(request: Request) {
       if (enrich) {
         row.insider_action = enrich.action
         if (enrich.buyTransactionCount > 0) {
-          row.insider_shares = enrich.totalBuyShares
+          row.insider_shares = Math.round(enrich.totalBuyShares)
           row.insider_avg_price = enrich.avgBuyPrice
           row.insider_buy_value = Math.round(enrich.totalBuyValue)
           row.cluster_buyers = enrich.buyerNames.length
@@ -1504,7 +1504,7 @@ export async function GET(request: Request) {
             ? `${enrich.buyerNames.slice(0, 3).join(", ")}${enrich.buyerNames.length > 3 ? ` +${enrich.buyerNames.length - 3} more` : ""}`
             : row.insider_signal_flavor
         } else if (enrich.sellTransactionCount > 0) {
-          row.insider_shares = enrich.totalSellShares
+          row.insider_shares = Math.round(enrich.totalSellShares)
           row.insider_action = "Sell"
           row.insider_signal_flavor = enrich.sellerNames.length > 0
             ? `${enrich.sellerNames.slice(0, 3).join(", ")} selling`
