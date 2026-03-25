@@ -2003,7 +2003,8 @@ function SwipeStockCard({
                   const insiderVal = !insider ? "None"
                     : row.insider_buy_value && row.insider_buy_value > 0 ? `$${Math.round(row.insider_buy_value).toLocaleString()}`
                     : row.insider_shares && row.insider_shares > 0 ? `${row.insider_shares.toLocaleString()} Shares`
-                    : "Active"
+                    : row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? row.insider_signal_flavor
+                    : "Filed"
 
                   // PTR display value
                   const ptrVal = !ptr ? "None"
@@ -2013,7 +2014,8 @@ function SwipeStockCard({
                   // Sub text
                   const insiderSub = row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:")
                     ? row.insider_signal_flavor
-                    : insider ? "Insiders are acquiring shares" : "No recent insider activity"
+                    : row.insider_buy_value && row.insider_buy_value > 0 ? "Insiders are acquiring shares"
+                    : insider ? "SEC Form 4 filed" : "No recent insider activity"
                   const ptrSub = row.insider_signal_flavor?.startsWith("PTR:")
                     ? row.insider_signal_flavor.slice(5)
                     : ptr ? "Congress members disclosed purchases" : "No congressional trades detected"
