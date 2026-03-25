@@ -1523,11 +1523,13 @@ export async function GET(request: Request) {
           row.insider_buy_value = null
           row.insider_signal_flavor = "No open market purchases"
         }
-      } else if (row.insider_action === "Filed" && row.insider_buy_value == null) {
+      } else if (row.insider_action === "Filed" && (row.insider_buy_value == null || row.insider_buy_value === 0)) {
         // No enrichment data — insider_shares is a filing count, not real shares
         const filingCount = row.insider_shares
+        console.log(`Clearing filing count for ${row.ticker}: was ${filingCount} "shares" (actually filings)`)
         row.insider_shares = null
         row.insider_avg_price = null
+        row.insider_buy_value = null
         row.insider_signal_flavor = filingCount ? `${filingCount} Form 4 filing${filingCount === 1 ? "" : "s"}` : null
         row.insider_action = "Form 4 filed"
       }
