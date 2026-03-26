@@ -328,7 +328,7 @@ const MAX_LOOKBACK_DAYS = 90
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 3000
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v13-catalyst-first"
+const SCORE_VERSION = "v14-smart-buy-70-100"
 
 const DEFAULT_PTR_LOOKBACK_DAYS = 60
 const MAX_PTR_LOOKBACK_DAYS = 120
@@ -1113,29 +1113,38 @@ function buildTickerScoresCurrentRows(
       }
     }
 
+    // Use the signal's app_score (v14: 0-30 raw scale) as the primary base
+    // Blend with LTCS fundamental score and insider conviction bonus
+    const signalScore = primaryScore  // from the signal's app_score
     const ltcsBase = ltcsScoreMap.get(ticker) ?? 0
 
-    // Insider catalyst bonus (max 30 points)
+    // Insider catalyst bonus (max 10 pts on the 70-100 scale)
     let insiderBonus = 0
     const clusterBuyers = primary.cluster_buyers ?? 0
     const hasPtrBuy = (ptr?.buyTradeCount ?? 0) > 0
 
     if (clusterBuyers >= 3 && hasPtrBuy) {
-      insiderBonus = 30  // platinum: cluster + congress
+      insiderBonus = 10  // platinum: cluster + congress
     } else if (clusterBuyers >= 2) {
-      insiderBonus = 20  // cluster buying
+      insiderBonus = 7   // cluster buying
     } else if (hasPtrBuy) {
-      insiderBonus = 15  // congressional buy
+      insiderBonus = 5   // congressional buy
     } else if (primary.insider_action === "buy" || ((primary as any).transaction_type || "").includes("buy")) {
-      insiderBonus = 10  // solo insider buy
+      insiderBonus = 3   // solo insider buy
     }
 
-    // Freshness bonus (max 5 points)
+    // Freshness bonus (max 2 pts)
     const ageDays = primary.age_days ?? 999
-    if (ageDays <= 2) insiderBonus += 5
-    else if (ageDays <= 7) insiderBonus += 3
+    if (ageDays <= 2) insiderBonus += 2
+    else if (ageDays <= 7) insiderBonus += 1
 
-    let finalScore = clamp(Math.round(ltcsBase + insiderBonus), 0, 100)
+    // Build final score: 70-100 range
+    // Signal score (0-30) provides catalyst/technical ranking
+    // LTCS (0-100) provides fundamental quality (scaled to 0-20)
+    // Insider bonus (0-12) provides smart money conviction
+    // Floor at 70, cap at 100
+    const rawFinal = 70 + (signalScore * 0.4) + (ltcsBase * 0.12) + insiderBonus + stackedScore
+    let finalScore = clamp(Math.round(rawFinal), 70, 100)
 
     // Platinum conviction: 3+ cluster buyers + PTR activity + solid primary signal
     // This combination is the highest-confidence setup — override all caps with score 100
@@ -1148,8 +1157,8 @@ function buildTickerScoresCurrentRows(
       scoreCapsApplied.add("platinum-conviction")
     }
 
-    if (ltcsBase < 25 && insiderBonus === 0) continue
-    if (finalScore < 30) continue
+    if (ltcsBase < 25 && insiderBonus === 0 && signalScore < 10) continue
+    if (finalScore < 70) continue
 
     const sourceList = Array.from(signalSources)
     const primaryTitle =
