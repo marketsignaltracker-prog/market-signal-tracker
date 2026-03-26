@@ -1152,6 +1152,20 @@ function buildTickerScoresCurrentRows(
     if (ltcsBase < 25 && insiderBonus === 0 && signalScore < 10) continue
     if (finalScore < 70) continue
 
+    // --- INSIDER SELLING GATE ---
+    // If insiders are selling and there's no congressional buy to offset, exclude the ticker
+    // A congressional buy overrides insider selling (congress may know something insiders don't)
+    const insiderIsSelling = row.insider_action === "Selling" || row.insider_action === "Sell"
+    if (insiderIsSelling && !hasPtrBuy) {
+      continue // Skip — insiders selling without congressional offset is not a buy signal
+    }
+    // If insiders selling BUT congress is buying, penalize but keep
+    if (insiderIsSelling && hasPtrBuy) {
+      finalScore = Math.max(70, finalScore - 5)
+      scoreCapsApplied.add("insider-sell-offset-by-ptr")
+      scoreBreakdown.insider_sell_penalty = -5
+    }
+
     const sourceList = Array.from(signalSources)
     const primaryTitle =
       maxSignalFamilyCount >= 3 || ptr?.buyTradeCount
