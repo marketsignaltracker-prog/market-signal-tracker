@@ -1,4 +1,4 @@
-const CACHE_NAME = "mst-v2";
+const CACHE_NAME = "mst-v3";
 
 // Cache the app shell on install
 self.addEventListener("install", (event) => {
