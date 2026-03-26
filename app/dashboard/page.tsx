@@ -1991,9 +1991,11 @@ function SwipeStockCard({
                   const both = insider && ptr
 
                   // Insider score: based on buy value or filing activity
-                  const insiderScore = row.insider_buy_value && row.insider_buy_value > 0 && !isSelling && !hasPtrFlavor
+                  const selling = row.insider_action === "Selling" || row.insider_action === "Sell"
+                  const ptrFlavor = row.insider_signal_flavor?.startsWith("PTR:")
+                  const insiderScore = row.insider_buy_value && row.insider_buy_value > 0 && !selling && !ptrFlavor
                     ? Math.min(100, 60 + Math.round(row.insider_buy_value / 50000))
-                    : row.insider_shares && row.insider_shares > 0 && !isSelling
+                    : row.insider_shares && row.insider_shares > 0 && !selling
                       ? Math.min(95, 55 + row.insider_shares * 5)
                       : 0
                   const ptrScore = ptr ? 90 : 0
