@@ -2008,8 +2008,7 @@ function SwipeStockCard({
                     : row.insider_shares && row.insider_shares > 0 && !isSelling ? `${row.insider_shares.toLocaleString()} Shares`
                     : row.insider_buy_value && row.insider_buy_value > 0 && !isSelling && !hasPtrFlavor ? `$${Math.round(row.insider_buy_value).toLocaleString()}`
                     : isSelling ? "Selling"
-                    : row.insider_signal_flavor && !hasPtrFlavor ? row.insider_signal_flavor
-                    : insider ? "Filed" : "None"
+                    : insider ? "Active" : "None"
 
                   // PTR/Congress display value — show dollar amount if available
                   const ptrAmount = hasPtrFlavor && row.insider_buy_value && row.insider_buy_value > 0 ? row.insider_buy_value : null
@@ -2019,13 +2018,10 @@ function SwipeStockCard({
                     : "Active"
 
                   // Sub text
-                  const insiderSub = isSelling && row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:")
-                    ? row.insider_signal_flavor
-                    : row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:")
-                    ? row.insider_signal_flavor
-                    : row.insider_buy_value && row.insider_buy_value > 0 && !isSelling ? "Insiders are acquiring shares"
+                  const insiderSub = row.insider_shares && row.insider_shares > 0 && !isSelling ? "Insiders are acquiring shares"
+                    : row.insider_buy_value && row.insider_buy_value > 0 && !isSelling && !hasPtrFlavor ? "Insiders are acquiring shares"
                     : isSelling ? "Insiders are selling shares"
-                    : insider ? "SEC Form 4 filed" : "No recent insider activity"
+                    : insider ? "SEC Form 4 filed recently" : "No recent insider activity"
                   const ptrSub = row.insider_signal_flavor?.startsWith("PTR:")
                     ? row.insider_signal_flavor.slice(5)
                     : ptr ? "Congress members disclosed purchases" : "No congressional trades detected"
