@@ -190,7 +190,7 @@ const MAX_LIMIT = 1000
 const DEFAULT_LOOKBACK_DAYS = 30
 const MAX_LOOKBACK_DAYS = 60
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v12-catalyst-first"
+const SCORE_VERSION = "v14-smart-buy-70-100"
 const DB_CHUNK_SIZE = 25
 
 const DEFAULT_MIN_SIGNAL_APP_SCORE = 35
@@ -307,8 +307,8 @@ async function upsertInChunksDetailed(
 }
 
 function getStrengthBucket(score: number): "Buy" | "Strong Buy" | "Elite Buy" {
-  if (score >= 95) return "Elite Buy"
-  if (score >= 88) return "Strong Buy"
+  if (score >= 92) return "Elite Buy"
+  if (score >= 82) return "Strong Buy"
   return "Buy"
 }
 
@@ -564,119 +564,112 @@ function scoreCandidateSignal(params: {
     return null
   }
 
-  // --- PILLAR 1: Catalyst Recency (40 pts max) ---
-  let filingCatalystScore = 0
-  if (hasRecentFiling && filingAge !== null) {
-    if (filingAge <= 0) filingCatalystScore = 40
-    else if (filingAge <= 1) filingCatalystScore = 36
-    else if (filingAge <= 3) filingCatalystScore = 30
-    else if (filingAge <= 7) filingCatalystScore = 20
-    else filingCatalystScore = 10
-  }
+  // ==========================================================================
+  // SCORING v14: 70-100 scale, smart money dominant but requires quality
+  // A 100 = insider+congress + great fundamentals + strong technicals + fresh
+  // A 70 = aging catalyst, single signal, mediocre fundamentals
+  // Smart money alone can't hit 100 without fundamentals backing it up
+  // ==========================================================================
 
-  let ptrCatalystScore = 0
-  if (hasRecentPtr && ptrAge !== null) {
-    if (ptrAge <= 3) ptrCatalystScore = 38
-    else if (ptrAge <= 7) ptrCatalystScore = 32
-    else if (ptrAge <= 14) ptrCatalystScore = 25
-    else if (ptrAge <= 21) ptrCatalystScore = 18
-    else ptrCatalystScore = 12
-  }
-
-  let breakoutCatalystScore = 0
-  if (context.breakout_20d) breakoutCatalystScore = 25
-  else if (context.breakout_10d) breakoutCatalystScore = 18
-
-  const catalystScore = Math.max(filingCatalystScore, ptrCatalystScore, breakoutCatalystScore)
   const catalystTypeCount = Number(hasRecentFiling) + Number(hasRecentPtr) + Number(hasBreakout)
-
-  // Smart money stacking bonus: insider + congress = huge conviction
   const hasInsiderAndCongress = hasRecentFiling && hasRecentPtr
-  const catalystBonus = hasInsiderAndCongress ? 12 : catalystTypeCount >= 2 ? 5 : 0
+  const hasCluster = (ptrSummary?.buyCluster === true) || (ptrSummary?.uniqueBuyFilers ?? 0) >= 2
 
-  add("catalyst", Math.min(catalystScore + catalystBonus, 45),
-    filingCatalystScore >= ptrCatalystScore && filingCatalystScore >= breakoutCatalystScore
-      ? `Fresh filing catalyst (${filingAge}d ago)`
-      : ptrCatalystScore >= breakoutCatalystScore
-        ? `Congressional/insider trade (${ptrAge}d ago)`
-        : `Technical breakout catalyst`)
-  if (hasInsiderAndCongress) reasons.push("Insider + Congress double conviction")
-  else if (catalystBonus > 0) reasons.push("Multiple catalyst types aligned")
-
-  // --- PILLAR 2: Technical Setup (25 pts max) ---
-  let techScore = 0
-  if (context.above_sma_20) { techScore += 8; add("tech_trend", 8, "Above 20-day moving average") }
-  if ((context.volume_ratio ?? 0) >= 2.0) { techScore += 10; add("tech_volume", 10, "Heavy volume support") }
-  else if ((context.volume_ratio ?? 0) >= 1.5) { techScore += 7; add("tech_volume", 7, "Good volume support") }
-  if ((context.relative_strength_20d ?? 0) >= 10) { techScore += 8; add("tech_rs", 8, "Strong relative strength") }
-  else if ((context.relative_strength_20d ?? 0) >= 5) { techScore += 5; add("tech_rs", 5, "Positive relative strength") }
-  if ((context.close_in_day_range ?? 0) >= 0.7) { techScore += 4; add("tech_close", 4, "Strong close in day range") }
-
-  // Extension penalty
-  const ext = context.extension_from_sma20_pct ?? 0
-  if (ext > 15) { add("tech_extension_penalty", -8, "Too extended from SMA20"); caps.push("overextended") }
-  else if (ext > 10) { add("tech_extension_penalty", -4, "Somewhat extended from SMA20") }
-
-  // --- PILLAR 3: Fundamental Quality (20 pts max) ---
-  if (candidateScore >= 80) add("fundamental", 20, "Strong fundamental quality (LTCS)")
-  else if (candidateScore >= 70) add("fundamental", 15, "Good fundamental quality")
-  else if (candidateScore >= 60) add("fundamental", 10, "Adequate fundamental quality")
-  else if (candidateScore >= 50) add("fundamental", 5, "Passing fundamental quality")
-
-  // --- PILLAR 4: Risk/Reward (15 pts max) ---
-  if ((context.return_5d ?? 0) < 12) add("risk_entry", 5, "Not chasing short-term move")
-  if (ext < 8) add("risk_position", 5, "Good entry point near support")
-
-  const passesAllLiquidity = (context.passes_price ?? true) && (context.passes_volume ?? true) &&
-    (context.passes_dollar_volume ?? true) && (context.passes_market_cap ?? true)
-  if (passesAllLiquidity) add("risk_liquidity", 5, "All liquidity gates pass")
-
-  // Chase penalty
-  if ((context.return_5d ?? 0) >= 15 && !ptrSummary?.strongBuying) {
-    add("chase_penalty", -8, "Chasing short-term move without strong insider support")
+  // --- PILLAR 1: Smart Money Signal (25 pts max) ---
+  // This is the dominant differentiator but alone can't make a 100
+  if (hasInsiderAndCongress) {
+    add("smart_money", 25, "Insider + Congress double conviction")
+  } else if (hasCluster && hasRecentPtr) {
+    add("smart_money", 22, "Cluster buy + Congress conviction")
+  } else if (hasRecentPtr) {
+    add("smart_money", 18, "Congressional trade disclosed")
+  } else if (hasCluster) {
+    add("smart_money", 15, "Multiple insiders buying (cluster)")
+  } else if (hasRecentFiling && filingSummary?.hasForm4) {
+    add("smart_money", 10, "Insider filing (Form 4)")
+  } else if (hasRecentFiling && filingSummary?.has13DOr13G) {
+    add("smart_money", 8, "Ownership filing (13D/G)")
+  } else if (hasBreakout) {
+    add("smart_money", 5, "Technical breakout signal")
   }
 
-  // Market cap diversity bonus/penalty
-  if (marketCap >= 5e9 && marketCap <= 20e9) add("cap_diversity", 3, "Mid-cap opportunity (underrepresented)")
-  else if (marketCap > 500e9) add("cap_diversity", -3, "Mega-cap crowding penalty")
-
-  // --- Compute raw score ---
-  let rawScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
-  rawScore = clamp(Math.round(rawScore), 0, 100)
-
-  // --- Staleness decay based on newest catalyst age ---
-  // PTR/congress trades are inherently delayed (45-day disclosure), so use a much gentler decay
+  // --- PILLAR 2: Catalyst Freshness (20 pts max) ---
   const filingAgeEffective = hasRecentFiling && filingAge !== null ? filingAge : 999
   const ptrAgeEffective = hasRecentPtr && ptrAge !== null ? ptrAge : 999
   const breakoutAge = hasBreakout ? 0 : 999
   const newestCatalystAge = Math.min(filingAgeEffective, ptrAgeEffective, breakoutAge)
+
+  if (newestCatalystAge <= 0) add("freshness", 20, "Catalyst from today")
+  else if (newestCatalystAge <= 1) add("freshness", 18, "Catalyst from yesterday")
+  else if (newestCatalystAge <= 3) add("freshness", 15, "Catalyst within 3 days")
+  else if (newestCatalystAge <= 7) add("freshness", 10, "Catalyst within a week")
+  else if (newestCatalystAge <= 14) add("freshness", 5, "Catalyst within 2 weeks")
+  else add("freshness", 2, "Aging catalyst")
+
+  // --- PILLAR 3: Fundamental Quality (25 pts max) ---
+  // This prevents a bad company with insider+congress from scoring 100
+  if (candidateScore >= 85) add("fundamental", 25, "Excellent fundamental quality")
+  else if (candidateScore >= 75) add("fundamental", 20, "Strong fundamental quality")
+  else if (candidateScore >= 65) add("fundamental", 15, "Good fundamental quality")
+  else if (candidateScore >= 55) add("fundamental", 10, "Adequate fundamental quality")
+  else add("fundamental", 5, "Weak fundamental quality")
+
+  // --- PILLAR 4: Technical Confirmation (15 pts max) ---
+  const ext = context.extension_from_sma20_pct ?? 0
+  if (context.above_sma_20) add("tech_trend", 4, "Above 20-day moving average")
+  if ((context.volume_ratio ?? 0) >= 2.0) add("tech_volume", 4, "Heavy volume support")
+  else if ((context.volume_ratio ?? 0) >= 1.5) add("tech_volume", 2, "Good volume support")
+  if ((context.relative_strength_20d ?? 0) >= 10) add("tech_rs", 5, "Strong relative strength")
+  else if ((context.relative_strength_20d ?? 0) >= 5) add("tech_rs", 3, "Positive relative strength")
+  else if ((context.relative_strength_20d ?? 0) > 0) add("tech_rs", 1, "Slight positive momentum")
+  if (ext > 15) { add("tech_extension", -4, "Too extended from SMA20"); caps.push("overextended") }
+  else if (ext > 10) add("tech_extension", -2, "Somewhat extended")
+
+  // --- PILLAR 5: Risk/Reward (15 pts max) ---
+  if ((context.return_5d ?? 0) < 10) add("risk_entry", 5, "Not chasing short-term move")
+  else if ((context.return_5d ?? 0) >= 15 && !ptrSummary?.strongBuying) {
+    add("risk_entry", -3, "Chasing without strong conviction"); caps.push("chasing")
+  }
+  if (ext < 8) add("risk_position", 5, "Good entry point near support")
+  const passesAllLiquidity = (context.passes_price ?? true) && (context.passes_volume ?? true) &&
+    (context.passes_dollar_volume ?? true) && (context.passes_market_cap ?? true)
+  if (passesAllLiquidity) add("risk_liquidity", 5, "All liquidity gates pass")
+
+  // --- Compute raw score (0-100 theoretical, ~95-100 realistic max) ---
+  let rawScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
+  rawScore = clamp(Math.round(rawScore), 0, 100)
+
+  // --- Staleness decay — decays toward 0 in raw, then we map to 70-100 ---
   const hasPtrCatalyst = hasRecentPtr && ptrAge !== null
 
   let decayMultiplier = 1.0
   if (hasPtrCatalyst) {
     // Gentle decay for PTR/congress — they're always "old" by nature
     if (ptrAgeEffective <= 7) decayMultiplier = 1.0
-    else if (ptrAgeEffective <= 14) decayMultiplier = 0.90
-    else if (ptrAgeEffective <= 21) decayMultiplier = 0.80
-    else if (ptrAgeEffective <= 30) decayMultiplier = 0.65
-    else decayMultiplier = 0.45
+    else if (ptrAgeEffective <= 14) decayMultiplier = 0.92
+    else if (ptrAgeEffective <= 21) decayMultiplier = 0.82
+    else if (ptrAgeEffective <= 30) decayMultiplier = 0.70
+    else decayMultiplier = 0.55
     // If also has a fresh filing, use the better of the two
     if (filingAgeEffective <= 3) decayMultiplier = Math.max(decayMultiplier, 1.0)
-    else if (filingAgeEffective <= 7) decayMultiplier = Math.max(decayMultiplier, 0.90)
+    else if (filingAgeEffective <= 7) decayMultiplier = Math.max(decayMultiplier, 0.92)
   } else {
-    // Standard filing/breakout decay
     if (newestCatalystAge <= 1) decayMultiplier = 1.0
-    else if (newestCatalystAge <= 2) decayMultiplier = 0.95
-    else if (newestCatalystAge <= 3) decayMultiplier = 0.90
-    else if (newestCatalystAge <= 5) decayMultiplier = 0.80
-    else if (newestCatalystAge <= 7) decayMultiplier = 0.70
-    else if (newestCatalystAge <= 10) decayMultiplier = 0.55
-    else if (newestCatalystAge <= 14) decayMultiplier = 0.40
-    else if (newestCatalystAge <= 21) decayMultiplier = 0.25
-    else return null // signal expired (no PTR, filing > 21d old)
+    else if (newestCatalystAge <= 2) decayMultiplier = 0.96
+    else if (newestCatalystAge <= 3) decayMultiplier = 0.92
+    else if (newestCatalystAge <= 5) decayMultiplier = 0.84
+    else if (newestCatalystAge <= 7) decayMultiplier = 0.74
+    else if (newestCatalystAge <= 10) decayMultiplier = 0.60
+    else if (newestCatalystAge <= 14) decayMultiplier = 0.45
+    else if (newestCatalystAge <= 21) decayMultiplier = 0.30
+    else return null // signal expired
   }
 
-  let appScore = clamp(Math.round(rawScore * decayMultiplier), 0, 100)
+  const decayedScore = rawScore * decayMultiplier
+
+  // --- Map to 70-100 range: 70 = worst surviving signal, 100 = best possible ---
+  // appScore = 70 + (decayedScore / 100) * 30
+  let appScore = clamp(Math.round(70 + (decayedScore / 100) * 30), 70, 100)
 
   if (decayMultiplier < 1.0) {
     caps.push(`staleness-decay-${Math.round(decayMultiplier * 100)}pct`)
@@ -818,9 +811,9 @@ function buildSignalRow(
     score: scored.rawScore,
     app_score: scored.appScore,
     board_bucket:
-      scored.appScore >= 88
+      scored.appScore >= 90
         ? "High Conviction"
-        : scored.appScore >= 76
+        : scored.appScore >= 80
           ? "Buy"
           : "Watch",
     title,
