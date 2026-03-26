@@ -1139,13 +1139,14 @@ function buildTickerScoresCurrentRows(
     else if (ageDays <= 7) insiderBonus += 1
 
     // Build final score: 70-100 range (30pt spread)
-    // Base 60 + components that total 10-40 pts for the 70-100 display range
-    // signalScore (~50-95) → 0-14 pts   (catalyst quality + technicals)
-    // ltcsBase (0-100)     → 0-10 pts   (fundamental quality)
+    // Base 55 so that minimum viable stock floors at ~70
+    // signalScore (~50-95) → 9-17 pts   (catalyst quality + technicals)
+    // ltcsBase (0-100)     → 6-11 pts   (fundamental quality — differentiator)
     // insiderBonus (0-12)  → 0-12 pts   (smart money conviction — dominant)
-    // stackedScore (capped) → -3 to +4  (diversity/crowding micro-adjustments)
-    const cappedStacked = clamp(stackedScore * 0.15, -3, 4)
-    const rawFinal = 60 + (signalScore * 0.15) + (ltcsBase * 0.10) + insiderBonus + cappedStacked
+    // stackedScore (capped) → -4 to +5  (diversity/crowding)
+    // Worst: 55+9+6+0-4=66→70 | Typical: 55+13+8+0+1=77 | Best: 55+17+11+12+5=100
+    const cappedStacked = clamp(stackedScore * 0.2, -4, 5)
+    const rawFinal = 55 + (signalScore * 0.18) + (ltcsBase * 0.12) + insiderBonus + cappedStacked
     let finalScore = clamp(Math.round(rawFinal), 70, 100)
 
     // Platinum conviction: 3+ cluster buyers + PTR activity + solid primary signal
