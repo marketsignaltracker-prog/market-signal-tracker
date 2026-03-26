@@ -1139,11 +1139,12 @@ function buildTickerScoresCurrentRows(
     else if (ageDays <= 7) insiderBonus += 1
 
     // Build final score: 70-100 range
-    // Signal score (0-30) provides catalyst/technical ranking
-    // LTCS (0-100) provides fundamental quality (scaled to 0-20)
-    // Insider bonus (0-12) provides smart money conviction
-    // Floor at 70, cap at 100
-    const rawFinal = 70 + (signalScore * 0.4) + (ltcsBase * 0.12) + insiderBonus + stackedScore
+    // Signal score (~50-95) → 0-15 pts via 0.17x
+    // LTCS (0-100) → 0-8 pts via 0.08x
+    // Insider bonus (0-12) → smart money conviction
+    // Stacked adjustments (-5 to +8) → diversity/crowding
+    // Only platinum conviction (cluster+congress+strong signal) can reach 100
+    const rawFinal = 70 + (signalScore * 0.17) + (ltcsBase * 0.08) + insiderBonus + stackedScore
     let finalScore = clamp(Math.round(rawFinal), 70, 100)
 
     // Platinum conviction: 3+ cluster buyers + PTR activity + solid primary signal
