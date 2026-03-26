@@ -1991,24 +1991,21 @@ function SwipeStockCard({
                   const both = insider && ptr
 
                   // Insider score: based on buy value or filing activity
-                  const insiderScore = insider
-                    ? (row.insider_buy_value && row.insider_buy_value > 0
-                        ? Math.min(100, 60 + Math.round(row.insider_buy_value / 50000))
-                        : row.insider_shares && row.insider_shares > 0
-                          ? Math.min(95, 55 + row.insider_shares * 5)
-                          : 70)
-                    : 0
+                  const insiderScore = row.insider_buy_value && row.insider_buy_value > 0 && !isSelling && !hasPtrFlavor
+                    ? Math.min(100, 60 + Math.round(row.insider_buy_value / 50000))
+                    : row.insider_shares && row.insider_shares > 0 && !isSelling
+                      ? Math.min(95, 55 + row.insider_shares * 5)
+                      : 0
                   const ptrScore = ptr ? 90 : 0
 
                   // Insider display value
                   const isSelling = row.insider_action === "Selling" || row.insider_action === "Sell"
                   const hasPtrFlavor = row.insider_signal_flavor?.startsWith("PTR:")
-                  // Insider tile: only show insider-specific data, not PTR dollar amounts
-                  const insiderVal = !insider ? "None"
-                    : row.insider_shares && row.insider_shares > 0 && !isSelling ? `${row.insider_shares.toLocaleString()} Shares`
+                  // Insider tile: only show when there are confirmed open market purchases
+                  const hasRealBuy = (row.insider_shares && row.insider_shares > 0 && !isSelling) || (row.insider_buy_value && row.insider_buy_value > 0 && !isSelling && !hasPtrFlavor)
+                  const insiderVal = row.insider_shares && row.insider_shares > 0 && !isSelling ? `${row.insider_shares.toLocaleString()} Shares`
                     : row.insider_buy_value && row.insider_buy_value > 0 && !isSelling && !hasPtrFlavor ? `$${Math.round(row.insider_buy_value).toLocaleString()}`
-                    : isSelling ? "Selling"
-                    : insider ? "Active" : "None"
+                    : "None"
 
                   // PTR/Congress display value — show dollar amount if available
                   const ptrAmount = hasPtrFlavor && row.insider_buy_value && row.insider_buy_value > 0 ? row.insider_buy_value : null
@@ -2018,10 +2015,9 @@ function SwipeStockCard({
                     : "Active"
 
                   // Sub text
-                  const insiderSub = row.insider_shares && row.insider_shares > 0 && !isSelling ? "Insiders are acquiring shares"
-                    : row.insider_buy_value && row.insider_buy_value > 0 && !isSelling && !hasPtrFlavor ? "Insiders are acquiring shares"
-                    : isSelling ? "Insiders are selling shares"
-                    : insider ? "SEC Form 4 filed recently" : "No recent insider activity"
+                  const insiderSub = hasRealBuy
+                    ? (row.insider_signal_flavor && !hasPtrFlavor ? row.insider_signal_flavor : "Insiders are acquiring shares")
+                    : "No open market purchases"
                   const ptrSub = row.insider_signal_flavor?.startsWith("PTR:")
                     ? row.insider_signal_flavor.slice(5)
                     : ptr ? "Congress members disclosed purchases" : "No congressional trades detected"
