@@ -418,7 +418,7 @@ export default function LandingPage() {
                 </svg>
               }
               title="Exit Strategy Included"
-              description="Every card includes a stop-loss, profit target, and catalyst expiry window. Know when to get in and when to get out."
+              description="Every card includes a stop-loss, profit target, and sell triggers. Know when to get in and when to get out."
             />
           </div>
         </div>

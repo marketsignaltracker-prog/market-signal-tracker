@@ -798,18 +798,7 @@ function computeExitStrategy(params: {
 
   // --- CATALYST EXPIRY ---
   const catalystAge = ageDays ?? 0
-  let catalystExpiryDays: number | null = null
-
-  if (catalystAge <= 3) {
-    catalystExpiryDays = 10 - catalystAge
-    exitSignals.push(`Catalyst is fresh (${catalystAge}d old) — thesis valid for ~${catalystExpiryDays} more days`)
-  } else if (catalystAge <= 7) {
-    catalystExpiryDays = 10 - catalystAge
-    exitSignals.push(`Catalyst aging (${catalystAge}d old) — re-evaluate within ${catalystExpiryDays} days`)
-  } else {
-    catalystExpiryDays = 0
-    exitSignals.push(`Catalyst is ${catalystAge}d old — consider exiting unless new catalysts emerge`)
-  }
+  const catalystExpiryDays: number | null = null
 
   // --- INSIDER / PTR REVERSAL WATCH ---
   if (hasInsiderBuying) {
@@ -831,9 +820,6 @@ function computeExitStrategy(params: {
   const summaryParts: string[] = []
   summaryParts.push(`Stop-loss at $${stopLossPrice} (${stopLossType})`)
   summaryParts.push(`Profit target at $${profitTarget}`)
-  if (catalystExpiryDays !== null && catalystExpiryDays > 0) {
-    summaryParts.push(`Catalyst window: ${catalystExpiryDays} days remaining`)
-  }
   if (ext > 8) summaryParts.push("Position is extended — manage risk closely")
 
   return {

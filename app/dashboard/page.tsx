@@ -3180,17 +3180,6 @@ function SignalDetailsModal({
                               <p className="mt-0.5 text-[9px] text-emerald-400/40">{row.exit_strategy.risk_reward_ratio}:1 R/R</p>
                             </div>
                           )}
-                          {row.exit_strategy.catalyst_expiry_days !== null && (
-                            <div className={`rounded-xl border px-3 py-2.5 text-center ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "border-emerald-500/20 bg-emerald-500/5" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "border-yellow-500/20 bg-yellow-500/5" : "border-red-500/20 bg-red-500/5"}`}>
-                              <p className={`text-[9px] font-bold uppercase tracking-wider ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400/60" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400/60" : "text-red-400/60"}`}>Catalyst</p>
-                              <p className={`mt-1 text-lg font-black ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400" : "text-red-400"}`}>
-                                {(row.exit_strategy.catalyst_expiry_days ?? 0) > 0 ? `${row.exit_strategy.catalyst_expiry_days}d` : "0d"}
-                              </p>
-                              <p className={`mt-0.5 text-[9px] ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400/40" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400/40" : "text-red-400/40"}`}>
-                                {(row.exit_strategy.catalyst_expiry_days ?? 0) > 0 ? "remaining" : "expired"}
-                              </p>
-                            </div>
-                          )}
                         </div>
 
                         {/* Sell signals */}
@@ -3470,17 +3459,6 @@ function SignalDetailsModal({
                               <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-400/60">Profit Target</p>
                               <p className="mt-1 text-xl font-black text-emerald-400">${row.exit_strategy.profit_target}</p>
                               <p className="mt-1 text-[9px] text-emerald-400/40">{row.exit_strategy.risk_reward_ratio}:1 risk/reward</p>
-                            </div>
-                          )}
-                          {row.exit_strategy.catalyst_expiry_days !== null && (
-                            <div className={`rounded-2xl border p-3 text-center ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "border-emerald-500/25 bg-emerald-500/5" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "border-yellow-500/25 bg-yellow-500/5" : "border-red-500/25 bg-red-500/5"}`}>
-                              <p className={`text-[9px] font-bold uppercase tracking-wider ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400/60" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400/60" : "text-red-400/60"}`}>Catalyst</p>
-                              <p className={`mt-1 text-xl font-black ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400" : "text-red-400"}`}>
-                                {(row.exit_strategy.catalyst_expiry_days ?? 0) > 0 ? `${row.exit_strategy.catalyst_expiry_days}d` : "0d"}
-                              </p>
-                              <p className={`mt-1 text-[9px] ${(row.exit_strategy.catalyst_expiry_days ?? 0) > 5 ? "text-emerald-400/40" : (row.exit_strategy.catalyst_expiry_days ?? 0) > 2 ? "text-yellow-400/40" : "text-red-400/40"}`}>
-                                {(row.exit_strategy.catalyst_expiry_days ?? 0) > 0 ? "remaining" : "expired"}
-                              </p>
                             </div>
                           )}
                         </div>
@@ -3998,14 +3976,37 @@ function getTopReasonLines(row: UnifiedRow): ReasonLine[] {
 function getConfidenceBullets(row: UnifiedRow) {
   const ltcs = parseScreenReasonScores(row.screen_reason)
   const bullets: string[] = []
+  const tags = row.signal_tags || []
+  const hasInsiderTag = tags.some(t => t.includes("insider"))
+  const hasPtrTag = tags.some(t => t.includes("ptr"))
 
+  // Insider/cluster activity
   if ((row.cluster_buyers ?? 0) >= 2) {
     bullets.push(
       `${row.cluster_buyers} company insiders recently bought shares — people with inside knowledge of the business.`
     )
+  } else if (row.insider_buy_value && row.insider_buy_value > 0) {
+    const names = row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? ` (${row.insider_signal_flavor})` : ""
+    bullets.push(
+      `Insiders purchased $${Math.round(row.insider_buy_value).toLocaleString()} worth of shares${names}. When executives buy with their own money, they expect upside.`
+    )
+  } else if (hasInsiderTag) {
+    const flavor = row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? row.insider_signal_flavor : "SEC Form 4 filings detected"
+    bullets.push(
+      `Recent insider activity: ${flavor}. Insider transactions often precede significant price moves.`
+    )
   }
 
-  if (row.ptr_amount) {
+  // Congressional trades
+  if (hasPtrTag) {
+    const ptrName = row.insider_signal_flavor?.startsWith("PTR:") ? row.insider_signal_flavor.slice(5).trim() : null
+    const amountText = row.insider_buy_value && row.insider_buy_value > 0 && !hasInsiderTag ? ` ($${Math.round(row.insider_buy_value).toLocaleString()}+)` : ""
+    bullets.push(
+      ptrName
+        ? `Congress member ${ptrName} disclosed a purchase${amountText}. Politicians on key committees often trade ahead of policy changes.`
+        : `A U.S. Congress member disclosed stock purchases${amountText}. Congressional trades have historically outperformed the market.`
+    )
+  } else if (row.ptr_amount) {
     bullets.push(
       `A U.S. Congress member filed a trade for ${row.ptr_amount}. Politicians often trade ahead of policy moves.`
     )
