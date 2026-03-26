@@ -2775,7 +2775,7 @@ function SmartMoneyTiles({ row }: { row: UnifiedRow }) {
               Congress
             </p>
             <p className="text-lg font-black" style={{ color: ptr ? "#e9d5ff" : "#333" }}>
-              {ptr ? (row.cluster_buyers && row.cluster_buyers > 0 ? `${row.cluster_buyers} Buyer${row.cluster_buyers === 1 ? "" : "s"}` : "Yes") : "No"}
+              {ptr ? (row.insider_signal_flavor?.startsWith("PTR:") && row.insider_buy_value && row.insider_buy_value > 0 ? `$${Math.round(row.insider_buy_value).toLocaleString()}+` : row.cluster_buyers && row.cluster_buyers > 0 ? `${row.cluster_buyers} Buyer${row.cluster_buyers === 1 ? "" : "s"}` : "Yes") : "No"}
             </p>
             {ptr && row.insider_signal_flavor?.startsWith("PTR:") && (
               <p className="mt-1 text-[10px] leading-tight text-purple-300/50 line-clamp-2">
@@ -3232,10 +3232,10 @@ function SignalDetailsModal({
                       }}>
                         <p className="text-xs font-bold" style={{ color: hasPtrSignal(row) ? "#c084fc" : "#374151" }}>Congress Trades</p>
                         <p className="mt-1 text-lg font-black" style={{ color: hasPtrSignal(row) ? "#e9d5ff" : "#1f2937" }}>
-                          {hasPtrSignal(row) ? (row.cluster_buyers ? `${row.cluster_buyers} Buyer${row.cluster_buyers === 1 ? "" : "s"}` : "Yes") : "No"}
+                          {hasPtrSignal(row) ? (row.insider_signal_flavor?.startsWith("PTR:") && row.insider_buy_value && row.insider_buy_value > 0 ? `$${Math.round(row.insider_buy_value).toLocaleString()}+` : row.cluster_buyers ? `${row.cluster_buyers} Buyer${row.cluster_buyers === 1 ? "" : "s"}` : "Yes") : "No"}
                         </p>
                         <p className="mt-1 text-[11px]" style={{ color: hasPtrSignal(row) ? "rgba(196,181,253,0.6)" : "#1f2937" }}>
-                          {row.insider_signal_flavor?.startsWith("PTR:") ? row.insider_signal_flavor.slice(5) : row.insider_buy_value ? `$${Number(row.insider_buy_value).toLocaleString()}+ disclosed` : hasPtrSignal(row) ? "PTR filed" : "None detected"}
+                          {row.insider_signal_flavor?.startsWith("PTR:") ? row.insider_signal_flavor.slice(5) : hasPtrSignal(row) ? "Congress disclosed purchases" : "None detected"}
                         </p>
                       </div>
                     </div>
@@ -3377,7 +3377,7 @@ function SignalDetailsModal({
                               Congress Trades (PTR)
                             </p>
                             <span className="text-sm font-black" style={{ color: hasPtrSignal(row) ? "#e9d5ff" : "#1f2937" }}>
-                              {hasPtrSignal(row) ? (row.cluster_buyers ? `${row.cluster_buyers} Buyer${row.cluster_buyers === 1 ? "" : "s"}` : "Yes") : "No"}
+                              {hasPtrSignal(row) ? (row.insider_signal_flavor?.startsWith("PTR:") && row.insider_buy_value && row.insider_buy_value > 0 ? `$${Math.round(row.insider_buy_value).toLocaleString()}+` : row.cluster_buyers ? `${row.cluster_buyers} Buyer${row.cluster_buyers === 1 ? "" : "s"}` : "Yes") : "No"}
                             </span>
                           </div>
                           {hasPtrSignal(row) ? (
