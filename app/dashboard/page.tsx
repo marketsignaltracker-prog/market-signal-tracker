@@ -637,6 +637,7 @@ export default function Home() {
               insider_buy_value,
               cluster_buyers,
               cluster_shares,
+              insider_signal_flavor,
               price_return_5d,
               price_return_20d,
               volume_ratio,
