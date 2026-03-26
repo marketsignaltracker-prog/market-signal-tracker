@@ -2001,15 +2001,19 @@ function SwipeStockCard({
 
                   // Insider display value
                   const isSelling = row.insider_action === "Selling" || row.insider_action === "Sell"
+                  const hasPtrFlavor = row.insider_signal_flavor?.startsWith("PTR:")
+                  // Insider tile: only show insider-specific data, not PTR dollar amounts
                   const insiderVal = !insider ? "None"
-                    : row.insider_buy_value && row.insider_buy_value > 0 && !isSelling ? `$${Math.round(row.insider_buy_value).toLocaleString()}`
                     : row.insider_shares && row.insider_shares > 0 && !isSelling ? `${row.insider_shares.toLocaleString()} Shares`
+                    : row.insider_buy_value && row.insider_buy_value > 0 && !isSelling && !hasPtrFlavor ? `$${Math.round(row.insider_buy_value).toLocaleString()}`
                     : isSelling ? "Selling"
-                    : row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? row.insider_signal_flavor
-                    : "Filed"
+                    : row.insider_signal_flavor && !hasPtrFlavor ? row.insider_signal_flavor
+                    : insider ? "Filed" : "None"
 
-                  // PTR display value
+                  // PTR/Congress display value — show dollar amount if available
+                  const ptrAmount = hasPtrFlavor && row.insider_buy_value && row.insider_buy_value > 0 ? row.insider_buy_value : null
                   const ptrVal = !ptr ? "None"
+                    : ptrAmount ? `$${Math.round(ptrAmount).toLocaleString()}+`
                     : row.cluster_buyers && row.cluster_buyers > 0 ? `${row.cluster_buyers} Member${row.cluster_buyers === 1 ? "" : "s"}`
                     : "Active"
 
