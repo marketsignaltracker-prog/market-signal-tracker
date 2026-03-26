@@ -2000,9 +2000,11 @@ function SwipeStockCard({
                   const ptrScore = ptr ? 90 : 0
 
                   // Insider display value
+                  const isSelling = row.insider_action === "Selling" || row.insider_action === "Sell"
                   const insiderVal = !insider ? "None"
-                    : row.insider_buy_value && row.insider_buy_value > 0 ? `$${Math.round(row.insider_buy_value).toLocaleString()}`
-                    : row.insider_shares && row.insider_shares > 0 ? `${row.insider_shares.toLocaleString()} Shares`
+                    : row.insider_buy_value && row.insider_buy_value > 0 && !isSelling ? `$${Math.round(row.insider_buy_value).toLocaleString()}`
+                    : row.insider_shares && row.insider_shares > 0 && !isSelling ? `${row.insider_shares.toLocaleString()} Shares`
+                    : isSelling ? "Selling"
                     : row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? row.insider_signal_flavor
                     : "Filed"
 
@@ -2012,9 +2014,12 @@ function SwipeStockCard({
                     : "Active"
 
                   // Sub text
-                  const insiderSub = row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:")
+                  const insiderSub = isSelling && row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:")
                     ? row.insider_signal_flavor
-                    : row.insider_buy_value && row.insider_buy_value > 0 ? "Insiders are acquiring shares"
+                    : row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:")
+                    ? row.insider_signal_flavor
+                    : row.insider_buy_value && row.insider_buy_value > 0 && !isSelling ? "Insiders are acquiring shares"
+                    : isSelling ? "Insiders are selling shares"
                     : insider ? "SEC Form 4 filed" : "No recent insider activity"
                   const ptrSub = row.insider_signal_flavor?.startsWith("PTR:")
                     ? row.insider_signal_flavor.slice(5)
@@ -3981,14 +3986,20 @@ function getConfidenceBullets(row: UnifiedRow) {
   const hasPtrTag = tags.some(t => t.includes("ptr"))
 
   // Insider/cluster activity
-  if ((row.cluster_buyers ?? 0) >= 2) {
+  const isSell = row.insider_action === "Selling" || row.insider_action === "Sell"
+  if ((row.cluster_buyers ?? 0) >= 2 && !isSell) {
     bullets.push(
       `${row.cluster_buyers} company insiders recently bought shares — people with inside knowledge of the business.`
     )
-  } else if (row.insider_buy_value && row.insider_buy_value > 0) {
+  } else if (row.insider_buy_value && row.insider_buy_value > 0 && !isSell && !hasPtrTag) {
     const names = row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? ` (${row.insider_signal_flavor})` : ""
     bullets.push(
       `Insiders purchased $${Math.round(row.insider_buy_value).toLocaleString()} worth of shares${names}. When executives buy with their own money, they expect upside.`
+    )
+  } else if (isSell && hasInsiderTag) {
+    const flavor = row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? row.insider_signal_flavor : "insider selling detected"
+    bullets.push(
+      `Recent insider activity: ${flavor}. Note: insiders are selling, which may signal caution.`
     )
   } else if (hasInsiderTag) {
     const flavor = row.insider_signal_flavor && !row.insider_signal_flavor.startsWith("PTR:") ? row.insider_signal_flavor : "SEC Form 4 filings detected"
