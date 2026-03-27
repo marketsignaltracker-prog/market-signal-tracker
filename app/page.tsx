@@ -549,6 +549,7 @@ export default function ZorvaLabsPage() {
               { title: "Gold Travel Group", category: "Luxury Travel", url: "https://goldtravelgroup.com", image: "goldtravel.jpg", gradient: "from-sky-950 to-teal-950" },
               { title: "Spring Haven Mansion", category: "Wedding Venue", url: "https://springhavenmansion.com", image: "springhaven.jpg", gradient: "from-emerald-950 to-slate-900" },
               { title: "Elopements Inc.", category: "Elopement Packages", url: "https://elopementsinc.com", image: "elopements.jpg", gradient: "from-rose-950 to-stone-900" },
+              { title: "Rapid Rescue Nashville", category: "Emergency Restoration", url: "https://rapidrescuenashville.com", image: "rapidrescue.jpg", gradient: "from-blue-950 to-red-950" },
             ].map((project, i) => (
               <PortfolioCard key={project.url} {...project} delay={i * 0.08} />
             ))}
