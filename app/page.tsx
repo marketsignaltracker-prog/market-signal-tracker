@@ -215,25 +215,48 @@ function TechMarquee() {
 /* ═══════════════════════════════════════════
    PORTFOLIO CARD
    ═══════════════════════════════════════════ */
-function PortfolioCard({ title, category, gradient, delay }: {
+function PortfolioCard({ title, category, url, gradient, delay }: {
   title: string
   category: string
+  url: string
   gradient: string
   delay: number
 }) {
   const { ref, inView } = useInView()
+  const domain = url.replace("https://", "")
   return (
     <div
       ref={ref}
-      className={`group relative overflow-hidden rounded-2xl ${inView ? "animate-scale-in" : "opacity-0"}`}
+      className={`group relative overflow-hidden rounded-2xl border border-white/[0.06] transition-all duration-500 hover:border-white/20 hover:-translate-y-1 hover:shadow-2xl hover:shadow-purple-500/10 ${inView ? "animate-scale-in" : "opacity-0"}`}
       style={{ animationDelay: `${delay}s` }}
     >
-      <div className={`aspect-[4/3] bg-gradient-to-br ${gradient} p-8 transition-transform duration-500 group-hover:scale-105`}>
-        <div className="flex h-full flex-col justify-end">
-          <span className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/60">{category}</span>
-          <h3 className="text-xl font-bold text-white">{title}</h3>
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+        {/* Screenshot */}
+        <div className="relative aspect-[16/10] overflow-hidden">
+          <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />
+          <img
+            src={`https://image.thum.io/get/width/800/crop/500/${url}`}
+            alt={title}
+            className="absolute inset-0 h-full w-full object-cover object-top transition-transform duration-700 group-hover:scale-105"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+          {/* External link icon */}
+          <div className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+            <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          </div>
         </div>
-      </div>
+        {/* Info bar */}
+        <div className="bg-white/[0.02] px-5 py-4">
+          <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">{category}</span>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-white">{title}</h3>
+            <span className="shrink-0 text-[11px] text-slate-600">{domain}</span>
+          </div>
+        </div>
+      </a>
     </div>
   )
 }
@@ -503,11 +526,36 @@ export default function ZorvaLabsPage() {
         </div>
       </section>
 
-      {/* ═══ FEATURED PROJECT — MARKET SIGNAL TRACKER ═══ */}
+      {/* ═══ WORK / PORTFOLIO ═══ */}
       <section id="work" className="px-5 py-24">
         <div className="mx-auto max-w-6xl">
+
+          {/* Section header */}
           <div className="mx-auto mb-16 max-w-lg text-center">
-            <span className="mb-3 inline-block text-xs font-bold uppercase tracking-[0.2em] text-pink-400">Our Favorite Build</span>
+            <span className="mb-3 inline-block text-xs font-bold uppercase tracking-[0.2em] text-pink-400">Our Work</span>
+            <h2 className="mb-4 text-3xl font-black text-white sm:text-4xl">
+              Websites & apps <span className="gradient-text-cyan">we&apos;ve built</span>
+            </h2>
+            <p className="text-slate-400">From luxury brands to local services — real products, real results.</p>
+          </div>
+
+          {/* Client Sites Grid */}
+          <div className="mb-24 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              { title: "Alerela Cosmetics", category: "E-Commerce · Beauty", url: "https://alerela.com", gradient: "from-rose-900 to-purple-950" },
+              { title: "Ascend Overhead Doors", category: "Local Business · Service", url: "https://ascendoverhead.com", gradient: "from-gray-900 to-orange-950" },
+              { title: "Golden Hour Nashville", category: "Photography · Events", url: "https://goldenhournashville.com", gradient: "from-amber-950 to-stone-900" },
+              { title: "Gold Travel Group", category: "Luxury Travel", url: "https://goldtravelgroup.com", gradient: "from-sky-950 to-teal-950" },
+              { title: "Spring Haven Mansion", category: "Wedding Venue", url: "https://springhavenmansion.com", gradient: "from-emerald-950 to-slate-900" },
+              { title: "Elopements Inc.", category: "Elopement Packages", url: "https://elopementsinc.com", gradient: "from-rose-950 to-stone-900" },
+            ].map((project, i) => (
+              <PortfolioCard key={project.url} {...project} delay={i * 0.08} />
+            ))}
+          </div>
+
+          {/* MST Featured */}
+          <div className="mx-auto mb-16 max-w-lg text-center">
+            <span className="mb-3 inline-block text-xs font-bold uppercase tracking-[0.2em] text-pink-400">Our Flagship App</span>
             <h2 className="mb-4 text-3xl font-black text-white sm:text-4xl">
               Built by us. <span className="gradient-text-cyan">Loved by traders.</span>
             </h2>
