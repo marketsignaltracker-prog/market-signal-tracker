@@ -215,10 +215,11 @@ function TechMarquee() {
 /* ═══════════════════════════════════════════
    PORTFOLIO CARD
    ═══════════════════════════════════════════ */
-function PortfolioCard({ title, category, url, gradient, delay }: {
+function PortfolioCard({ title, category, url, image, gradient, delay }: {
   title: string
   category: string
   url: string
+  image: string
   gradient: string
   delay: number
 }) {
@@ -235,7 +236,7 @@ function PortfolioCard({ title, category, url, gradient, delay }: {
         <div className="relative aspect-[16/10] overflow-hidden">
           <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />
           <img
-            src={`https://image.thum.io/get/width/800/crop/500/${url}`}
+            src={`/portfolio/${image}`}
             alt={title}
             className="absolute inset-0 h-full w-full object-cover object-top transition-transform duration-700 group-hover:scale-105"
             loading="lazy"
@@ -542,12 +543,12 @@ export default function ZorvaLabsPage() {
           {/* Client Sites Grid */}
           <div className="mb-24 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {[
-              { title: "Alerela Cosmetics", category: "E-Commerce · Beauty", url: "https://alerela.com", gradient: "from-rose-900 to-purple-950" },
-              { title: "Ascend Overhead Doors", category: "Local Business · Service", url: "https://ascendoverhead.com", gradient: "from-gray-900 to-orange-950" },
-              { title: "Golden Hour Nashville", category: "Photography · Events", url: "https://goldenhournashville.com", gradient: "from-amber-950 to-stone-900" },
-              { title: "Gold Travel Group", category: "Luxury Travel", url: "https://goldtravelgroup.com", gradient: "from-sky-950 to-teal-950" },
-              { title: "Spring Haven Mansion", category: "Wedding Venue", url: "https://springhavenmansion.com", gradient: "from-emerald-950 to-slate-900" },
-              { title: "Elopements Inc.", category: "Elopement Packages", url: "https://elopementsinc.com", gradient: "from-rose-950 to-stone-900" },
+              { title: "Alerela Cosmetics", category: "E-Commerce · Beauty", url: "https://alerela.com", image: "alerela.jpg", gradient: "from-rose-900 to-purple-950" },
+              { title: "Ascend Overhead Doors", category: "Local Business · Service", url: "https://ascendoverhead.com", image: "ascend.jpg", gradient: "from-gray-900 to-orange-950" },
+              { title: "Golden Hour Nashville", category: "Photography · Events", url: "https://goldenhournashville.com", image: "goldenhour.jpg", gradient: "from-amber-950 to-stone-900" },
+              { title: "Gold Travel Group", category: "Luxury Travel", url: "https://goldtravelgroup.com", image: "goldtravel.jpg", gradient: "from-sky-950 to-teal-950" },
+              { title: "Spring Haven Mansion", category: "Wedding Venue", url: "https://springhavenmansion.com", image: "springhaven.jpg", gradient: "from-emerald-950 to-slate-900" },
+              { title: "Elopements Inc.", category: "Elopement Packages", url: "https://elopementsinc.com", image: "elopements.jpg", gradient: "from-rose-950 to-stone-900" },
             ].map((project, i) => (
               <PortfolioCard key={project.url} {...project} delay={i * 0.08} />
             ))}
