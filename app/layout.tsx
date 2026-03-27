@@ -26,6 +26,29 @@ export const metadata: Metadata = {
   other: {
     "mobile-web-app-capable": "yes",
   },
+  openGraph: {
+    title: "Market Signal Tracker | Insider Buying & High-Signal Stocks",
+    description:
+      "Stop guessing. Follow the smart money. We surface 30-50 high-conviction stock picks daily using insider trades, congressional buys, and momentum signals.",
+    url: "https://www.marketsignaltracker.com",
+    siteName: "Market Signal Tracker",
+    images: [
+      {
+        url: "https://www.marketsignaltracker.com/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Market Signal Tracker — Stop guessing. Follow the smart money.",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Market Signal Tracker | Insider Buying & High-Signal Stocks",
+    description:
+      "Stop guessing. Follow the smart money. 30-50 high-conviction stock picks daily.",
+    images: ["https://www.marketsignaltracker.com/og-image.png"],
+  },
 };
 
 export const viewport: Viewport = {
