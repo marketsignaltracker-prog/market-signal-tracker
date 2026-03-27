@@ -563,6 +563,12 @@ export default function Home() {
         setLoading(true)
         setError(null)
 
+        // Only fetch the last 3 days of screens to avoid a full-table sort on candidate_screen_history.
+        // The dedup logic below keeps the most recent entry per ticker, so 3 days covers weekends.
+        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split("T")[0]
+
         const [candidateRes, signalRes, ptrRes] = await Promise.all([
           supabase
             .from("candidate_screen_history")
@@ -570,7 +576,6 @@ export default function Home() {
               ticker,
               cik,
               name,
-              business_description,
               price,
               market_cap,
               avg_volume_20d,
@@ -605,6 +610,7 @@ export default function Home() {
               sector,
               industry
             `)
+            .gte("screened_on", threeDaysAgo)
             .gte("candidate_score", 50)
             .order("screened_on", { ascending: false })
             .order("candidate_score", { ascending: false })
