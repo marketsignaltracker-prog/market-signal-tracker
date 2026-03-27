@@ -529,6 +529,17 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search)
     if (!params.get("upgraded")) return
 
+    // Fire Meta Subscribe event
+    const plan = params.get("plan")
+    const value = plan === "yearly" ? 99.99 : 9.99
+    if (typeof (window as any).fbq === "function") {
+      ;(window as any).fbq("track", "Subscribe", {
+        value,
+        currency: "USD",
+        predicted_ltv: 99.99,
+      })
+    }
+
     // Clean the URL
     window.history.replaceState({}, "", "/dashboard")
 

@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       customer: customerId,
       line_items: [{ price: plan.priceId, quantity: 1 }],
       mode: "subscription",
-      success_url: `${appUrl}/dashboard?upgraded=true`,
+      success_url: `${appUrl}/dashboard?upgraded=true&plan=${body.plan === "yearly" ? "yearly" : "monthly"}`,
       cancel_url: `${appUrl}/dashboard`,
       subscription_data: {
         metadata: { supabase_user_id: user.id },
