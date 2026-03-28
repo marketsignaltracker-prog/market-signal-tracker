@@ -19,6 +19,22 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.svg",
   },
+  metadataBase: new URL("https://zorvalabs.com"),
+  openGraph: {
+    title: "Zorva Labs | Where Ideas Ignite",
+    description:
+      "We build apps, websites, and digital strategies that move your business forward. Beautiful design meets bold performance.",
+    url: "https://zorvalabs.com",
+    siteName: "Zorva Labs",
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Zorva Labs | Where Ideas Ignite",
+    description:
+      "We build apps, websites, and digital strategies that move your business forward. Beautiful design meets bold performance.",
+  },
 };
 
 export const viewport: Viewport = {
