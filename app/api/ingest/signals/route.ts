@@ -192,7 +192,7 @@ const MAX_LIMIT = 1000
 const DEFAULT_LOOKBACK_DAYS = 30
 const MAX_LOOKBACK_DAYS = 60
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v15-best-buy-now-70-100"
+const SCORE_VERSION = "v16-best-buy-now-70-100"
 const DB_CHUNK_SIZE = 25
 
 const DEFAULT_MIN_SIGNAL_APP_SCORE = 35
@@ -604,9 +604,9 @@ function scoreCandidateSignal(params: {
   const techEntryScore = storedTechScore > 0 ? storedTechScore : computeInlineTechEntry(context)
 
   // ==========================================================================
-  // SCORING v15: "Best Buy Now" — fundamentals + technical entry drive rank
-  // No catalyst gate — any quality stock with a good entry qualifies
-  // Insider/PTR is a bonus, not a requirement
+  // SCORING v16: "Best Buy Now" — 100 is reachable on pure merit
+  // Fundamentals + price attractiveness + relative strength + entry quality = 100
+  // Insider/congress is a BONUS tracked separately for the rollup stage
   // 7-day hard expiry keeps the board fresh daily
   // ==========================================================================
 
@@ -619,50 +619,75 @@ function scoreCandidateSignal(params: {
   const hasInsiderAndCongress = hasRecentFiling && hasRecentPtr
   const hasCluster = (ptrSummary?.buyCluster === true) || (ptrSummary?.uniqueBuyFilers ?? 0) >= 2
 
-  // --- PILLAR 1: Fundamental Quality (35 pts max) ---
-  if (candidateScore >= 85) add("fundamental", 35, "Excellent fundamental quality")
-  else if (candidateScore >= 75) add("fundamental", 30, "Strong fundamental quality")
-  else if (candidateScore >= 65) add("fundamental", 25, "Good fundamental quality")
-  else if (candidateScore >= 55) add("fundamental", 18, "Adequate fundamental quality")
-  else add("fundamental", 12, "Meets minimum quality threshold")
+  // --- PILLAR 1: Fundamental Quality (30 pts max) ---
+  if (candidateScore >= 85) add("fundamental", 30, "Excellent fundamental quality")
+  else if (candidateScore >= 75) add("fundamental", 25, "Strong fundamental quality")
+  else if (candidateScore >= 65) add("fundamental", 20, "Good fundamental quality")
+  else if (candidateScore >= 55) add("fundamental", 14, "Adequate fundamental quality")
+  else add("fundamental", 8, "Meets minimum quality threshold")
 
-  // --- PILLAR 2: Technical Entry Quality (30 pts max) ---
-  if (techEntryScore >= 80) add("tech_entry", 30, "Excellent buy entry point")
-  else if (techEntryScore >= 60) add("tech_entry", 24, "Strong entry setup")
-  else if (techEntryScore >= 45) add("tech_entry", 18, "Good entry point")
-  else if (techEntryScore >= 30) add("tech_entry", 12, "Acceptable entry")
-  else add("tech_entry", 5, "Weak entry setup")
+  // --- PILLAR 2: Price Attractiveness (25 pts max) ---
+  // Near support = attractive, overextended = expensive
+  const ext = context.extension_from_sma20_pct ?? 50
+  if (ext <= 0) add("price_attractive", 25, "At or below moving average — great price")
+  else if (ext <= 3) add("price_attractive", 22, "Very close to support")
+  else if (ext <= 5) add("price_attractive", 18, "Near support level")
+  else if (ext <= 8) add("price_attractive", 12, "Reasonable price")
+  else if (ext <= 12) add("price_attractive", 6, "Getting extended from support")
+  else add("price_attractive", 0, "Overextended — price not attractive")
 
-  // --- PILLAR 3: Smart Money Bonus (20 pts max) — additive, NOT required ---
-  if (hasInsiderAndCongress) {
-    add("smart_money", 20, "Insider + Congress double conviction")
-  } else if (hasCluster && hasRecentPtr) {
-    add("smart_money", 18, "Cluster buy + Congress conviction")
-  } else if (hasRecentPtr) {
-    add("smart_money", 14, "Congressional trade disclosed")
-  } else if (hasCluster) {
-    add("smart_money", 12, "Multiple insiders buying (cluster)")
-  } else if (hasRecentFiling && filingSummary?.hasForm4) {
-    add("smart_money", 8, "Insider filing (Form 4)")
-  } else if (hasRecentFiling && filingSummary?.has13DOr13G) {
-    add("smart_money", 6, "Ownership filing (13D/G)")
-  }
-  // No insider/PTR activity: 0 pts (that's fine — fundamentals + technicals carry it)
+  // --- PILLAR 3: Relative Strength & Momentum (25 pts max) ---
+  const rs = context.relative_strength_20d ?? 0
+  const vol = context.volume_ratio ?? 0
+  // Relative strength (15 pts)
+  if (rs >= 15) add("rel_strength", 15, "Exceptional relative strength")
+  else if (rs >= 10) add("rel_strength", 12, "Strong relative strength")
+  else if (rs >= 5) add("rel_strength", 9, "Good relative strength")
+  else if (rs >= 0) add("rel_strength", 5, "Positive momentum")
+  else add("rel_strength", 0, "Negative momentum")
+  // Volume confirmation (10 pts)
+  if (vol >= 2.0) add("volume", 10, "Heavy volume confirmation")
+  else if (vol >= 1.5) add("volume", 8, "Strong volume support")
+  else if (vol >= 1.2) add("volume", 5, "Good volume")
+  else if (vol >= 1.0) add("volume", 3, "Normal volume")
+  else add("volume", 0, "Low volume — weak conviction")
 
-  // --- PILLAR 4: Risk/Reward (15 pts max) ---
-  const ext = context.extension_from_sma20_pct ?? 0
-  if ((context.return_5d ?? 0) < 8) add("risk_entry", 5, "Not chasing short-term move")
-  else if ((context.return_5d ?? 0) >= 15) {
-    add("risk_entry", -3, "Chasing recent move"); caps.push("chasing")
-  }
-  if (ext < 8) add("risk_position", 5, "Good entry point near support")
+  // --- PILLAR 4: Entry Setup Quality (20 pts max) ---
+  // Breakout + not chasing + liquid
+  let entryPts = 0
+  if (context.breakout_20d && vol >= 1.5) entryPts += 10  // confirmed breakout
+  else if (context.breakout_10d && vol >= 1.5) entryPts += 8
+  else if (context.breakout_20d) entryPts += 6
+  else if (context.above_sma_20) entryPts += 3
+  if ((context.return_5d ?? 0) < 8) entryPts += 5  // not chasing
+  else if ((context.return_5d ?? 0) >= 15) { entryPts -= 3; caps.push("chasing") }
   const passesAllLiquidity = (context.passes_price ?? true) && (context.passes_volume ?? true) &&
     (context.passes_dollar_volume ?? true) && (context.passes_market_cap ?? true)
-  if (passesAllLiquidity) add("risk_liquidity", 5, "All liquidity gates pass")
+  if (passesAllLiquidity) entryPts += 5
+  add("entry_setup", Math.min(entryPts, 20), entryPts >= 15 ? "Strong entry setup" : entryPts >= 8 ? "Good entry" : "Acceptable entry")
 
-  // --- Compute raw score (0-100) ---
-  let rawScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
-  rawScore = clamp(Math.round(rawScore), 0, 100)
+  // --- Smart Money tracked separately (NOT in the raw score) ---
+  // Stored in breakdown for the rollup stage to use as a bonus
+  let smartMoneyBonus = 0
+  if (hasInsiderAndCongress) smartMoneyBonus = 15
+  else if (hasCluster && hasRecentPtr) smartMoneyBonus = 12
+  else if (hasRecentPtr) smartMoneyBonus = 10
+  else if (hasCluster) smartMoneyBonus = 8
+  else if (hasRecentFiling && filingSummary?.hasForm4) smartMoneyBonus = 5
+  else if (hasRecentFiling && filingSummary?.has13DOr13G) smartMoneyBonus = 3
+  if (smartMoneyBonus > 0) {
+    add("smart_money_bonus", smartMoneyBonus,
+      smartMoneyBonus >= 12 ? "Insider + Congress conviction bonus" :
+      smartMoneyBonus >= 8 ? "Smart money bonus" :
+      "Insider activity bonus")
+  }
+
+  // --- Compute raw score (0-100) — EXCLUDE smart money bonus from base score ---
+  // Smart money is tracked in breakdown but not counted toward the base 100
+  const baseScore = Object.entries(breakdown)
+    .filter(([key]) => key !== "smart_money_bonus")
+    .reduce((a, [, b]) => a + b, 0)
+  let rawScore = clamp(Math.round(baseScore), 0, 100)
 
   // --- Aggressive 7-day decay — board refreshes within a week ---
   // Use screening age (how old this candidate data is) as the decay driver

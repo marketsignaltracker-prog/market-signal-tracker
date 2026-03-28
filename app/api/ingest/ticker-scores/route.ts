@@ -1118,10 +1118,12 @@ function buildTickerScoresCurrentRows(
     else if (clusterBuyers >= 2) insiderBonus = 3
     else if (hasInsiderFiling) insiderBonus = 2
 
-    // v15 composite: signal drives rank, LTCS is quality floor
-    // signalScore already 70-100 from signal stage, use it as dominant factor
-    // ltcsBase adds quality differentiation, insider is a bonus
-    const rawFinal = 40 + (signalScore * 0.35) + (ltcsBase * 0.20) + insiderBonus
+    // v16 composite: signal score IS the rank (already 70-100 based on pure merit)
+    // LTCS adds a small quality differentiation
+    // Insider/congress is a bonus that can push above the base
+    const meritScore = 35 + (signalScore * 0.40) + (ltcsBase * 0.22)
+    // insiderBonus sits on top — doesn't inflate the base, rewards conviction
+    const rawFinal = meritScore + (insiderBonus * 1.5)
     let finalScore = clamp(Math.round(rawFinal), 70, 100)
 
     if (finalScore < 70) continue
