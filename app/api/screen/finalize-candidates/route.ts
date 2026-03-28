@@ -378,73 +378,32 @@ function getSelectionScore(
   ptr: PtrSignalSummary | null | undefined,
   breadthStats: BreadthStats
 ) {
-  let score = Number(row.candidate_score ?? 0)
+  // v15: Simple composite — fundamentals + technical entry quality + small insider bonus
+  const ltcsScore = Number(row.candidate_score ?? 0)
+  const techEntry = Number((row as any).technical_entry_score ?? 0)
   const reasons: string[] = []
 
+  // Base: 60% fundamentals + 40% technical entry
+  let score = (ltcsScore * 0.6) + (techEntry * 0.4)
+  reasons.push(`LTCS ${ltcsScore} + Tech ${techEntry}`)
+
+  // Small insider bonus (max 8 pts) — additive, not dominant
   const signalFamilyCount = getSignalFamilyCount(row, ptr)
+  if (ptr?.ptrBonus && (ptr?.buyTradeCount ?? 0) > 0) {
+    score += 5
+    reasons.push("PTR buy support")
+  }
+  if (row.has_insider_trades) {
+    score += 3
+    reasons.push("insider filing")
+  }
+
+  // Light sector diversification (keep but reduce impact)
   const sectorCrowdingShare = getSectorCrowdingShare(row, breadthStats)
   const industryCrowdingShare = getIndustryCrowdingShare(row, breadthStats)
-
-  if (ptr?.ptrBonus) {
-    score += ptr.ptrBonus + 4
-    reasons.push(`PTR support +${ptr.ptrBonus + 4}`)
-  }
-
-  if ((ptr?.buyTradeCount ?? 0) >= 2) {
-    score += 2
-    reasons.push("multiple PTR buys")
-  }
-
-  if ((ptr?.uniqueFilers ?? 0) >= 2) {
-    score += 2
-    reasons.push("multiple PTR filers")
-  }
-
-  if (row.has_insider_trades) {
-    score += 4
-    reasons.push("insider filing support")
-  }
-
-  if ((row.eligibility_reason || "").includes("high_priority_filings")) {
-    score += 3
-    reasons.push("high-priority filing support")
-  }
-
-  if (row.has_ptr_forms) {
-    score += 2
-    reasons.push("ownership or PTR filing support")
-  }
-
-  if (row.has_clusters) {
-    score += 2
-    reasons.push("cluster support")
-  }
-
-  if (signalFamilyCount >= 3) {
-    score += 5
-    reasons.push("three signal families aligned")
-  } else if (signalFamilyCount >= 2) {
-    score += 2.5
-    reasons.push("multi-signal alignment")
-  } else {
-    score -= 4
-    reasons.push("single-signal setup")
-  }
-
-  if (sectorCrowdingShare >= 0.22) {
-    score -= 5
-    reasons.push(`crowded sector (${normalizeLabel(row.sector)})`)
-  } else if (sectorCrowdingShare >= 0.14) {
-    score -= 2.5
-    reasons.push(`busy sector (${normalizeLabel(row.sector)})`)
-  }
-
-  if (industryCrowdingShare >= 0.14) {
-    score -= 4
-    reasons.push(`crowded industry (${normalizeLabel(row.industry)})`)
-  } else if (industryCrowdingShare >= 0.1) {
-    score -= 2
-    reasons.push(`busy industry (${normalizeLabel(row.industry)})`)
+  if (sectorCrowdingShare >= 0.25) {
+    score -= 3
+    reasons.push(`crowded sector`)
   }
 
   return {

@@ -1099,58 +1099,34 @@ function buildTickerScoresCurrentRows(
       }
     }
 
-    // Use the signal's app_score (v14: 0-30 raw scale) as the primary base
-    // Blend with LTCS fundamental score and insider conviction bonus
-    const signalScore = primaryScore  // from the signal's app_score
+    // ==========================================================================
+    // v15: "Best Buy Now" — simple composite, signal quality dominates
+    // Signal app_score already encodes fundamentals + technicals + smart money
+    // LTCS provides the quality floor, insider bonus is additive
+    // ==========================================================================
+    const signalScore = primaryScore  // from the signal's app_score (70-100)
     const ltcsBase = ltcsScoreMap.get(ticker) ?? 0
 
-    // Insider catalyst bonus (max 15 pts — the dominant differentiator)
+    // Simple insider bonus (max 6 pts) — additive conviction boost, not dominant
     let insiderBonus = 0
     const clusterBuyers = primary.cluster_buyers ?? 0
     const hasPtrBuy = (ptr?.buyTradeCount ?? 0) > 0
     const hasInsiderFiling = (primary.signal_tags || []).some((t: string) => t.includes("insider"))
 
-    if (clusterBuyers >= 3 && hasPtrBuy) {
-      insiderBonus = 15  // platinum: cluster + congress
-    } else if (hasInsiderFiling && hasPtrBuy) {
-      insiderBonus = 12  // insider filing + congress = double smart money
-    } else if (clusterBuyers >= 2) {
-      insiderBonus = 10  // cluster buying
-    } else if (hasPtrBuy) {
-      insiderBonus = 8   // congressional buy alone
-    } else if (clusterBuyers >= 1) {
-      insiderBonus = 5   // single confirmed insider buy
-    } else if (hasInsiderFiling) {
-      insiderBonus = 2   // insider filing (no confirmed purchase direction)
-    }
+    if (hasInsiderFiling && hasPtrBuy) insiderBonus = 6
+    else if (hasPtrBuy) insiderBonus = 4
+    else if (clusterBuyers >= 2) insiderBonus = 3
+    else if (hasInsiderFiling) insiderBonus = 2
 
-    // Freshness bonus (max 3 pts)
-    const ageDays = primary.age_days ?? 999
-    if (ageDays <= 1) insiderBonus += 3
-    else if (ageDays <= 3) insiderBonus += 2
-    else if (ageDays <= 7) insiderBonus += 1
-
-    // Build final score: 70-100 range (30pt spread)
-    // Base 50 + components that sum to 20-50 pts
-    // signalScore (~50-95) → 9-17 pts   (catalyst quality + technicals)
-    // ltcsBase (0-100)     → 6-12 pts   (fundamental quality)
-    // insiderBonus (0-18)  → 0-18 pts   (smart money — the make-or-break factor)
-    // stackedScore (capped) → -4 to +5  (diversity/crowding)
-    // Worst: 50+9+6+0-4=61→70 | No insider: 50+15+10+0+2=77 | PTR: 50+15+10+8+3=86 | Best: 50+17+12+18+5=102→100
-    const cappedStacked = clamp(stackedScore * 0.2, -4, 5)
-    const rawFinal = 50 + (signalScore * 0.18) + (ltcsBase * 0.12) + insiderBonus + cappedStacked
+    // v15 composite: signal drives rank, LTCS is quality filter, insider is bonus
+    // signalScore (70-100) * 0.50 → 35-50 pts
+    // ltcsBase (0-100) * 0.35     → 0-35 pts
+    // insiderBonus (0-6)          → 0-6 pts
+    // Range: ~35+0+0=35→70 to 50+35+6=91→100
+    const rawFinal = (signalScore * 0.50) + (ltcsBase * 0.35) + insiderBonus
     let finalScore = clamp(Math.round(rawFinal), 70, 100)
 
-    // Platinum conviction: insider+congress+strong fundamentals = guaranteed 97+
-    if (
-      hasInsiderFiling && hasPtrBuy && ltcsBase >= 70 && primaryScore >= 60
-    ) {
-      finalScore = Math.max(finalScore, 97)
-      scoreCapsApplied.add("platinum-conviction")
-    }
-
-    if (ltcsBase < 25 && insiderBonus === 0 && signalScore < 10) continue
-    if (finalScore < 70) continue
+    if (finalScore < 72) continue // higher quality bar
 
     const sourceList = Array.from(signalSources)
     const primaryTitle =

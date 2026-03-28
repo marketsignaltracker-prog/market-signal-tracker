@@ -56,6 +56,7 @@ type CandidateUniverseRow = {
   passes_dollar_volume: boolean
   passes_market_cap: boolean
   candidate_score: number
+  technical_entry_score: number
   included: boolean
   passed: boolean
   as_of_date: string
@@ -782,6 +783,62 @@ function calculateLTCS(input: LTCSScoreInput): LTCSScoreOutput {
   }
 }
 
+// Technical Entry Quality Score — measures how good the buy entry is RIGHT NOW
+// Emphasizes: pullbacks to support, confirmed breakouts, momentum, volume
+function calculateTechnicalEntry(metric: {
+  extension_from_sma20_pct: number | null
+  above_sma_20: boolean
+  breakout_20d: boolean
+  breakout_10d: boolean
+  volume_ratio: number | null
+  relative_strength_20d: number | null
+  return_5d: number | null
+  close_in_day_range: number | null
+}): number {
+  let score = 0
+
+  // --- Pullback to Support (35 pts max) ---
+  const ext = metric.extension_from_sma20_pct ?? 50 // default high = penalize unknown
+  if (ext <= 2) score += 35             // sitting right on SMA20 support
+  else if (ext <= 5) score += 28        // close to support
+  else if (ext <= 8) score += 20        // reasonable entry
+  else if (ext <= 12) score += 10       // getting extended
+  else if (ext <= 15) score += 5        // extended
+  // > 15%: 0 (too extended, chasing)
+  // Below SMA (oversold pullback) — good entry if not crashing
+  if (ext < 0 && ext >= -5) score += 30 // mild pullback below SMA
+  else if (ext < -5 && ext >= -10) score += 20 // deeper pullback
+
+  // Cap pullback section at 35
+  score = Math.min(score, 35)
+
+  // --- Breakout Quality (25 pts max) ---
+  const vol = metric.volume_ratio ?? 0
+  let breakoutPts = 0
+  if (metric.breakout_20d && vol >= 1.5) breakoutPts = 25       // confirmed 20d breakout
+  else if (metric.breakout_10d && vol >= 1.5) breakoutPts = 20  // confirmed 10d breakout
+  else if (metric.breakout_20d) breakoutPts = 15                 // unconfirmed 20d breakout
+  else if (metric.breakout_10d) breakoutPts = 10                 // unconfirmed 10d breakout
+  else if (metric.above_sma_20) breakoutPts = 5                  // at least trending up
+  score += breakoutPts
+
+  // --- Momentum Alignment (20 pts max) ---
+  const rs = metric.relative_strength_20d ?? 0
+  if (rs >= 10) score += 20
+  else if (rs >= 5) score += 15
+  else if (rs >= 0) score += 10
+  // Negative RS: 0 pts (no momentum)
+
+  // --- Volume Confirmation (20 pts max) ---
+  if (vol >= 2.0) score += 20
+  else if (vol >= 1.5) score += 15
+  else if (vol >= 1.2) score += 10
+  else if (vol >= 1.0) score += 5
+  // < 1.0: 0 (volume drying up)
+
+  return clamp(score, 0, 100)
+}
+
 function chunkArray<T>(items: T[], size: number) {
   const chunks: T[][] = []
   for (let i = 0; i < items.length; i += size) {
@@ -910,6 +967,7 @@ function makeExcludedRow(params: {
     passes_dollar_volume: false,
     passes_market_cap: false,
     candidate_score: 0,
+    technical_entry_score: 0,
     included: false,
     passed: false,
     as_of_date: params.screenedOn,
@@ -1270,6 +1328,16 @@ export async function GET(request: Request) {
       })
 
       const score = ltcsResult.ltcsScore
+      const techEntryScore = calculateTechnicalEntry({
+        extension_from_sma20_pct: metric.technicals.extensionFromSma20Pct,
+        above_sma_20: metric.technicals.aboveSma20,
+        breakout_20d: metric.technicals.breakout20d,
+        breakout_10d: metric.technicals.breakout10d,
+        volume_ratio: metric.technicals.volumeRatio,
+        relative_strength_20d: metric.relativeStrength20d,
+        return_5d: metric.return5d,
+        close_in_day_range: metric.technicals.closeInDayRange,
+      })
       const passed = score >= LTCS_INCLUDED_THRESHOLD
 
       const reasons: string[] = [
@@ -1278,6 +1346,7 @@ export async function GET(request: Request) {
         `profitability: ${ltcsResult.profitabilityScore}/100`,
         `stability: ${ltcsResult.stabilityScore}/100`,
         `valuation: ${ltcsResult.valuationScore}/100`,
+        `technical entry: ${techEntryScore}/100`,
       ]
 
       const exclusionReason = !metric.passesPrice
@@ -1327,6 +1396,7 @@ export async function GET(request: Request) {
         passes_dollar_volume: metric.passesDollarVolume,
         passes_market_cap: metric.passesMarketCap,
         candidate_score: score,
+        technical_entry_score: techEntryScore,
         included: passed,
         passed,
         as_of_date: screenedOn,

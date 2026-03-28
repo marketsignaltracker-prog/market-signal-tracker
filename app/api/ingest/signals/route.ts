@@ -80,6 +80,7 @@ type CandidateUniverseRow = {
   passes_dollar_volume?: boolean | null
   passes_market_cap?: boolean | null
   candidate_score?: number | null
+  technical_entry_score?: number | null
   included?: boolean | null
   screen_reason?: string | null
   last_screened_at?: string | null
@@ -126,6 +127,7 @@ type CandidateHistoryRow = {
   passes_dollar_volume?: boolean | null
   passes_market_cap?: boolean | null
   candidate_score?: number | null
+  technical_entry_score?: number | null
   included?: boolean | null
   screen_reason?: string | null
   last_screened_at?: string | null
@@ -190,7 +192,7 @@ const MAX_LIMIT = 1000
 const DEFAULT_LOOKBACK_DAYS = 30
 const MAX_LOOKBACK_DAYS = 60
 const RETENTION_DAYS = 30
-const SCORE_VERSION = "v14-smart-buy-70-100"
+const SCORE_VERSION = "v15-best-buy-now-70-100"
 const DB_CHUNK_SIZE = 25
 
 const DEFAULT_MIN_SIGNAL_APP_SCORE = 35
@@ -558,122 +560,95 @@ function scoreCandidateSignal(params: {
   const hasRecentFiling = filingAge !== null && filingAge <= CATALYST_MAX_AGE_DAYS
   const hasRecentPtr = ptrAge !== null && ptrAge <= PTR_CATALYST_MAX_AGE_DAYS
   const hasBreakout = Boolean(context.breakout_20d) || Boolean(context.breakout_10d)
+  const techEntryScore = Number(context.technical_entry_score || 0)
 
-  // Hard catalyst gate — no recent catalyst = no signal
-  if (!hasRecentFiling && !hasRecentPtr && !hasBreakout) {
+  // ==========================================================================
+  // SCORING v15: "Best Buy Now" — fundamentals + technical entry drive rank
+  // No catalyst gate — any quality stock with a good entry qualifies
+  // Insider/PTR is a bonus, not a requirement
+  // 7-day hard expiry keeps the board fresh daily
+  // ==========================================================================
+
+  // Quality gate: must have decent fundamentals AND a reasonable entry
+  if (candidateScore < 50 || techEntryScore < 20) {
     return null
   }
-
-  // ==========================================================================
-  // SCORING v14: 70-100 scale, smart money dominant but requires quality
-  // A 100 = insider+congress + great fundamentals + strong technicals + fresh
-  // A 70 = aging catalyst, single signal, mediocre fundamentals
-  // Smart money alone can't hit 100 without fundamentals backing it up
-  // ==========================================================================
 
   const catalystTypeCount = Number(hasRecentFiling) + Number(hasRecentPtr) + Number(hasBreakout)
   const hasInsiderAndCongress = hasRecentFiling && hasRecentPtr
   const hasCluster = (ptrSummary?.buyCluster === true) || (ptrSummary?.uniqueBuyFilers ?? 0) >= 2
 
-  // --- PILLAR 1: Smart Money Signal (25 pts max) ---
-  // This is the dominant differentiator but alone can't make a 100
+  // --- PILLAR 1: Fundamental Quality (35 pts max) ---
+  if (candidateScore >= 85) add("fundamental", 35, "Excellent fundamental quality")
+  else if (candidateScore >= 75) add("fundamental", 30, "Strong fundamental quality")
+  else if (candidateScore >= 65) add("fundamental", 25, "Good fundamental quality")
+  else if (candidateScore >= 55) add("fundamental", 18, "Adequate fundamental quality")
+  else add("fundamental", 12, "Meets minimum quality threshold")
+
+  // --- PILLAR 2: Technical Entry Quality (30 pts max) ---
+  if (techEntryScore >= 80) add("tech_entry", 30, "Excellent buy entry point")
+  else if (techEntryScore >= 60) add("tech_entry", 24, "Strong entry setup")
+  else if (techEntryScore >= 45) add("tech_entry", 18, "Good entry point")
+  else if (techEntryScore >= 30) add("tech_entry", 12, "Acceptable entry")
+  else add("tech_entry", 5, "Weak entry setup")
+
+  // --- PILLAR 3: Smart Money Bonus (20 pts max) — additive, NOT required ---
   if (hasInsiderAndCongress) {
-    add("smart_money", 25, "Insider + Congress double conviction")
+    add("smart_money", 20, "Insider + Congress double conviction")
   } else if (hasCluster && hasRecentPtr) {
-    add("smart_money", 22, "Cluster buy + Congress conviction")
+    add("smart_money", 18, "Cluster buy + Congress conviction")
   } else if (hasRecentPtr) {
-    add("smart_money", 18, "Congressional trade disclosed")
+    add("smart_money", 14, "Congressional trade disclosed")
   } else if (hasCluster) {
-    add("smart_money", 15, "Multiple insiders buying (cluster)")
+    add("smart_money", 12, "Multiple insiders buying (cluster)")
   } else if (hasRecentFiling && filingSummary?.hasForm4) {
-    add("smart_money", 10, "Insider filing (Form 4)")
+    add("smart_money", 8, "Insider filing (Form 4)")
   } else if (hasRecentFiling && filingSummary?.has13DOr13G) {
-    add("smart_money", 8, "Ownership filing (13D/G)")
-  } else if (hasBreakout) {
-    add("smart_money", 5, "Technical breakout signal")
+    add("smart_money", 6, "Ownership filing (13D/G)")
   }
+  // No insider/PTR activity: 0 pts (that's fine — fundamentals + technicals carry it)
 
-  // --- PILLAR 2: Catalyst Freshness (20 pts max) ---
-  const filingAgeEffective = hasRecentFiling && filingAge !== null ? filingAge : 999
-  const ptrAgeEffective = hasRecentPtr && ptrAge !== null ? ptrAge : 999
-  const breakoutAge = hasBreakout ? 0 : 999
-  const newestCatalystAge = Math.min(filingAgeEffective, ptrAgeEffective, breakoutAge)
-
-  if (newestCatalystAge <= 0) add("freshness", 20, "Catalyst from today")
-  else if (newestCatalystAge <= 1) add("freshness", 18, "Catalyst from yesterday")
-  else if (newestCatalystAge <= 3) add("freshness", 15, "Catalyst within 3 days")
-  else if (newestCatalystAge <= 7) add("freshness", 10, "Catalyst within a week")
-  else if (newestCatalystAge <= 14) add("freshness", 5, "Catalyst within 2 weeks")
-  else add("freshness", 2, "Aging catalyst")
-
-  // --- PILLAR 3: Fundamental Quality (25 pts max) ---
-  // This prevents a bad company with insider+congress from scoring 100
-  if (candidateScore >= 85) add("fundamental", 25, "Excellent fundamental quality")
-  else if (candidateScore >= 75) add("fundamental", 20, "Strong fundamental quality")
-  else if (candidateScore >= 65) add("fundamental", 15, "Good fundamental quality")
-  else if (candidateScore >= 55) add("fundamental", 10, "Adequate fundamental quality")
-  else add("fundamental", 5, "Weak fundamental quality")
-
-  // --- PILLAR 4: Technical Confirmation (15 pts max) ---
+  // --- PILLAR 4: Risk/Reward (15 pts max) ---
   const ext = context.extension_from_sma20_pct ?? 0
-  if (context.above_sma_20) add("tech_trend", 4, "Above 20-day moving average")
-  if ((context.volume_ratio ?? 0) >= 2.0) add("tech_volume", 4, "Heavy volume support")
-  else if ((context.volume_ratio ?? 0) >= 1.5) add("tech_volume", 2, "Good volume support")
-  if ((context.relative_strength_20d ?? 0) >= 10) add("tech_rs", 5, "Strong relative strength")
-  else if ((context.relative_strength_20d ?? 0) >= 5) add("tech_rs", 3, "Positive relative strength")
-  else if ((context.relative_strength_20d ?? 0) > 0) add("tech_rs", 1, "Slight positive momentum")
-  if (ext > 15) { add("tech_extension", -4, "Too extended from SMA20"); caps.push("overextended") }
-  else if (ext > 10) add("tech_extension", -2, "Somewhat extended")
-
-  // --- PILLAR 5: Risk/Reward (15 pts max) ---
-  if ((context.return_5d ?? 0) < 10) add("risk_entry", 5, "Not chasing short-term move")
-  else if ((context.return_5d ?? 0) >= 15 && !ptrSummary?.strongBuying) {
-    add("risk_entry", -3, "Chasing without strong conviction"); caps.push("chasing")
+  if ((context.return_5d ?? 0) < 8) add("risk_entry", 5, "Not chasing short-term move")
+  else if ((context.return_5d ?? 0) >= 15) {
+    add("risk_entry", -3, "Chasing recent move"); caps.push("chasing")
   }
   if (ext < 8) add("risk_position", 5, "Good entry point near support")
   const passesAllLiquidity = (context.passes_price ?? true) && (context.passes_volume ?? true) &&
     (context.passes_dollar_volume ?? true) && (context.passes_market_cap ?? true)
   if (passesAllLiquidity) add("risk_liquidity", 5, "All liquidity gates pass")
 
-  // --- Compute raw score (0-100 theoretical, ~95-100 realistic max) ---
+  // --- Compute raw score (0-100) ---
   let rawScore = Object.values(breakdown).reduce((a, b) => a + b, 0)
   rawScore = clamp(Math.round(rawScore), 0, 100)
 
-  // --- Staleness decay — decays toward 0 in raw, then we map to 70-100 ---
-  const hasPtrCatalyst = hasRecentPtr && ptrAge !== null
+  // --- Aggressive 7-day decay — board refreshes within a week ---
+  // Use screening age (how old this candidate data is) as the decay driver
+  const screenAge: number = (context.last_screened_at ? daysAgo(context.last_screened_at) : 0) ?? 0
+  // Also consider newest catalyst age if one exists
+  const filingAgeEffective: number = hasRecentFiling && filingAge !== null ? filingAge : 999
+  const ptrAgeEffective: number = hasRecentPtr && ptrAge !== null ? ptrAge : 999
+  const breakoutAge: number = hasBreakout ? 0 : 999
+  const newestCatalystAge = Math.min(filingAgeEffective, ptrAgeEffective, breakoutAge, screenAge)
 
   let decayMultiplier = 1.0
-  if (hasPtrCatalyst) {
-    // Gentle decay for PTR/congress — they're always "old" by nature
-    if (ptrAgeEffective <= 7) decayMultiplier = 1.0
-    else if (ptrAgeEffective <= 14) decayMultiplier = 0.92
-    else if (ptrAgeEffective <= 21) decayMultiplier = 0.82
-    else if (ptrAgeEffective <= 30) decayMultiplier = 0.70
-    else decayMultiplier = 0.55
-    // If also has a fresh filing, use the better of the two
-    if (filingAgeEffective <= 3) decayMultiplier = Math.max(decayMultiplier, 1.0)
-    else if (filingAgeEffective <= 7) decayMultiplier = Math.max(decayMultiplier, 0.92)
-  } else {
-    if (newestCatalystAge <= 1) decayMultiplier = 1.0
-    else if (newestCatalystAge <= 2) decayMultiplier = 0.96
-    else if (newestCatalystAge <= 3) decayMultiplier = 0.92
-    else if (newestCatalystAge <= 5) decayMultiplier = 0.84
-    else if (newestCatalystAge <= 7) decayMultiplier = 0.74
-    else if (newestCatalystAge <= 10) decayMultiplier = 0.60
-    else if (newestCatalystAge <= 14) decayMultiplier = 0.45
-    else if (newestCatalystAge <= 21) decayMultiplier = 0.30
-    else return null // signal expired
-  }
+  if (newestCatalystAge <= 1) decayMultiplier = 1.0
+  else if (newestCatalystAge <= 2) decayMultiplier = 0.95
+  else if (newestCatalystAge <= 3) decayMultiplier = 0.88
+  else if (newestCatalystAge <= 4) decayMultiplier = 0.78
+  else if (newestCatalystAge <= 5) decayMultiplier = 0.65
+  else if (newestCatalystAge <= 6) decayMultiplier = 0.50
+  else return null // 7+ days = signal expired, off the board
 
   const decayedScore = rawScore * decayMultiplier
 
-  // --- Map to 70-100 range: 70 = worst surviving signal, 100 = best possible ---
-  // appScore = 70 + (decayedScore / 100) * 30
+  // --- Map to 70-100 range ---
   let appScore = clamp(Math.round(70 + (decayedScore / 100) * 30), 70, 100)
 
   if (decayMultiplier < 1.0) {
     caps.push(`staleness-decay-${Math.round(decayMultiplier * 100)}pct`)
-    reasons.push(`Catalyst aging (${newestCatalystAge}d) — score decayed to ${Math.round(decayMultiplier * 100)}%`)
+    reasons.push(`Signal aging (${newestCatalystAge}d) — score decayed to ${Math.round(decayMultiplier * 100)}%`)
   }
 
   const signalFamilyCount = catalystTypeCount
