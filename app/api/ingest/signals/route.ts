@@ -526,6 +526,45 @@ function buildFilingSummaryMap(rows: RawFilingRow[]) {
   return output
 }
 
+// Compute technical entry score inline from candidate context fields
+// Used as fallback when screening stage didn't populate the column (e.g. weekends)
+function computeInlineTechEntry(ctx: ContextRow): number {
+  const ext = ctx.extension_from_sma20_pct ?? 50
+  const vol = ctx.volume_ratio ?? 0
+  const rs = ctx.relative_strength_20d ?? 0
+  let score = 0
+
+  // Pullback (35 max)
+  if (ext < -5 && ext >= -10) score += 20
+  else if (ext < 0 && ext >= -5) score += 30
+  else if (ext <= 2) score += 35
+  else if (ext <= 5) score += 28
+  else if (ext <= 8) score += 20
+  else if (ext <= 12) score += 10
+  else if (ext <= 15) score += 5
+  score = Math.min(score, 35)
+
+  // Breakout (25 max)
+  if (ctx.breakout_20d && vol >= 1.5) score += 25
+  else if (ctx.breakout_10d && vol >= 1.5) score += 20
+  else if (ctx.breakout_20d) score += 15
+  else if (ctx.breakout_10d) score += 10
+  else if (ctx.above_sma_20) score += 5
+
+  // Momentum (20 max)
+  if (rs >= 10) score += 20
+  else if (rs >= 5) score += 15
+  else if (rs >= 0) score += 10
+
+  // Volume (20 max)
+  if (vol >= 2.0) score += 20
+  else if (vol >= 1.5) score += 15
+  else if (vol >= 1.2) score += 10
+  else if (vol >= 1.0) score += 5
+
+  return Math.max(0, Math.min(100, score))
+}
+
 function scoreCandidateSignal(params: {
   context: ContextRow
   filingSummary: FilingSummary | null
@@ -560,7 +599,9 @@ function scoreCandidateSignal(params: {
   const hasRecentFiling = filingAge !== null && filingAge <= CATALYST_MAX_AGE_DAYS
   const hasRecentPtr = ptrAge !== null && ptrAge <= PTR_CATALYST_MAX_AGE_DAYS
   const hasBreakout = Boolean(context.breakout_20d) || Boolean(context.breakout_10d)
-  const techEntryScore = Number(context.technical_entry_score || 0)
+  // Compute technical entry score inline (don't rely on screening stage which zeros on weekends)
+  const storedTechScore = Number(context.technical_entry_score || 0)
+  const techEntryScore = storedTechScore > 0 ? storedTechScore : computeInlineTechEntry(context)
 
   // ==========================================================================
   // SCORING v15: "Best Buy Now" — fundamentals + technical entry drive rank
