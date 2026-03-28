@@ -551,6 +551,7 @@ export default function ZorvaLabsPage() {
               { title: "Elopements Inc.", category: "Elopement Packages", url: "https://elopementsinc.com", image: "elopements.jpg", gradient: "from-rose-950 to-stone-900" },
               { title: "Rapid Rescue Nashville", category: "Emergency Restoration", url: "https://rapidrescuenashville.com", image: "rapidrescue.jpg", gradient: "from-blue-950 to-red-950" },
               { title: "Robert Douglas Consulting", category: "Business Consulting", url: "https://robertdouglasconsulting.com", image: "robertdouglas.jpg", gradient: "from-stone-950 to-yellow-950" },
+              { title: "No Dust About It", category: "Cleaning Service", url: "https://nodustaboutit.com", image: "nodustaboutit.jpg", gradient: "from-teal-950 to-emerald-950" },
             ].map((project, i) => (
               <PortfolioCard key={project.url} {...project} delay={i * 0.08} />
             ))}
