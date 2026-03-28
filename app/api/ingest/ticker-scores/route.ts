@@ -1118,15 +1118,13 @@ function buildTickerScoresCurrentRows(
     else if (clusterBuyers >= 2) insiderBonus = 3
     else if (hasInsiderFiling) insiderBonus = 2
 
-    // v15 composite: signal drives rank, LTCS is quality filter, insider is bonus
-    // signalScore (70-100) * 0.50 → 35-50 pts
-    // ltcsBase (0-100) * 0.35     → 0-35 pts
-    // insiderBonus (0-6)          → 0-6 pts
-    // Range: ~35+0+0=35→70 to 50+35+6=91→100
-    const rawFinal = (signalScore * 0.50) + (ltcsBase * 0.35) + insiderBonus
+    // v15 composite: signal drives rank, LTCS is quality floor
+    // signalScore already 70-100 from signal stage, use it as dominant factor
+    // ltcsBase adds quality differentiation, insider is a bonus
+    const rawFinal = 40 + (signalScore * 0.35) + (ltcsBase * 0.20) + insiderBonus
     let finalScore = clamp(Math.round(rawFinal), 70, 100)
 
-    if (finalScore < 72) continue // higher quality bar
+    if (finalScore < 70) continue
 
     const sourceList = Array.from(signalSources)
     const primaryTitle =
